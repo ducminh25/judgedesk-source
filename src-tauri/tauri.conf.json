@@ -45,7 +45,7 @@
         "language": "en-US"
       },
       "nsis": {
-        "customInstallerPath": "installer.nsh"
+        "installerHooks": "installer.nsh"
       }
     }
   }
