@@ -1,0 +1,20 @@
+[package]
+name = "themis-v2"
+version = "1.0.0"
+description = "ThemisV2 - Local Online Judge"
+authors = ["Mon"]
+edition = "2021"
+
+[lib]
+name = "themis_v2_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["devtools"] }
+tauri-plugin-shell = "2"
+tauri-plugin-process = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

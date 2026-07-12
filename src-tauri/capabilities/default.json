@@ -1,0 +1,17 @@
+{
+  "permissions": [
+    "core:default",
+    "shell:default",
+    {
+      "identifier": "shell:allow-execute",
+      "allow": [
+        {
+          "name": "binaries/server",
+          "sidecar": true,
+          "cmd": "server"
+        }
+      ]
+    },
+    "process:default"
+  ]
+}

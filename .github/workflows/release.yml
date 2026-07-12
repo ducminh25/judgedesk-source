@@ -1,0 +1,61 @@
+name: Release and Build Installers
+
+on:
+  push:
+    tags:
+      - 'v*' # Triggers on release tags like v1.0.0
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  release:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'windows-latest'
+            args: ''
+          - platform: 'macos-latest'
+            args: '--target universal-apple-darwin' # Compiles for both Intel & Apple Silicon
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'x86_64-apple-darwin,aarch64-apple-darwin' || '' }}
+
+      - name: Rust Cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build frontend and server sidecar
+        run: |
+          npm run build:frontend
+          node scripts/build-server.js
+
+      - name: Build Tauri applications
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'ThemisV2 v__VERSION__'
+          releaseBody: 'Automatic release compiled by GitHub Actions.'
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
