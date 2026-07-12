@@ -1,0 +1,5 @@
+{
+  "main": "dist/server.cjs",
+  "output": "sea-prep.blob",
+  "disableSentinelFuse": false
+}
