@@ -1,4 +1,10 @@
 {
+  "$schema": "../gen/schemas/capability-schema.json",
+  "identifier": "default",
+  "description": "default capability",
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:default",
     "shell:default",
