@@ -161,13 +161,14 @@ function validateExtractedLinks(root: string, current = root): void {
 function listWindowsZip(archivePath: string): string[] {
   const script = [
     "Add-Type -AssemblyName System.IO.Compression.FileSystem",
-    "$zip = [System.IO.Compression.ZipFile]::OpenRead($args[0])",
+    "$zip = [System.IO.Compression.ZipFile]::OpenRead($env:ZIP_PATH)",
     "try { @($zip.Entries | ForEach-Object { $_.FullName }) | ConvertTo-Json -Compress } finally { $zip.Dispose() }",
   ].join("; ");
   const result = spawnSync(
     "powershell.exe",
-    ["-NoProfile", "-NonInteractive", "-Command", script, archivePath],
+    ["-NoProfile", "-NonInteractive", "-Command", script],
     {
+      env: { ...process.env, ZIP_PATH: archivePath },
       encoding: "utf8",
       timeout: 30_000,
     },
@@ -181,19 +182,16 @@ function listWindowsZip(archivePath: string): string[] {
 function extractWindowsZip(archivePath: string, destination: string): void {
   const script = [
     "Add-Type -AssemblyName System.IO.Compression.FileSystem",
-    "[System.IO.Compression.ZipFile]::ExtractToDirectory($args[0], $args[1])",
+    "[System.IO.Compression.ZipFile]::ExtractToDirectory($env:ZIP_PATH, $env:DEST_DIR)",
   ].join("; ");
   const result = spawnSync(
     "powershell.exe",
-    [
-      "-NoProfile",
-      "-NonInteractive",
-      "-Command",
-      script,
-      archivePath,
-      destination,
-    ],
-    { encoding: "utf8", timeout: 5 * 60_000 },
+    ["-NoProfile", "-NonInteractive", "-Command", script],
+    {
+      env: { ...process.env, ZIP_PATH: archivePath, DEST_DIR: destination },
+      encoding: "utf8",
+      timeout: 5 * 60_000,
+    },
   );
   if (result.status !== 0)
     throw new Error(result.stderr || "PowerShell ZIP extraction failed.");
