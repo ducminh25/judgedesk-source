@@ -303,9 +303,17 @@ jobs:
 
       - name: Verify app signature and notarization
         run: |
-          app_bundle=$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -maxdepth 1 -name '*.app' -print -quit)
           dmg_file=$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg -maxdepth 1 -name 'ThemisV2_*.dmg' -print -quit)
-          test -n "$app_bundle" && test -n "$dmg_file"
+          test -n "$dmg_file"
+          mount_dir=$(mktemp -d)
+          cleanup_dmg_mount() {
+            hdiutil detach "$mount_dir" >/dev/null 2>&1 || true
+            rmdir "$mount_dir" >/dev/null 2>&1 || true
+          }
+          trap cleanup_dmg_mount EXIT
+          hdiutil attach "$dmg_file" -readonly -nobrowse -mountpoint "$mount_dir" >/dev/null
+          app_bundle=$(find "$mount_dir" -maxdepth 1 -name '*.app' -print -quit)
+          test -n "$app_bundle"
           lipo "$app_bundle/Contents/MacOS/server" -verify_arch x86_64 arm64
           codesign --verify --deep --strict --verbose=2 "$app_bundle"
           if [ -n "$APPLE_API_KEY_BASE64" ]; then
