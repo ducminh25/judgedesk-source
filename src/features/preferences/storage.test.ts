@@ -71,15 +71,22 @@ describe("preferencesStorage", () => {
     assert.strictEqual(preferencesStorage.isToolchainSetupCompleted(), true);
   });
 
-  it("should handle localStorage throwing errors gracefully", () => {
+  it("should handle localStorage throwing errors gracefully", (context) => {
     const originalGet = (global as any).localStorage.getItem;
+    const originalConsoleError = console.error;
+    const loggedErrors: unknown[][] = [];
+    console.error = (...args: unknown[]) => loggedErrors.push(args);
     (global as any).localStorage.getItem = () => {
       throw new Error("Security Error");
     };
+    context.after(() => {
+      (global as any).localStorage.getItem = originalGet;
+      console.error = originalConsoleError;
+    });
 
     // Should not throw, should return null
     assert.strictEqual(preferencesStorage.getTheme(), null);
-
-    (global as any).localStorage.getItem = originalGet;
+    assert.strictEqual(loggedErrors.length, 1);
+    assert.match(String(loggedErrors[0][0]), /Failed to read/);
   });
 });
