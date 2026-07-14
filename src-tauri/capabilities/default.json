@@ -2,11 +2,10 @@
   "$schema": "../gen/schemas/capability-schema.json",
   "identifier": "default",
   "description": "default capability",
-  "windows": [
-    "main"
-  ],
+  "windows": ["main"],
   "permissions": [
     "core:default",
+    "dialog:default",
     "shell:default",
     {
       "identifier": "shell:allow-execute",
@@ -17,7 +16,6 @@
           "cmd": "server"
         }
       ]
-    },
-    "process:default"
+    }
   ]
 }

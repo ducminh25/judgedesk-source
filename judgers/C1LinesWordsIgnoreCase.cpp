@@ -45,8 +45,7 @@ int main(int argc, char *argv[]) {
         vector<string> vp = splitWords(p);
 
         if (va != vp) {
-            // quitf(_wa, "Wrong answer at line %d", n);
-            quitf(_wa, "");
+            quitf(_wa, "Wrong answer at line %d", n);
         }
     }
  
@@ -55,9 +54,11 @@ int main(int argc, char *argv[]) {
         string p = ouf.readLine("[^\n]*", "out_line");
         vector<string> vp = splitWords(p);
         if (!vp.empty()) {
-            quitf(_wa, "");
+            quitf(_wa, "Extra lines in output");
         }
     }
  
-    quitf(_ok, "");
+    if (n == 1)
+        quitf(_ok, "single line");
+    quitf(_ok, "%d lines", n);
 }

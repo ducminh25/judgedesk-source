@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 
 interface DiffViewerProps {
   expected: string;
@@ -6,54 +7,70 @@ interface DiffViewerProps {
 }
 
 export default function DiffViewer({ expected, actual }: DiffViewerProps) {
-  const sanitize = (str: string) => str.replace(/\r\n/g, "\n").replace(/\s+$/g, "");
-  
+  const { t } = useTranslation();
+  const sanitize = (str: string) =>
+    str.replace(/\r\n/g, "\n").replace(/\s+$/g, "");
+
   const expectedLines = sanitize(expected).split("\n");
   const actualLines = sanitize(actual).split("\n");
   const maxLines = Math.max(expectedLines.length, actualLines.length);
 
   return (
-    <div id="diff-viewer" className="mt-2 border border-zinc-800 rounded-lg overflow-hidden text-sm font-mono bg-zinc-950">
-      <div className="grid grid-cols-2 bg-zinc-900 border-b border-zinc-800 text-xs font-semibold text-zinc-300 px-3 py-2">
-        <div>Expected Output</div>
-        <div>Actual Output</div>
+    <div
+      id="diff-viewer"
+      className="mt-2 overflow-hidden rounded-lg border border-surface-border bg-input-bg font-mono text-sm"
+    >
+      <div className="grid grid-cols-2 border-b border-surface-border bg-surface-elevated px-3 py-2 text-xs font-semibold text-text-primary">
+        <div>{t("diff.expected")}</div>
+        <div>{t("diff.actual")}</div>
       </div>
-      <div className="divide-y divide-zinc-900/50 max-h-96 overflow-y-auto bg-zinc-950">
+      <div className="max-h-96 divide-y divide-surface-border overflow-y-auto bg-input-bg">
         {Array.from({ length: maxLines }).map((_, idx) => {
-          const expLine = idx < expectedLines.length ? expectedLines[idx] : null;
+          const expLine =
+            idx < expectedLines.length ? expectedLines[idx] : null;
           const actLine = idx < actualLines.length ? actualLines[idx] : null;
 
           // Standardized trimming for exact comparison matches
-          const isMatch = expLine !== null && actLine !== null && expLine.trim() === actLine.trim();
+          const isMatch =
+            expLine !== null &&
+            actLine !== null &&
+            expLine.trim() === actLine.trim();
 
           return (
-            <div key={idx} className="grid grid-cols-2 text-xs leading-5 divide-x divide-zinc-900/50">
+            <div
+              key={idx}
+              className="grid grid-cols-2 divide-x divide-surface-border text-xs leading-5"
+            >
               {/* Expected column */}
               <div
                 className={`p-2 whitespace-pre ${
                   isMatch
-                    ? "bg-zinc-950 text-zinc-400/80"
+                    ? "bg-input-bg text-text-muted"
                     : expLine === null
-                    ? "bg-zinc-900/10 text-zinc-600 italic"
-                    : "bg-emerald-950/30 text-emerald-400 border-l-2 border-emerald-600 font-medium"
+                      ? "bg-surface-hover text-text-muted italic"
+                      : "border-l-2 border-emerald-600 bg-emerald-50 font-medium text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400"
                 }`}
               >
-                <span className="select-none text-zinc-600 mr-2 text-[10px]">{idx + 1}</span>
-                {expLine === null ? "[no line]" : expLine || " "}
+                <span className="mr-2 select-none text-[10px] text-text-muted">
+                  {idx + 1}
+                </span>
+                {expLine === null ? t("diff.noLine") : expLine || " "}
               </div>
 
               {/* Actual column */}
               <div
                 className={`p-2 whitespace-pre ${
                   isMatch
-                    ? "bg-zinc-950 text-zinc-400/80"
+                    ? "bg-input-bg text-text-muted"
                     : actLine === null
-                    ? "bg-zinc-900/10 text-zinc-600 italic"
-                    : "bg-rose-950/35 text-rose-400 border-l-2 border-rose-600 font-medium"
+                      ? "bg-surface-hover text-text-muted italic"
+                      : "border-l-2 border-rose-600 bg-rose-50 font-medium text-rose-700 dark:bg-rose-950/35 dark:text-rose-400"
                 }`}
               >
-                <span className="select-none text-zinc-600 mr-2 text-[10px]">{idx + 1}</span>
-                {actLine === null ? "[no line]" : actLine || " "}
+                <span className="mr-2 select-none text-[10px] text-text-muted">
+                  {idx + 1}
+                </span>
+                {actLine === null ? t("diff.noLine") : actLine || " "}
               </div>
             </div>
           );

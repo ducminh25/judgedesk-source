@@ -1,1 +1,40 @@
 @import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-surface-border: var(--surface-border);
+  --color-surface-border-strong: var(--surface-border-strong);
+  --color-text-primary: var(--text-primary);
+  --color-text-muted: var(--text-muted);
+  --color-input-bg: var(--input-bg);
+}
+
+@layer base {
+  :root {
+    /* Light Mode */
+    --surface: #ffffff;
+    --surface-hover: #f4f4f5;
+    --surface-elevated: #ffffff;
+    --surface-border: #e4e4e7;
+    --surface-border-strong: #d4d4d8;
+    --text-primary: #18181b;
+    --text-muted: #71717a;
+    --input-bg: #ffffff;
+  }
+
+  .dark {
+    /* Dark Mode */
+    --surface: #09090b;
+    --surface-hover: #27272a;
+    --surface-elevated: #18181b;
+    --surface-border: rgba(63, 63, 70, 0.5); /* zinc-700/50 */
+    --surface-border-strong: #3f3f46; /* zinc-700 */
+    --text-primary: #e4e4e7; /* zinc-200 */
+    --text-muted: #71717a; /* zinc-500 */
+    --input-bg: #09090b; /* zinc-900 / transparent */
+  }
+}

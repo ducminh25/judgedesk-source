@@ -1,0 +1,10 @@
+{
+  "bundle": {
+    "targets": ["msi"],
+    "windows": {
+      "wix": {
+        "language": "en-US"
+      }
+    }
+  }
+}

@@ -1,8 +1,15 @@
 node_modules/
+scripts/node-v22/
 build/
 dist/
 coverage/
+temp/
+src-tauri/target/
+src-tauri/binaries/server-*
+sea-prep.blob
 .DS_Store
 *.log
-.env*
+CONVERSATION_HISTORY.md
+.env
+.env.*
 !.env.example

@@ -1,0 +1,151 @@
+import { useRef, useState, type Dispatch } from "react";
+import { apiFetch } from "../../api";
+import type {
+  BatchJudgeRequest,
+  JudgeProgress,
+  JudgeStreamEvent,
+  ProblemConfig
+} from "../../types";
+import type { JudgeResultsAction } from "./judge-results";
+
+interface JudgeSessionOptions {
+  contestantsPath: string;
+  testPath: string;
+  timeLimit: number;
+  problemConfigs: Record<string, ProblemConfig>;
+  dispatchResults: Dispatch<JudgeResultsAction>;
+}
+
+export function useJudgeSession({
+  contestantsPath,
+  testPath,
+  timeLimit,
+  problemConfigs,
+  dispatchResults
+}: JudgeSessionOptions) {
+  const [isJudging, setIsJudging] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [progressState, setProgressState] = useState<JudgeProgress | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const runJudge = async (targetContestants: string[], targetProblems: string[]) => {
+    if (!contestantsPath.trim()) {
+      setErrorMessage("Please enter the path to the contestants folder.");
+      return;
+    }
+    if (!testPath.trim()) {
+      setErrorMessage("Please enter the path to the testcases folder.");
+      return;
+    }
+    if (targetContestants.length === 0 || targetProblems.length === 0) {
+      setErrorMessage("Select at least one contestant and one problem to grade.");
+      return;
+    }
+
+    setErrorMessage("");
+    setIsJudging(true);
+    dispatchResults({ type: "initialize" });
+    const newJobId = Math.random().toString(36).substring(7);
+    setJobId(newJobId);
+    setProgressState({ contestant: "", problem: "", action: "Initializing...", percent: 0 });
+
+    try {
+      abortControllerRef.current = new AbortController();
+      const request: BatchJudgeRequest = {
+        thisinhPath: contestantsPath,
+        testPath,
+        timeLimit,
+        problemConfigs,
+        targetContestants,
+        targetProblems,
+        jobId: newJobId
+      };
+      const response = await apiFetch("/api/batch-judge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(request),
+        signal: abortControllerRef.current.signal
+      });
+      if (response.body) await consumeJudgeStream(response.body, handleEvent);
+    } catch (error: any) {
+      if (error.name !== "AbortError") {
+        setErrorMessage(error.message || "Something went wrong during local execution.");
+      }
+    } finally {
+      setIsJudging(false);
+      setJobId(null);
+      setProgressState(null);
+      abortControllerRef.current = null;
+    }
+  };
+
+  const terminate = async () => {
+    if (!jobId) return;
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    try {
+      await apiFetch("/api/batch-judge/cancel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId })
+      });
+    } finally {
+      setIsJudging(false);
+      setJobId(null);
+      setProgressState(null);
+    }
+  };
+
+  const handleEvent = (event: JudgeStreamEvent) => {
+    if (event.type === "progress") {
+      setProgressState(event.data);
+    } else if (event.type === "problem_completed") {
+      dispatchResults({
+        type: "merge_problem",
+        contestant: event.data.contestant,
+        problemResult: event.data.problemResult
+      });
+    } else if (event.type === "error") {
+      setErrorMessage(event.data.message);
+    }
+  };
+
+  return {
+    errorMessage,
+    isJudging,
+    progressState,
+    runJudge,
+    setErrorMessage,
+    terminate
+  };
+}
+
+async function consumeJudgeStream(
+  stream: ReadableStream<Uint8Array>,
+  onEvent: (event: JudgeStreamEvent) => void
+): Promise<void> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+    for (const line of lines) parseEventLine(line, onEvent);
+  }
+  buffer += decoder.decode();
+  parseEventLine(buffer, onEvent);
+}
+
+function parseEventLine(line: string, onEvent: (event: JudgeStreamEvent) => void): void {
+  if (!line.trim()) return;
+  try {
+    onEvent(JSON.parse(line) as JudgeStreamEvent);
+  } catch {
+    // Ignore malformed partial lines; the backend emits one JSON object per line.
+  }
+}

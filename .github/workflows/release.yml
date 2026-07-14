@@ -1,61 +1,330 @@
-name: Release and Build Installers
+name: Build and Publish Release
 
 on:
   push:
     tags:
-      - 'v*' # Triggers on release tags like v1.0.0
-  workflow_dispatch: # Allows manual trigger
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: npm ci
+      - name: Verify version, types, tests and Rust formatting
+        run: |
+          npm run release:check-version
+          npm run lint
+          npm run test:server
+          cargo fmt --check --manifest-path src-tauri/Cargo.toml
+
+  build-windows-sidecar:
+    needs: verify
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build Windows x64 sidecar
+        run: npm run build:server
+        env:
+          TAURI_TARGET: x86_64-pc-windows-msvc
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-windows-x64
+          path: src-tauri/binaries/server-x86_64-pc-windows-msvc.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  build-macos-sidecar-x64:
+    needs: verify
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build macOS Intel sidecar
+        run: npm run build:server
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
+          TAURI_TARGET: x86_64-apple-darwin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-macos-x64
+          path: src-tauri/binaries/server-x86_64-apple-darwin
+          if-no-files-found: error
+          retention-days: 7
+
+  build-macos-sidecar-arm64:
+    needs: verify
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build macOS Apple Silicon sidecar
+        run: npm run build:server
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
+          TAURI_TARGET: aarch64-apple-darwin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-macos-arm64
+          path: src-tauri/binaries/server-aarch64-apple-darwin
+          if-no-files-found: error
+          retention-days: 7
+
+  assemble-macos-universal-sidecar:
+    needs: [build-macos-sidecar-x64, build-macos-sidecar-arm64]
+    runs-on: macos-15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: server-macos-x64
+          path: temp-binaries
+      - uses: actions/download-artifact@v4
+        with:
+          name: server-macos-arm64
+          path: temp-binaries
+      - name: Merge and verify universal sidecar
+        run: |
+          mkdir -p src-tauri/binaries
+          lipo -create temp-binaries/server-x86_64-apple-darwin temp-binaries/server-aarch64-apple-darwin -output src-tauri/binaries/server-universal-apple-darwin
+          lipo -verify_arch x86_64 arm64 src-tauri/binaries/server-universal-apple-darwin
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-macos-universal
+          path: src-tauri/binaries/server-universal-apple-darwin
+          if-no-files-found: error
+          retention-days: 7
+
+  build-windows-msi:
+    needs: build-windows-sidecar
+    runs-on: windows-2022
+    env:
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      WINDOWS_CERTIFICATE_THUMBPRINT: ${{ secrets.WINDOWS_CERTIFICATE_THUMBPRINT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: server-windows-x64
+          path: src-tauri/binaries
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Import Windows certificate and configure Tauri signing
+        shell: pwsh
+        run: |
+          if (-not $env:WINDOWS_CERTIFICATE) {
+            "WINDOWS_SIGNED=false" | Out-File -FilePath $env:GITHUB_ENV -Append
+            Write-Warning "Building an unsigned MSI. The GitHub Release will remain a draft."
+            exit 0
+          }
+          if (-not $env:WINDOWS_CERTIFICATE_PASSWORD -or -not $env:WINDOWS_CERTIFICATE_THUMBPRINT) {
+            throw "WINDOWS_CERTIFICATE_PASSWORD and WINDOWS_CERTIFICATE_THUMBPRINT are required when WINDOWS_CERTIFICATE is set."
+          }
+          $certificatePath = Join-Path $env:RUNNER_TEMP 'themis-signing.pfx'
+          [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          Import-PfxCertificate -FilePath $certificatePath -CertStoreLocation Cert:\CurrentUser\My -Password (ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force) | Out-Null
+
+          $configPath = 'src-tauri/tauri.windows.conf.json'
+          $config = Get-Content $configPath -Raw | ConvertFrom-Json
+          $config.bundle.windows | Add-Member -NotePropertyName certificateThumbprint -NotePropertyValue $env:WINDOWS_CERTIFICATE_THUMBPRINT -Force
+          $config.bundle.windows | Add-Member -NotePropertyName digestAlgorithm -NotePropertyValue 'sha256' -Force
+          $config.bundle.windows | Add-Member -NotePropertyName timestampUrl -NotePropertyValue 'http://timestamp.digicert.com' -Force
+          $config | ConvertTo-Json -Depth 20 | Set-Content -Encoding utf8 $configPath
+
+          $signTool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe | Where-Object FullName -Match '\\x64\\signtool.exe$' | Sort-Object FullName | Select-Object -Last 1
+          if (-not $signTool) { throw 'signtool.exe was not found on the runner.' }
+          & $signTool.FullName sign /sha1 $env:WINDOWS_CERTIFICATE_THUMBPRINT /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 src-tauri/binaries/server-x86_64-pc-windows-msvc.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Windows sidecar signing failed.' }
+          "WINDOWS_SIGNED=true" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Build MSI
+        run: npx tauri build --config src-tauri/tauri.windows.conf.json --target x86_64-pc-windows-msvc
+
+      - name: Verify MSI signature when signing is configured
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/ThemisV2_*.msi | Select-Object -First 1
+          if (-not $msi) { throw 'MSI output was not created.' }
+          $signature = Get-AuthenticodeSignature $msi.FullName
+          $signature | Format-List Status,StatusMessage,SignerCertificate
+          if ($env:WINDOWS_SIGNED -eq 'true' -and $signature.Status -ne 'Valid') { throw 'MSI signature verification failed.' }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: msi-package
+          path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/ThemisV2_*.msi
+          if-no-files-found: error
+          retention-days: 14
+
+  build-macos-universal-dmg:
+    needs: assemble-macos-universal-sidecar
+    runs-on: macos-15
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+      APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: server-macos-universal
+          path: src-tauri/binaries
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin, aarch64-apple-darwin
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Validate macOS signing secret set
+        run: |
+          cert_count=0
+          for value in "$APPLE_CERTIFICATE" "$APPLE_CERTIFICATE_PASSWORD" "$KEYCHAIN_PASSWORD" "$APPLE_SIGNING_IDENTITY"; do
+            if [ -n "$value" ]; then cert_count=$((cert_count + 1)); fi
+          done
+          if [ "$cert_count" -ne 0 ] && [ "$cert_count" -ne 4 ]; then
+            echo "All four Apple certificate/keychain secrets must be configured together." >&2
+            exit 1
+          fi
+          api_count=0
+          for value in "$APPLE_API_ISSUER" "$APPLE_API_KEY" "$APPLE_API_KEY_BASE64"; do
+            if [ -n "$value" ]; then api_count=$((api_count + 1)); fi
+          done
+          if [ "$api_count" -ne 0 ] && [ "$api_count" -ne 3 ]; then
+            echo "All three App Store Connect API secrets must be configured together." >&2
+            exit 1
+          fi
+          if [ "$api_count" -eq 3 ] && [ "$cert_count" -ne 4 ]; then
+            echo "Notarization requires the Developer ID certificate secrets." >&2
+            exit 1
+          fi
+
+      - name: Import Developer ID certificate
+        if: env.APPLE_CERTIFICATE != ''
+        env:
+          CERTIFICATE_PATH: ${{ runner.temp }}/themis-signing.p12
+          KEYCHAIN_PATH: ${{ runner.temp }}/themis-signing.keychain-db
+        run: |
+          python3 -c 'import base64, os, pathlib; pathlib.Path(os.environ["CERTIFICATE_PATH"]).write_bytes(base64.b64decode(os.environ["APPLE_CERTIFICATE"]))'
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+      - name: Configure App Store Connect API key
+        if: env.APPLE_API_KEY_BASE64 != ''
+        env:
+          API_KEY_PATH: ${{ runner.temp }}/AuthKey_${{ secrets.APPLE_API_KEY }}.p8
+        run: |
+          python3 -c 'import base64, os, pathlib; pathlib.Path(os.environ["API_KEY_PATH"]).write_bytes(base64.b64decode(os.environ["APPLE_API_KEY_BASE64"]))'
+          echo "APPLE_API_KEY_PATH=$API_KEY_PATH" >> "$GITHUB_ENV"
+
+      - name: Sign universal sidecar
+        run: |
+          if [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+            codesign --force --options runtime --timestamp --sign "$APPLE_SIGNING_IDENTITY" src-tauri/binaries/server-universal-apple-darwin
+          else
+            echo "Building an ad-hoc signed DMG. The GitHub Release will remain a draft."
+            codesign --force --sign - src-tauri/binaries/server-universal-apple-darwin
+          fi
+          codesign --verify --strict --verbose=2 src-tauri/binaries/server-universal-apple-darwin
+
+      - name: Build universal DMG
+        run: npx tauri build --config src-tauri/tauri.macos.conf.json --target universal-apple-darwin
+
+      - name: Verify app signature and notarization
+        run: |
+          app_bundle=$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -maxdepth 1 -name '*.app' -print -quit)
+          dmg_file=$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg -maxdepth 1 -name 'ThemisV2_*.dmg' -print -quit)
+          test -n "$app_bundle" && test -n "$dmg_file"
+          codesign --verify --deep --strict --verbose=2 "$app_bundle"
+          if [ -n "$APPLE_API_KEY_BASE64" ]; then
+            xcrun stapler validate "$dmg_file"
+            spctl --assess --type execute --verbose=2 "$app_bundle"
+          fi
+
+      - name: Delete temporary keychain
+        if: always() && env.KEYCHAIN_PATH != ''
+        run: security delete-keychain "$KEYCHAIN_PATH" || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dmg-package
+          path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/ThemisV2_*.dmg
+          if-no-files-found: error
+          retention-days: 14
+
   release:
+    needs: [build-windows-msi, build-macos-universal-dmg]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
     permissions:
       contents: write
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: 'windows-latest'
-            args: ''
-          - platform: 'macos-latest'
-            args: '--target universal-apple-darwin' # Compiles for both Intel & Apple Silicon
-
-    runs-on: ${{ matrix.platform }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/download-artifact@v4
         with:
-          node-version: 20
-          cache: 'npm'
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+          name: msi-package
+          path: release-assets
+      - uses: actions/download-artifact@v4
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'x86_64-apple-darwin,aarch64-apple-darwin' || '' }}
-
-      - name: Rust Cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: './src-tauri -> target'
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build frontend and server sidecar
+          name: dmg-package
+          path: release-assets
+      - name: Compute release checksums
         run: |
-          npm run build:frontend
-          node scripts/build-server.js
-
-      - name: Build Tauri applications
-        uses: tauri-apps/tauri-action@v0
+          cd release-assets
+          sha256sum ThemisV2_* > SHA256SUMS
+          cat SHA256SUMS
+      - name: Create or update draft GitHub Release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: 'ThemisV2 v__VERSION__'
-          releaseBody: 'Automatic release compiled by GitHub Actions.'
-          releaseDraft: true
-          prerelease: false
-          args: ${{ matrix.args }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release-assets/ThemisV2_* release-assets/SHA256SUMS --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" release-assets/ThemisV2_* release-assets/SHA256SUMS --draft --generate-notes --title "ThemisV2 $GITHUB_REF_NAME"
+          fi
