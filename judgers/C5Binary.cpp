@@ -13,17 +13,14 @@ int main(int argc, char *argv[]) {
         char co = ouf.readChar();
         pos++;
         if (ca != co) {
-            // quitf(_wa, "Wrong answer at byte %d", pos);
-            quitf(_wa, "");
+            quitf(_wa, "Wrong answer at byte %d", pos);
         }
     }
 
     if (!ans.eof() || !ouf.eof()) {
         // Một file dài hơn file còn lại
-        // quitf(_wa, "Wrong answer: different file length");
-        quitf(_wa, "");
+        quitf(_wa, "Wrong answer: different file length");
     }
 
-    // quitf(_ok, "files are identical (%d bytes)", pos);
-    quitf(_ok, "");
+    quitf(_ok, "files are identical (%d bytes)", pos);
 }

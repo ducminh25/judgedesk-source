@@ -1,6 +1,0 @@
-{
-  "name": "Local Online Judge",
-  "description": "A local online judge for C++ and Python 3 programming sandboxing with automated ZIP test case evaluation.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

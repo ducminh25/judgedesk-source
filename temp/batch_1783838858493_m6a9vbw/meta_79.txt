@@ -1,2 +1,0 @@
-status:XX
-message:Box not found, did you run `isolate --init'?

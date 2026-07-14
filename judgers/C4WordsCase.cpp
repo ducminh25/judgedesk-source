@@ -6,7 +6,7 @@
 using namespace std;
 
 int main(int argc, char *argv[]) {
-    setName("compare files as sequence of words, case-insensitive");
+    setName("compare files as sequence of words, case-sensitive");
     registerTestlibCmd(argc, argv);
 
     vector<string> va, vp;
@@ -30,20 +30,17 @@ int main(int argc, char *argv[]) {
         size_t minLen = min(va.size(), vp.size());
         for (size_t i = 0; i < minLen; i++) {
             if (va[i] != vp[i]) {
-                // quitf(_wa, "Wrong answer at word %d", int(i+1));
-                quitf(_wa, "");
+                quitf(_wa, "Wrong answer at word %d", int(i+1));
             }
         }
         // Nếu số từ khác nhau
         if (va.size() != vp.size()) {
-            // quitf(_wa, "Wrong answer: different number of words (expected %d, found %d)",
-            //       (int)va.size(), (int)vp.size());
-            quitf(_wa, "");
+            quitf(_wa, "Wrong answer: different number of words (expected %d, found %d)",
+                  (int)va.size(), (int)vp.size());
         }
     }
 
-    // if (va.size() == 1)
-    //     quitf(_ok, "single word");
-    // quitf(_ok, "%d words", (int)va.size());
-    quitf(_ok, "");
+    if (va.size() == 1)
+        quitf(_ok, "single word");
+    quitf(_ok, "%d words", (int)va.size());
 }

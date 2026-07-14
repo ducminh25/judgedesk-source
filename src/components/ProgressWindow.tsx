@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { X, Activity } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 interface Props {
   currentContestant: string;
@@ -14,6 +15,7 @@ export default function ProgressWindow({ currentContestant, currentProblem, acti
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const isDragging = useRef(false);
   const dragStart = useRef({ x: 0, y: 0 });
+  const { t } = useTranslation();
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -54,7 +56,7 @@ export default function ProgressWindow({ currentContestant, currentProblem, acti
 
   return (
     <div 
-      className="fixed z-50 w-80 bg-[#121214] border border-zinc-700 shadow-2xl rounded-lg overflow-hidden flex flex-col select-none"
+      className="fixed z-50 w-80 bg-surface border border-surface-border-strong shadow-2xl rounded-lg overflow-hidden flex flex-col select-none"
       style={{
         top: '80px',
         right: '80px',
@@ -63,31 +65,31 @@ export default function ProgressWindow({ currentContestant, currentProblem, acti
     >
       <div 
         onMouseDown={handleMouseDown}
-        className="handle p-3 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between cursor-move"
+        className="handle p-3 bg-surface-elevated border-b border-surface-border flex items-center justify-between cursor-move"
       >
-        <h3 className="text-zinc-200 text-xs font-bold flex items-center gap-2 uppercase tracking-wider">
-          <Activity className="w-4 h-4 text-indigo-400" />
-          Batch Grading
+        <h3 className="text-text-primary text-xs font-bold flex items-center gap-2 uppercase tracking-wider">
+          <Activity className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
+          {t("progress.batchGrading")}
         </h3>
-        <div className="text-zinc-400 text-xs font-mono">{formatTime(elapsed)}</div>
+        <div className="text-text-muted text-xs font-mono">{formatTime(elapsed)}</div>
       </div>
       <div className="p-4 space-y-4">
         <div className="space-y-1">
           <div className="flex justify-between text-xs">
-            <span className="text-zinc-400">Target</span>
-            <span className="text-zinc-200 font-bold">{currentContestant} - {currentProblem}</span>
+            <span className="text-text-muted">{t("progress.target")}</span>
+            <span className="text-text-primary font-bold">{currentContestant} - {currentProblem}</span>
           </div>
           <div className="flex justify-between text-xs">
-            <span className="text-zinc-400">Action</span>
-            <span className="text-indigo-400 font-medium">{action}</span>
+            <span className="text-text-muted">{t("progress.action")}</span>
+            <span className="text-indigo-600 dark:text-indigo-400 font-medium">{action}</span>
           </div>
         </div>
         <div className="space-y-1">
-          <div className="flex justify-between text-xs text-zinc-500 font-mono">
-            <span>Progress</span>
+          <div className="flex justify-between text-xs text-text-muted font-mono">
+            <span>{t("progress.progress")}</span>
             <span>{Math.round(percent)}%</span>
           </div>
-          <div className="h-2 w-full bg-zinc-900 rounded-full overflow-hidden">
+          <div className="h-2 w-full bg-input-bg rounded-full overflow-hidden border border-surface-border">
             <div 
               className="h-full bg-indigo-500 transition-all duration-300"
               style={{ width: `${percent}%` }}
@@ -95,12 +97,12 @@ export default function ProgressWindow({ currentContestant, currentProblem, acti
           </div>
         </div>
       </div>
-      <div className="p-3 bg-zinc-900/50 border-t border-zinc-800 flex justify-center">
+      <div className="p-3 bg-surface-hover border-t border-surface-border flex justify-center">
         <button 
           onClick={onTerminate}
-          className="w-full py-1.5 bg-rose-600/20 hover:bg-rose-600/40 text-rose-400 border border-rose-600/50 rounded text-xs font-bold tracking-wider uppercase transition"
+          className="w-full py-1.5 bg-rose-50 dark:bg-rose-600/20 hover:bg-rose-100 dark:hover:bg-rose-600/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-600/50 rounded text-xs font-bold tracking-wider uppercase transition"
         >
-          Terminate
+          {t("progress.terminate")}
         </button>
       </div>
     </div>
