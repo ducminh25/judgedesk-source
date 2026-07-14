@@ -103,3 +103,18 @@ test("release workflow uses Xcode-compatible lipo argument ordering", () => {
   );
   assert.doesNotMatch(workflow, /lipo -verify_arch[^\n]+universal_sidecar/);
 });
+
+test("universal DMG build provides both target-specific Tauri sidecars", () => {
+  const workflow = fs.readFileSync(
+    new URL("../.github/workflows/release.yml", import.meta.url),
+    "utf8",
+  );
+  const dmgJob = workflow.slice(
+    workflow.indexOf("  build-macos-universal-dmg:"),
+    workflow.indexOf("  release:"),
+  );
+  assert.match(dmgJob, /name: server-macos-x64/);
+  assert.match(dmgJob, /name: server-macos-arm64/);
+  assert.doesNotMatch(dmgJob, /name: server-macos-universal/);
+  assert.match(dmgJob, /Contents\/MacOS\/server" -verify_arch x86_64 arm64/);
+});
