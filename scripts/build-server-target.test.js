@@ -138,3 +138,18 @@ test("unsigned macOS builds do not expose empty certificate variables to Tauri",
   assert.match(dmgJob, /unset APPLE_SIGNING_IDENTITY/);
   assert.match(dmgJob, /unset APPLE_API_ISSUER APPLE_API_KEY/);
 });
+
+test("macOS verification mounts the DMG after Tauri removes its temporary app bundle", () => {
+  const workflow = fs.readFileSync(
+    new URL("../.github/workflows/release.yml", import.meta.url),
+    "utf8",
+  );
+  const dmgJob = workflow.slice(
+    workflow.indexOf("  build-macos-universal-dmg:"),
+    workflow.indexOf("  release:"),
+  );
+  assert.match(dmgJob, /hdiutil attach "\$dmg_file" -readonly -nobrowse/);
+  assert.match(dmgJob, /find "\$mount_dir"[^\n]+-name '\*\.app'/);
+  assert.match(dmgJob, /trap cleanup_dmg_mount EXIT/);
+  assert.doesNotMatch(dmgJob, /find src-tauri\/target[^\n]+bundle\/macos/);
+});
