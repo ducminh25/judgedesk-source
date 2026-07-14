@@ -215,6 +215,10 @@ jobs:
         with:
           name: server-macos-arm64
           path: src-tauri/binaries
+      - uses: actions/download-artifact@v4
+        with:
+          name: server-macos-universal
+          path: src-tauri/binaries
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-apple-darwin, aarch64-apple-darwin
@@ -270,11 +274,12 @@ jobs:
           python3 -c 'import base64, os, pathlib; pathlib.Path(os.environ["API_KEY_PATH"]).write_bytes(base64.b64decode(os.environ["APPLE_API_KEY_BASE64"]))'
           echo "APPLE_API_KEY_PATH=$API_KEY_PATH" >> "$GITHUB_ENV"
 
-      - name: Validate architecture-specific sidecars
+      - name: Validate all macOS sidecars
         run: |
-          chmod +x src-tauri/binaries/server-x86_64-apple-darwin src-tauri/binaries/server-aarch64-apple-darwin
+          chmod +x src-tauri/binaries/server-x86_64-apple-darwin src-tauri/binaries/server-aarch64-apple-darwin src-tauri/binaries/server-universal-apple-darwin
           lipo src-tauri/binaries/server-x86_64-apple-darwin -verify_arch x86_64
           lipo src-tauri/binaries/server-aarch64-apple-darwin -verify_arch arm64
+          lipo src-tauri/binaries/server-universal-apple-darwin -verify_arch x86_64 arm64
           if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
             echo "Building an ad-hoc signed DMG. The GitHub Release will remain a draft."
           fi
