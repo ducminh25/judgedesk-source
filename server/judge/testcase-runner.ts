@@ -70,6 +70,9 @@ export function runTestCase(
     let isolateBoxDirectory = "";
     const memoryLimitKb = config.memoryLimit ? config.memoryLimit * 1024 : 0;
     let useIsolate = sandbox.mode !== "none";
+    let peakMemoryKb = 0;
+    let mleTriggered = false;
+    let memoryMonitorInterval: NodeJS.Timeout | null = null;
 
     if (useIsolate) {
       isolateBox = sandbox.nextIsolateBox();
@@ -250,17 +253,33 @@ export function runTestCase(
           },
         );
       } else if (language === "cpp") {
-        childProcess = spawn(executablePath, [], {
-          cwd: tempDirectory,
-          stdio: ["pipe", "pipe", "pipe"],
-          timeout: timeLimitMs,
-        });
+        if (os.platform() !== "win32" && memoryLimitKb > 0) {
+          childProcess = spawn("sh", ["-c", `ulimit -v ${memoryLimitKb} && exec "${executablePath}"`], {
+            cwd: tempDirectory,
+            stdio: ["pipe", "pipe", "pipe"],
+            timeout: timeLimitMs,
+          });
+        } else {
+          childProcess = spawn(executablePath, [], {
+            cwd: tempDirectory,
+            stdio: ["pipe", "pipe", "pipe"],
+            timeout: timeLimitMs,
+          });
+        }
       } else {
-        childProcess = spawn(executablePath, [submissionPath], {
-          cwd: tempDirectory,
-          stdio: ["pipe", "pipe", "pipe"],
-          timeout: timeLimitMs,
-        });
+        if (os.platform() !== "win32" && memoryLimitKb > 0) {
+          childProcess = spawn("sh", ["-c", `ulimit -v ${memoryLimitKb} && exec "${executablePath}" "${submissionPath}"`], {
+            cwd: tempDirectory,
+            stdio: ["pipe", "pipe", "pipe"],
+            timeout: timeLimitMs,
+          });
+        } else {
+          childProcess = spawn(executablePath, [submissionPath], {
+            cwd: tempDirectory,
+            stdio: ["pipe", "pipe", "pipe"],
+            timeout: timeLimitMs,
+          });
+        }
       }
     }
 
@@ -275,6 +294,62 @@ export function runTestCase(
       timedOut = true;
       killProcess(childProcess);
     }, timeLimitMs);
+
+    if (!useIsolate && memoryLimitKb > 0) {
+      memoryMonitorInterval = setInterval(() => {
+        if (!childProcess.pid) return;
+        try {
+          if (os.platform() === "win32") {
+            const result = spawnSync(
+              "tasklist",
+              ["/FI", `PID eq ${childProcess.pid}`, "/FO", "CSV", "/NH"],
+              {
+                encoding: "utf8",
+                stdio: ["ignore", "pipe", "pipe"],
+                timeout: 1000,
+              }
+            );
+            if (result.status === 0 && result.stdout) {
+              const match = result.stdout.match(
+                /"[^"]*","\d+","[^"]*","\d+","([\d,]+)\s*K"/
+              );
+              if (match) {
+                const memKb = parseInt(match[1].replace(/,/g, ""), 10);
+                if (memKb > peakMemoryKb) {
+                  peakMemoryKb = memKb;
+                  if (peakMemoryKb > memoryLimitKb) {
+                    mleTriggered = true;
+                    killProcess(childProcess);
+                  }
+                }
+              }
+            }
+          } else {
+            const result = spawnSync(
+              "ps",
+              ["-p", String(childProcess.pid), "-o", "rss="],
+              {
+                encoding: "utf8",
+                stdio: ["ignore", "pipe", "pipe"],
+                timeout: 1000,
+              }
+            );
+            if (result.status === 0 && result.stdout) {
+              const memKb = parseInt(result.stdout.trim(), 10);
+              if (!isNaN(memKb) && memKb > peakMemoryKb) {
+                peakMemoryKb = memKb;
+                if (peakMemoryKb > memoryLimitKb) {
+                  mleTriggered = true;
+                  killProcess(childProcess);
+                }
+              }
+            }
+          }
+        } catch {
+          // Ignore
+        }
+      }, 100);
+    }
     childProcess.stdout.on("data", (chunk) => {
       if (stdout.length >= MAX_OUTPUT_SIZE) return;
       stdout += chunk.toString();
@@ -304,6 +379,7 @@ export function runTestCase(
 
     childProcess.on("close", async (code, signal) => {
       clearTimeout(timeout);
+      if (memoryMonitorInterval) clearInterval(memoryMonitorInterval);
       const duration = Number(process.hrtime.bigint() - startTime) / 1_000_000;
       let status: TestCaseRun["status"] = "AC";
       let errorDetail = "";
@@ -368,7 +444,6 @@ export function runTestCase(
         stdout = output || stdout;
       }
 
-      let peakMemoryKb = 0;
       if (useIsolate) {
         try {
           const metaFile = path.join(tempDirectory, `meta_${isolateBox}.txt`);
@@ -393,18 +468,21 @@ export function runTestCase(
         }
       }
 
-      if (timedOut || signal === "SIGKILL" || status === "TLE") {
-        status = "TLE";
-      } else if (memoryLimitKb > 0 && peakMemoryKb > memoryLimitKb) {
+      if (mleTriggered || (memoryLimitKb > 0 && peakMemoryKb > memoryLimitKb)) {
         status = "MLE";
+      } else if (timedOut || signal === "SIGKILL" || status === "TLE") {
+        status = "TLE";
       } else if (code !== 0 && code !== null) {
-        status =
+        const isMleCode =
           code === 139 ||
           code === 134 ||
+          code === 3221225773 ||
+          code === -1073741523 ||
+          code === 3221225566 ||
+          code === -1073741730 ||
           stderr.includes("MemoryError") ||
-          stderr.includes("std::bad_alloc")
-            ? "MLE"
-            : "RE";
+          stderr.includes("std::bad_alloc");
+        status = isMleCode ? "MLE" : "RE";
         errorDetail = `Exit code ${code}. ${stderr}`;
       } else {
         const actualOutputPath = path.join(
