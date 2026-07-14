@@ -117,6 +117,7 @@ jobs:
           lipo -create temp-binaries/server-x86_64-apple-darwin temp-binaries/server-aarch64-apple-darwin -output "$universal_sidecar"
           lipo "$universal_sidecar" -verify_arch x86_64 arm64
           lipo "$universal_sidecar" -archs
+          codesign --sign - --force "$universal_sidecar"
       - uses: actions/upload-artifact@v4
         with:
           name: server-macos-universal
