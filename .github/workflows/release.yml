@@ -113,8 +113,10 @@ jobs:
       - name: Merge and verify universal sidecar
         run: |
           mkdir -p src-tauri/binaries
-          lipo -create temp-binaries/server-x86_64-apple-darwin temp-binaries/server-aarch64-apple-darwin -output src-tauri/binaries/server-universal-apple-darwin
-          lipo -verify_arch x86_64 arm64 src-tauri/binaries/server-universal-apple-darwin
+          universal_sidecar="src-tauri/binaries/server-universal-apple-darwin"
+          lipo -create temp-binaries/server-x86_64-apple-darwin temp-binaries/server-aarch64-apple-darwin -output "$universal_sidecar"
+          lipo "$universal_sidecar" -verify_arch x86_64 arm64
+          lipo "$universal_sidecar" -archs
       - uses: actions/upload-artifact@v4
         with:
           name: server-macos-universal

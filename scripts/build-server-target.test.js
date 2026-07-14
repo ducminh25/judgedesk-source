@@ -91,3 +91,15 @@ test("bundleServer uses esbuild's cross-platform JavaScript API", () => {
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("release workflow uses Xcode-compatible lipo argument ordering", () => {
+  const workflow = fs.readFileSync(
+    new URL("../.github/workflows/release.yml", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    workflow,
+    /lipo "\$universal_sidecar" -verify_arch x86_64 arm64/,
+  );
+  assert.doesNotMatch(workflow, /lipo -verify_arch[^\n]+universal_sidecar/);
+});
