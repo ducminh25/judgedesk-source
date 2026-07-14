@@ -3,6 +3,7 @@ import os from "os";
 import path from "path";
 import crypto from "crypto";
 import { execFileSync } from "child_process";
+import { buildSync } from "esbuild";
 import { targetTripleForHost } from "./build-server-target.js";
 
 export function resolveTarget(platform, architecture, envTarget) {
@@ -15,21 +16,18 @@ export function resolveTarget(platform, architecture, envTarget) {
   return target;
 }
 
-export function bundleServer(appRoot, esbuildCli, srcFile, outFile) {
+export function bundleServer(appRoot, srcFile, outFile) {
   console.log("Compiling server with esbuild...");
-  execFileSync(
-    process.execPath,
-    [
-      esbuildCli,
-      srcFile,
-      "--bundle",
-      "--platform=node",
-      "--format=cjs",
-      "--external:vite",
-      `--outfile=${outFile}`,
-    ],
-    { stdio: "inherit", cwd: appRoot },
-  );
+  buildSync({
+    absWorkingDir: appRoot,
+    entryPoints: [srcFile],
+    bundle: true,
+    platform: "node",
+    format: "cjs",
+    external: ["vite"],
+    outfile: outFile,
+    logLevel: "info",
+  });
 }
 
 export function generateSeaBlob(appRoot, configPath) {
@@ -121,7 +119,6 @@ export function runBuildWorkflow({
   platform,
   architecture,
   envTarget,
-  esbuildCli,
   postjectCli,
   sentinel,
   targetDirectory,
@@ -147,7 +144,7 @@ export function runBuildWorkflow({
     if (!fs.existsSync(distDir)) {
       fs.mkdirSync(distDir, { recursive: true });
     }
-    bundleServer(appRoot, esbuildCli, srcFile, "dist/server.cjs");
+    bundleServer(appRoot, srcFile, "dist/server.cjs");
 
     // 2. Generate SEA Blob
     generateSeaBlob(appRoot, seaConfigJson);

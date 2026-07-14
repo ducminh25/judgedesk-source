@@ -4,7 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { targetTripleForHost } from "./build-server-target.js";
-import { replaceFileAtomically, resolveTarget } from "./build-server-lib.js";
+import {
+  bundleServer,
+  replaceFileAtomically,
+  resolveTarget,
+} from "./build-server-lib.js";
 
 test("sidecar target names match Tauri target triples", () => {
   assert.equal(targetTripleForHost("win32", "x64"), "x86_64-pc-windows-msvc");
@@ -63,6 +67,26 @@ test("replaceFileAtomically replaces an existing sidecar without leaving staging
       "new.exe",
       "server.exe",
     ]);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("bundleServer uses esbuild's cross-platform JavaScript API", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "themis-esbuild-"));
+  try {
+    fs.writeFileSync(
+      path.join(directory, "server.ts"),
+      "const answer: number = 42; console.log(answer);",
+    );
+
+    bundleServer(directory, "server.ts", "dist/server.cjs");
+
+    const output = fs.readFileSync(
+      path.join(directory, "dist", "server.cjs"),
+      "utf8",
+    );
+    assert.match(output, /42/);
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
