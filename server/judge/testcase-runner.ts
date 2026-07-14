@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { execSync, spawn } from "child_process";
+import { execSync, spawn, spawnSync } from "child_process";
 import treeKill from "tree-kill";
 import { activeJobs } from "../jobs.js";
 import { TEMP_ROOT } from "../runtime.js";
