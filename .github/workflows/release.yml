@@ -209,7 +209,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: server-macos-universal
+          name: server-macos-x64
+          path: src-tauri/binaries
+      - uses: actions/download-artifact@v4
+        with:
+          name: server-macos-arm64
           path: src-tauri/binaries
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -266,15 +270,14 @@ jobs:
           python3 -c 'import base64, os, pathlib; pathlib.Path(os.environ["API_KEY_PATH"]).write_bytes(base64.b64decode(os.environ["APPLE_API_KEY_BASE64"]))'
           echo "APPLE_API_KEY_PATH=$API_KEY_PATH" >> "$GITHUB_ENV"
 
-      - name: Sign universal sidecar
+      - name: Validate architecture-specific sidecars
         run: |
-          if [ -n "$APPLE_SIGNING_IDENTITY" ]; then
-            codesign --force --options runtime --timestamp --sign "$APPLE_SIGNING_IDENTITY" src-tauri/binaries/server-universal-apple-darwin
-          else
+          chmod +x src-tauri/binaries/server-x86_64-apple-darwin src-tauri/binaries/server-aarch64-apple-darwin
+          lipo src-tauri/binaries/server-x86_64-apple-darwin -verify_arch x86_64
+          lipo src-tauri/binaries/server-aarch64-apple-darwin -verify_arch arm64
+          if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
             echo "Building an ad-hoc signed DMG. The GitHub Release will remain a draft."
-            codesign --force --sign - src-tauri/binaries/server-universal-apple-darwin
           fi
-          codesign --verify --strict --verbose=2 src-tauri/binaries/server-universal-apple-darwin
 
       - name: Build universal DMG
         run: npx tauri build --config src-tauri/tauri.macos.conf.json --target universal-apple-darwin
@@ -284,6 +287,7 @@ jobs:
           app_bundle=$(find src-tauri/target/universal-apple-darwin/release/bundle/macos -maxdepth 1 -name '*.app' -print -quit)
           dmg_file=$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg -maxdepth 1 -name 'ThemisV2_*.dmg' -print -quit)
           test -n "$app_bundle" && test -n "$dmg_file"
+          lipo "$app_bundle/Contents/MacOS/server" -verify_arch x86_64 arm64
           codesign --verify --deep --strict --verbose=2 "$app_bundle"
           if [ -n "$APPLE_API_KEY_BASE64" ]; then
             xcrun stapler validate "$dmg_file"
