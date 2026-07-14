@@ -122,3 +122,19 @@ test("universal DMG build provides native and universal Tauri sidecars", () => {
   );
   assert.match(dmgJob, /Contents\/MacOS\/server" -verify_arch x86_64 arm64/);
 });
+
+test("unsigned macOS builds do not expose empty certificate variables to Tauri", () => {
+  const workflow = fs.readFileSync(
+    new URL("../.github/workflows/release.yml", import.meta.url),
+    "utf8",
+  );
+  const dmgJob = workflow.slice(
+    workflow.indexOf("  build-macos-universal-dmg:"),
+    workflow.indexOf("  release:"),
+  );
+  const jobEnvironment = dmgJob.slice(0, dmgJob.indexOf("    steps:"));
+  assert.doesNotMatch(jobEnvironment, /APPLE_CERTIFICATE/);
+  assert.match(dmgJob, /if \[ -z "\$APPLE_CERTIFICATE" \]/);
+  assert.match(dmgJob, /unset APPLE_SIGNING_IDENTITY/);
+  assert.match(dmgJob, /unset APPLE_API_ISSUER APPLE_API_KEY/);
+});

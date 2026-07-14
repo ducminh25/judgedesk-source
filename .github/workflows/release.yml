@@ -198,9 +198,6 @@ jobs:
     runs-on: macos-15
     env:
       MACOSX_DEPLOYMENT_TARGET: "11.0"
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
       APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
       APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
       APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
@@ -229,6 +226,10 @@ jobs:
       - run: npm ci
 
       - name: Validate macOS signing secret set
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
           cert_count=0
           for value in "$APPLE_CERTIFICATE" "$APPLE_CERTIFICATE_PASSWORD" "$KEYCHAIN_PASSWORD" "$APPLE_SIGNING_IDENTITY"; do
@@ -252,11 +253,17 @@ jobs:
           fi
 
       - name: Import Developer ID certificate
-        if: env.APPLE_CERTIFICATE != ''
         env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
           CERTIFICATE_PATH: ${{ runner.temp }}/themis-signing.p12
           KEYCHAIN_PATH: ${{ runner.temp }}/themis-signing.keychain-db
         run: |
+          if [ -z "$APPLE_CERTIFICATE" ]; then
+            echo "No Developer ID certificate configured; Tauri will use ad-hoc signing."
+            exit 0
+          fi
           python3 -c 'import base64, os, pathlib; pathlib.Path(os.environ["CERTIFICATE_PATH"]).write_bytes(base64.b64decode(os.environ["APPLE_CERTIFICATE"]))'
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
@@ -285,7 +292,14 @@ jobs:
           fi
 
       - name: Build universal DMG
-        run: npx tauri build --config src-tauri/tauri.macos.conf.json --target universal-apple-darwin
+        run: |
+          if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
+            unset APPLE_SIGNING_IDENTITY
+          fi
+          if [ -z "${APPLE_API_KEY_PATH:-}" ]; then
+            unset APPLE_API_ISSUER APPLE_API_KEY
+          fi
+          npx tauri build --config src-tauri/tauri.macos.conf.json --target universal-apple-darwin
 
       - name: Verify app signature and notarization
         run: |
