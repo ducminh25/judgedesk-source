@@ -153,3 +153,21 @@ test("macOS verification mounts the DMG after Tauri removes its temporary app bu
   assert.match(dmgJob, /trap cleanup_dmg_mount EXIT/);
   assert.doesNotMatch(dmgJob, /find src-tauri\/target[^\n]+bundle\/macos/);
 });
+
+test("release publishing passes the repository explicitly to GitHub CLI", () => {
+  const workflow = fs.readFileSync(
+    new URL("../.github/workflows/release.yml", import.meta.url),
+    "utf8",
+  );
+  const releaseJob = workflow.slice(workflow.indexOf("  release:"));
+
+  assert.match(releaseJob, /gh release view[^\n]+--repo "\$GITHUB_REPOSITORY"/);
+  assert.match(
+    releaseJob,
+    /gh release upload[^\n]+--repo "\$GITHUB_REPOSITORY"/,
+  );
+  assert.match(
+    releaseJob,
+    /gh release create[^\n]+--repo "\$GITHUB_REPOSITORY"/,
+  );
+});
