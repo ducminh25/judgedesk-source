@@ -2,6 +2,8 @@
 
 ThemisV2 là ứng dụng chấm bài lập trình cục bộ dành cho kỳ thi và lớp học, với bảng điểm trực quan, cấu hình nhóm test, giao diện sáng/tối và tiếng Anh/tiếng Việt. Ứng dụng desktop hỗ trợ Windows x64 và macOS Intel/Apple Silicon.
 
+Trang tải xuống, hướng dẫn cài đặt và hỗ trợ người dùng được duy trì tại [`ducminh25/themis-v2-downloads`](https://github.com/ducminh25/themis-v2-downloads).
+
 ## Yêu cầu phát triển
 
 - Node.js đúng dòng `22.x` (các dòng 23+ không được dùng để đóng gói SEA).

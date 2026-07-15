@@ -6,6 +6,10 @@
   "engines": {
     "node": "^22.0.0"
   },
+  "volta": {
+    "node": "22.23.1",
+    "npm": "10.9.8"
+  },
   "scripts": {
     "dev": "node scripts/check-node.js && cross-env NODE_OPTIONS=\"--no-warnings\" tsx server.ts",
     "dev:frontend": "node scripts/check-node.js && vite",
@@ -13,7 +17,7 @@
     "build:server": "node scripts/check-node.js && node scripts/build-server.js",
     "build": "npm run build:frontend && npm run build:server",
     "build:test": "npm run build:server && tauri build",
-    "test:server": "node scripts/check-node.js && tsx --test server/judge/standard-checkers.test.ts server/judge/custom-checker-runner.test.ts server/judge/scoring.test.ts server/judge/discovery.test.ts server/judge/compiler.test.ts server/problems/problem-config.test.ts server/platform/directory-picker.test.ts server/sandbox/path-mapping.test.ts src/features/problem-config/editor-state.test.ts src/features/export/score-workbook.test.ts src/features/preferences/storage.test.ts scripts/build-server-target.test.js server/toolchains/resolver.test.ts server/toolchains/manifest.test.ts server/toolchains/installer.test.ts",
+    "test:server": "node scripts/check-node.js && tsx --test server/judge/standard-checkers.test.ts server/judge/custom-checker-runner.test.ts server/judge/scoring.test.ts server/judge/discovery.test.ts server/judge/compiler.test.ts server/problems/problem-config.test.ts server/platform/directory-picker.test.ts server/sandbox/detection.test.ts server/sandbox/path-mapping.test.ts src/features/problem-config/editor-state.test.ts src/features/export/score-workbook.test.ts src/features/preferences/storage.test.ts scripts/build-server-target.test.js server/toolchains/resolver.test.ts server/toolchains/manifest.test.ts server/toolchains/installer.test.ts",
     "test:stress": "tsx scripts/stress-test.ts",
     "test:desktop": "npm run build:server && tauri dev",
     "release:check-version": "node scripts/check-release-version.js",

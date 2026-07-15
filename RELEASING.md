@@ -1,10 +1,10 @@
 # Releasing ThemisV2
 
-Releases are built on GitHub Actions. A tag build creates an MSI, a universal DMG and `SHA256SUMS`, then saves them in a **draft** GitHub Release. Publishing remains a manual quality gate.
+Releases are built on GitHub Actions in the private source repository. A tag build creates an MSI, a universal DMG and `SHA256SUMS`, then saves them in a **draft** release in the public [`ducminh25/themis-v2-downloads`](https://github.com/ducminh25/themis-v2-downloads) repository. Publishing remains a manual quality gate.
 
 ## 1. Publish managed toolchains
 
-Run **Actions → Build and Publish Toolchains → Run workflow** after changing compiler/runtime versions. The workflow builds packages on their native architectures, generates real SHA-256 values, and creates or updates the `toolchains-v1` release.
+Run **Actions → Build and Publish Toolchains → Run workflow** in the public distribution repository after changing compiler/runtime versions. The workflow builds packages on their native architectures, generates real SHA-256 values, and creates or updates the public `toolchains-v1` release.
 
 Confirm that the release contains:
 
@@ -15,7 +15,13 @@ Confirm that the release contains:
 - `toolchains-manifest.json`
 - `SHA256SUMS`
 
-## 2. Configure optional production signing
+## 2. Configure public release publishing
+
+Create a fine-grained personal access token with access only to `ducminh25/themis-v2-downloads` and repository permission **Contents: Read and write**. Save it in this private source repository as the Actions secret `PUBLIC_RELEASE_TOKEN`.
+
+Do not use a classic token with broader account permissions. Rotate the token before its expiration date.
+
+## 3. Configure optional production signing
 
 Add secrets at **Repository Settings → Secrets and variables → Actions**.
 
@@ -40,7 +46,7 @@ Apple notarization:
 
 Unsigned builds are allowed for pipeline testing, but the resulting draft must not be published.
 
-## 3. Prepare and tag the version
+## 4. Prepare and tag the version
 
 Keep these versions identical:
 
@@ -68,9 +74,9 @@ git tag -a v1.1.0 -m "ThemisV2 v1.1.0"
 git push origin v1.1.0
 ```
 
-## 4. Validate the draft release
+## 5. Validate the draft release
 
-Wait for **Build and Publish Release** to finish, then download the draft assets and verify:
+Wait for **Build and Publish Release** to finish, then open the draft in the public distribution repository, download its assets and verify:
 
 - Windows signature with `Get-AuthenticodeSignature`.
 - macOS signature with `codesign --verify --deep --strict`.

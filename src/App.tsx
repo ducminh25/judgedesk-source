@@ -79,6 +79,7 @@ export default function App() {
   }, []);
 
   const [hostStatus, setHostStatus] = useState<HostStatus | null>(null);
+  const [backendErrorMessage, setBackendErrorMessage] = useState("");
   const [judgeResult, dispatchJudgeResults] = useReducer(
     judgeResultsReducer,
     null,
@@ -158,26 +159,42 @@ export default function App() {
     const preventBrowserMenu = (event: MouseEvent) => event.preventDefault();
     document.addEventListener("contextmenu", preventBrowserMenu);
 
-    function fetchStatus(retries = 5) {
-      apiFetch("/api/status")
-        .then((response) => response.json())
-        .then(setHostStatus)
-        .catch((error) => {
-          if (retries > 0) {
-            console.log(
-              `[API Retry] Failed to load host status. Retries remaining: ${retries - 1}`,
-            );
-            setTimeout(() => fetchStatus(retries - 1), 500);
-          } else {
-            console.error("Failed to load host status", error);
-            setErrorMessage(t("errors.backendConnection"));
-          }
-        });
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let consecutiveFailures = 0;
+
+    async function fetchStatus() {
+      try {
+        const response = await apiFetch("/api/status");
+        const status = await response.json();
+        if (cancelled) return;
+        setHostStatus(status);
+        setBackendErrorMessage("");
+      } catch (error) {
+        if (cancelled) return;
+        consecutiveFailures += 1;
+        if (consecutiveFailures >= 30) {
+          console.error("Failed to load host status", error);
+          setBackendErrorMessage(t("errors.backendConnection"));
+        } else {
+          console.log(
+            `[API Retry] Backend is not ready yet (attempt ${consecutiveFailures}/30).`,
+          );
+        }
+
+        // Keep checking after displaying the error so a slow backend can recover
+        // without forcing the user to restart the desktop application.
+        const retryDelay = consecutiveFailures >= 30 ? 5000 : 1000;
+        retryTimer = setTimeout(fetchStatus, retryDelay);
+      }
     }
     fetchStatus();
 
-    return () =>
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
       document.removeEventListener("contextmenu", preventBrowserMenu);
+    };
   }, [t]);
 
   useEffect(() => {
@@ -290,7 +307,7 @@ export default function App() {
       className="h-screen bg-surface text-text-primary font-sans flex flex-col overflow-hidden"
     >
       <AppToolbar
-        errorMessage={errorMessage}
+        errorMessage={backendErrorMessage || errorMessage}
         hostStatus={hostStatus}
         isJudging={isJudging}
         timeLimit={timeLimit}

@@ -64,6 +64,15 @@ export function injectSeaBlob(
   });
 }
 
+export function prepareExecutableForInjection(targetPath, platform) {
+  if (platform === "darwin") {
+    console.log(`Removing the macOS signature from ${targetPath}...`);
+    execFileSync("codesign", ["--remove-signature", targetPath], {
+      stdio: "inherit",
+    });
+  }
+}
+
 export function signExecutable(targetPath, platform) {
   if (platform === "darwin") {
     console.log(`Signing macOS executable ${targetPath}...`);
@@ -152,7 +161,11 @@ export function runBuildWorkflow({
     // 3. Copy process.execPath to temporary target file
     fs.copyFileSync(process.execPath, tempTargetPath);
 
-    // 4. Inject SEA blob into temporary target
+    // 4. Node's macOS executable is signed. Remove that signature before
+    // modifying the Mach-O file, as required by Node's SEA documentation.
+    prepareExecutableForInjection(tempTargetPath, platform);
+
+    // 5. Inject SEA blob into temporary target
     injectSeaBlob(
       appRoot,
       postjectCli,
@@ -162,10 +175,10 @@ export function runBuildWorkflow({
       platform,
     );
 
-    // 5. Sign the temporary binary if on macOS
+    // 6. Sign the modified binary if on macOS
     signExecutable(tempTargetPath, platform);
 
-    // 6. Stage on the target filesystem, then atomically swap the final file.
+    // 7. Stage on the target filesystem, then atomically swap the final file.
     replaceFileAtomically(tempTargetPath, finalTargetPath);
     console.log(
       `Backend sidecar successfully built and saved to ${finalTargetPath}`,

@@ -1,4 +1,17 @@
-import { execSync } from "child_process";
+import { execSync, type ExecSyncOptions } from "node:child_process";
+import os from "node:os";
+
+export const SANDBOX_PROBE_TIMEOUT_MS = 3000;
+
+export type SandboxCommandRunner = (
+  command: string,
+  options: ExecSyncOptions,
+) => string | Buffer;
+
+export interface SandboxDetectionOptions {
+  platform?: NodeJS.Platform;
+  runCommand?: SandboxCommandRunner;
+}
 
 export interface SandboxDetection {
   wsl: { installed: boolean; ready: boolean };
@@ -11,51 +24,92 @@ export interface DetectedSandboxEnvironment {
   mountPrefix: string;
 }
 
-export function detectSandboxEnvironment(): DetectedSandboxEnvironment {
+export function detectSandboxEnvironment(
+  options: SandboxDetectionOptions = {},
+): DetectedSandboxEnvironment {
+  const platform = options.platform ?? os.platform();
+  const runCommand: SandboxCommandRunner =
+    options.runCommand ??
+    ((command, commandOptions) => execSync(command, commandOptions));
   let wslInstalled = false;
   let wslCompiler = false;
   let wslIsolate = false;
   let wslDistroName = "Ubuntu";
   let mountPrefix = "/mnt";
-  try {
-    execSync("wsl -l", { stdio: "ignore", timeout: 3000 });
-    wslInstalled = true;
-    const ascii = execSync("wsl -l -q", { encoding: "utf8", timeout: 3000 });
-    const utf16 = execSync("wsl -l -q", { encoding: "utf16le", timeout: 3000 });
-    const distributions = `${ascii}\n${utf16}`;
-    if (distributions.includes("Ubuntu")) wslDistroName = "Ubuntu";
-    else if (distributions.includes("docker-desktop")) wslDistroName = "docker-desktop";
+  if (platform === "win32") {
     try {
-      execSync(`wsl -d ${wslDistroName} ls /mnt/host/c`, { stdio: "ignore", timeout: 3000 });
-      mountPrefix = "/mnt/host";
+      runCommand("wsl -l", {
+        stdio: "ignore",
+        timeout: SANDBOX_PROBE_TIMEOUT_MS,
+      });
+      wslInstalled = true;
+      const ascii = runCommand("wsl -l -q", {
+        encoding: "utf8",
+        timeout: SANDBOX_PROBE_TIMEOUT_MS,
+      });
+      const utf16 = runCommand("wsl -l -q", {
+        encoding: "utf16le",
+        timeout: SANDBOX_PROBE_TIMEOUT_MS,
+      });
+      const distributions = `${ascii}\n${utf16}`;
+      if (distributions.includes("Ubuntu")) wslDistroName = "Ubuntu";
+      else if (distributions.includes("docker-desktop"))
+        wslDistroName = "docker-desktop";
+      try {
+        runCommand(`wsl -d ${wslDistroName} ls /mnt/host/c`, {
+          stdio: "ignore",
+          timeout: SANDBOX_PROBE_TIMEOUT_MS,
+        });
+        mountPrefix = "/mnt/host";
+      } catch {
+        mountPrefix = "/mnt";
+      }
     } catch {
-      mountPrefix = "/mnt";
+      // WSL is unavailable.
     }
-  } catch { /* WSL is unavailable. */ }
+  }
 
   if (wslInstalled) {
     try {
-      execSync(`wsl -d ${wslDistroName} g++ --version`, { stdio: "ignore", timeout: 3000 });
+      runCommand(`wsl -d ${wslDistroName} g++ --version`, {
+        stdio: "ignore",
+        timeout: SANDBOX_PROBE_TIMEOUT_MS,
+      });
       wslCompiler = true;
-    } catch { /* Compiler is unavailable in this distribution. */ }
+    } catch {
+      // Compiler is unavailable in this distribution.
+    }
     try {
-      execSync(`wsl -d ${wslDistroName} which isolate`, { stdio: "ignore", timeout: 3000 });
+      runCommand(`wsl -d ${wslDistroName} which isolate`, {
+        stdio: "ignore",
+        timeout: SANDBOX_PROBE_TIMEOUT_MS,
+      });
       wslIsolate = true;
-    } catch { /* isolate is unavailable in this distribution. */ }
+    } catch {
+      // isolate is unavailable in this distribution.
+    }
   }
 
   let dockerInstalled = false;
   try {
-    execSync("docker ps", { stdio: "ignore" });
+    runCommand("docker ps", {
+      stdio: "ignore",
+      timeout: SANDBOX_PROBE_TIMEOUT_MS,
+    });
     dockerInstalled = true;
-  } catch { /* Docker is unavailable or its daemon is stopped. */ }
+  } catch {
+    // Docker is unavailable, stopped, or did not respond in time.
+  }
 
   return {
     detection: {
-      wsl: { installed: wslInstalled, ready: wslInstalled && wslCompiler && wslIsolate },
-      docker: { installed: dockerInstalled, ready: false }
+      wsl: {
+        installed: wslInstalled,
+        ready: wslInstalled && wslCompiler && wslIsolate,
+      },
+      docker: { installed: dockerInstalled, ready: false },
     },
     wslDistroName,
-    mountPrefix
+    mountPrefix,
   };
 }
