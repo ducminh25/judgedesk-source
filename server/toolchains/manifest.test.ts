@@ -12,7 +12,7 @@ function validManifest() {
     generatedAt: "2026-07-14T00:00:00.000Z",
     toolchains: TOOLCHAIN_CATALOG.map((entry) => ({
       ...entry,
-      downloadUrl: `https://github.com/ducminh25/themis-v2-downloads/releases/download/toolchains-v1/${entry.id}.zip`,
+      downloadUrl: `https://github.com/ducminh25/themis-v2/releases/download/toolchains-v1/${entry.id}.zip`,
       sha256: "a".repeat(64),
       sizeBytes: 1024,
     })),

@@ -352,7 +352,7 @@ jobs:
     permissions:
       contents: read
     env:
-      PUBLIC_RELEASE_REPOSITORY: ducminh25/themis-v2-downloads
+      PUBLIC_RELEASE_REPOSITORY: ducminh25/themis-v2
     steps:
       - uses: actions/download-artifact@v4
         with:

@@ -1,6 +1,6 @@
 # Releasing ThemisV2
 
-Releases are built on GitHub Actions in the private source repository. A tag build creates an MSI, a universal DMG and `SHA256SUMS`, then saves them in a **draft** release in the public [`ducminh25/themis-v2-downloads`](https://github.com/ducminh25/themis-v2-downloads) repository. Publishing remains a manual quality gate.
+Releases are built on GitHub Actions in the private source repository. A tag build creates an MSI, a universal DMG and `SHA256SUMS`, then saves them in a **draft** release in the public [`ducminh25/themis-v2`](https://github.com/ducminh25/themis-v2) repository. Publishing remains a manual quality gate.
 
 ## 1. Publish managed toolchains
 
@@ -17,7 +17,7 @@ Confirm that the release contains:
 
 ## 2. Configure public release publishing
 
-Create a fine-grained personal access token with access only to `ducminh25/themis-v2-downloads` and repository permission **Contents: Read and write**. Save it in this private source repository as the Actions secret `PUBLIC_RELEASE_TOKEN`.
+Create a fine-grained personal access token with access only to `ducminh25/themis-v2` and repository permission **Contents: Read and write**. Save it in this private source repository as the Actions secret `PUBLIC_RELEASE_TOKEN`.
 
 Do not use a classic token with broader account permissions. Rotate the token before its expiration date.
 
