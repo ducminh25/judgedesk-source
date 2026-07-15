@@ -9,6 +9,7 @@ import {
   replaceFileAtomically,
   resolveTarget,
 } from "./build-server-lib.js";
+import { smokeTestSidecar } from "./smoke-test-sidecar.js";
 
 test("sidecar target names match Tauri target triples", () => {
   assert.equal(targetTripleForHost("win32", "x64"), "x86_64-pc-windows-msvc");
@@ -92,6 +93,57 @@ test("bundleServer uses esbuild's cross-platform JavaScript API", () => {
   }
 });
 
+test("macOS SEA build removes the inherited signature before injection and signs afterward", () => {
+  const buildSource = fs.readFileSync(
+    new URL("./build-server-lib.js", import.meta.url),
+    "utf8",
+  );
+  const workflowBody = buildSource.slice(
+    buildSource.indexOf("export function runBuildWorkflow"),
+  );
+  const removeSignatureAt = workflowBody.indexOf(
+    "prepareExecutableForInjection(tempTargetPath, platform)",
+  );
+  const injectAt = workflowBody.indexOf("injectSeaBlob(");
+  const signAt = workflowBody.indexOf(
+    "signExecutable(tempTargetPath, platform)",
+  );
+
+  assert.match(buildSource, /codesign[^\n]+--remove-signature/);
+  assert.ok(removeSignatureAt >= 0);
+  assert.ok(injectAt > removeSignatureAt);
+  assert.ok(signAt > injectAt);
+});
+
+test("sidecar smoke test verifies a real child process over HTTP", async () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "themis-smoke-test-"));
+  const serverScript = path.join(directory, "server.cjs");
+  try {
+    fs.writeFileSync(
+      serverScript,
+      [
+        'const http = require("node:http");',
+        "const port = Number(process.env.PORT);",
+        "http.createServer((request, response) => {",
+        '  response.writeHead(200, { "content-type": "application/json" });',
+        '  if (request.url === "/api/status") { response.end(JSON.stringify({ healthy: true })); return; }',
+        '  if (request.url.startsWith("/api/fetch-contestants")) { response.end(JSON.stringify({ success: true, data: ["Contestant 2", "Contestant 10"] })); return; }',
+        '  if (request.url.startsWith("/api/fetch-problems")) { response.end(JSON.stringify({ success: true, data: ["Problem A", "Problem B"] })); return; }',
+        "  response.writeHead(404).end();",
+        '}).listen(port, "127.0.0.1");',
+      ].join("\n"),
+    );
+
+    const status = await smokeTestSidecar(process.execPath, {
+      args: [serverScript],
+      timeoutMs: 5_000,
+    });
+    assert.deepEqual(status, { healthy: true });
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("release workflow uses Xcode-compatible lipo argument ordering", () => {
   const workflow = fs.readFileSync(
     new URL("../.github/workflows/release.yml", import.meta.url),
@@ -121,6 +173,29 @@ test("universal DMG build provides native and universal Tauri sidecars", () => {
     /server-universal-apple-darwin -verify_arch x86_64 arm64/,
   );
   assert.match(dmgJob, /Contents\/MacOS\/server" -verify_arch x86_64 arm64/);
+});
+
+test("release workflow smoke-tests thin, universal, and packaged macOS sidecars", () => {
+  const workflow = fs.readFileSync(
+    new URL("../.github/workflows/release.yml", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    workflow,
+    /smoke-test-sidecar\.js src-tauri\/binaries\/server-x86_64-apple-darwin/,
+  );
+  assert.match(
+    workflow,
+    /smoke-test-sidecar\.js src-tauri\/binaries\/server-aarch64-apple-darwin/,
+  );
+  assert.match(
+    workflow,
+    /smoke-test-sidecar\.js "\$universal_sidecar"/,
+  );
+  assert.match(
+    workflow,
+    /smoke-test-sidecar\.js "\$app_bundle\/Contents\/MacOS\/server"/,
+  );
 });
 
 test("unsigned macOS builds do not expose empty certificate variables to Tauri", () => {
@@ -154,20 +229,28 @@ test("macOS verification mounts the DMG after Tauri removes its temporary app bu
   assert.doesNotMatch(dmgJob, /find src-tauri\/target[^\n]+bundle\/macos/);
 });
 
-test("release publishing passes the repository explicitly to GitHub CLI", () => {
+test("release publishing targets the public distribution repository", () => {
   const workflow = fs.readFileSync(
     new URL("../.github/workflows/release.yml", import.meta.url),
     "utf8",
   );
   const releaseJob = workflow.slice(workflow.indexOf("  release:"));
 
-  assert.match(releaseJob, /gh release view[^\n]+--repo "\$GITHUB_REPOSITORY"/);
   assert.match(
     releaseJob,
-    /gh release upload[^\n]+--repo "\$GITHUB_REPOSITORY"/,
+    /PUBLIC_RELEASE_REPOSITORY: ducminh25\/themis-v2-downloads/,
+  );
+  assert.match(releaseJob, /GH_TOKEN: \$\{\{ secrets\.PUBLIC_RELEASE_TOKEN \}\}/);
+  assert.match(
+    releaseJob,
+    /gh release view[^\n]+--repo "\$PUBLIC_RELEASE_REPOSITORY"/,
   );
   assert.match(
     releaseJob,
-    /gh release create[^\n]+--repo "\$GITHUB_REPOSITORY"/,
+    /gh release upload[^\n]+--repo "\$PUBLIC_RELEASE_REPOSITORY"/,
+  );
+  assert.match(
+    releaseJob,
+    /gh release create[^\n]+--repo "\$PUBLIC_RELEASE_REPOSITORY"/,
   );
 });

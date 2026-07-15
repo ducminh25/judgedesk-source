@@ -19,7 +19,7 @@ function sha256(filePath: string): string {
 const outputDirectory = path.resolve(process.argv[2] || "dist-toolchains");
 const releaseBaseUrl = (
   process.env.TOOLCHAIN_RELEASE_BASE_URL ||
-  "https://github.com/ducminh25/themis-v2/releases/download/toolchains-v1"
+  "https://github.com/ducminh25/themis-v2-downloads/releases/download/toolchains-v1"
 ).replace(/\/$/, "");
 
 const toolchains = TOOLCHAIN_CATALOG.map((entry) => {

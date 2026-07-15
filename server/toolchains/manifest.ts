@@ -5,7 +5,7 @@ import {
 } from "./types.js";
 
 const DEFAULT_MANIFEST_URL =
-  "https://github.com/ducminh25/themis-v2/releases/download/toolchains-v1/toolchains-manifest.json";
+  "https://github.com/ducminh25/themis-v2-downloads/releases/download/toolchains-v1/toolchains-manifest.json";
 const MANIFEST_CACHE_MS = 5 * 60 * 1000;
 
 export const TOOLCHAIN_CATALOG: ToolchainCatalogEntry[] = [
