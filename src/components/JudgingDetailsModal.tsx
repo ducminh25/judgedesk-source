@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { ProblemResult } from "../types";
 import { useTranslation } from "react-i18next";
+import { formatCompileError } from "../features/judging/compile-diagnostics";
 
 interface Props {
   data: ProblemResult;
@@ -124,7 +125,7 @@ export default function JudgingDetailsModal({
                 {t("judgingDetails.compilationFailure")}
               </h4>
               <pre className="font-mono text-2xs text-violet-700 dark:text-violet-300 whitespace-pre-wrap overflow-x-auto">
-                {data.compileError}
+                {formatCompileError(data.compileError, t)}
               </pre>
             </div>
           ) : (

@@ -2,7 +2,10 @@ import { Express } from "express";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { resolveToolchain } from "../toolchains/resolver.js";
+import {
+  clearToolchainDetectionCache,
+  resolveToolchain,
+} from "../toolchains/resolver.js";
 import {
   loadOfficialManifest,
   TOOLCHAIN_CATALOG,
@@ -20,6 +23,11 @@ import {
 } from "../toolchains/storage.js";
 
 export function registerToolchainRoutes(app: Express): void {
+  app.post("/api/toolchains/rescan", (_req, res) => {
+    clearToolchainDetectionCache();
+    res.json({ success: true });
+  });
+
   // GET /api/toolchains
   app.get("/api/toolchains", async (req, res) => {
     const platform = os.platform();

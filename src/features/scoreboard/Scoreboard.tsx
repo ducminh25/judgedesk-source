@@ -251,7 +251,7 @@ export default function Scoreboard({
                       </div>
                     </th>
                   ))}
-                  <th className="px-4 py-3 font-semibold text-indigo-600 dark:text-indigo-400 whitespace-nowrap text-center border-l border-b border-surface-border sticky right-0 bg-surface-elevated z-20">
+                  <th className="px-4 py-3 font-semibold text-indigo-700 dark:text-indigo-300 whitespace-nowrap text-center border-l border-b border-surface-border sticky right-0 bg-total-column z-20">
                     <div className="flex items-center justify-center gap-2">
                       <input
                         type="checkbox"
@@ -340,7 +340,7 @@ export default function Scoreboard({
                       {problems.map((problemName) =>
                         renderCell(contestantName, problemName),
                       )}
-                      <td className="px-4 py-3 text-center font-bold text-indigo-600 dark:text-indigo-300 border-l border-surface-border bg-indigo-50 dark:bg-indigo-950/5 sticky right-0 bg-surface-hover z-10">
+                      <td className="px-4 py-3 text-center font-bold text-indigo-700 dark:text-indigo-300 border-l border-surface-border bg-total-column sticky right-0 z-10">
                         {contestantResult ? totalScore.toFixed(2) : "-"}
                       </td>
                     </tr>

@@ -254,3 +254,16 @@ test("release publishing targets the public distribution repository", () => {
     /gh release create[^\n]+--repo "\$PUBLIC_RELEASE_REPOSITORY"/,
   );
 });
+
+test("release workflow signs, flattens, and publishes updater artifacts", () => {
+  const workflow = fs.readFileSync(
+    new URL("../.github/workflows/release.yml", import.meta.url),
+    "utf8",
+  );
+  assert.match(workflow, /TAURI_SIGNING_PRIVATE_KEY: \$\{\{ secrets\.TAURI_SIGNING_PRIVATE_KEY \}\}/);
+  assert.match(workflow, /release-assets-windows\/\*/);
+  assert.match(workflow, /release-assets-mac\/\*/);
+  assert.match(workflow, /\.app\.tar\.gz\.sig/);
+  assert.match(workflow, /generate-updater-manifest\.js release-assets/);
+  assert.match(workflow, /gh release upload[^\n]+release-assets\/\*/);
+});

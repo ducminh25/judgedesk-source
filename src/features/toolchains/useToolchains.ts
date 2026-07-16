@@ -187,6 +187,16 @@ export function useToolchains() {
     }
   };
 
+  const rescan = async () => {
+    try {
+      setError(null);
+      await apiFetch("/api/toolchains/rescan", { method: "POST" });
+      await fetchState();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
   return {
     state,
     error,
@@ -196,5 +206,6 @@ export function useToolchains() {
     uninstall,
     saveCustomPath,
     savePreferredSource,
+    rescan,
   };
 }

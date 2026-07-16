@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { execSync, spawn, spawnSync } from "child_process";
+import { execFile, spawn } from "child_process";
 import treeKill from "tree-kill";
 import { activeJobs } from "../jobs.js";
 import { TEMP_ROOT } from "../runtime.js";
@@ -13,7 +13,7 @@ import type {
 } from "../types.js";
 import type { CompiledChecker } from "./compiler.js";
 import { runCustomChecker } from "./custom-checker-runner.js";
-import { isStandardChecker, runStandardChecker } from "./standard-checkers.js";
+import { isBuiltInChecker, runStandardChecker } from "./standard-checkers.js";
 
 interface TestCaseRunnerOptions {
   contestant: string;
@@ -73,6 +73,8 @@ export function runTestCase(
     let peakMemoryKb = 0;
     let mleTriggered = false;
     let memoryMonitorInterval: NodeJS.Timeout | null = null;
+    let memoryMonitorStopped = false;
+    let memorySampleInFlight = false;
 
     if (useIsolate) {
       isolateBox = sandbox.nextIsolateBox();
@@ -229,19 +231,26 @@ export function runTestCase(
           runArgs = [submissionPath];
         }
         const profilePath = path.join(tempDirectory, "sandbox.sb");
-        const profile = `(version 1)
-(deny default)
-(allow process*)
-(allow file-read* (subpath "/System/Library"))
-(allow file-read* (subpath "/usr/lib"))
-(allow file-read* (subpath "/lib"))
-(allow file-read* (subpath "/etc"))
-(allow file-read* (subpath "${testRoot}"))
-(allow file-read* (subpath "${contestantsRoot}"))
-(allow file-read* (subpath "${tempDirectory}"))
-(allow file-read* (subpath "${TEMP_ROOT}"))
-(allow file-write* (subpath "${tempDirectory}"))
-(deny network*)`;
+        const pythonReadRoots = language === "python"
+          ? getPythonRuntimeReadRoots(resolvedBinary)
+          : [];
+        const profile = buildMacSandboxProfile({
+          readPaths: [
+            "/System/Library",
+            "/Library/Apple",
+            "/usr/bin",
+            "/usr/lib",
+            "/bin",
+            "/lib",
+            "/etc",
+            testRoot,
+            contestantsRoot,
+            tempDirectory,
+            TEMP_ROOT,
+            ...pythonReadRoots,
+          ],
+          writePaths: [tempDirectory],
+        });
         fs.writeFileSync(profilePath, profile, "utf8");
         childProcess = spawn(
           "sandbox-exec",
@@ -288,6 +297,7 @@ export function runTestCase(
       if (job) job.childProcess = childProcess;
     }
     let stdout = "";
+    let stdoutBuffer = Buffer.alloc(0);
     let stderr = "";
     let timedOut = false;
     const timeout = setTimeout(() => {
@@ -296,65 +306,40 @@ export function runTestCase(
     }, timeLimitMs);
 
     if (!useIsolate && memoryLimitKb > 0) {
-      memoryMonitorInterval = setInterval(() => {
-        if (!childProcess.pid) return;
+      const sampleMemory = async () => {
+        if (memoryMonitorStopped || memorySampleInFlight || !childProcess.pid)
+          return;
+        memorySampleInFlight = true;
         try {
-          if (os.platform() === "win32") {
-            const result = spawnSync(
-              "tasklist",
-              ["/FI", `PID eq ${childProcess.pid}`, "/FO", "CSV", "/NH"],
-              {
-                encoding: "utf8",
-                stdio: ["ignore", "pipe", "pipe"],
-                timeout: 1000,
-              }
-            );
-            if (result.status === 0 && result.stdout) {
-              const match = result.stdout.match(
-                /"[^"]*","\d+","[^"]*","\d+","([\d,]+)\s*K"/
-              );
-              if (match) {
-                const memKb = parseInt(match[1].replace(/,/g, ""), 10);
-                if (memKb > peakMemoryKb) {
-                  peakMemoryKb = memKb;
-                  if (peakMemoryKb > memoryLimitKb) {
-                    mleTriggered = true;
-                    killProcess(childProcess);
-                  }
-                }
-              }
-            }
-          } else {
-            const result = spawnSync(
-              "ps",
-              ["-p", String(childProcess.pid), "-o", "rss="],
-              {
-                encoding: "utf8",
-                stdio: ["ignore", "pipe", "pipe"],
-                timeout: 1000,
-              }
-            );
-            if (result.status === 0 && result.stdout) {
-              const memKb = parseInt(result.stdout.trim(), 10);
-              if (!isNaN(memKb) && memKb > peakMemoryKb) {
-                peakMemoryKb = memKb;
-                if (peakMemoryKb > memoryLimitKb) {
-                  mleTriggered = true;
-                  killProcess(childProcess);
-                }
-              }
+          const memoryKb = await readProcessMemoryKb(childProcess.pid);
+          if (
+            !memoryMonitorStopped &&
+            memoryKb !== null &&
+            memoryKb > peakMemoryKb
+          ) {
+            peakMemoryKb = memoryKb;
+            if (peakMemoryKb > memoryLimitKb) {
+              mleTriggered = true;
+              killProcess(childProcess);
             }
           }
-        } catch {
-          // Ignore
+        } finally {
+          memorySampleInFlight = false;
         }
-      }, 100);
+      };
+      void sampleMemory();
+      memoryMonitorInterval = setInterval(() => void sampleMemory(), 100);
     }
     childProcess.stdout.on("data", (chunk) => {
-      if (stdout.length >= MAX_OUTPUT_SIZE) return;
-      stdout += chunk.toString();
-      if (stdout.length >= MAX_OUTPUT_SIZE) {
-        stdout = stdout.substring(0, MAX_OUTPUT_SIZE);
+      if (stdoutBuffer.length >= MAX_OUTPUT_SIZE) return;
+      const nextChunk = Buffer.from(chunk);
+      const remaining = MAX_OUTPUT_SIZE - stdoutBuffer.length;
+      stdoutBuffer = Buffer.concat([
+        stdoutBuffer,
+        nextChunk.subarray(0, remaining),
+      ]);
+      stdout = stdoutBuffer.toString("utf8");
+      if (nextChunk.length > remaining || stdoutBuffer.length >= MAX_OUTPUT_SIZE) {
         killProcess(childProcess);
       }
     });
@@ -379,13 +364,15 @@ export function runTestCase(
 
     childProcess.on("close", async (code, signal) => {
       clearTimeout(timeout);
+      memoryMonitorStopped = true;
       if (memoryMonitorInterval) clearInterval(memoryMonitorInterval);
       const duration = Number(process.hrtime.bigint() - startTime) / 1_000_000;
       let status: TestCaseRun["status"] = "AC";
       let errorDetail = "";
+      let actualOutputBuffer = stdoutBuffer;
 
       if (useIsolate) {
-        let output = "";
+        let output = Buffer.alloc(0);
         if (config.useStdOut) {
           try {
             const hostOutputPath = path.join(
@@ -405,7 +392,7 @@ export function runTestCase(
                 `[Runner StdIO copy failed] exit code: ${copy.status}, stderr: ${copy.stderr ? copy.stderr.toString() : "N/A"}`,
               );
             if (fs.existsSync(hostOutputPath)) {
-              output = fs.readFileSync(hostOutputPath, "utf8");
+              output = fs.readFileSync(hostOutputPath);
               fs.rmSync(hostOutputPath, { force: true });
             } else {
               console.error(
@@ -427,7 +414,7 @@ export function runTestCase(
               { paths: [tempDirectory] },
             );
             if (copy.status === 0 && fs.existsSync(hostOutputPath))
-              output = fs.readFileSync(hostOutputPath, "utf8");
+              output = fs.readFileSync(hostOutputPath);
           } catch (error) {
             console.error(
               `[Runner FileIO Error] for ${outputFilename}:`,
@@ -435,13 +422,15 @@ export function runTestCase(
             );
           }
         }
-        stdout = output;
+        actualOutputBuffer = output;
+        stdout = output.toString("utf8");
       } else if (!config.useStdOut) {
         const outputPath = path.join(tempDirectory, outputFilename);
-        const output = fs.existsSync(outputPath)
-          ? fs.readFileSync(outputPath, "utf8")
-          : "";
-        stdout = output || stdout;
+        if (fs.existsSync(outputPath)) {
+          const output = fs.readFileSync(outputPath);
+          actualOutputBuffer = output;
+          stdout = output.toString("utf8");
+        }
       }
 
       if (useIsolate) {
@@ -489,12 +478,12 @@ export function runTestCase(
           tempDirectory,
           `${contestant}_${problemName}_${testName}.out`,
         );
-        fs.writeFileSync(actualOutputPath, stdout, "utf8");
-        if (isStandardChecker(config.checkerType)) {
+        fs.writeFileSync(actualOutputPath, actualOutputBuffer);
+        if (isBuiltInChecker(config.checkerType)) {
           const result = runStandardChecker(
             config.checkerType,
-            expectedOutput,
-            stdout,
+            fs.readFileSync(expectedOutputPath),
+            actualOutputBuffer,
           );
           resolve(
             createResult(
@@ -566,6 +555,8 @@ export function runTestCase(
     });
     childProcess.on("error", (error) => {
       clearTimeout(timeout);
+      memoryMonitorStopped = true;
+      if (memoryMonitorInterval) clearInterval(memoryMonitorInterval);
       resolve({
         name: testName,
         status: "RE",
@@ -574,6 +565,94 @@ export function runTestCase(
         errorDetail: error.message,
       });
     });
+  });
+}
+
+export function buildMacSandboxProfile({
+  readPaths,
+  writePaths,
+}: {
+  readPaths: string[];
+  writePaths: string[];
+}): string {
+  const readRules = uniqueSandboxPaths(readPaths)
+    .map((value) => `(allow file-read* (subpath "${sandboxProfileLiteral(value)}"))`);
+  const writeRules = uniqueSandboxPaths(writePaths)
+    .map((value) => `(allow file-write* (subpath "${sandboxProfileLiteral(value)}"))`);
+  return [
+    "(version 1)",
+    "(deny default)",
+    "(allow process*)",
+    ...readRules,
+    ...writeRules,
+    "(deny network*)",
+  ].join("\n");
+}
+
+function getPythonRuntimeReadRoots(pythonCommand: string): string[] {
+  const roots = [
+    pythonCommand,
+    path.dirname(pythonCommand),
+    path.dirname(path.dirname(pythonCommand)),
+  ];
+  try {
+    const realPython = fs.realpathSync(pythonCommand);
+    roots.push(
+      realPython,
+      path.dirname(realPython),
+      path.dirname(path.dirname(realPython)),
+    );
+  } catch {
+    // The runner will return a launch error if the configured path is stale.
+  }
+  return roots;
+}
+
+function uniqueSandboxPaths(values: string[]): string[] {
+  const result = new Set<string>();
+  for (const value of values) {
+    if (!value) continue;
+    result.add(path.resolve(value));
+    try {
+      result.add(fs.realpathSync(value));
+    } catch {
+      // Paths such as an output directory may not exist before the run starts.
+    }
+  }
+  return [...result];
+}
+
+function sandboxProfileLiteral(value: string): string {
+  return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+}
+
+function readProcessMemoryKb(pid: number): Promise<number | null> {
+  const windows = os.platform() === "win32";
+  const command = windows ? "tasklist" : "ps";
+  const args = windows
+    ? ["/FI", `PID eq ${pid}`, "/FO", "CSV", "/NH"]
+    : ["-p", String(pid), "-o", "rss="];
+  return new Promise((resolve) => {
+    execFile(
+      command,
+      args,
+      { encoding: "utf8", timeout: 1_000, windowsHide: true },
+      (error, stdout) => {
+        if (error || !stdout) {
+          resolve(null);
+          return;
+        }
+        if (!windows) {
+          const value = Number.parseInt(stdout.trim(), 10);
+          resolve(Number.isFinite(value) ? value : null);
+          return;
+        }
+        const match = stdout.match(
+          /"[^"]*","\d+","[^"]*","\d+","([\d,]+)\s*K"/,
+        );
+        resolve(match ? Number.parseInt(match[1].replace(/,/g, ""), 10) : null);
+      },
+    );
   });
 }
 

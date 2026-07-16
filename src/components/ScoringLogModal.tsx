@@ -1,6 +1,7 @@
 import { FileText, X } from "lucide-react";
 import { ContestantResult } from "../types";
 import { useTranslation } from "react-i18next";
+import { formatCompileError } from "../features/judging/compile-diagnostics";
 
 interface Props {
   title: string;
@@ -36,7 +37,7 @@ export default function ScoringLogModal({
               ? t("judgingDetails.skipped")
               : problem.compileStatus === "OK"
                 ? t("judgingDetails.compilationSuccess")
-                : problem.compileError || t("judgingDetails.compilationError");
+                : formatCompileError(problem.compileError, t);
 
           return [
             {

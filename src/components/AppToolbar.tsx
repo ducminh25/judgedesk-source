@@ -1,9 +1,23 @@
 import { useState } from "react";
-import { CheckCircle2, Play, RefreshCw, Timer, Wrench, XCircle, Moon, Sun } from "lucide-react";
+import {
+  CheckCircle2,
+  Download,
+  Github,
+  Moon,
+  Play,
+  RefreshCw,
+  Sun,
+  Timer,
+  Wrench,
+  XCircle,
+} from "lucide-react";
 import type { HostStatus } from "../types";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../contexts/ThemeContext";
 import { APP_VERSION } from "../version";
+import type { AppUpdateState } from "../features/updates/useAppUpdater";
+
+const PUBLIC_REPOSITORY = "https://github.com/ducminh25/themis-v2";
 
 interface Props {
   errorMessage: string;
@@ -16,6 +30,10 @@ interface Props {
   onRun: () => void;
   onTimeLimitChange: (timeLimit: number) => void;
   onOpenToolchains: () => void;
+  updateState: AppUpdateState;
+  onCheckUpdates: () => void;
+  onDownloadUpdate: () => void;
+  onRequestInstall: () => void;
 }
 
 export default function AppToolbar({
@@ -28,11 +46,28 @@ export default function AppToolbar({
   onReload,
   onRun,
   onTimeLimitChange,
-  onOpenToolchains
+  onOpenToolchains,
+  updateState,
+  onCheckUpdates,
+  onDownloadUpdate,
+  onRequestInstall,
 }: Props) {
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const { t, i18n } = useTranslation();
   const { theme, toggleTheme } = useTheme();
+
+  const openRepository = async () => {
+    try {
+      if ("__TAURI_INTERNALS__" in window) {
+        const { openUrl } = await import("@tauri-apps/plugin-opener");
+        await openUrl(PUBLIC_REPOSITORY);
+      } else {
+        window.open(PUBLIC_REPOSITORY, "_blank", "noopener,noreferrer");
+      }
+    } catch (error) {
+      console.error("Could not open the public repository", error);
+    }
+  };
 
   return (
     <>
@@ -45,6 +80,20 @@ export default function AppToolbar({
           </div>
         </div>
         <div className="flex items-center gap-3">
+          <UpdateButton
+            state={updateState}
+            onCheck={onCheckUpdates}
+            onDownload={onDownloadUpdate}
+            onInstall={onRequestInstall}
+          />
+          <button
+            onClick={() => void openRepository()}
+            className="flex h-8 w-8 items-center justify-center rounded border border-surface-border bg-input-bg text-text-primary hover:bg-surface-hover transition-colors"
+            title={t("toolbar.openGitHub")}
+            aria-label={t("toolbar.openGitHub")}
+          >
+            <Github className="h-4 w-4" />
+          </button>
           <button onClick={toggleTheme} className="flex h-8 w-8 items-center justify-center rounded border border-surface-border bg-input-bg text-text-primary hover:bg-surface-hover transition-colors" title={t("toolbar.toggleTheme")}>
             {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </button>
@@ -89,6 +138,76 @@ export default function AppToolbar({
         </div>
       </div>
     </>
+  );
+}
+
+function UpdateButton({
+  state,
+  onCheck,
+  onDownload,
+  onInstall,
+}: {
+  state: AppUpdateState;
+  onCheck: () => void;
+  onDownload: () => void;
+  onInstall: () => void;
+}) {
+  const { t } = useTranslation();
+  const isBusy = state.status === "checking" || state.status === "downloading";
+  const onClick =
+    state.status === "available"
+      ? onDownload
+      : state.status === "downloaded"
+        ? onInstall
+        : onCheck;
+  const label = (() => {
+    switch (state.status) {
+      case "checking":
+        return t("updates.checking");
+      case "available":
+        return t("updates.download");
+      case "downloading":
+        return t("updates.downloading", { percent: state.percent });
+      case "downloaded":
+        return t("updates.installQuestion");
+      case "current":
+        return t("updates.upToDate");
+      case "error":
+        return state.phase === "download"
+          ? t("updates.downloadFailed")
+          : state.phase === "install"
+            ? t("updates.installFailed")
+            : t("updates.checkFailed");
+      default:
+        return t("updates.check");
+    }
+  })();
+  const title = state.status === "available"
+    ? t("updates.available", { version: state.version })
+    : state.status === "error"
+      ? state.message
+      : label;
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={isBusy}
+      className={`flex h-8 items-center gap-2 rounded border px-3 text-xs font-semibold transition-colors disabled:cursor-wait ${
+        state.status === "available" || state.status === "downloaded"
+          ? "border-indigo-500 bg-indigo-600 text-white hover:bg-indigo-500"
+          : state.status === "error"
+            ? "border-rose-400 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950 dark:text-rose-300"
+            : "border-surface-border bg-input-bg text-text-primary hover:bg-surface-hover"
+      }`}
+      title={title}
+    >
+      {state.status === "downloading" || state.status === "checking" ? (
+        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+      ) : (
+        <Download className="h-3.5 w-3.5" />
+      )}
+      <span>{label}</span>
+    </button>
   );
 }
 

@@ -1,40 +1,80 @@
-export type StandardCheckerType = "C1" | "C2" | "C3" | "C4" | "C5";
+import type { TestVerdict } from "../types.js";
+import {
+  isBuiltInCheckerId,
+  type BuiltInCheckerId,
+  type PolygonCheckerId,
+  type ThemisCheckerId,
+} from "../../shared/checker-catalog.js";
+
+export type StandardCheckerType = ThemisCheckerId;
 
 export interface StandardCheckerResult {
-  status: "AC" | "WA";
+  status: Extract<TestVerdict, "AC" | "WA" | "PE" | "FAIL">;
   message: string;
 }
 
-const STANDARD_CHECKERS = new Set<StandardCheckerType>(["C1", "C2", "C3", "C4", "C5"]);
+export function isStandardChecker(
+  checkerType: string,
+): checkerType is StandardCheckerType {
+  return ["C1", "C2", "C3", "C4", "C5"].includes(checkerType);
+}
 
-export function isStandardChecker(checkerType: string): checkerType is StandardCheckerType {
-  return STANDARD_CHECKERS.has(checkerType as StandardCheckerType);
+export function isBuiltInChecker(
+  checkerType: string,
+): checkerType is BuiltInCheckerId {
+  return isBuiltInCheckerId(checkerType);
 }
 
 export function runStandardChecker(
-  checkerType: StandardCheckerType,
-  expectedOutput: string,
-  actualOutput: string
+  checkerType: BuiltInCheckerId,
+  expectedOutput: string | Buffer,
+  actualOutput: string | Buffer,
 ): StandardCheckerResult {
-  if (checkerType === "C1") {
-    return compareByLine(expectedOutput, actualOutput, true);
-  }
-  if (checkerType === "C2") {
-    return compareByLine(expectedOutput, actualOutput, false);
-  }
-  if (checkerType === "C3") {
-    return compareWords(expectedOutput, actualOutput, true);
-  }
-  if (checkerType === "C4") {
-    return compareWords(expectedOutput, actualOutput, false);
-  }
+  if (checkerType === "C5") return compareBinary(expectedOutput, actualOutput);
 
-  return expectedOutput === actualOutput
-    ? { status: "AC", message: "ok" }
-    : { status: "WA", message: "Files are not identical" };
+  const expected = toText(expectedOutput);
+  const actual = toText(actualOutput);
+  if (checkerType === "C1") return compareByLine(expected, actual, true);
+  if (checkerType === "C2") return compareByLine(expected, actual, false);
+  if (checkerType === "C3") return compareWords(expected, actual, true);
+  if (checkerType === "C4") return compareWords(expected, actual, false);
+  return runPolygonChecker(checkerType, expected, actual);
 }
 
-function compareByLine(expectedOutput: string, actualOutput: string, ignoreCase: boolean): StandardCheckerResult {
+function runPolygonChecker(
+  checkerType: PolygonCheckerId,
+  expected: string,
+  actual: string,
+): StandardCheckerResult {
+  switch (checkerType) {
+    case "polygon:fcmp":
+      return comparePolygonLines(expected, actual, false);
+    case "polygon:lcmp":
+      return comparePolygonLines(expected, actual, true);
+    case "polygon:hcmp":
+      return compareHugeInteger(expected, actual);
+    case "polygon:ncmp":
+      return compareInt64Sequence(expected, actual);
+    case "polygon:nyesno":
+      return compareYesNoSequence(expected, actual);
+    case "polygon:rcmp4":
+      return compareRealSequence(expected, actual, 1e-4, 5);
+    case "polygon:rcmp6":
+      return compareRealSequence(expected, actual, 1e-6, 7);
+    case "polygon:rcmp9":
+      return compareRealSequence(expected, actual, 1e-9, 10);
+    case "polygon:wcmp":
+      return compareTokenSequence(expected, actual);
+    case "polygon:yesno":
+      return compareSingleYesNo(expected, actual);
+  }
+}
+
+function compareByLine(
+  expectedOutput: string,
+  actualOutput: string,
+  ignoreCase: boolean,
+): StandardCheckerResult {
   const expectedLines = trimTrailingBlankLines(expectedOutput.split(/\r?\n/));
   const actualLines = trimTrailingBlankLines(actualOutput.split(/\r?\n/));
   const lineCount = Math.max(expectedLines.length, actualLines.length);
@@ -50,16 +90,20 @@ function compareByLine(expectedOutput: string, actualOutput: string, ignoreCase:
     }
   }
 
-  return { status: "AC", message: "ok" };
+  return { status: "AC", message: expectedLines.length === 1 ? "single line" : `${expectedLines.length} lines` };
 }
 
-function compareWords(expectedOutput: string, actualOutput: string, ignoreCase: boolean): StandardCheckerResult {
+function compareWords(
+  expectedOutput: string,
+  actualOutput: string,
+  ignoreCase: boolean,
+): StandardCheckerResult {
   const expectedWords = splitAllWords(expectedOutput, ignoreCase);
   const actualWords = splitAllWords(actualOutput, ignoreCase);
   if (expectedWords.length !== actualWords.length) {
     return {
       status: "WA",
-      message: `Wrong answer: different number of words (expected ${expectedWords.length}, found ${actualWords.length})`
+      message: `Wrong answer: different number of words (expected ${expectedWords.length}, found ${actualWords.length})`,
     };
   }
 
@@ -68,7 +112,277 @@ function compareWords(expectedOutput: string, actualOutput: string, ignoreCase: 
       return { status: "WA", message: `Wrong answer at word ${wordIndex + 1}` };
     }
   }
-  return { status: "AC", message: "ok" };
+  return {
+    status: "AC",
+    message: expectedWords.length === 1 ? "single word" : `${expectedWords.length} words`,
+  };
+}
+
+function compareBinary(
+  expectedOutput: string | Buffer,
+  actualOutput: string | Buffer,
+): StandardCheckerResult {
+  const expected = toBuffer(expectedOutput);
+  const actual = toBuffer(actualOutput);
+  const length = Math.min(expected.length, actual.length);
+  for (let index = 0; index < length; index += 1) {
+    if (expected[index] !== actual[index])
+      return { status: "WA", message: `Wrong answer at byte ${index + 1}` };
+  }
+  if (expected.length !== actual.length)
+    return { status: "WA", message: "Wrong answer: different file length" };
+  return { status: "AC", message: `files are identical (${expected.length} bytes)` };
+}
+
+function comparePolygonLines(
+  expected: string,
+  actual: string,
+  tokenized: boolean,
+): StandardCheckerResult {
+  const expectedLines = polygonLines(expected);
+  const actualLines = polygonLines(actual);
+  let lastActual = "";
+  for (let index = 0; index < expectedLines.length; index += 1) {
+    const expectedLine = expectedLines[index];
+    const actualLine = actualLines[index];
+    lastActual = actualLine ?? "";
+    const equal =
+      actualLine !== undefined &&
+      (tokenized
+        ? arraysEqual(splitAllWords(expectedLine, false), splitAllWords(actualLine, false))
+        : expectedLine === actualLine);
+    if (!equal) {
+      return {
+        status: "WA",
+        message: `${index + 1}${englishEnding(index + 1)} lines differ - expected: '${compress(expectedLine)}', found: '${compress(actualLine ?? "")}'`,
+      };
+    }
+  }
+  return expectedLines.length === 1
+    ? { status: "AC", message: `single line: '${compress(lastActual)}'` }
+    : { status: "AC", message: `${expectedLines.length} lines` };
+}
+
+function compareHugeInteger(expected: string, actual: string): StandardCheckerResult {
+  const expectedTokens = splitAllWords(expected, false);
+  const expectedToken = expectedTokens[0] || "";
+  const actualToken = splitAllWords(actual, false)[0] || "";
+  const normalizedExpected = normalizeHugeInteger(expectedToken);
+  const normalizedActual = normalizeHugeInteger(actualToken);
+  if (!normalizedExpected)
+    return { status: "FAIL", message: `${compress(expectedToken)} is not a valid integer` };
+  if (expectedTokens.length !== 1)
+    return { status: "FAIL", message: "expected exactly one token in the answer file" };
+  if (!normalizedActual)
+    return { status: "PE", message: `${compress(actualToken)} is not a valid integer` };
+  return normalizedExpected === normalizedActual
+    ? { status: "AC", message: `answer is '${compress(normalizedExpected)}'` }
+    : {
+        status: "WA",
+        message: `expected '${compress(normalizedExpected)}', found '${compress(normalizedActual)}'`,
+      };
+}
+
+function compareInt64Sequence(expected: string, actual: string): StandardCheckerResult {
+  const expectedTokens = splitAllWords(expected, false);
+  const actualTokens = splitAllWords(actual, false);
+  const commonLength = Math.min(expectedTokens.length, actualTokens.length);
+  const firstValues: string[] = [];
+  for (let index = 0; index < commonLength; index += 1) {
+    const expectedValue = parseInt64(expectedTokens[index]);
+    const actualValue = parseInt64(actualTokens[index]);
+    if (expectedValue === null)
+      return { status: "FAIL", message: `Invalid int64 in answer at token ${index + 1}` };
+    if (actualValue === null)
+      return { status: "PE", message: `Invalid int64 in output at token ${index + 1}` };
+    if (expectedValue !== actualValue) {
+      return {
+        status: "WA",
+        message: `${index + 1}${englishEnding(index + 1)} numbers differ - expected: '${expectedValue}', found: '${actualValue}'`,
+      };
+    }
+    if (index < 5) firstValues.push(expectedValue.toString());
+  }
+  for (let index = commonLength; index < expectedTokens.length; index += 1) {
+    if (parseInt64(expectedTokens[index]) === null)
+      return { status: "FAIL", message: `Invalid int64 in answer at token ${index + 1}` };
+  }
+  for (let index = commonLength; index < actualTokens.length; index += 1) {
+    if (parseInt64(actualTokens[index]) === null)
+      return { status: "PE", message: `Invalid int64 in output at token ${index + 1}` };
+  }
+  if (expectedTokens.length > actualTokens.length)
+    return {
+      status: "WA",
+      message: `Answer contains longer sequence [length = ${expectedTokens.length}], but output contains ${actualTokens.length} elements`,
+    };
+  if (actualTokens.length > expectedTokens.length)
+    return {
+      status: "WA",
+      message: `Output contains longer sequence [length = ${actualTokens.length}], but answer contains ${expectedTokens.length} elements`,
+    };
+  return expectedTokens.length <= 5
+    ? { status: "AC", message: `${expectedTokens.length} number(s): "${firstValues.join(" ")}"` }
+    : { status: "AC", message: `${expectedTokens.length} numbers` };
+}
+
+function compareYesNoSequence(expected: string, actual: string): StandardCheckerResult {
+  const expectedTokens = splitAllWords(expected, true).map((token) => token.toUpperCase());
+  const actualTokens = splitAllWords(actual, true).map((token) => token.toUpperCase());
+  const commonLength = Math.min(expectedTokens.length, actualTokens.length);
+  let yesCount = 0;
+  let noCount = 0;
+  for (let index = 0; index < commonLength; index += 1) {
+    const expectedToken = expectedTokens[index];
+    const actualToken = actualTokens[index];
+    if (!isYesNo(expectedToken))
+      return { status: "FAIL", message: `YES or NO expected in answer, but ${compress(expectedToken)} found [${index + 1}${englishEnding(index + 1)} token]` };
+    if (!isYesNo(actualToken))
+      return { status: "PE", message: `YES or NO expected, but ${compress(actualToken)} found [${index + 1}${englishEnding(index + 1)} token]` };
+    if (actualToken === "YES") yesCount += 1;
+    else noCount += 1;
+    if (expectedToken !== actualToken)
+      return { status: "WA", message: `expected ${expectedToken}, found ${actualToken} [${index + 1}${englishEnding(index + 1)} token]` };
+  }
+  if (expectedTokens.length !== actualTokens.length) {
+    const outputLonger = actualTokens.length > expectedTokens.length;
+    return {
+      status: "WA",
+      message: outputLonger
+        ? `Output contains longer sequence [length = ${actualTokens.length}], but answer contains ${expectedTokens.length} elements`
+        : `Answer contains longer sequence [length = ${expectedTokens.length}], but output contains ${actualTokens.length} elements`,
+    };
+  }
+  if (expectedTokens.length === 0) return { status: "AC", message: "Empty output" };
+  if (expectedTokens.length === 1) return { status: "AC", message: actualTokens[0] };
+  return {
+    status: "AC",
+    message: `${expectedTokens.length} token(s): yes count is ${yesCount}, no count is ${noCount}`,
+  };
+}
+
+function compareSingleYesNo(expected: string, actual: string): StandardCheckerResult {
+  const expectedToken = (splitAllWords(expected, false)[0] || "").toUpperCase();
+  const actualToken = (splitAllWords(actual, false)[0] || "").toUpperCase();
+  if (!isYesNo(expectedToken))
+    return { status: "FAIL", message: `YES or NO expected in answer, but ${compress(expectedToken)} found` };
+  if (!isYesNo(actualToken))
+    return { status: "PE", message: `YES or NO expected, but ${compress(actualToken)} found` };
+  if (expectedToken !== actualToken)
+    return { status: "WA", message: `expected ${expectedToken}, found ${actualToken}` };
+  return { status: "AC", message: `answer is ${expectedToken}` };
+}
+
+function compareRealSequence(
+  expected: string,
+  actual: string,
+  epsilon: number,
+  digits: number,
+): StandardCheckerResult {
+  const expectedTokens = splitAllWords(expected, false);
+  const actualTokens = splitAllWords(actual, false);
+  let lastExpected = 0;
+  let lastActual = 0;
+  for (let index = 0; index < expectedTokens.length; index += 1) {
+    lastExpected = parseTestlibDouble(expectedTokens[index]);
+    lastActual = parseTestlibDouble(actualTokens[index]);
+    if (Number.isNaN(lastExpected) && expectedTokens[index].toLowerCase() !== "nan")
+      return { status: "FAIL", message: `Invalid real number in answer at token ${index + 1}` };
+    if (
+      actualTokens[index] === undefined ||
+      (Number.isNaN(lastActual) && actualTokens[index].toLowerCase() !== "nan")
+    )
+      return { status: "PE", message: `Invalid real number in output at token ${index + 1}` };
+    if (!doubleCompare(lastExpected, lastActual, epsilon)) {
+      return {
+        status: "WA",
+        message: `${index + 1}${englishEnding(index + 1)} numbers differ - expected: '${lastExpected.toFixed(digits)}', found: '${lastActual.toFixed(digits)}', error = '${doubleDelta(lastExpected, lastActual).toFixed(digits)}'`,
+      };
+    }
+  }
+  return expectedTokens.length === 1
+    ? {
+        status: "AC",
+        message: `found '${lastActual.toFixed(digits)}', expected '${lastExpected.toFixed(digits)}', error '${doubleDelta(lastExpected, lastActual).toFixed(digits)}'`,
+      }
+    : { status: "AC", message: `${expectedTokens.length} numbers` };
+}
+
+function compareTokenSequence(expected: string, actual: string): StandardCheckerResult {
+  const expectedTokens = splitAllWords(expected, false);
+  const actualTokens = splitAllWords(actual, false);
+  const commonLength = Math.min(expectedTokens.length, actualTokens.length);
+  for (let index = 0; index < commonLength; index += 1) {
+    if (expectedTokens[index] !== actualTokens[index]) {
+      return {
+        status: "WA",
+        message: `${index + 1}${englishEnding(index + 1)} words differ - expected: '${compress(expectedTokens[index])}', found: '${compress(actualTokens[index])}'`,
+      };
+    }
+  }
+  if (actualTokens.length > expectedTokens.length)
+    return { status: "WA", message: "Participant output contains extra tokens" };
+  if (expectedTokens.length > actualTokens.length)
+    return { status: "WA", message: "Unexpected EOF in the participants output" };
+  return expectedTokens.length === 1
+    ? { status: "AC", message: `"${compress(expectedTokens[0])}"` }
+    : { status: "AC", message: `${expectedTokens.length} tokens` };
+}
+
+function normalizeHugeInteger(value: string): string | null {
+  return /^(?:0|-?[1-9]\d*)$/.test(value) ? value : null;
+}
+
+function parseInt64(value: string): bigint | null {
+  if (!/^[+-]?\d+$/.test(value)) return null;
+  try {
+    const parsed = BigInt(value);
+    return parsed >= -(2n ** 63n) && parsed <= 2n ** 63n - 1n ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function doubleCompare(expected: number, actual: number, epsilon: number): boolean {
+  epsilon += 1e-15;
+  if (Number.isNaN(expected)) return Number.isNaN(actual);
+  if (!Number.isFinite(expected)) return expected === actual;
+  if (!Number.isFinite(actual)) return false;
+  const difference = Math.abs(expected - actual);
+  return difference <= epsilon || difference <= Math.abs(expected) * epsilon;
+}
+
+function doubleDelta(expected: number, actual: number): number {
+  const difference = Math.abs(expected - actual);
+  return Math.abs(expected) > 1e-9
+    ? Math.min(difference, Math.abs(difference / expected))
+    : difference;
+}
+
+function parseTestlibDouble(value: string | undefined): number {
+  if (value === undefined) return Number.NaN;
+  const normalized = value.toLowerCase();
+  if (normalized === "nan") return Number.NaN;
+  if (normalized === "inf" || normalized === "+inf" || normalized === "infinity" || normalized === "+infinity")
+    return Number.POSITIVE_INFINITY;
+  if (normalized === "-inf" || normalized === "-infinity")
+    return Number.NEGATIVE_INFINITY;
+  return Number(value);
+}
+
+function isYesNo(value: string): boolean {
+  return value === "YES" || value === "NO";
+}
+
+function polygonLines(value: string): string[] {
+  const normalized = value.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  if (normalized === "") return [];
+  const lines = normalized.split("\n");
+  if (normalized.endsWith("\n")) lines.pop();
+  // fcmp/lcmp deliberately ignore the final empty line read at EOF, matching
+  // the upstream `j.empty() && ans.eof()` behavior.
+  if (lines.at(-1) === "") lines.pop();
+  return lines;
 }
 
 function trimTrailingBlankLines(lines: string[]): string[] {
@@ -88,4 +402,29 @@ function splitAllWords(text: string, ignoreCase: boolean): string[] {
     .split(/\s+/)
     .map((word) => (ignoreCase ? word.toLowerCase() : word))
     .filter(Boolean);
+}
+
+function arraysEqual(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function englishEnding(value: number): string {
+  const tens = value % 100;
+  if (tens >= 11 && tens <= 13) return "th";
+  if (value % 10 === 1) return "st";
+  if (value % 10 === 2) return "nd";
+  if (value % 10 === 3) return "rd";
+  return "th";
+}
+
+function compress(value: string): string {
+  return value.length > 128 ? `${value.slice(0, 125)}...` : value;
+}
+
+function toText(value: string | Buffer): string {
+  return Buffer.isBuffer(value) ? value.toString("utf8") : value;
+}
+
+function toBuffer(value: string | Buffer): Buffer {
+  return Buffer.isBuffer(value) ? value : Buffer.from(value, "utf8");
 }
