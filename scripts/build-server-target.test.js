@@ -252,6 +252,9 @@ test("Codemagic builds verified Apple Silicon release artifacts on M2", () => {
   assert.match(codemagic, /instance_type: mac_mini_m2/);
   assert.match(codemagic, /node: 22\.23\.1/);
   assert.match(codemagic, /groups:\s+\- themis_signing/);
+  assert.match(codemagic, /https:\/\/sh\.rustup\.rs/);
+  assert.match(codemagic, /PATH=\$HOME\/\.cargo\/bin:\$PATH/);
+  assert.match(codemagic, />> "\$CM_ENV"/);
   assert.match(codemagic, /--target aarch64-apple-darwin/);
   assert.match(codemagic, /TAURI_SIGNING_PRIVATE_KEY_PASSWORD/);
   assert.match(codemagic, /ThemisV2\.app\.tar\.gz\.sig/);

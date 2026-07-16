@@ -17,13 +17,20 @@ workflows:
         - $HOME/.cargo/git
         - src-tauri/target
     scripts:
+      - name: Install Rust toolchain
+        script: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --profile minimal
+          source "$HOME/.cargo/env"
+          rustup default stable
+          rustup component add rustfmt
+          echo "PATH=$HOME/.cargo/bin:$PATH" >> "$CM_ENV"
       - name: Install and verify source
         script: |
           npm ci --no-audit --no-fund
           npm run release:check-version
           npm run lint
           npm run test:server
-          rustup component add rustfmt
           cargo fmt --check --manifest-path src-tauri/Cargo.toml
       - name: Install the Apple Silicon Rust target
         script: |
