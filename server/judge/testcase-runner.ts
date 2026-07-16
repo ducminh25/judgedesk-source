@@ -485,6 +485,9 @@ export function runTestCase(
             fs.readFileSync(expectedOutputPath),
             actualOutputBuffer,
           );
+          if (result.status !== "AC") {
+            errorDetail = formatProcessDiagnostic(code, signal, stderr);
+          }
           resolve(
             createResult(
               testName,
@@ -566,6 +569,19 @@ export function runTestCase(
       });
     });
   });
+}
+
+function formatProcessDiagnostic(
+  code: number | null,
+  signal: NodeJS.Signals | null,
+  stderr: string,
+): string {
+  const details = [
+    `Exit code: ${code === null ? "null" : code}.`,
+    signal ? `Signal: ${signal}.` : "",
+    stderr.trim() ? `stderr: ${stderr.trim()}` : "",
+  ].filter(Boolean);
+  return details.join(" ");
 }
 
 export function buildMacSandboxProfile({
