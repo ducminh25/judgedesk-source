@@ -173,6 +173,14 @@ test("universal DMG build provides native and universal Tauri sidecars", () => {
     /server-universal-apple-darwin -verify_arch x86_64 arm64/,
   );
   assert.match(dmgJob, /Contents\/MacOS\/server" -verify_arch x86_64 arm64/);
+
+  const macConfig = JSON.parse(
+    fs.readFileSync(
+      new URL("../src-tauri/tauri.macos.conf.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.deepEqual(macConfig.bundle.targets, ["app", "dmg"]);
 });
 
 test("release workflow smoke-tests thin, universal, and packaged macOS sidecars", () => {
