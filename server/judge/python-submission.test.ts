@@ -22,6 +22,8 @@ test("macOS sandbox grants runtime reads but only temp writes", () => {
   assert.ok(profile.includes(`file-write* (subpath "${escapedWritableRoot}")`));
   assert.ok(!profile.includes(`file-write* (subpath "${escapedRuntimeRoot}")`));
   assert.match(profile, /\(deny network\*\)/);
+  assert.ok(profile.includes('(allow file-read* (literal "/"))'));
+  assert.ok(profile.includes("(allow file-read-metadata (vnode-type DIRECTORY))"));
 });
 
 test("a Python submission is accepted and runnable without resolving C++", async (t) => {

@@ -461,6 +461,9 @@ export function runTestCase(
         status = "MLE";
       } else if (timedOut || signal === "SIGKILL" || status === "TLE") {
         status = "TLE";
+      } else if (signal) {
+        status = "RE";
+        errorDetail = formatProcessDiagnostic(code, signal, stderr);
       } else if (code !== 0 && code !== null) {
         const isMleCode =
           code === 139 ||
@@ -599,6 +602,19 @@ export function buildMacSandboxProfile({
     "(version 1)",
     "(deny default)",
     "(allow process*)",
+    "(allow user-preference-read)",
+    "(allow sysctl-read)",
+    "(allow ipc-posix-shm)",
+    "(allow ipc-posix-sem)",
+    // dyld must traverse the root and parent directories before it can load
+    // an otherwise explicitly allowed executable and its libraries.
+    '(allow file-read* (literal "/"))',
+    "(allow file-read-metadata (vnode-type DIRECTORY))",
+    // Native runtimes use these character devices during startup.
+    '(allow file-read* file-ioctl (literal "/dev/null"))',
+    '(allow file-read* file-ioctl (literal "/dev/zero"))',
+    '(allow file-read* file-ioctl (literal "/dev/random"))',
+    '(allow file-read* file-ioctl (literal "/dev/urandom"))',
     ...readRules,
     ...writeRules,
     "(deny network*)",
