@@ -91,7 +91,7 @@ test("a Python submission is accepted and runnable without resolving C++", async
     }),
     checker: { path: null },
   });
-  assert.equal(judged.status, "AC", judged.errorDetail);
+  assert.equal(judged.status, "AC", JSON.stringify(judged, null, 2));
   assert.equal(judged.score, 1);
   assert.ok(judged.executionTime < 1_000);
 });

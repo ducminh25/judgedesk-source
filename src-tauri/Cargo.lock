@@ -3986,6 +3986,7 @@ dependencies = [
 name = "themis-v2"
 version = "1.1.2"
 dependencies = [
+ "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
