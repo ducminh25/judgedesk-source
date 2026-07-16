@@ -8,7 +8,10 @@ import { sandbox } from "../sandbox.js";
 import { activeJobs } from "../jobs.js";
 import type { ProblemResult } from "../types.js";
 import { isBuiltInChecker } from "./standard-checkers.js";
-import { resolveToolchain } from "../toolchains/resolver.js";
+import {
+  buildToolchainEnvironment,
+  resolveToolchain,
+} from "../toolchains/resolver.js";
 
 export const COMPILE_TIMEOUT_MS = 15_000;
 export const MAX_GENERATED_FILE_BYTES = 32 * 1024 * 1024;
@@ -315,7 +318,7 @@ export async function runCompilerWithLimits(
       cwd,
       stdio: ["ignore", "ignore", "pipe"] as ["ignore", "ignore", "pipe"],
       env: {
-        ...process.env,
+        ...buildToolchainEnvironment(gppPath),
         TMP: scratchDirectory,
         TEMP: scratchDirectory,
         TMPDIR: scratchDirectory,

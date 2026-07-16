@@ -20,6 +20,38 @@ const executableSupportCache = new Map<
   { value: boolean; expiresAt: number }
 >();
 
+export function buildToolchainEnvironment(
+  executablePath: string,
+  baseEnvironment: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = os.platform(),
+): NodeJS.ProcessEnv {
+  const environment = { ...baseEnvironment };
+  const pathApi = platform === "win32" ? path.win32 : path.posix;
+  if (!pathApi.isAbsolute(executablePath)) return environment;
+
+  const pathKey =
+    Object.keys(environment).find((key) => key.toLowerCase() === "path") ||
+    (platform === "win32" ? "Path" : "PATH");
+  const delimiter = platform === "win32" ? ";" : ":";
+  const executableDirectory = pathApi.dirname(executablePath);
+  const currentPath = environment[pathKey] || "";
+  const normalize = (value: string) =>
+    platform === "win32"
+      ? pathApi.resolve(value).toLowerCase()
+      : pathApi.resolve(value);
+  const alreadyIncluded = currentPath
+    .split(delimiter)
+    .filter(Boolean)
+    .some((directory) => normalize(directory) === normalize(executableDirectory));
+
+  if (!alreadyIncluded) {
+    environment[pathKey] = currentPath
+      ? `${executableDirectory}${delimiter}${currentPath}`
+      : executableDirectory;
+  }
+  return environment;
+}
+
 // Extracts clean version from --version output
 export function getExecutableVersion(
   executablePath: string,
@@ -31,6 +63,7 @@ export function getExecutableVersion(
       encoding: "utf8",
       timeout: 2000,
       stdio: ["ignore", "pipe", "ignore"],
+      env: buildToolchainEnvironment(executablePath),
     });
 
     if (kind === "python") {
@@ -132,6 +165,8 @@ function collectSystemCppCandidates(): string[] {
       process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
     const userProfile = process.env.USERPROFILE || os.homedir();
     candidates.push(
+      path.join(programFiles, "Themis", "GCC", "bin", "g++.exe"),
+      path.join(programFilesX86, "Themis", "GCC", "bin", "g++.exe"),
       "C:\\Themis\\GCC\\bin\\g++.exe",
       "C:\\msys64\\ucrt64\\bin\\g++.exe",
       "C:\\msys64\\mingw64\\bin\\g++.exe",
@@ -268,6 +303,7 @@ function probePythonExecutable(executablePath: string): boolean {
       encoding: "utf8",
       timeout: 3_000,
       stdio: ["ignore", "ignore", "ignore"],
+      env: buildToolchainEnvironment(executablePath),
     });
     return true;
   } catch {
@@ -277,16 +313,20 @@ function probePythonExecutable(executablePath: string): boolean {
 
 function probeCppCompiler(executablePath: string): boolean {
   const probeDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "themis-cpp-probe-"));
+  const sourcePath = path.join(probeDirectory, "probe.cpp");
   const outputPath = path.join(
     probeDirectory,
     os.platform() === "win32" ? "probe.exe" : "probe",
   );
   try {
-    execFileSync(executablePath, buildCompilerProbeArgs(os.platform(), outputPath), {
+    // MinGW.org GCC 9.2.0 (bundled with Themis) does not accept `-` as a
+    // source file on Windows, so use a real temporary file for the probe.
+    fs.writeFileSync(sourcePath, "int main() { return 0; }\n", "utf8");
+    execFileSync(executablePath, buildCompilerProbeArgs(os.platform(), sourcePath, outputPath), {
       encoding: "utf8",
-      input: "int main() { return 0; }\n",
       timeout: 5_000,
-      stdio: ["pipe", "ignore", "ignore"],
+      stdio: ["ignore", "ignore", "ignore"],
+      env: buildToolchainEnvironment(executablePath),
     });
     return fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0;
   } catch {
@@ -298,13 +338,14 @@ function probeCppCompiler(executablePath: string): boolean {
 
 export function buildCompilerProbeArgs(
   platform: NodeJS.Platform,
+  sourcePath: string,
   outputPath: string,
 ): string[] {
   const args = ["-std=c++14", "-pipe", "-O2", "-s"];
   if (platform !== "darwin") args.push("-static");
   args.push("-lm", "-x", "c++");
   if (platform === "win32") args.push("-Wl,--stack,66060288");
-  args.push("-", "-o", outputPath);
+  args.push(sourcePath, "-o", outputPath);
   return args;
 }
 
@@ -314,6 +355,7 @@ function getGenericExecutableVersion(executablePath: string): string {
       encoding: "utf8",
       timeout: 2000,
       stdio: ["ignore", "pipe", "ignore"],
+      env: buildToolchainEnvironment(executablePath),
     });
     return stdout.match(/([0-9]+(?:\.[0-9]+){1,3})/)?.[1] || "0.0.0";
   } catch {

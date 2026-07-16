@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CheckCircle2,
   Download,
@@ -9,6 +9,7 @@ import {
   Sun,
   Timer,
   Wrench,
+  X,
   XCircle,
 } from "lucide-react";
 import type { HostStatus } from "../types";
@@ -53,8 +54,37 @@ export default function AppToolbar({
   onRequestInstall,
 }: Props) {
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const statusMenuRef = useRef<HTMLDivElement>(null);
+  const statusMenuButtonRef = useRef<HTMLButtonElement>(null);
   const { t, i18n } = useTranslation();
   const { theme, toggleTheme } = useTheme();
+
+  useEffect(() => {
+    if (!statusMenuOpen) return;
+
+    const closeWhenOutside = (event: Event) => {
+      if (!statusMenuRef.current?.contains(event.target as Node)) {
+        setStatusMenuOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setStatusMenuOpen(false);
+      statusMenuButtonRef.current?.focus();
+    };
+    const closeOnWindowBlur = () => setStatusMenuOpen(false);
+
+    document.addEventListener("pointerdown", closeWhenOutside);
+    document.addEventListener("focusin", closeWhenOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("blur", closeOnWindowBlur);
+    return () => {
+      document.removeEventListener("pointerdown", closeWhenOutside);
+      document.removeEventListener("focusin", closeWhenOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("blur", closeOnWindowBlur);
+    };
+  }, [statusMenuOpen]);
 
   const openRepository = async () => {
     try {
@@ -103,11 +133,27 @@ export default function AppToolbar({
             <button onClick={() => i18n.changeLanguage('vi')} className={`px-2 h-full text-xs font-bold transition-colors cursor-pointer ${i18n.language === 'vi' ? 'bg-indigo-600 text-white' : 'text-text-muted hover:bg-surface-hover'}`}>VI</button>
           </div>
 
-          <div className="relative">
-            <button onClick={() => setStatusMenuOpen((open) => !open)} className="flex h-8 items-center gap-2 rounded border border-surface-border bg-input-bg px-3 text-xs font-semibold text-text-primary hover:bg-surface-hover transition-colors" title={t("toolbar.settings")}>
+          <div ref={statusMenuRef} className="relative">
+            <button
+              ref={statusMenuButtonRef}
+              onClick={() => setStatusMenuOpen((open) => !open)}
+              className="flex h-8 items-center gap-2 rounded border border-surface-border bg-input-bg px-3 text-xs font-semibold text-text-primary hover:bg-surface-hover transition-colors"
+              title={t("toolbar.settings")}
+              aria-haspopup="menu"
+              aria-expanded={statusMenuOpen}
+            >
               <Wrench className="h-3.5 w-3.5" /> {t("toolbar.settings")}
             </button>
-            {statusMenuOpen && <HostStatusMenu status={hostStatus} onOpenToolchains={onOpenToolchains} />}
+            {statusMenuOpen && (
+              <HostStatusMenu
+                status={hostStatus}
+                onClose={() => setStatusMenuOpen(false)}
+                onOpenToolchains={() => {
+                  setStatusMenuOpen(false);
+                  onOpenToolchains();
+                }}
+              />
+            )}
           </div>
         </div>
       </header>
@@ -211,11 +257,30 @@ function UpdateButton({
   );
 }
 
-function HostStatusMenu({ status, onOpenToolchains }: { status: HostStatus | null; onOpenToolchains: () => void }) {
+function HostStatusMenu({
+  status,
+  onClose,
+  onOpenToolchains,
+}: {
+  status: HostStatus | null;
+  onClose: () => void;
+  onOpenToolchains: () => void;
+}) {
   const { t } = useTranslation();
   return (
-    <div className="absolute right-0 top-10 z-[80] w-72 rounded-md border border-surface-border bg-surface-elevated p-2 shadow-2xl">
-      <div className="px-2 py-1.5 text-[10px] font-bold uppercase text-text-muted">{t("toolbar.statusMenu.title")}</div>
+    <div role="menu" className="absolute right-0 top-10 z-[80] w-72 rounded-md border border-surface-border bg-surface-elevated p-2 shadow-2xl">
+      <div className="flex items-center justify-between px-2 py-1.5">
+        <div className="text-[10px] font-bold uppercase text-text-muted">{t("toolbar.statusMenu.title")}</div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded p-1 text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
+          title={t("common.close")}
+          aria-label={t("common.close")}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
       {status ? (
         <>
           <StatusRow label="WSL2" ready={!!status.sandbox?.wsl.ready} installed={!!status.sandbox?.wsl.installed} incompleteLabel={t("toolbar.statusMenu.incomplete")} />
