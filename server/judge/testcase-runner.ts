@@ -606,6 +606,10 @@ export function buildMacSandboxProfile({
     "(allow sysctl-read)",
     "(allow ipc-posix-shm)",
     "(allow ipc-posix-sem)",
+    // macOS runtimes resolve executables, frameworks, source files and
+    // firmlink-backed temporary paths through locations that vary by install.
+    // Keep reads available while network and writes remain tightly restricted.
+    "(allow file-read*)",
     // dyld must traverse the root and parent directories before it can load
     // an otherwise explicitly allowed executable and its libraries.
     '(allow file-read* (literal "/"))',
