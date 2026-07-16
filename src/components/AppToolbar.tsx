@@ -257,7 +257,7 @@ function UpdateButton({
   );
 }
 
-function HostStatusMenu({
+export function HostStatusMenu({
   status,
   onClose,
   onOpenToolchains,
@@ -295,16 +295,17 @@ function HostStatusMenu({
           <div className="mt-1 border-t border-surface-border px-2 pt-2 text-[10px] text-text-muted">
             {t("toolbar.statusMenu.activeRunner")}: <span className="font-mono text-text-primary">{status.sandbox?.mode ?? "none"}</span>
           </div>
-          <div className="mt-2 pt-2 border-t border-surface-border">
-            <button 
-              onClick={onOpenToolchains} 
-              className="w-full text-center py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-[10px] font-bold uppercase tracking-wider transition cursor-pointer"
-            >
-              {t("toolchains.managerTitle")}
-            </button>
-          </div>
         </>
       ) : <div className="px-2 py-4 text-xs text-text-muted">{t("toolbar.statusMenu.checking")}</div>}
+      <div className="mt-2 border-t border-surface-border pt-2">
+        <button
+          type="button"
+          onClick={onOpenToolchains}
+          className="w-full cursor-pointer rounded bg-indigo-600 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider text-white transition hover:bg-indigo-500"
+        >
+          {t("toolchains.managerTitle")}
+        </button>
+      </div>
     </div>
   );
 }

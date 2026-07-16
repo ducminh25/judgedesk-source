@@ -27,31 +27,78 @@ export default function ToolchainManager({ onClose }: Props) {
   if (!state) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-        <div className="bg-surface border border-surface-border rounded-lg w-full max-w-3xl shadow-2xl p-8 text-center text-text-muted">
-          {error ? (
-            <div className="space-y-4">
-              <AlertTriangle className="w-12 h-12 text-rose-500 mx-auto" />
-              <p className="text-sm font-bold text-text-primary">
-                {t("toolchains.loadError")}
-              </p>
-              <pre className="text-xs bg-input-bg p-3 rounded font-mono text-rose-600 dark:text-rose-400 overflow-x-auto">
-                {error}
-              </pre>
-              <button
-                onClick={onClose}
-                className="px-5 py-2 bg-indigo-600 text-white rounded text-xs font-bold uppercase tracking-wider hover:bg-indigo-500 transition"
-              >
-                {t("problemConfig.cancel")}
-              </button>
+        <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-surface-border bg-surface shadow-2xl">
+          <div className="flex items-center justify-between border-b border-surface-border bg-surface-elevated p-4">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-indigo-500/10 p-2">
+                <Cpu className="h-5 w-5 text-indigo-500 dark:text-indigo-400" />
+              </div>
+              <h2 className="text-sm font-bold uppercase tracking-wider text-text-primary">
+                {t("toolchains.managerTitle")}
+              </h2>
             </div>
-          ) : (
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-8 h-8 border-3 border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin" />
-              <span className="text-xs font-semibold">
-                {t("toolchains.loadingState")}
-              </span>
+            <button
+              type="button"
+              aria-label={t("toolchains.close")}
+              onClick={onClose}
+              className="text-text-muted transition-colors hover:text-text-primary"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="space-y-5 overflow-y-auto p-6">
+            <div className="flex items-center gap-3 rounded border border-indigo-200 bg-indigo-50 px-3 py-2.5 text-xs text-indigo-800 dark:border-indigo-900/40 dark:bg-indigo-950/20 dark:text-indigo-300">
+              <div className="h-5 w-5 flex-shrink-0 animate-spin rounded-full border-2 border-indigo-600/30 border-t-indigo-600" />
+              <div>
+                <div className="font-semibold">{t("toolchains.loadingState")}</div>
+                <div className="mt-0.5 text-2xs opacity-80">{t("toolchains.loadingHint")}</div>
+              </div>
             </div>
-          )}
+
+            {error && (
+              <div className="flex items-start gap-2 rounded border border-rose-300 bg-rose-50 px-3 py-2.5 text-xs text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300">
+                <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                <div>
+                  <div className="font-bold">{t("toolchains.loadError")}</div>
+                  <div className="mt-1 break-all font-mono text-2xs">{error}</div>
+                </div>
+              </div>
+            )}
+
+            <QuickPathEditor
+              label={t("toolchains.cppSettings")}
+              placeholder="g++ / clang++"
+              value={cppPathInput}
+              onChange={setCppPathInput}
+              onSave={() => {
+                if (!cppPathInput.trim()) return;
+                void saveCustomPath("cpp", cppPathInput.trim());
+              }}
+              saveLabel={t("problemConfig.save")}
+            />
+            <QuickPathEditor
+              label={t("toolchains.pythonSettings")}
+              placeholder="python / python3"
+              value={pyPathInput}
+              onChange={setPyPathInput}
+              onSave={() => {
+                if (!pyPathInput.trim()) return;
+                void saveCustomPath("python", pyPathInput.trim());
+              }}
+              saveLabel={t("problemConfig.save")}
+            />
+          </div>
+
+          <div className="flex justify-end border-t border-surface-border bg-surface-elevated p-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="cursor-pointer rounded bg-indigo-600 px-5 py-2 text-xs font-bold uppercase tracking-wider text-white transition hover:bg-indigo-500"
+            >
+              {t("toolchains.close")}
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -402,6 +449,47 @@ export default function ToolchainManager({ onClose }: Props) {
             {t("toolchains.close")}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function QuickPathEditor({
+  label,
+  placeholder,
+  value,
+  onChange,
+  onSave,
+  saveLabel,
+}: {
+  label: string;
+  placeholder: string;
+  value: string;
+  onChange: (value: string) => void;
+  onSave: () => void;
+  saveLabel: string;
+}) {
+  return (
+    <div className="space-y-2 rounded-lg border border-surface-border bg-surface-elevated p-4">
+      <label className="text-xs font-bold uppercase tracking-wider text-text-muted">
+        {label}
+      </label>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={value}
+          placeholder={placeholder}
+          onChange={(event) => onChange(event.target.value)}
+          className="min-w-0 flex-1 rounded border border-surface-border-strong bg-input-bg px-2.5 py-1.5 font-mono text-xs text-text-primary outline-none focus:border-indigo-500"
+        />
+        <button
+          type="button"
+          disabled={!value.trim()}
+          onClick={onSave}
+          className="cursor-pointer rounded bg-indigo-600 px-3.5 py-1.5 text-2xs font-bold uppercase tracking-wider text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {saveLabel}
+        </button>
       </div>
     </div>
   );

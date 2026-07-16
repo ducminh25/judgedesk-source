@@ -20,15 +20,13 @@ export function generateUpdaterManifest({
       .trim(),
     url: `${releaseUrl}/${encodeURIComponent(fileName)}`,
   });
-  const macPlatform = platform(macBundle);
   const manifest = {
     version,
     notes: `ThemisV2 ${tag}. See the GitHub release notes for details.`,
     pub_date: publicationDate.toISOString(),
     platforms: {
       "windows-x86_64": platform(windowsBundle),
-      "darwin-x86_64": macPlatform,
-      "darwin-aarch64": macPlatform,
+      "darwin-aarch64": platform(macBundle),
     },
   };
   const outputPath = path.join(assetsDirectory, "latest.json");

@@ -54,87 +54,43 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  build-macos-sidecar-x64:
+  build-macos-arm64-dmg:
     needs: verify
-    runs-on: macos-15-intel
+    runs-on: macos-15
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Build macOS Intel sidecar
-        run: npm run build:server
-        env:
-          MACOSX_DEPLOYMENT_TARGET: "11.0"
-          TAURI_TARGET: x86_64-apple-darwin
-      - name: Smoke test macOS Intel sidecar
+      - name: Require the updater signing key
         run: |
-          chmod +x src-tauri/binaries/server-x86_64-apple-darwin
-          node scripts/smoke-test-sidecar.js src-tauri/binaries/server-x86_64-apple-darwin
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY is required to create signed updater artifacts." >&2
+            exit 1
+          fi
+      - name: Build and smoke-test Apple Silicon sidecar
+        run: bash scripts/build-macos-arm64-sidecar.sh
+      - name: Build Apple Silicon app, DMG, and updater bundle
+        run: |
+          unset APPLE_SIGNING_IDENTITY APPLE_API_ISSUER APPLE_API_KEY
+          npx tauri build --config src-tauri/tauri.macos.conf.json --target aarch64-apple-darwin
+      - name: Verify and stage Apple Silicon release artifacts
+        run: bash scripts/verify-macos-arm64-bundle.sh
       - uses: actions/upload-artifact@v4
         with:
-          name: server-macos-x64
-          path: src-tauri/binaries/server-x86_64-apple-darwin
+          name: mac-package
+          path: release-assets-mac/*
           if-no-files-found: error
-          retention-days: 7
-
-  build-macos-sidecar-arm64:
-    needs: verify
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Build macOS Apple Silicon sidecar
-        run: npm run build:server
-        env:
-          MACOSX_DEPLOYMENT_TARGET: "11.0"
-          TAURI_TARGET: aarch64-apple-darwin
-      - name: Smoke test macOS Apple Silicon sidecar
-        run: |
-          chmod +x src-tauri/binaries/server-aarch64-apple-darwin
-          node scripts/smoke-test-sidecar.js src-tauri/binaries/server-aarch64-apple-darwin
-      - uses: actions/upload-artifact@v4
-        with:
-          name: server-macos-arm64
-          path: src-tauri/binaries/server-aarch64-apple-darwin
-          if-no-files-found: error
-          retention-days: 7
-
-  assemble-macos-universal-sidecar:
-    needs: [build-macos-sidecar-x64, build-macos-sidecar-arm64]
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: server-macos-x64
-          path: temp-binaries
-      - uses: actions/download-artifact@v4
-        with:
-          name: server-macos-arm64
-          path: temp-binaries
-      - name: Merge and verify universal sidecar
-        run: |
-          mkdir -p src-tauri/binaries
-          universal_sidecar="src-tauri/binaries/server-universal-apple-darwin"
-          lipo -create temp-binaries/server-x86_64-apple-darwin temp-binaries/server-aarch64-apple-darwin -output "$universal_sidecar"
-          lipo "$universal_sidecar" -verify_arch x86_64 arm64
-          lipo "$universal_sidecar" -archs
-          chmod +x "$universal_sidecar"
-          codesign --sign - --force "$universal_sidecar"
-          node scripts/smoke-test-sidecar.js "$universal_sidecar"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: server-macos-universal
-          path: src-tauri/binaries/server-universal-apple-darwin
-          if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
 
   build-windows-msi:
     needs: build-windows-sidecar
@@ -221,164 +177,8 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  build-macos-universal-dmg:
-    needs: assemble-macos-universal-sidecar
-    runs-on: macos-15
-    env:
-      MACOSX_DEPLOYMENT_TARGET: "11.0"
-      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-      APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
-      APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: server-macos-x64
-          path: src-tauri/binaries
-      - uses: actions/download-artifact@v4
-        with:
-          name: server-macos-arm64
-          path: src-tauri/binaries
-      - uses: actions/download-artifact@v4
-        with:
-          name: server-macos-universal
-          path: src-tauri/binaries
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-apple-darwin, aarch64-apple-darwin
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-
-      - name: Require the updater signing key
-        run: |
-          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-            echo "TAURI_SIGNING_PRIVATE_KEY is required to create signed updater artifacts." >&2
-            exit 1
-          fi
-
-      - name: Validate macOS signing secret set
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-        run: |
-          cert_count=0
-          for value in "$APPLE_CERTIFICATE" "$APPLE_CERTIFICATE_PASSWORD" "$KEYCHAIN_PASSWORD" "$APPLE_SIGNING_IDENTITY"; do
-            if [ -n "$value" ]; then cert_count=$((cert_count + 1)); fi
-          done
-          if [ "$cert_count" -ne 0 ] && [ "$cert_count" -ne 4 ]; then
-            echo "All four Apple certificate/keychain secrets must be configured together." >&2
-            exit 1
-          fi
-          api_count=0
-          for value in "$APPLE_API_ISSUER" "$APPLE_API_KEY" "$APPLE_API_KEY_BASE64"; do
-            if [ -n "$value" ]; then api_count=$((api_count + 1)); fi
-          done
-          if [ "$api_count" -ne 0 ] && [ "$api_count" -ne 3 ]; then
-            echo "All three App Store Connect API secrets must be configured together." >&2
-            exit 1
-          fi
-          if [ "$api_count" -eq 3 ] && [ "$cert_count" -ne 4 ]; then
-            echo "Notarization requires the Developer ID certificate secrets." >&2
-            exit 1
-          fi
-
-      - name: Import Developer ID certificate
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-          CERTIFICATE_PATH: ${{ runner.temp }}/themis-signing.p12
-          KEYCHAIN_PATH: ${{ runner.temp }}/themis-signing.keychain-db
-        run: |
-          if [ -z "$APPLE_CERTIFICATE" ]; then
-            echo "No Developer ID certificate configured; Tauri will use ad-hoc signing."
-            exit 0
-          fi
-          python3 -c 'import base64, os, pathlib; pathlib.Path(os.environ["CERTIFICATE_PATH"]).write_bytes(base64.b64decode(os.environ["APPLE_CERTIFICATE"]))'
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$CERTIFICATE_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychain -d user -s "$KEYCHAIN_PATH"
-          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
-
-      - name: Configure App Store Connect API key
-        if: env.APPLE_API_KEY_BASE64 != ''
-        env:
-          API_KEY_PATH: ${{ runner.temp }}/AuthKey_${{ secrets.APPLE_API_KEY }}.p8
-        run: |
-          python3 -c 'import base64, os, pathlib; pathlib.Path(os.environ["API_KEY_PATH"]).write_bytes(base64.b64decode(os.environ["APPLE_API_KEY_BASE64"]))'
-          echo "APPLE_API_KEY_PATH=$API_KEY_PATH" >> "$GITHUB_ENV"
-
-      - name: Validate all macOS sidecars
-        run: |
-          chmod +x src-tauri/binaries/server-x86_64-apple-darwin src-tauri/binaries/server-aarch64-apple-darwin src-tauri/binaries/server-universal-apple-darwin
-          lipo src-tauri/binaries/server-x86_64-apple-darwin -verify_arch x86_64
-          lipo src-tauri/binaries/server-aarch64-apple-darwin -verify_arch arm64
-          lipo src-tauri/binaries/server-universal-apple-darwin -verify_arch x86_64 arm64
-          if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
-            echo "Building an ad-hoc signed DMG. The GitHub Release will remain a draft."
-          fi
-
-      - name: Build universal DMG
-        run: |
-          if [ -z "$APPLE_SIGNING_IDENTITY" ]; then
-            unset APPLE_SIGNING_IDENTITY
-          fi
-          if [ -z "${APPLE_API_KEY_PATH:-}" ]; then
-            unset APPLE_API_ISSUER APPLE_API_KEY
-          fi
-          npx tauri build --config src-tauri/tauri.macos.conf.json --target universal-apple-darwin
-
-      - name: Verify app signature and notarization
-        run: |
-          dmg_file=$(find src-tauri/target/universal-apple-darwin/release/bundle/dmg -maxdepth 1 -name 'ThemisV2_*.dmg' -print -quit)
-          test -n "$dmg_file"
-          mount_dir=$(mktemp -d)
-          cleanup_dmg_mount() {
-            hdiutil detach "$mount_dir" >/dev/null 2>&1 || true
-            rmdir "$mount_dir" >/dev/null 2>&1 || true
-          }
-          trap cleanup_dmg_mount EXIT
-          hdiutil attach "$dmg_file" -readonly -nobrowse -mountpoint "$mount_dir" >/dev/null
-          app_bundle=$(find "$mount_dir" -maxdepth 1 -name '*.app' -print -quit)
-          test -n "$app_bundle"
-          lipo "$app_bundle/Contents/MacOS/server" -verify_arch x86_64 arm64
-          codesign --verify --deep --strict --verbose=2 "$app_bundle"
-          node scripts/smoke-test-sidecar.js "$app_bundle/Contents/MacOS/server" "$app_bundle/Contents/Resources"
-          if [ -n "$APPLE_API_KEY_BASE64" ]; then
-            xcrun stapler validate "$dmg_file"
-            spctl --assess --type execute --verbose=2 "$app_bundle"
-          fi
-
-      - name: Delete temporary keychain
-        if: always() && env.KEYCHAIN_PATH != ''
-        run: security delete-keychain "$KEYCHAIN_PATH" || true
-
-      - name: Stage macOS release artifacts
-        run: |
-          mkdir -p release-assets-mac
-          cp src-tauri/target/universal-apple-darwin/release/bundle/dmg/ThemisV2_*.dmg release-assets-mac/
-          cp src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz release-assets-mac/
-          cp src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz.sig release-assets-mac/
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: mac-package
-          path: release-assets-mac/*
-          if-no-files-found: error
-          retention-days: 14
-
   release:
-    needs: [build-windows-msi, build-macos-universal-dmg]
+    needs: [build-windows-msi, build-macos-arm64-dmg]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:

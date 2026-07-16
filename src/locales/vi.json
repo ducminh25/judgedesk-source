@@ -310,6 +310,7 @@
     "install": "Cài đặt",
     "loadError": "Không thể tải cấu hình toolchains",
     "loadingState": "Đang tải cấu hình trình biên dịch...",
+    "loadingHint": "Bạn vẫn có thể nhập và lưu đường dẫn file thực thi trong khi quá trình tự động dò tiếp tục chạy.",
     "cppCompiler": "Trình biên dịch C/C++",
     "pythonRuntime": "Môi trường Python",
     "windows": "Windows",

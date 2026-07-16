@@ -144,35 +144,25 @@ test("sidecar smoke test verifies a real child process over HTTP", async () => {
   }
 });
 
-test("release workflow uses Xcode-compatible lipo argument ordering", () => {
+test("GitHub release workflow builds Apple Silicon only", () => {
   const workflow = fs.readFileSync(
     new URL("../.github/workflows/release.yml", import.meta.url),
     "utf8",
   );
+  const macJob = workflow.slice(
+    workflow.indexOf("  build-macos-arm64-dmg:"),
+    workflow.indexOf("  build-windows-msi:"),
+  );
+
+  assert.match(macJob, /--target aarch64-apple-darwin/);
+  assert.match(macJob, /build-macos-arm64-sidecar\.sh/);
+  assert.match(macJob, /verify-macos-arm64-bundle\.sh/);
+  assert.doesNotMatch(workflow, /build-macos-universal-dmg/);
+  assert.doesNotMatch(workflow, /x86_64-apple-darwin/);
   assert.match(
     workflow,
-    /lipo "\$universal_sidecar" -verify_arch x86_64 arm64/,
+    /needs: \[build-windows-msi, build-macos-arm64-dmg\]/,
   );
-  assert.doesNotMatch(workflow, /lipo -verify_arch[^\n]+universal_sidecar/);
-});
-
-test("universal DMG build provides native and universal Tauri sidecars", () => {
-  const workflow = fs.readFileSync(
-    new URL("../.github/workflows/release.yml", import.meta.url),
-    "utf8",
-  );
-  const dmgJob = workflow.slice(
-    workflow.indexOf("  build-macos-universal-dmg:"),
-    workflow.indexOf("  release:"),
-  );
-  assert.match(dmgJob, /name: server-macos-x64/);
-  assert.match(dmgJob, /name: server-macos-arm64/);
-  assert.match(dmgJob, /name: server-macos-universal/);
-  assert.match(
-    dmgJob,
-    /server-universal-apple-darwin -verify_arch x86_64 arm64/,
-  );
-  assert.match(dmgJob, /Contents\/MacOS\/server" -verify_arch x86_64 arm64/);
 
   const macConfig = JSON.parse(
     fs.readFileSync(
@@ -183,58 +173,23 @@ test("universal DMG build provides native and universal Tauri sidecars", () => {
   assert.deepEqual(macConfig.bundle.targets, ["app", "dmg"]);
 });
 
-test("release workflow smoke-tests thin, universal, and packaged macOS sidecars", () => {
-  const workflow = fs.readFileSync(
-    new URL("../.github/workflows/release.yml", import.meta.url),
+test("Apple Silicon release scripts verify architecture, DMG, and sidecar", () => {
+  const sidecarScript = fs.readFileSync(
+    new URL("./build-macos-arm64-sidecar.sh", import.meta.url),
     "utf8",
   );
-  assert.match(
-    workflow,
-    /smoke-test-sidecar\.js src-tauri\/binaries\/server-x86_64-apple-darwin/,
+  const bundleScript = fs.readFileSync(
+    new URL("./verify-macos-arm64-bundle.sh", import.meta.url),
+    "utf8",
   );
-  assert.match(
-    workflow,
-    /smoke-test-sidecar\.js src-tauri\/binaries\/server-aarch64-apple-darwin/,
-  );
-  assert.match(
-    workflow,
-    /smoke-test-sidecar\.js "\$universal_sidecar"/,
-  );
-  assert.match(
-    workflow,
-    /smoke-test-sidecar\.js "\$app_bundle\/Contents\/MacOS\/server"/,
-  );
-});
 
-test("unsigned macOS builds do not expose empty certificate variables to Tauri", () => {
-  const workflow = fs.readFileSync(
-    new URL("../.github/workflows/release.yml", import.meta.url),
-    "utf8",
-  );
-  const dmgJob = workflow.slice(
-    workflow.indexOf("  build-macos-universal-dmg:"),
-    workflow.indexOf("  release:"),
-  );
-  const jobEnvironment = dmgJob.slice(0, dmgJob.indexOf("    steps:"));
-  assert.doesNotMatch(jobEnvironment, /APPLE_CERTIFICATE/);
-  assert.match(dmgJob, /if \[ -z "\$APPLE_CERTIFICATE" \]/);
-  assert.match(dmgJob, /unset APPLE_SIGNING_IDENTITY/);
-  assert.match(dmgJob, /unset APPLE_API_ISSUER APPLE_API_KEY/);
-});
-
-test("macOS verification mounts the DMG after Tauri removes its temporary app bundle", () => {
-  const workflow = fs.readFileSync(
-    new URL("../.github/workflows/release.yml", import.meta.url),
-    "utf8",
-  );
-  const dmgJob = workflow.slice(
-    workflow.indexOf("  build-macos-universal-dmg:"),
-    workflow.indexOf("  release:"),
-  );
-  assert.match(dmgJob, /hdiutil attach "\$dmg_file" -readonly -nobrowse/);
-  assert.match(dmgJob, /find "\$mount_dir"[^\n]+-name '\*\.app'/);
-  assert.match(dmgJob, /trap cleanup_dmg_mount EXIT/);
-  assert.doesNotMatch(dmgJob, /find src-tauri\/target[^\n]+bundle\/macos/);
+  assert.match(sidecarScript, /lipo "\$sidecar" -verify_arch arm64/);
+  assert.match(sidecarScript, /smoke-test-sidecar\.js "\$sidecar"/);
+  assert.match(bundleScript, /hdiutil attach "\$dmg_file" -readonly -nobrowse/);
+  assert.match(bundleScript, /trap cleanup_dmg_mount EXIT/);
+  assert.match(bundleScript, /Contents\/MacOS\/themis-v2" -verify_arch arm64/);
+  assert.match(bundleScript, /Contents\/MacOS\/server" -verify_arch arm64/);
+  assert.match(bundleScript, /smoke-test-sidecar\.js/);
 });
 
 test("release publishing targets the public distribution repository", () => {
@@ -268,10 +223,41 @@ test("release workflow signs, flattens, and publishes updater artifacts", () => 
     new URL("../.github/workflows/release.yml", import.meta.url),
     "utf8",
   );
+  const macBundleScript = fs.readFileSync(
+    new URL("./verify-macos-arm64-bundle.sh", import.meta.url),
+    "utf8",
+  );
   assert.match(workflow, /TAURI_SIGNING_PRIVATE_KEY: \$\{\{ secrets\.TAURI_SIGNING_PRIVATE_KEY \}\}/);
   assert.match(workflow, /release-assets-windows\/\*/);
   assert.match(workflow, /release-assets-mac\/\*/);
-  assert.match(workflow, /\.app\.tar\.gz\.sig/);
+  assert.match(macBundleScript, /\.app\.tar\.gz\.sig/);
   assert.match(workflow, /generate-updater-manifest\.js release-assets/);
   assert.match(workflow, /gh release upload[^\n]+release-assets\/\*/);
+});
+
+test("Codemagic builds verified Apple Silicon release artifacts on M2", () => {
+  const codemagic = fs.readFileSync(
+    new URL("../codemagic.yaml", import.meta.url),
+    "utf8",
+  );
+  const sidecarScript = fs.readFileSync(
+    new URL("./build-macos-arm64-sidecar.sh", import.meta.url),
+    "utf8",
+  );
+  const bundleScript = fs.readFileSync(
+    new URL("./verify-macos-arm64-bundle.sh", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(codemagic, /instance_type: mac_mini_m2/);
+  assert.match(codemagic, /node: 22\.23\.1/);
+  assert.match(codemagic, /groups:\s+\- themis_signing/);
+  assert.match(codemagic, /--target aarch64-apple-darwin/);
+  assert.match(codemagic, /TAURI_SIGNING_PRIVATE_KEY_PASSWORD/);
+  assert.match(codemagic, /ThemisV2\.app\.tar\.gz\.sig/);
+  assert.match(sidecarScript, /TAURI_TARGET=aarch64-apple-darwin/);
+  assert.doesNotMatch(sidecarScript, /x86_64/);
+  assert.match(bundleScript, /Contents\/MacOS\/themis-v2" -verify_arch arm64/);
+  assert.match(bundleScript, /Contents\/MacOS\/server" -verify_arch arm64/);
+  assert.match(bundleScript, /smoke-test-sidecar\.js/);
 });

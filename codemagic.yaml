@@ -1,0 +1,54 @@
+workflows:
+  macos-arm64-release:
+    name: ThemisV2 Apple Silicon release
+    instance_type: mac_mini_m2
+    max_build_duration: 120
+    environment:
+      groups:
+        - themis_signing
+      vars:
+        MACOSX_DEPLOYMENT_TARGET: "11.0"
+      node: 22.23.1
+      xcode: latest
+    cache:
+      cache_paths:
+        - $HOME/.npm
+        - $HOME/.cargo/registry
+        - $HOME/.cargo/git
+        - src-tauri/target
+    scripts:
+      - name: Install and verify source
+        script: |
+          npm ci --no-audit --no-fund
+          npm run release:check-version
+          npm run lint
+          npm run test:server
+          rustup component add rustfmt
+          cargo fmt --check --manifest-path src-tauri/Cargo.toml
+      - name: Install the Apple Silicon Rust target
+        script: |
+          rustup target add aarch64-apple-darwin
+      - name: Build and smoke-test the Apple Silicon sidecar
+        script: |
+          bash scripts/build-macos-arm64-sidecar.sh
+      - name: Require the updater signing key
+        script: |
+          if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
+            echo "Add TAURI_SIGNING_PRIVATE_KEY to the themis_signing variable group." >&2
+            exit 1
+          fi
+      - name: Build Apple Silicon app, DMG, and updater bundle
+        script: |
+          unset APPLE_SIGNING_IDENTITY APPLE_API_ISSUER APPLE_API_KEY
+          export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
+          npx tauri build \
+            --config src-tauri/tauri.macos.conf.json \
+            --target aarch64-apple-darwin
+      - name: Verify and stage macOS release artifacts
+        script: |
+          bash scripts/verify-macos-arm64-bundle.sh
+    artifacts:
+      - release-assets-mac/ThemisV2_*.dmg
+      - release-assets-mac/ThemisV2.app.tar.gz
+      - release-assets-mac/ThemisV2.app.tar.gz.sig
+      - release-assets-mac/SHA256SUMS-macos
