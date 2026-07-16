@@ -32,14 +32,15 @@
     "toggleTheme": "Toggle dark/light mode",
     "toggleLanguage": "Change language",
     "settings": "Tools",
+    "openGitHub": "Open GitHub repository",
     "statusMenu": {
       "title": "System Status",
       "incomplete": "Incomplete",
       "unavailable": "Unavailable",
       "notInstalled": "Not installed",
       "ready": "Ready",
-      "inPath": "In PATH",
-      "notInPath": "Not in PATH",
+      "inPath": "Detected",
+      "notInPath": "Not detected",
       "activeRunner": "Active runner",
       "checking": "Checking environment..."
     }
@@ -132,6 +133,93 @@
       "add": "+ Add..."
     }
   },
+  "checkers": {
+    "groups": {
+      "custom": "Custom problem checkers",
+      "themis": "Themis C1-C5",
+      "polygon": "Polygon / Testlib"
+    },
+    "viewSource": "View source",
+    "sourceOpenFailed": "Could not open checker source",
+    "customDescription": "Custom checker {{name}} from the problem directory. Precompiled .exe files are listed before C++ sources.",
+    "entries": {
+      "C1": {
+        "title": "C1LinesWordsIgnoreCase",
+        "summary": "Words per line, case-insensitive",
+        "description": "The files match when their ordered lists of lines and the ordered words on every line match, ignoring letter case and extra word separators. Extra blank lines at the end do not change the result, but a blank line at the beginning does."
+      },
+      "C2": {
+        "title": "C2LinesWordsCase",
+        "summary": "Words per line, case-sensitive",
+        "description": "The comparison is the same as C1LinesWordsIgnoreCase, but word matching is case-sensitive."
+      },
+      "C3": {
+        "title": "C3WordsIgnoreCase",
+        "summary": "All words, case-insensitive",
+        "description": "The files match when their complete ordered lists of words match without regard to case. Words may be separated by spaces or placed on different lines without changing the result."
+      },
+      "C4": {
+        "title": "C4WordsCase",
+        "summary": "All words, case-sensitive",
+        "description": "The comparison is the same as C3WordsIgnoreCase, but word matching is case-sensitive."
+      },
+      "C5": {
+        "title": "C5Binary",
+        "summary": "Exact byte-by-byte comparison",
+        "description": "Suitable for every output file type. The checker compares the contestant file and answer file byte by byte and reports the first differing byte or a different file length."
+      },
+      "fcmp": {
+        "title": "fcmp.cpp",
+        "summary": "Lines, does not ignore whitespaces",
+        "description": "Compares the files as a sequence of lines. Every character inside each expected line, including spaces and tabs, must match exactly."
+      },
+      "hcmp": {
+        "title": "hcmp.cpp",
+        "summary": "Single huge signed integer",
+        "description": "Compares one arbitrarily large signed decimal integer. The canonical form is required: zero is 0, and other values cannot contain a plus sign or leading zeroes."
+      },
+      "lcmp": {
+        "title": "lcmp.cpp",
+        "summary": "Lines, ignores whitespaces",
+        "description": "Compares a sequence of lines, treating each line as a sequence of tokens. Spacing inside a line is ignored, but moving a token to another line changes the result."
+      },
+      "ncmp": {
+        "title": "ncmp.cpp",
+        "summary": "One or more int64, ignores whitespaces",
+        "description": "Compares ordered sequences of signed 64-bit integers. Whitespace between numbers is ignored; values and sequence length must match."
+      },
+      "nyesno": {
+        "title": "nyesno.cpp",
+        "summary": "Zero or more yes/no, case-insensitive",
+        "description": "Compares a sequence containing zero or more YES/NO tokens without regard to case. Invalid tokens are reported as presentation errors."
+      },
+      "rcmp4": {
+        "title": "rcmp4.cpp",
+        "summary": "Doubles, max error 1E-4",
+        "description": "Compares a sequence of floating-point values with maximum absolute or relative error 1E-4, using Testlib double comparison semantics."
+      },
+      "rcmp6": {
+        "title": "rcmp6.cpp",
+        "summary": "Doubles, max error 1E-6",
+        "description": "Compares a sequence of floating-point values with maximum absolute or relative error 1E-6, using Testlib double comparison semantics."
+      },
+      "rcmp9": {
+        "title": "rcmp9.cpp",
+        "summary": "Doubles, max error 1E-9",
+        "description": "Compares a sequence of floating-point values with maximum absolute or relative error 1E-9, using Testlib double comparison semantics."
+      },
+      "wcmp": {
+        "title": "wcmp.cpp",
+        "summary": "Sequence of tokens",
+        "description": "Compares the complete ordered token sequence. All whitespace characters are separators and are otherwise ignored."
+      },
+      "yesno": {
+        "title": "yesno.cpp",
+        "summary": "Single yes or no, case-insensitive",
+        "description": "Compares one YES or NO token without regard to case. Invalid contestant tokens are presentation errors."
+      }
+    }
+  },
   "judgingDetails": {
     "title": "Judging Details",
     "problem": "Problem",
@@ -185,6 +273,28 @@
   "errors": {
     "backendConnection": "Failed to connect to the backend service. Please restart the application."
   },
+  "compileDiagnostics": {
+    "COMPILER_TIMEOUT": "Compiler timed out after 15 seconds. The compiler process was terminated.",
+    "GENERATED_FILE_TOO_LARGE": "Compilation generated a file larger than the 32 MiB limit. The compiler process was terminated.",
+    "TOOLCHAIN_CPP_MISSING": "No compiler found. C++ 9.2.0 or newer is required.",
+    "TOOLCHAIN_PYTHON_MISSING": "No Python runtime found."
+  },
+  "updates": {
+    "check": "Check for updates",
+    "checking": "Checking...",
+    "available": "Update {{version}}",
+    "download": "Update",
+    "downloading": "Downloading {{percent}}%",
+    "installQuestion": "Install?",
+    "upToDate": "Up to date",
+    "checkFailed": "Update check failed",
+    "downloadFailed": "Update download failed",
+    "installTitle": "Install update now?",
+    "installMessage": "Installing will stop any active judging session and close ThemisV2. Make sure the results you need have finished and been saved.",
+    "installing": "Installing...",
+    "installNow": "Install now",
+    "installFailed": "Update installation failed"
+  },
   "toolchains": {
     "idle": "Pending",
     "downloading": "Downloading",
@@ -224,6 +334,7 @@
     "packagesDescription": "Managed compiler packages are locked, sandboxed environments that avoid polluting your system-wide environment variables.",
     "noPackagesAvailable": "No managed compiler packages are available for your system architecture.",
     "close": "Close Manager",
+    "rescan": "Scan again",
     "diagnostics": {
       "systemMissing": "No compatible compiler/runtime was found on the system.",
       "managedMissing": "The managed compiler/runtime is not installed.",

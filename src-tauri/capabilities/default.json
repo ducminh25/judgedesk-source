@@ -6,6 +6,16 @@
   "permissions": [
     "core:default",
     "dialog:default",
+    "updater:default",
+    "process:allow-restart",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "https://github.com/ducminh25/themis-v2"
+        }
+      ]
+    },
     "shell:default",
     {
       "identifier": "shell:allow-execute",

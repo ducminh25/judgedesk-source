@@ -1,12 +1,28 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { spawnSync } from "child_process";
+import { spawn, type ChildProcess } from "child_process";
+import treeKill from "tree-kill";
 import { RESOURCE_ROOT } from "../runtime.js";
 import { sandbox } from "../sandbox.js";
+import { activeJobs } from "../jobs.js";
 import type { ProblemResult } from "../types.js";
-import { isStandardChecker } from "./standard-checkers.js";
+import { isBuiltInChecker } from "./standard-checkers.js";
 import { resolveToolchain } from "../toolchains/resolver.js";
+
+export const COMPILE_TIMEOUT_MS = 15_000;
+export const MAX_GENERATED_FILE_BYTES = 32 * 1024 * 1024;
+const MAX_COMPILER_DIAGNOSTIC_BYTES = 256 * 1024;
+
+export interface CompileLimits {
+  timeoutMs: number;
+  maxGeneratedFileBytes: number;
+}
+
+const DEFAULT_COMPILE_LIMITS: CompileLimits = {
+  timeoutMs: COMPILE_TIMEOUT_MS,
+  maxGeneratedFileBytes: MAX_GENERATED_FILE_BYTES,
+};
 
 export interface CompiledChecker {
   path: string | null;
@@ -18,6 +34,7 @@ interface ResolveCheckerOptions {
   problemName: string;
   problemDirectory: string;
   tempDirectory: string;
+  jobId?: string;
 }
 
 interface CompileSubmissionOptions {
@@ -26,6 +43,7 @@ interface CompileSubmissionOptions {
   problemName: string;
   submissionPath: string;
   tempDirectory: string;
+  jobId?: string;
 }
 
 export interface CompilationResult {
@@ -35,13 +53,14 @@ export interface CompilationResult {
   compileTime: number;
 }
 
-export function resolveChecker({
+export async function resolveChecker({
   checkerType,
   problemName,
   problemDirectory,
   tempDirectory,
-}: ResolveCheckerOptions): CompiledChecker {
-  if (isStandardChecker(checkerType)) {
+  jobId,
+}: ResolveCheckerOptions): Promise<CompiledChecker> {
+  if (isBuiltInChecker(checkerType)) {
     return { path: null };
   }
 
@@ -51,6 +70,7 @@ export function resolveChecker({
       problemName,
       problemDirectory,
       tempDirectory,
+      jobId,
     );
   }
 
@@ -73,13 +93,14 @@ export function resolveChecker({
   };
 }
 
-export function compileSubmission({
+export async function compileSubmission({
   language,
   contestantName,
   problemName,
   submissionPath,
   tempDirectory,
-}: CompileSubmissionOptions): CompilationResult {
+  jobId,
+}: CompileSubmissionOptions): Promise<CompilationResult> {
   if (language !== "cpp") {
     const resolvedPy = resolveToolchain("python");
     if (!resolvedPy.ready) {
@@ -105,14 +126,15 @@ export function compileSubmission({
   const compileStart = process.hrtime.bigint();
   try {
     if (sandbox.mode !== "none") {
-      sandbox.runCommand([
-        "cp",
-        sandbox.toPath(submissionPath),
-        "/tmp/compile.cpp",
-      ]);
-      const compileResult = sandbox.runCommand(
-        [
+      try {
+        sandbox.runCommand([
+          "cp",
+          sandbox.toPath(submissionPath),
+          "/tmp/compile.cpp",
+        ]);
+        await runCompilerWithLimits(
           "g++",
+          [
           "-std=c++14",
           "-pipe",
           "-O2",
@@ -124,28 +146,27 @@ export function compileSubmission({
           "/tmp/compile.cpp",
           "-o",
           "/tmp/compile.out",
-        ],
-        { stdio: "pipe" },
-      );
-      if (compileResult.status !== 0) {
-        throw new Error(
-          compileResult.stderr
-            ? compileResult.stderr.toString()
-            : "Compilation failed",
+          ],
+          tempDirectory,
+          "/tmp/compile.out",
+          jobId,
         );
+        sandbox.runCommand([
+          "cp",
+          "/tmp/compile.out",
+          sandbox.toPath(executablePath),
+        ]);
+        if (fileExceedsLimit(executablePath))
+          throw new Error("GENERATED_FILE_TOO_LARGE");
+      } finally {
+        sandbox.runCommand(["rm", "-f", "/tmp/compile.cpp", "/tmp/compile.out"]);
       }
-      sandbox.runCommand([
-        "cp",
-        "/tmp/compile.out",
-        sandbox.toPath(executablePath),
-      ]);
-      sandbox.runCommand(["rm", "-f", "/tmp/compile.cpp", "/tmp/compile.out"]);
     } else {
       const resolvedCpp = resolveToolchain("cpp");
       if (!resolvedCpp.ready) {
         throw new Error("TOOLCHAIN_CPP_MISSING");
       }
-      runCompiler(
+      await runCompilerWithLimits(
         resolvedCpp.executablePath,
         buildSubmissionCompilerArgs(
           os.platform(),
@@ -153,6 +174,8 @@ export function compileSubmission({
           executablePath,
         ),
         tempDirectory,
+        executablePath,
+        jobId,
       );
     }
 
@@ -166,18 +189,19 @@ export function compileSubmission({
     return {
       executablePath,
       compileStatus: "CE",
-      compileError: error.stderr ? error.stderr.toString() : error.message,
-      compileTime: 0,
+      compileError: normalizeCompilerError(error),
+      compileTime: Number(process.hrtime.bigint() - compileStart) / 1_000_000,
     };
   }
 }
 
-function compileCustomChecker(
+async function compileCustomChecker(
   checkerType: string,
   problemName: string,
   problemDirectory: string,
   tempDirectory: string,
-): CompiledChecker {
+  jobId?: string,
+): Promise<CompiledChecker> {
   const checkerSourcePath = path.join(problemDirectory, checkerType);
   if (!fs.existsSync(checkerSourcePath)) {
     return { path: null, error: `Custom checker ${checkerType} not found.` };
@@ -194,47 +218,52 @@ function compileCustomChecker(
     }
 
     if (sandbox.mode !== "none") {
-      sandbox.runCommand([
-        "cp",
-        sandbox.toPath(checkerSourcePath),
-        "/tmp/checker.cpp",
-      ]);
-      sandbox.runCommand([
-        "cp",
-        sandbox.toPath(bundledTestlibPath),
-        "/tmp/testlib.h",
-      ]);
-      const compileResult = sandbox.runCommand(
-        [
+      try {
+        sandbox.runCommand([
+          "cp",
+          sandbox.toPath(checkerSourcePath),
+          "/tmp/checker.cpp",
+        ]);
+        sandbox.runCommand([
+          "cp",
+          sandbox.toPath(bundledTestlibPath),
+          "/tmp/testlib.h",
+        ]);
+        await runCompilerWithLimits(
           "g++",
+          [
           "-std=c++14",
           "-O2",
           "/tmp/checker.cpp",
           "-o",
           "/tmp/checker.out",
-        ],
-        { stdio: "ignore" },
-      );
-      if (compileResult.status !== 0)
-        throw new Error("Checker compilation inside sandbox failed");
-      sandbox.runCommand([
-        "cp",
-        "/tmp/checker.out",
-        sandbox.toPath(checkerBinaryPath),
-      ]);
-      sandbox.runCommand([
-        "rm",
-        "-f",
-        "/tmp/checker.cpp",
-        "/tmp/checker.out",
-        "/tmp/testlib.h",
-      ]);
+          ],
+          tempDirectory,
+          "/tmp/checker.out",
+          jobId,
+        );
+        sandbox.runCommand([
+          "cp",
+          "/tmp/checker.out",
+          sandbox.toPath(checkerBinaryPath),
+        ]);
+        if (fileExceedsLimit(checkerBinaryPath))
+          throw new Error("GENERATED_FILE_TOO_LARGE");
+      } finally {
+        sandbox.runCommand([
+          "rm",
+          "-f",
+          "/tmp/checker.cpp",
+          "/tmp/checker.out",
+          "/tmp/testlib.h",
+        ]);
+      }
     } else {
       const resolvedCpp = resolveToolchain("cpp");
       if (!resolvedCpp.ready) {
         return { path: null, error: "TOOLCHAIN_CPP_MISSING" };
       }
-      runCompiler(resolvedCpp.executablePath, [
+      await runCompilerWithLimits(resolvedCpp.executablePath, [
         "-std=c++14",
         "-O2",
         "-I",
@@ -242,11 +271,11 @@ function compileCustomChecker(
         checkerSourcePath,
         "-o",
         checkerBinaryPath,
-      ]);
+      ], tempDirectory, checkerBinaryPath, jobId);
     }
     return { path: checkerBinaryPath };
   } catch (error: any) {
-    return { path: null, error: error.message };
+    return { path: null, error: normalizeCompilerError(error) };
   }
 }
 
@@ -263,18 +292,212 @@ export function buildSubmissionCompilerArgs(
   return args;
 }
 
-function runCompiler(gppPath: string, args: string[], cwd?: string): void {
-  const result = spawnSync(gppPath, args, {
-    cwd,
-    encoding: "utf8",
-    stdio: "pipe",
-  });
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    const error = new Error(result.stderr || "Compilation failed") as Error & {
-      stderr?: string;
+export async function runCompilerWithLimits(
+  gppPath: string,
+  args: string[],
+  cwd: string | undefined,
+  outputPath: string,
+  jobId?: string,
+  limits: CompileLimits = DEFAULT_COMPILE_LIMITS,
+): Promise<void> {
+  const scratchDirectory = fs.mkdtempSync(
+    path.join(cwd || os.tmpdir(), "compile-scratch-"),
+  );
+  let child: ChildProcess | undefined;
+  let timedOut = false;
+  let generatedFileTooLarge = false;
+  let settled = false;
+  let stderr = "";
+
+  try {
+    const command = buildLimitedCompilerCommand(gppPath, args, limits);
+    const spawnOptions = {
+      cwd,
+      stdio: ["ignore", "ignore", "pipe"] as ["ignore", "ignore", "pipe"],
+      env: {
+        ...process.env,
+        TMP: scratchDirectory,
+        TEMP: scratchDirectory,
+        TMPDIR: scratchDirectory,
+      },
     };
-    error.stderr = result.stderr;
-    throw error;
+    child = sandbox.mode === "none"
+      ? spawn(command[0], command.slice(1), spawnOptions)
+      : sandbox.spawnCommand(command, {
+          cwd,
+          stdio: spawnOptions.stdio,
+          paths: cwd ? [cwd] : undefined,
+        });
+
+    if (jobId) {
+      const job = activeJobs.get(jobId);
+      if (job) job.childProcess = child;
+    }
+
+    child.stderr?.on("data", (chunk: Buffer | string) => {
+      const remaining =
+        MAX_COMPILER_DIAGNOSTIC_BYTES - Buffer.byteLength(stderr, "utf8");
+      if (remaining <= 0) return;
+      stderr += Buffer.from(chunk).subarray(0, remaining).toString();
+      if (stderr.includes("__THEMIS_GENERATED_FILE_TOO_LARGE__")) {
+        generatedFileTooLarge = true;
+      }
+      if (/file (?:size limit exceeded|too large)/i.test(stderr)) {
+        generatedFileTooLarge = true;
+      }
+      if (stderr.includes("__THEMIS_COMPILE_TIMEOUT__")) timedOut = true;
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        timedOut = true;
+        if (child) killCompilerProcess(child);
+      }, limits.timeoutMs);
+      const sizeMonitor = setInterval(() => {
+        if (
+          fileExceedsLimit(outputPath, limits.maxGeneratedFileBytes) ||
+          directoryContainsOversizedFile(
+            scratchDirectory,
+            limits.maxGeneratedFileBytes,
+          )
+        ) {
+          generatedFileTooLarge = true;
+          if (child) killCompilerProcess(child);
+        }
+      }, 25);
+
+      const finish = (callback: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        clearInterval(sizeMonitor);
+        callback();
+      };
+
+      child?.once("error", (error) => finish(() => reject(error)));
+      child?.once("close", (code, signal) => {
+        finish(() => {
+          generatedFileTooLarge =
+            generatedFileTooLarge ||
+            fileExceedsLimit(outputPath, limits.maxGeneratedFileBytes) ||
+            directoryContainsOversizedFile(
+              scratchDirectory,
+              limits.maxGeneratedFileBytes,
+            );
+          if (generatedFileTooLarge) {
+            reject(new Error("GENERATED_FILE_TOO_LARGE"));
+          } else if (timedOut) {
+            reject(new Error("COMPILER_TIMEOUT"));
+          } else if (code !== 0) {
+            reject(
+              new Error(
+                stripCompilerSentinels(stderr).trim() ||
+                  `Compilation failed (exit code ${code ?? signal ?? "unknown"})`,
+              ),
+            );
+          } else {
+            resolve();
+          }
+        });
+      });
+    });
+  } finally {
+    if (jobId) {
+      const job = activeJobs.get(jobId);
+      if (job?.childProcess === child) delete job.childProcess;
+    }
+    fs.rmSync(scratchDirectory, { recursive: true, force: true });
+    if (timedOut || generatedFileTooLarge) {
+      fs.rmSync(outputPath, { force: true });
+    }
   }
+}
+
+function buildLimitedCompilerCommand(
+  compilerPath: string,
+  args: string[],
+  limits: CompileLimits,
+): string[] {
+  if (os.platform() === "win32" && sandbox.mode === "none") {
+    return [compilerPath, ...args];
+  }
+
+  // Leave one extra filesystem block so the host-side monitor can observe a
+  // value greater than the configured limit before the OS hard-stop fires.
+  const fileLimitBlocks = Math.floor(limits.maxGeneratedFileBytes / 512) + 1;
+  const timeoutSeconds = Math.ceil(limits.timeoutMs / 1000);
+  const useInnerTimeout = sandbox.mode !== "none" || os.platform() === "linux";
+  const run = useInnerTimeout
+    ? `timeout --signal=KILL ${timeoutSeconds}s "$@"`
+    : `"$@"`;
+  const script = [
+    `ulimit -f ${fileLimitBlocks}`,
+    run,
+    "code=$?",
+    'if [ "$code" -eq 153 ]; then echo __THEMIS_GENERATED_FILE_TOO_LARGE__ >&2; fi',
+    'if [ "$code" -eq 124 ] || [ "$code" -eq 137 ]; then echo __THEMIS_COMPILE_TIMEOUT__ >&2; fi',
+    'exit "$code"',
+  ].join("; ");
+  return ["sh", "-c", script, "themis-compiler", compilerPath, ...args];
+}
+
+function killCompilerProcess(child: ChildProcess): void {
+  if (!child.pid) {
+    child.kill("SIGKILL");
+    return;
+  }
+  try {
+    treeKill(child.pid, "SIGKILL");
+  } catch {
+    child.kill("SIGKILL");
+  }
+}
+
+function fileExceedsLimit(
+  filePath: string,
+  maxGeneratedFileBytes = MAX_GENERATED_FILE_BYTES,
+): boolean {
+  try {
+    return fs.statSync(filePath).size > maxGeneratedFileBytes;
+  } catch {
+    return false;
+  }
+}
+
+function directoryContainsOversizedFile(
+  directory: string,
+  maxGeneratedFileBytes: number,
+): boolean {
+  const pending = [directory];
+  while (pending.length > 0) {
+    const current = pending.pop()!;
+    try {
+      for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+        const entryPath = path.join(current, entry.name);
+        if (entry.isDirectory()) pending.push(entryPath);
+        else if (
+          entry.isFile() &&
+          fs.statSync(entryPath).size > maxGeneratedFileBytes
+        )
+          return true;
+      }
+    } catch {
+      // The compiler can remove temporary files while they are being scanned.
+    }
+  }
+  return false;
+}
+
+function stripCompilerSentinels(value: string): string {
+  return value
+    .replaceAll("__THEMIS_GENERATED_FILE_TOO_LARGE__", "")
+    .replaceAll("__THEMIS_COMPILE_TIMEOUT__", "");
+}
+
+function normalizeCompilerError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes("GENERATED_FILE_TOO_LARGE"))
+    return "GENERATED_FILE_TOO_LARGE";
+  if (message.includes("COMPILER_TIMEOUT")) return "COMPILER_TIMEOUT";
+  return stripCompilerSentinels(message).trim() || "Compilation failed";
 }

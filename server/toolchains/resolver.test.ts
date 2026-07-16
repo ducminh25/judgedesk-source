@@ -8,7 +8,33 @@ import {
   savePreferences,
   getToolchainsDir,
 } from "./storage.js";
-import { resolveToolchain } from "./resolver.js";
+import {
+  compareVersions,
+  buildCompilerProbeArgs,
+  MIN_GNU_CPP_VERSION,
+  MIN_GNU_GDB_VERSION,
+} from "./resolver.js";
+
+test("toolchain version floors match the supported Themis bundle", () => {
+  assert.equal(MIN_GNU_CPP_VERSION, "9.2.0");
+  assert.equal(MIN_GNU_GDB_VERSION, "7.6.1");
+  assert.equal(compareVersions("9.2.0", MIN_GNU_CPP_VERSION), 0);
+  assert.ok(compareVersions("9.1.9", MIN_GNU_CPP_VERSION) < 0);
+  assert.ok(compareVersions("14.2", MIN_GNU_CPP_VERSION) > 0);
+  assert.equal(compareVersions("7.6.1", MIN_GNU_GDB_VERSION), 0);
+  assert.ok(compareVersions("7.6.0", MIN_GNU_GDB_VERSION) < 0);
+});
+
+test("compiler probe uses production-compatible flags on Windows and macOS", () => {
+  const windows = buildCompilerProbeArgs("win32", "probe.exe");
+  assert.ok(windows.includes("-static"));
+  assert.ok(windows.includes("-Wl,--stack,66060288"));
+  assert.equal(windows.at(-3), "-");
+
+  const mac = buildCompilerProbeArgs("darwin", "probe");
+  assert.equal(mac.includes("-static"), false);
+  assert.equal(mac.some((flag) => flag.includes("--stack")), false);
+});
 
 test("toolchain storage preferences are saved and loaded correctly", (t) => {
   const tempDir = fs.mkdtempSync(

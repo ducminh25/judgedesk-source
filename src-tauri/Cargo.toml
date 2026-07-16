@@ -1,6 +1,6 @@
 [package]
 name = "themis-v2"
-version = "1.1.1"
+version = "1.1.2"
 description = "ThemisV2 - Local Online Judge"
 authors = ["Mon"]
 edition = "2021"
@@ -16,3 +16,6 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-process = "2"
+tauri-plugin-updater = "2"

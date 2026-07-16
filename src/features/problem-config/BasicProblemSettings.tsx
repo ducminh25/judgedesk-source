@@ -1,6 +1,13 @@
-import { Dispatch, SetStateAction } from "react";
+import { Dispatch, SetStateAction, useState } from "react";
 import { ProblemConfig } from "../../types";
 import { useTranslation } from "react-i18next";
+import {
+  CHECKER_SOURCE_FILES,
+  POLYGON_CHECKER_IDS,
+  THEMIS_CHECKER_IDS,
+  checkerTranslationKey,
+  isBuiltInCheckerId,
+} from "../../../shared/checker-catalog";
 
 interface Props {
   problemName: string;
@@ -20,6 +27,25 @@ interface Props {
 export function BasicProblemSettings(props: Props) {
   const { problemName, config, setConfig, customCheckers } = props;
   const { t } = useTranslation();
+  const [sourceError, setSourceError] = useState("");
+  const selectedChecker = config.checkerType || "C1";
+  const selectedBuiltIn = isBuiltInCheckerId(selectedChecker)
+    ? selectedChecker
+    : null;
+  const translationKey = selectedBuiltIn
+    ? checkerTranslationKey(selectedBuiltIn)
+    : null;
+
+  const openSource = async () => {
+    if (!selectedBuiltIn) return;
+    setSourceError("");
+    try {
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("open_checker_source", { checkerId: selectedBuiltIn });
+    } catch (error) {
+      setSourceError(error instanceof Error ? error.message : String(error));
+    }
+  };
   
   return (
     <>
@@ -63,11 +89,56 @@ export function BasicProblemSettings(props: Props) {
             onChange={event => setConfig(previous => ({ ...previous, checkerType: event.target.value }))}
             className="flex-1 bg-input-bg border border-surface-border-strong rounded px-2.5 py-1.5 text-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
           >
-            {["C1", "C2", "C3", "C4", "C5", ...customCheckers].map(checker => (
-              <option key={checker} value={checker}>{checker}</option>
-            ))}
+            {customCheckers.length > 0 && (
+              <optgroup label={t("checkers.groups.custom")}>
+                {customCheckers.map((checker) => (
+                  <option key={checker} value={checker}>{checker}</option>
+                ))}
+              </optgroup>
+            )}
+            <optgroup label={t("checkers.groups.themis")}>
+              {THEMIS_CHECKER_IDS.map((checker) => {
+                const key = checkerTranslationKey(checker);
+                return (
+                  <option key={checker} value={checker}>
+                    {t(`checkers.entries.${key}.title`)} — {t(`checkers.entries.${key}.summary`)}
+                  </option>
+                );
+              })}
+            </optgroup>
+            <optgroup label={t("checkers.groups.polygon")}>
+              {POLYGON_CHECKER_IDS.map((checker) => {
+                const key = checkerTranslationKey(checker);
+                return (
+                  <option key={checker} value={checker}>
+                    {t(`checkers.entries.${key}.title`)} — {t(`checkers.entries.${key}.summary`)}
+                  </option>
+                );
+              })}
+            </optgroup>
           </select>
         </div>
+      </div>
+      <div className="rounded border border-surface-border bg-input-bg px-3 py-2 text-[11px] leading-relaxed text-text-muted">
+        <p>
+          {translationKey
+            ? t(`checkers.entries.${translationKey}.description`)
+            : t("checkers.customDescription", { name: selectedChecker })}
+        </p>
+        {selectedBuiltIn && (
+          <button
+            type="button"
+            onClick={() => void openSource()}
+            className="mt-1 font-medium text-indigo-600 underline underline-offset-2 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
+          >
+            {t("checkers.viewSource")}: ({CHECKER_SOURCE_FILES[selectedBuiltIn]})
+          </button>
+        )}
+        {sourceError && (
+          <p className="mt-1 text-rose-500">
+            {t("checkers.sourceOpenFailed")}: {sourceError}
+          </p>
+        )}
       </div>
     </>
   );

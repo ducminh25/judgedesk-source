@@ -143,6 +143,8 @@ jobs:
       WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
       WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
       WINDOWS_CERTIFICATE_THUMBPRINT: ${{ secrets.WINDOWS_CERTIFICATE_THUMBPRINT }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -157,6 +159,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+
+      - name: Require the updater signing key
+        shell: pwsh
+        run: |
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
+            throw "TAURI_SIGNING_PRIVATE_KEY is required to create signed updater artifacts."
+          }
 
       - name: Import Windows certificate and configure Tauri signing
         shell: pwsh
@@ -198,10 +207,17 @@ jobs:
           $signature | Format-List Status,StatusMessage,SignerCertificate
           if ($env:WINDOWS_SIGNED -eq 'true' -and $signature.Status -ne 'Valid') { throw 'MSI signature verification failed.' }
 
+      - name: Stage Windows release artifacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force release-assets-windows | Out-Null
+          Copy-Item src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/ThemisV2_*.msi release-assets-windows/
+          Copy-Item src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/ThemisV2_*.msi.sig release-assets-windows/
+
       - uses: actions/upload-artifact@v4
         with:
           name: msi-package
-          path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/ThemisV2_*.msi
+          path: release-assets-windows/*
           if-no-files-found: error
           retention-days: 14
 
@@ -214,6 +230,8 @@ jobs:
       APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
       APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
       APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -236,6 +254,13 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+
+      - name: Require the updater signing key
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "TAURI_SIGNING_PRIVATE_KEY is required to create signed updater artifacts." >&2
+            exit 1
+          fi
 
       - name: Validate macOS signing secret set
         env:
@@ -338,10 +363,17 @@ jobs:
         if: always() && env.KEYCHAIN_PATH != ''
         run: security delete-keychain "$KEYCHAIN_PATH" || true
 
+      - name: Stage macOS release artifacts
+        run: |
+          mkdir -p release-assets-mac
+          cp src-tauri/target/universal-apple-darwin/release/bundle/dmg/ThemisV2_*.dmg release-assets-mac/
+          cp src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz release-assets-mac/
+          cp src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz.sig release-assets-mac/
+
       - uses: actions/upload-artifact@v4
         with:
-          name: dmg-package
-          path: src-tauri/target/universal-apple-darwin/release/bundle/dmg/ThemisV2_*.dmg
+          name: mac-package
+          path: release-assets-mac/*
           if-no-files-found: error
           retention-days: 14
 
@@ -354,18 +386,21 @@ jobs:
     env:
       PUBLIC_RELEASE_REPOSITORY: ducminh25/themis-v2
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: msi-package
           path: release-assets
       - uses: actions/download-artifact@v4
         with:
-          name: dmg-package
+          name: mac-package
           path: release-assets
+      - name: Generate the signed static updater manifest
+        run: node scripts/generate-updater-manifest.js release-assets
       - name: Compute release checksums
         run: |
           cd release-assets
-          sha256sum ThemisV2_* > SHA256SUMS
+          find . -maxdepth 1 -type f ! -name '*.sig' ! -name 'SHA256SUMS' -printf '%f\n' | sort | xargs sha256sum > SHA256SUMS
           cat SHA256SUMS
       - name: Create or update draft GitHub Release
         env:
@@ -376,7 +411,7 @@ jobs:
             exit 1
           fi
           if gh release view "$GITHUB_REF_NAME" --repo "$PUBLIC_RELEASE_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" release-assets/ThemisV2_* release-assets/SHA256SUMS --clobber --repo "$PUBLIC_RELEASE_REPOSITORY"
+            gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber --repo "$PUBLIC_RELEASE_REPOSITORY"
           else
-            gh release create "$GITHUB_REF_NAME" release-assets/ThemisV2_* release-assets/SHA256SUMS --draft --generate-notes --title "ThemisV2 $GITHUB_REF_NAME" --repo "$PUBLIC_RELEASE_REPOSITORY"
+            gh release create "$GITHUB_REF_NAME" release-assets/* --draft --generate-notes --title "ThemisV2 $GITHUB_REF_NAME" --repo "$PUBLIC_RELEASE_REPOSITORY"
           fi

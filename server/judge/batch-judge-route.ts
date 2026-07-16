@@ -2,11 +2,9 @@ import fs from "fs";
 import path from "path";
 import type { Express } from "express";
 import { activeJobs } from "../jobs.js";
-import { sandbox } from "../sandbox.js";
 import { createJudgeEventWriter } from "./judge-event-writer.js";
 import { runJudgeSession } from "./judge-session.js";
 import { createRunWorkspace } from "./run-workspace.js";
-import { assertCppCompilerAvailable } from "./toolchain.js";
 
 export function registerBatchJudgeRoute(app: Express): void {
   // Batch Judge Endpoint
@@ -41,15 +39,6 @@ export function registerBatchJudgeRoute(app: Express): void {
     // Prepare temp space for compiling contestant solutions
     const workspace = createRunWorkspace();
     const tempDir = workspace.path;
-
-    try {
-      assertCppCompilerAvailable(tempDir);
-    } catch {
-      workspace.dispose();
-      const location = sandbox.mode === "none" ? "" : " inside the sandbox";
-      res.status(400).json({ success: false, message: `g++ compiler is not available${location}.` });
-      return;
-    }
 
     try {
       await runJudgeSession({

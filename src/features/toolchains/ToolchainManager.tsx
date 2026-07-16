@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { X, Cpu, ShieldCheck, AlertTriangle, HelpCircle } from "lucide-react";
+import { X, Cpu, ShieldCheck, AlertTriangle, HelpCircle, RefreshCw } from "lucide-react";
 import { useToolchains } from "./useToolchains.js";
 import { ToolchainCard } from "./ToolchainCard.js";
 import { useTranslation } from "react-i18next";
@@ -18,6 +18,7 @@ export default function ToolchainManager({ onClose }: Props) {
     uninstall,
     saveCustomPath,
     savePreferredSource,
+    rescan,
   } = useToolchains();
   const [cppPathInput, setCppPathInput] = useState("");
   const [pyPathInput, setPyPathInput] = useState("");
@@ -85,13 +86,21 @@ export default function ToolchainManager({ onClose }: Props) {
               </h2>
             </div>
           </div>
-          <button
-            aria-label={t("toolchains.close")}
-            onClick={onClose}
-            className="text-text-muted hover:text-text-primary transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => void rescan()}
+              className="flex items-center gap-1.5 rounded border border-surface-border bg-input-bg px-2.5 py-1.5 text-2xs font-bold text-text-primary hover:bg-surface-hover"
+            >
+              <RefreshCw className="h-3.5 w-3.5" /> {t("toolchains.rescan")}
+            </button>
+            <button
+              aria-label={t("toolchains.close")}
+              onClick={onClose}
+              className="text-text-muted hover:text-text-primary transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Tab Selection */}

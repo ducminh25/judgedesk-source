@@ -44,13 +44,15 @@ export function registerProblemRoutes(app: Express): void {
           for (const file of fs.readdirSync(problemPath)) {
             if (!fs.statSync(path.join(problemPath, file)).isFile()) continue;
             const lowerFile = file.toLowerCase();
-            if (lowerFile.startsWith("check") && lowerFile.endsWith(".exe")) {
+            if (lowerFile.endsWith(".exe")) {
               executableFiles.push(file);
             } else if (lowerFile.endsWith(".cpp")) {
               cppFiles.push(file);
             }
           }
         } catch {}
+        executableFiles.sort(naturalSort);
+        cppFiles.sort(naturalSort);
         customCheckers[dir] = [...executableFiles, ...cppFiles];
       }
 

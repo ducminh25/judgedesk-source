@@ -20,6 +20,7 @@ import { useTranslation } from "react-i18next";
 import { ToolchainSetupModal } from "./features/toolchains/ToolchainSetupModal.js";
 import { preferencesStorage } from "./features/preferences/storage.js";
 import ToolchainManager from "./features/toolchains/ToolchainManager.js";
+import { useAppUpdater } from "./features/updates/useAppUpdater.js";
 
 export default function App() {
   const { t } = useTranslation();
@@ -71,6 +72,9 @@ export default function App() {
   const [modalPath, setModalPath] = useState<string>("");
   const [openToolchains, setOpenToolchains] = useState(false);
   const [openToolchainSetup, setOpenToolchainSetup] = useState(false);
+  const [showInstallUpdate, setShowInstallUpdate] = useState(false);
+  const [isInstallingUpdate, setIsInstallingUpdate] = useState(false);
+  const updater = useAppUpdater();
 
   useEffect(() => {
     if (!preferencesStorage.isToolchainSetupCompleted()) {
@@ -328,6 +332,10 @@ export default function App() {
         }}
         onTimeLimitChange={setTimeLimit}
         onOpenToolchains={() => setOpenToolchains(true)}
+        updateState={updater.state}
+        onCheckUpdates={() => void updater.checkForUpdates()}
+        onDownloadUpdate={() => void updater.downloadUpdate()}
+        onRequestInstall={() => setShowInstallUpdate(true)}
       />
 
       <Scoreboard
@@ -483,6 +491,53 @@ export default function App() {
             void handleFetchProblems();
           }}
         />
+      )}
+
+      {showInstallUpdate && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="install-update-title"
+            className="w-full max-w-md overflow-hidden rounded-lg border border-surface-border bg-surface shadow-2xl"
+          >
+            <div className="border-b border-surface-border bg-surface-elevated px-5 py-4">
+              <h2 id="install-update-title" className="text-sm font-bold text-text-primary">
+                {t("updates.installTitle")}
+              </h2>
+            </div>
+            <div className="px-5 py-5 text-sm leading-6 text-text-muted">
+              {t("updates.installMessage")}
+            </div>
+            <div className="flex justify-end gap-3 border-t border-surface-border bg-surface-elevated px-5 py-4">
+              <button
+                type="button"
+                disabled={isInstallingUpdate}
+                onClick={() => setShowInstallUpdate(false)}
+                className="rounded border border-surface-border bg-input-bg px-4 py-2 text-xs font-semibold text-text-primary hover:bg-surface-hover disabled:opacity-50"
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                disabled={isInstallingUpdate}
+                onClick={async () => {
+                  setIsInstallingUpdate(true);
+                  try {
+                    if (isJudging) await handleTerminate();
+                    const installed = await updater.installUpdate();
+                    if (!installed) setShowInstallUpdate(false);
+                  } finally {
+                    setIsInstallingUpdate(false);
+                  }
+                }}
+                className="rounded bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-500 disabled:cursor-wait disabled:opacity-60"
+              >
+                {isInstallingUpdate ? t("updates.installing") : t("updates.installNow")}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

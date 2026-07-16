@@ -11,6 +11,7 @@
   --color-text-primary: var(--text-primary);
   --color-text-muted: var(--text-muted);
   --color-input-bg: var(--input-bg);
+  --color-total-column: var(--total-column);
 }
 
 @layer base {
@@ -24,6 +25,7 @@
     --text-primary: #18181b;
     --text-muted: #71717a;
     --input-bg: #ffffff;
+    --total-column: #eef2ff;
   }
 
   .dark {
@@ -36,5 +38,6 @@
     --text-primary: #e4e4e7; /* zinc-200 */
     --text-muted: #71717a; /* zinc-500 */
     --input-bg: #09090b; /* zinc-900 / transparent */
+    --total-column: #1e1b4b;
   }
 }

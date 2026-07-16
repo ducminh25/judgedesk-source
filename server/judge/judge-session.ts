@@ -10,7 +10,6 @@ import { calculateProblemSummary } from "./scoring.js";
 import { findSubmission, listContestants } from "./submission-discovery.js";
 import { createProblemDirectoryResolver, listTestDirectories, resolveTestCaseFiles } from "./testcase-discovery.js";
 import { runTestCase } from "./testcase-runner.js";
-import { resolvePythonCommand } from "./toolchain.js";
 
 interface JudgeSessionOptions {
   request: Partial<BatchJudgeRequest>;
@@ -27,7 +26,6 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
   const { timeLimit, jobId } = request;
   const timeLimitInput = parseInt(String(timeLimit || "1000"), 10);
   const sendEvent = events.send;
-  const pythonCommand = resolvePythonCommand();
   const getTestProblemDirObj = createProblemDirectoryResolver(resolvedTest);
   const contestantDirs = listContestants(resolvedThisinh, request.targetContestants);
   const contestants: ContestantResult[] = [];
@@ -115,23 +113,14 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
       const useStdOut = probConf.useStdOut;
       const outputFilename = useStdOut ? "stdout" : probConf.outputFile;
 
-      const cacheKey = `${problemName}_${checkerType}`;
-      if (!(cacheKey in compiledCheckers)) {
-        compiledCheckers[cacheKey] = resolveChecker({
-          checkerType,
-          problemName,
-          problemDirectory: testProblemDir.path,
-          tempDirectory: tempDir
-        });
-      }
-
       const subPath = submission.filePath;
-      const compilation = compileSubmission({
+      const compilation = await compileSubmission({
         language,
         contestantName: contestant,
         problemName,
         submissionPath: subPath,
-        tempDirectory: tempDir
+        tempDirectory: tempDir,
+        jobId
       });
       const executablePath = compilation.executablePath;
       const compileTime = compilation.compileTime;
@@ -142,6 +131,16 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
       const tcDirEntries = listTestDirectories(testProblemDir.path);
 
        if (compileStatus === "OK") {
+         const cacheKey = `${problemName}_${checkerType}`;
+         if (!(cacheKey in compiledCheckers)) {
+           compiledCheckers[cacheKey] = await resolveChecker({
+             checkerType,
+             problemName,
+             problemDirectory: testProblemDir.path,
+             tempDirectory: tempDir,
+             jobId
+           });
+         }
          const poly = probConf.polygonConfig;
          const isStdIO = probConf.useStdIO;
 
@@ -215,7 +214,7 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
              testRoot: testPath,
              contestantsRoot: thisinhPath,
              tempDirectory: tempDir,
-             pythonCommand,
+             pythonCommand: language === "python" ? executablePath : "",
              timeLimitMs: tcTimeLimitMs,
              score: scoreForTc,
              config: probConf,

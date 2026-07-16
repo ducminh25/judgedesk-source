@@ -28,3 +28,15 @@ test("discovery matches problem names case-insensitively and sorts tests natural
   assert.deepEqual(listTestDirectories(problem.path), ["2", "10"]);
   assert.equal(resolveTestCaseFiles(problem.path, "2")?.inputFileName, "data.inp");
 });
+
+test("discovery recognizes Python submissions independently of C++", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "themis-python-discovery-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(root, "GRAPH.PY"), "print('ok')\n", "utf8");
+  assert.deepEqual(findSubmission(root, "graph"), {
+    fileName: "GRAPH.PY",
+    filePath: path.join(root, "GRAPH.PY"),
+    language: "python",
+    problemName: "GRAPH",
+  });
+});

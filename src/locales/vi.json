@@ -32,14 +32,15 @@
     "toggleTheme": "Đổi giao diện sáng/tối",
     "toggleLanguage": "Đổi ngôn ngữ",
     "settings": "Công cụ",
+    "openGitHub": "Mở repository GitHub",
     "statusMenu": {
       "title": "Trạng thái hệ thống",
       "incomplete": "Chưa hoàn tất",
       "unavailable": "Không khả dụng",
       "notInstalled": "Chưa cài đặt",
       "ready": "Sẵn sàng",
-      "inPath": "Có trong PATH",
-      "notInPath": "Không có trong PATH",
+      "inPath": "Đã tìm thấy",
+      "notInPath": "Không tìm thấy",
       "activeRunner": "Trình chạy hoạt động",
       "checking": "Đang kiểm tra môi trường..."
     }
@@ -132,6 +133,93 @@
       "add": "+ Thêm..."
     }
   },
+  "checkers": {
+    "groups": {
+      "custom": "Checker tùy chỉnh của bài",
+      "themis": "Máy chấm Themis C1-C5",
+      "polygon": "Polygon / Testlib"
+    },
+    "viewSource": "Xem source",
+    "sourceOpenFailed": "Không thể mở source checker",
+    "customDescription": "Checker tùy chỉnh {{name}} trong thư mục bài. Các file .exe đã biên dịch được xếp trước source C++.",
+    "entries": {
+      "C1": {
+        "title": "C1LinesWordsIgnoreCase",
+        "summary": "Từng từ trên từng dòng, không phân biệt hoa thường",
+        "description": "Hai file được coi là khớp nhau (đúng) nếu chúng khớp nhau về danh sách các từ kể cả về thứ tự của từ trên dòng và thứ tự của dòng chứa từ trong file. Việc so khớp từ không phân biệt chữ hoa và chữ thường. Việc thừa một số dòng trống cuối file hoặc thừa một số dấu phân tách từ đầu file không ảnh hưởng tới kết quả, tuy nhiên việc thừa một dòng trống đầu file sẽ làm ảnh hưởng tới kết quả do cơ chế đối sánh của bộ chấm."
+      },
+      "C2": {
+        "title": "C2LinesWordsCase",
+        "summary": "Từng từ trên từng dòng, phân biệt hoa thường",
+        "description": "Việc đối sánh giống như bộ chấm C1LinesWordsIgnoreCase, nhưng việc so khớp từ có phân biệt chữ hoa và chữ thường."
+      },
+      "C3": {
+        "title": "C3WordsIgnoreCase",
+        "summary": "Danh sách từ, không phân biệt hoa thường",
+        "description": "Hai file được coi là khớp nhau (đúng) nếu chúng khớp nhau về danh sách các từ và thứ tự các từ trong file. Việc so khớp từ không phân biệt chữ hoa và chữ thường. Các từ có thể ghi trên cùng dòng cách nhau bởi dấu phân tách từ hoặc ghi trên nhiều dòng khác nhau mà không ảnh hưởng tới kết quả."
+      },
+      "C4": {
+        "title": "C4WordsCase",
+        "summary": "Danh sách từ, phân biệt hoa thường",
+        "description": "Việc đối sánh giống như bộ chấm C3WordsIgnoreCase, nhưng việc so khớp từ có phân biệt chữ hoa và chữ thường."
+      },
+      "C5": {
+        "title": "C5Binary",
+        "summary": "So sánh chính xác từng byte",
+        "description": "Được áp dụng với mọi loại file kết quả. Bộ chấm đối sánh từng file kết quả trong thư mục của mỗi test với file trùng tên do chương trình của thí sinh tạo ra khi chạy với test đó. Việc đối sánh được thực hiện trên từng byte của file."
+      },
+      "fcmp": {
+        "title": "fcmp.cpp",
+        "summary": "Theo dòng, không bỏ qua khoảng trắng",
+        "description": "So sánh hai file theo từng dòng. Mọi ký tự trong mỗi dòng đáp án, bao gồm dấu cách và tab, phải khớp chính xác."
+      },
+      "hcmp": {
+        "title": "hcmp.cpp",
+        "summary": "Một số nguyên có dấu rất lớn",
+        "description": "So sánh một số nguyên thập phân có dấu với độ dài bất kỳ. Phải dùng dạng chuẩn: số không là 0; các số khác không có dấu cộng hoặc chữ số 0 thừa ở đầu."
+      },
+      "lcmp": {
+        "title": "lcmp.cpp",
+        "summary": "Theo dòng, bỏ qua khoảng trắng",
+        "description": "So sánh danh sách các dòng, trong đó mỗi dòng là một danh sách token. Khoảng trắng trong cùng dòng được bỏ qua, nhưng chuyển token sang dòng khác sẽ làm thay đổi kết quả."
+      },
+      "ncmp": {
+        "title": "ncmp.cpp",
+        "summary": "Một hoặc nhiều int64, bỏ qua khoảng trắng",
+        "description": "So sánh dãy có thứ tự các số nguyên 64-bit có dấu. Khoảng trắng giữa các số được bỏ qua; giá trị và độ dài dãy phải khớp."
+      },
+      "nyesno": {
+        "title": "nyesno.cpp",
+        "summary": "Không hoặc nhiều yes/no, không phân biệt hoa thường",
+        "description": "So sánh dãy gồm không hoặc nhiều token YES/NO, không phân biệt chữ hoa và chữ thường. Token không hợp lệ được báo là lỗi trình bày."
+      },
+      "rcmp4": {
+        "title": "rcmp4.cpp",
+        "summary": "Dãy số thực, sai số tối đa 1E-4",
+        "description": "So sánh dãy số thực với sai số tuyệt đối hoặc tương đối tối đa 1E-4 theo đúng quy tắc doubleCompare của Testlib."
+      },
+      "rcmp6": {
+        "title": "rcmp6.cpp",
+        "summary": "Dãy số thực, sai số tối đa 1E-6",
+        "description": "So sánh dãy số thực với sai số tuyệt đối hoặc tương đối tối đa 1E-6 theo đúng quy tắc doubleCompare của Testlib."
+      },
+      "rcmp9": {
+        "title": "rcmp9.cpp",
+        "summary": "Dãy số thực, sai số tối đa 1E-9",
+        "description": "So sánh dãy số thực với sai số tuyệt đối hoặc tương đối tối đa 1E-9 theo đúng quy tắc doubleCompare của Testlib."
+      },
+      "wcmp": {
+        "title": "wcmp.cpp",
+        "summary": "Dãy token",
+        "description": "So sánh toàn bộ dãy token theo đúng thứ tự. Mọi ký tự khoảng trắng chỉ được xem là dấu phân tách và được bỏ qua."
+      },
+      "yesno": {
+        "title": "yesno.cpp",
+        "summary": "Một yes hoặc no, không phân biệt hoa thường",
+        "description": "So sánh một token YES hoặc NO, không phân biệt chữ hoa và chữ thường. Token không hợp lệ của thí sinh được báo là lỗi trình bày."
+      }
+    }
+  },
   "judgingDetails": {
     "title": "Chi tiết Chấm điểm",
     "problem": "Bài tập",
@@ -185,6 +273,28 @@
   "errors": {
     "backendConnection": "Không thể kết nối dịch vụ chấm bài. Vui lòng khởi động lại ứng dụng."
   },
+  "compileDiagnostics": {
+    "COMPILER_TIMEOUT": "Trình biên dịch đã quá thời gian 15 giây và bị buộc dừng.",
+    "GENERATED_FILE_TOO_LARGE": "Quá trình biên dịch đã sinh file lớn hơn giới hạn 32 MiB và bị buộc dừng.",
+    "TOOLCHAIN_CPP_MISSING": "Không tìm thấy trình biên dịch. Cần C++ phiên bản 9.2.0 trở lên.",
+    "TOOLCHAIN_PYTHON_MISSING": "Không tìm thấy môi trường chạy Python."
+  },
+  "updates": {
+    "check": "Kiểm tra cập nhật",
+    "checking": "Đang kiểm tra...",
+    "available": "Có bản {{version}}",
+    "download": "Cập nhật",
+    "downloading": "Đang tải {{percent}}%",
+    "installQuestion": "Cài đặt?",
+    "upToDate": "Đã là bản mới nhất",
+    "checkFailed": "Kiểm tra cập nhật thất bại",
+    "downloadFailed": "Tải bản cập nhật thất bại",
+    "installTitle": "Cài đặt bản cập nhật ngay?",
+    "installMessage": "Việc cài đặt sẽ dừng lượt chấm đang chạy và đóng ThemisV2. Hãy bảo đảm các kết quả cần thiết đã chấm xong và được lưu.",
+    "installing": "Đang cài đặt...",
+    "installNow": "Cài đặt ngay",
+    "installFailed": "Cài đặt bản cập nhật thất bại"
+  },
   "toolchains": {
     "idle": "Đang chờ",
     "downloading": "Đang tải",
@@ -224,6 +334,7 @@
     "packagesDescription": "Các gói trình biên dịch do ứng dụng quản lý được cô lập, giúp tránh thay đổi các biến môi trường hệ thống (PATH).",
     "noPackagesAvailable": "Không có gói trình biên dịch nào được đóng gói sẵn cho kiến trúc hệ thống của bạn.",
     "close": "Đóng quản lý",
+    "rescan": "Quét lại",
     "diagnostics": {
       "systemMissing": "Không tìm thấy trình biên dịch hoặc môi trường chạy tương thích trên hệ thống.",
       "managedMissing": "Trình biên dịch hoặc môi trường chạy do ứng dụng quản lý chưa được cài đặt.",
