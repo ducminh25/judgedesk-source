@@ -5,6 +5,7 @@ dist/
 coverage/
 temp/
 src-tauri/target/
+src-tauri/gen/
 src-tauri/binaries/server-*
 sea-prep.blob
 .DS_Store

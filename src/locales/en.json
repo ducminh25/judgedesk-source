@@ -310,6 +310,7 @@
     "install": "Install",
     "loadError": "Failed to load toolchains",
     "loadingState": "Loading compiler configurations...",
+    "loadingHint": "You can enter and save custom executable paths while automatic detection continues.",
     "cppCompiler": "C/C++ Compiler",
     "pythonRuntime": "Python Runtime",
     "windows": "Windows",

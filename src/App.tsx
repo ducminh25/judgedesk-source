@@ -476,20 +476,14 @@ export default function App() {
 
       {openToolchains && (
         <ToolchainManager
-          onClose={() => {
-            setOpenToolchains(false);
-            void handleFetchProblems();
-          }}
+          onClose={() => setOpenToolchains(false)}
         />
       )}
 
       {openToolchainSetup && (
         <ToolchainSetupModal
           isOpen={openToolchainSetup}
-          onClose={() => {
-            setOpenToolchainSetup(false);
-            void handleFetchProblems();
-          }}
+          onClose={() => setOpenToolchainSetup(false)}
         />
       )}
 
