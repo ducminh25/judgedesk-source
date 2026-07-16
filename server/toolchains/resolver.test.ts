@@ -11,9 +11,29 @@ import {
 import {
   compareVersions,
   buildCompilerProbeArgs,
+  buildToolchainEnvironment,
   MIN_GNU_CPP_VERSION,
   MIN_GNU_GDB_VERSION,
 } from "./resolver.js";
+
+test("toolchain environment prepends the detected executable directory", () => {
+  const environment = buildToolchainEnvironment(
+    "D:\\Portable Themis\\GCC\\bin\\g++.exe",
+    { Path: "C:\\Windows\\System32;C:\\Windows" },
+    "win32",
+  );
+  assert.equal(
+    environment.Path,
+    "D:\\Portable Themis\\GCC\\bin;C:\\Windows\\System32;C:\\Windows",
+  );
+
+  const unchanged = buildToolchainEnvironment(
+    "D:\\Portable Themis\\GCC\\bin\\g++.exe",
+    environment,
+    "win32",
+  );
+  assert.equal(unchanged.Path, environment.Path);
+});
 
 test("toolchain version floors match the supported Themis bundle", () => {
   assert.equal(MIN_GNU_CPP_VERSION, "9.2.0");
@@ -26,14 +46,15 @@ test("toolchain version floors match the supported Themis bundle", () => {
 });
 
 test("compiler probe uses production-compatible flags on Windows and macOS", () => {
-  const windows = buildCompilerProbeArgs("win32", "probe.exe");
+  const windows = buildCompilerProbeArgs("win32", "probe.cpp", "probe.exe");
   assert.ok(windows.includes("-static"));
   assert.ok(windows.includes("-Wl,--stack,66060288"));
-  assert.equal(windows.at(-3), "-");
+  assert.equal(windows.at(-3), "probe.cpp");
 
-  const mac = buildCompilerProbeArgs("darwin", "probe");
+  const mac = buildCompilerProbeArgs("darwin", "probe.cpp", "probe");
   assert.equal(mac.includes("-static"), false);
   assert.equal(mac.some((flag) => flag.includes("--stack")), false);
+  assert.equal(mac.at(-3), "probe.cpp");
 });
 
 test("toolchain storage preferences are saved and loaded correctly", (t) => {
