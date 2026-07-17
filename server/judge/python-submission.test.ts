@@ -25,7 +25,62 @@ test("macOS sandbox grants runtime reads but only temp writes", () => {
   assert.ok(profile.includes("(allow file-read*)"));
   assert.ok(profile.includes('(allow file-read* (literal "/"))'));
   assert.ok(profile.includes("(allow file-read-metadata (vnode-type DIRECTORY))"));
+  assert.ok(profile.includes("(allow process-exec)"));
+  assert.ok(profile.includes("(deny process-fork)"));
+  assert.ok(!profile.includes("(allow process*)"));
 });
+
+test(
+  "macOS sandbox permits exec but rejects contestant forks",
+  { skip: process.platform !== "darwin" },
+  () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "themis-fork-test-"));
+    const sourcePath = path.join(directory, "fork-test.c");
+    const executablePath = path.join(directory, "fork-test");
+    const profilePath = path.join(directory, "sandbox.sb");
+
+    try {
+      fs.writeFileSync(
+        sourcePath,
+        [
+          "#include <errno.h>",
+          "#include <sys/types.h>",
+          "#include <unistd.h>",
+          "int main(void) {",
+          "  pid_t child = fork();",
+          "  if (child == -1 && errno == EPERM) return 0;",
+          "  if (child == 0) _exit(0);",
+          "  return 1;",
+          "}",
+        ].join("\n"),
+      );
+      const compilation = spawnSync("cc", [sourcePath, "-o", executablePath], {
+        encoding: "utf8",
+      });
+      assert.equal(compilation.status, 0, compilation.stderr);
+
+      fs.writeFileSync(
+        profilePath,
+        buildMacSandboxProfile({
+          readPaths: [directory],
+          writePaths: [directory],
+        }),
+      );
+      const execution = spawnSync(
+        "sandbox-exec",
+        ["-f", profilePath, executablePath],
+        { encoding: "utf8", timeout: 5_000 },
+      );
+      assert.equal(
+        execution.status,
+        0,
+        `fork was not blocked: ${execution.stderr}`,
+      );
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);
 
 test("a Python submission is accepted and runnable without resolving C++", async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "themis-python-submission-"));
