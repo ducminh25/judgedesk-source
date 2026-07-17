@@ -131,3 +131,40 @@ workflows:
       - release-assets-windows/ThemisV2_*.msi
       - release-assets-windows/ThemisV2_*.msi.sig
       - release-assets-windows/SHA256SUMS-windows
+
+  windows-updater-signing:
+    name: ThemisV2 Windows updater signing
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    environment:
+      groups:
+        - themis_signing
+      node: 22.23.1
+    scripts:
+      - name: Install source dependencies
+        script: npm ci --no-audit --no-fund
+      - name: Download and sign the staged Windows MSI
+        script: |
+          set -euo pipefail
+          if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
+            echo "Add TAURI_SIGNING_PRIVATE_KEY to the themis_signing variable group." >&2
+            exit 1
+          fi
+          version="$(node -p "require('./package.json').version")"
+          msi_name="ThemisV2_${version}_x64_en-US.msi"
+          staging_tag="v${version}-staging"
+          staging_url="https://github.com/ducminh25/themis-v2/releases/download/${staging_tag}/${msi_name}"
+          mkdir -p release-assets-windows
+          curl --proto '=https' --tlsv1.2 -fL "$staging_url" -o "release-assets-windows/$msi_name"
+          export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
+          npx tauri signer sign "release-assets-windows/$msi_name"
+          test -s "release-assets-windows/$msi_name.sig"
+          (
+            cd release-assets-windows
+            shasum -a 256 "$msi_name" > SHA256SUMS-windows
+            cat SHA256SUMS-windows
+          )
+    artifacts:
+      - release-assets-windows/ThemisV2_*.msi
+      - release-assets-windows/ThemisV2_*.msi.sig
+      - release-assets-windows/SHA256SUMS-windows

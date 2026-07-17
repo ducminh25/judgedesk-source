@@ -292,3 +292,19 @@ test("Codemagic builds signed Windows updater artifacts on a Windows VM", () => 
   assert.match(windowsWorkflow, /ThemisV2_\*\.msi\.sig/);
   assert.match(windowsWorkflow, /SHA256SUMS-windows/);
 });
+
+test("Codemagic can sign a locally built Windows MSI with the existing updater key", () => {
+  const codemagic = fs.readFileSync(
+    new URL("../codemagic.yaml", import.meta.url),
+    "utf8",
+  );
+  const signingWorkflow = codemagic.slice(
+    codemagic.indexOf("  windows-updater-signing:"),
+  );
+
+  assert.match(signingWorkflow, /instance_type: mac_mini_m2/);
+  assert.match(signingWorkflow, /groups:\s+\- themis_signing/);
+  assert.match(signingWorkflow, /v\$\{version\}-staging/);
+  assert.match(signingWorkflow, /tauri signer sign/);
+  assert.match(signingWorkflow, /ThemisV2_\*\.msi\.sig/);
+});
