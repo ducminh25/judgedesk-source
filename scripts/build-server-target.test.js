@@ -273,3 +273,22 @@ test("Codemagic builds verified Apple Silicon release artifacts on M2", () => {
   assert.match(bundleScript, /lipo "\$server_binary" -verify_arch arm64/);
   assert.match(bundleScript, /smoke-test-sidecar\.js/);
 });
+
+test("Codemagic builds signed Windows updater artifacts on a Windows VM", () => {
+  const codemagic = fs.readFileSync(
+    new URL("../codemagic.yaml", import.meta.url),
+    "utf8",
+  );
+  const windowsWorkflow = codemagic.slice(
+    codemagic.indexOf("  windows-x64-release:"),
+  );
+
+  assert.match(windowsWorkflow, /instance_type: windows_x2/);
+  assert.match(windowsWorkflow, /node: 22\.23\.1/);
+  assert.match(windowsWorkflow, /groups:\s+\- themis_signing/);
+  assert.match(windowsWorkflow, /TAURI_SIGNING_PRIVATE_KEY/);
+  assert.match(windowsWorkflow, /TAURI_TARGET = 'x86_64-pc-windows-msvc'/);
+  assert.match(windowsWorkflow, /tauri\.windows\.conf\.json/);
+  assert.match(windowsWorkflow, /ThemisV2_\*\.msi\.sig/);
+  assert.match(windowsWorkflow, /SHA256SUMS-windows/);
+});
