@@ -15,12 +15,19 @@ trap cleanup_dmg_mount EXIT
 hdiutil attach "$dmg_file" -readonly -nobrowse -mountpoint "$mount_dir" >/dev/null
 app_bundle="$(find "$mount_dir" -maxdepth 1 -name '*.app' -print -quit)"
 test -n "$app_bundle"
+server_binary="$app_bundle/Contents/MacOS/server"
 
 lipo "$app_bundle/Contents/MacOS/themis-v2" -verify_arch arm64
-lipo "$app_bundle/Contents/MacOS/server" -verify_arch arm64
+lipo "$server_binary" -verify_arch arm64
 codesign --verify --deep --strict --verbose=2 "$app_bundle"
+server_entitlements="$(codesign -d --entitlements :- "$server_binary" 2>&1)"
+printf '%s\n' "$server_entitlements"
+if ! grep -q 'com.apple.security.cs.allow-jit' <<<"$server_entitlements"; then
+  echo "The packaged backend sidecar is missing the JIT entitlement required by V8." >&2
+  exit 1
+fi
 node scripts/smoke-test-sidecar.js \
-  "$app_bundle/Contents/MacOS/server" \
+  "$server_binary" \
   "$app_bundle/Contents/Resources"
 
 rm -rf release-assets-mac

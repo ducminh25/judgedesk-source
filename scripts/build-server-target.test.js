@@ -171,6 +171,13 @@ test("GitHub release workflow builds Apple Silicon only", () => {
     ),
   );
   assert.deepEqual(macConfig.bundle.targets, ["app", "dmg"]);
+  assert.equal(macConfig.bundle.macOS.entitlements, "./Entitlements.plist");
+
+  const entitlements = fs.readFileSync(
+    new URL("../src-tauri/Entitlements.plist", import.meta.url),
+    "utf8",
+  );
+  assert.match(entitlements, /com\.apple\.security\.cs\.allow-jit/);
 });
 
 test("Apple Silicon release scripts verify architecture, DMG, and sidecar", () => {
@@ -188,7 +195,9 @@ test("Apple Silicon release scripts verify architecture, DMG, and sidecar", () =
   assert.match(bundleScript, /hdiutil attach "\$dmg_file" -readonly -nobrowse/);
   assert.match(bundleScript, /trap cleanup_dmg_mount EXIT/);
   assert.match(bundleScript, /Contents\/MacOS\/themis-v2" -verify_arch arm64/);
-  assert.match(bundleScript, /Contents\/MacOS\/server" -verify_arch arm64/);
+  assert.match(bundleScript, /lipo "\$server_binary" -verify_arch arm64/);
+  assert.match(bundleScript, /codesign -d --entitlements :- "\$server_binary"/);
+  assert.match(bundleScript, /com\.apple\.security\.cs\.allow-jit/);
   assert.match(bundleScript, /smoke-test-sidecar\.js/);
 });
 
@@ -261,6 +270,6 @@ test("Codemagic builds verified Apple Silicon release artifacts on M2", () => {
   assert.match(sidecarScript, /TAURI_TARGET=aarch64-apple-darwin/);
   assert.doesNotMatch(sidecarScript, /x86_64/);
   assert.match(bundleScript, /Contents\/MacOS\/themis-v2" -verify_arch arm64/);
-  assert.match(bundleScript, /Contents\/MacOS\/server" -verify_arch arm64/);
+  assert.match(bundleScript, /lipo "\$server_binary" -verify_arch arm64/);
   assert.match(bundleScript, /smoke-test-sidecar\.js/);
 });
