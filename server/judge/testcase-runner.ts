@@ -601,7 +601,11 @@ export function buildMacSandboxProfile({
   return [
     "(version 1)",
     "(deny default)",
-    "(allow process*)",
+    // The submitted program itself must be exec'd after sandbox-exec applies
+    // the profile, but it must not be allowed to fork descendants. Allowing
+    // process* here lets a fork bomb exhaust the host and take down the judge.
+    "(allow process-exec)",
+    "(deny process-fork)",
     "(allow user-preference-read)",
     "(allow sysctl-read)",
     "(allow ipc-posix-shm)",

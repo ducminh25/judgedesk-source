@@ -26,12 +26,19 @@ fn initialize_log(log_path: &Path, port: u16, resource_dir: &Path) {
             return;
         }
     }
-    let header = format!(
-        "[Tauri Shell] Starting backend sidecar on port {port}\n[Tauri Shell] Resource directory: {}\n",
-        resource_dir.display()
-    );
-    if let Err(error) = fs::write(log_path, header) {
-        eprintln!("Failed to initialize backend log: {error}");
+    // Keep previous sessions so restarting the app does not erase the crash
+    // signal that explains why the preceding backend disappeared.
+    match OpenOptions::new().create(true).append(true).open(log_path) {
+        Ok(mut file) => {
+            if let Err(error) = writeln!(
+                file,
+                "\n[Tauri Shell] Starting backend sidecar on port {port}\n[Tauri Shell] Resource directory: {}",
+                resource_dir.display()
+            ) {
+                eprintln!("Failed to initialize backend log: {error}");
+            }
+        }
+        Err(error) => eprintln!("Failed to initialize backend log: {error}"),
     }
 }
 
