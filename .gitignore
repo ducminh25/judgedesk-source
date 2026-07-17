@@ -4,6 +4,10 @@ build/
 dist/
 coverage/
 temp/
+release-downloads/
+release-assets/
+release-assets-mac/
+release-assets-windows/
 src-tauri/target/
 src-tauri/gen/
 src-tauri/binaries/server-*
