@@ -38,10 +38,12 @@ release smoke checklist before tagging.
 npm run build:windows:local
 ```
 
-Upload the resulting MSI to a temporary public draft release named
-`v<version>-staging`. Run CodeMagic workflow `windows-updater-signing` against
-the exact release commit; it downloads that MSI and creates the updater `.sig`
-with the private key in the `themis_signing` group.
+Upload the resulting MSI to a temporary public prerelease named
+`v<version>-staging`. It must be downloadable without authentication because the
+signing workflow uses the public release URL. Run CodeMagic workflow
+`windows-updater-signing` against the exact release commit; it downloads that
+MSI and creates the updater `.sig` with the private key in the `themis_signing`
+group. Remove the temporary prerelease and tag after collecting the signature.
 
 ## Apple Silicon package
 
