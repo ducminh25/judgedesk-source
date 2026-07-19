@@ -2,7 +2,10 @@ import type { BatchJudgeResult, ProblemResult } from "../../types";
 
 export type JudgeResultsAction =
   | { type: "initialize" }
+  | { type: "replace"; result: BatchJudgeResult | null }
   | { type: "merge_problem"; contestant: string; problemResult: ProblemResult }
+  | { type: "delete_result"; contestantName: string; problemName: string }
+  | { type: "delete_selected"; contestantNames: string[]; problemNames: string[] }
   | { type: "delete_problem"; problemName: string }
   | { type: "delete_contestant"; contestantName: string };
 
@@ -12,6 +15,9 @@ export function judgeResultsReducer(
 ): BatchJudgeResult | null {
   if (action.type === "initialize") {
     return state ?? { success: true, contestants: [] };
+  }
+  if (action.type === "replace") {
+    return action.result;
   }
   if (action.type === "merge_problem") {
     return mergeProblemResult(state, action.contestant, action.problemResult);
@@ -28,6 +34,44 @@ export function judgeResultsReducer(
           }))
         }
       : state;
+  }
+  if (action.type === "delete_result") {
+    return state
+      ? {
+          ...state,
+          contestants: state.contestants
+            .map((contestant) =>
+              contestant.contestantName === action.contestantName
+                ? {
+                    ...contestant,
+                    problems: contestant.problems.filter(
+                      (problem) =>
+                        problem.problemName.toLowerCase() !== action.problemName.toLowerCase(),
+                    ),
+                  }
+                : contestant,
+            )
+            .filter((contestant) => contestant.problems.length > 0),
+        }
+      : state;
+  }
+  if (action.type === "delete_selected") {
+    if (!state) return state;
+    const contestants = new Set(action.contestantNames);
+    const problems = new Set(action.problemNames.map((name) => name.toLowerCase()));
+    return {
+      ...state,
+      contestants: state.contestants
+        .map((contestant) => contestants.has(contestant.contestantName)
+          ? {
+              ...contestant,
+              problems: contestant.problems.filter(
+                (problem) => !problems.has(problem.problemName.toLowerCase()),
+              ),
+            }
+          : contestant)
+        .filter((contestant) => contestant.problems.length > 0),
+    };
   }
   return state
     ? {

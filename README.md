@@ -1,8 +1,13 @@
-# ThemisV2
+# JudgeDesk
 
-ThemisV2 là ứng dụng chấm bài lập trình cục bộ dành cho kỳ thi và lớp học, với bảng điểm trực quan, cấu hình nhóm test, giao diện sáng/tối và tiếng Anh/tiếng Việt. Ứng dụng desktop hỗ trợ Windows x64 và macOS Intel/Apple Silicon.
+JudgeDesk là ứng dụng chấm bài lập trình cục bộ dành cho kỳ thi và lớp học, với bảng điểm kiểu desktop, cấu hình nhóm test, giao diện sáng/tối và tiếng Anh/tiếng Việt. Ứng dụng hỗ trợ Windows x64 và macOS Apple Silicon.
 
 Trang tải xuống, hướng dẫn cài đặt và hỗ trợ người dùng được duy trì tại repo public [`ducminh25/themis-v2`](https://github.com/ducminh25/themis-v2).
+
+Các thay đổi theo phiên bản được ghi tại [CHANGELOG.md](CHANGELOG.md). Phiên bản
+`1.2.0` đổi tên giao diện thành JudgeDesk nhưng giữ nguyên application identifier,
+khóa updater và thư mục dữ liệu cũ để người dùng `1.1.3`/`1.1.4` có thể cập nhật
+trực tiếp mà không mất cấu hình hoặc toolchain đã cài.
 
 ## Yêu cầu phát triển
 
@@ -17,7 +22,7 @@ G++ và Python hệ thống là tùy chọn. Ở lần mở đầu tiên, ngư�
 
 ```powershell
 npm ci
-npm run dev
+npm run test:desktop
 npm run lint
 npm run test:server
 npm run build
@@ -35,14 +40,17 @@ Có thể đặt `JUDGE_SERVER_URL` nếu server không chạy tại `http://127
 ## Build desktop và release
 
 ```powershell
-npm run build:server
-npx tauri build --config src-tauri/tauri.windows.conf.json --target x86_64-pc-windows-msvc
+npm run build:windows:local
 ```
 
-Sidecar SEA chỉ được build cho kiến trúc của máy hiện tại. GitHub Actions build riêng Windows x64, macOS Intel và macOS Apple Silicon, sau đó ghép sidecar macOS universal bằng `lipo`.
+Sidecar SEA chỉ được build cho kiến trúc của máy hiện tại. Windows x64 có thể
+được build và kiểm tra ngay trên máy phát hành; CodeMagic tạo chữ ký updater và
+build riêng macOS Apple Silicon, sau đó smoke-test binary và gói cài đặt trên
+runner tương ứng.
 
 - Hướng dẫn build: [BUILDING.md](BUILDING.md)
 - Ký số, đóng gói MSI/DMG và tạo draft release: [RELEASING.md](RELEASING.md)
+- Định dạng file kỳ thi `.judgedesk`: [docs/CONTEST-FORMAT.md](docs/CONTEST-FORMAT.md)
 
 ## Lưu ý an toàn
 

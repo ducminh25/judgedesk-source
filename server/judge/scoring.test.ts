@@ -44,6 +44,32 @@ test("configured total score is used as max score and displayed score is rounded
   assert.deepEqual(summary, { total: 2, passed: 2, score: 100, maxScore: 100, status: "AC" });
 });
 
+test("polygon test points define max score even when groups are disabled", () => {
+  const testCases = [
+    testCase("test01", "AC", 0.4),
+    testCase("test02", "AC", 0.4),
+    testCase("test03", "WA", 0),
+  ];
+  const summary = calculateProblemSummary({
+    compileStatus: "OK",
+    testCases,
+    testDirectories: ["test01", "test02", "test03"],
+    config: {
+      defaultScore: 1,
+      polygonConfig: {
+        enableGroups: false,
+        tests: {
+          test01: { points: 0.4 },
+          test02: { points: 0.4 },
+          test03: { points: 0.4 },
+        },
+      },
+    },
+  });
+
+  assert.deepEqual(summary, { total: 3, passed: 2, score: 0.8, maxScore: 1.2, status: "PARTIAL" });
+});
+
 test("compile errors take precedence when no tests ran", () => {
   const summary = calculateProblemSummary({
     compileStatus: "CE",

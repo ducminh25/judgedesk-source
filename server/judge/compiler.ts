@@ -3,7 +3,6 @@ import os from "os";
 import path from "path";
 import { spawn, type ChildProcess } from "child_process";
 import treeKill from "tree-kill";
-import { RESOURCE_ROOT } from "../runtime.js";
 import { sandbox } from "../sandbox.js";
 import { activeJobs } from "../jobs.js";
 import type { ProblemResult } from "../types.js";
@@ -12,6 +11,8 @@ import {
   buildToolchainEnvironment,
   resolveToolchain,
 } from "../toolchains/resolver.js";
+
+declare const __JUDGEDESK_TESTLIB__: string;
 
 export const COMPILE_TIMEOUT_MS = 15_000;
 export const MAX_GENERATED_FILE_BYTES = 32 * 1024 * 1024;
@@ -26,6 +27,20 @@ const DEFAULT_COMPILE_LIMITS: CompileLimits = {
   timeoutMs: COMPILE_TIMEOUT_MS,
   maxGeneratedFileBytes: MAX_GENERATED_FILE_BYTES,
 };
+
+function canonicalTestlibSource(): string {
+  if (
+    typeof __JUDGEDESK_TESTLIB__ !== "undefined" &&
+    __JUDGEDESK_TESTLIB__.length > 0
+  ) {
+    return __JUDGEDESK_TESTLIB__;
+  }
+  const developmentPath = path.join(process.cwd(), "judgers", "testlib.h");
+  if (fs.existsSync(developmentPath)) {
+    return fs.readFileSync(developmentPath, "utf8");
+  }
+  throw new Error("Bundled testlib.h was not found.");
+}
 
 export interface CompiledChecker {
   path: string | null;
@@ -215,10 +230,12 @@ async function compileCustomChecker(
     `checker_${problemName}_${checkerType.replace(/\./g, "_")}.out`,
   );
   try {
-    const bundledTestlibPath = path.join(RESOURCE_ROOT, "judgers", "testlib.h");
-    if (!fs.existsSync(bundledTestlibPath)) {
-      return { path: null, error: "Bundled testlib.h was not found." };
-    }
+    const checkerSupportDirectory = path.join(tempDirectory, "checker-support");
+    const bundledTestlibPath = path.join(checkerSupportDirectory, "testlib.h");
+    fs.mkdirSync(checkerSupportDirectory, { recursive: true });
+    // Always restore the canonical embedded copy. Preview files opened by the
+    // user are intentionally unrelated to the copy used for compilation.
+    fs.writeFileSync(bundledTestlibPath, canonicalTestlibSource(), "utf8");
 
     if (sandbox.mode !== "none") {
       try {

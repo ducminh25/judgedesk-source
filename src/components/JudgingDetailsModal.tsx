@@ -19,6 +19,10 @@ interface Props {
 
 type ResultFilter = "ALL" | "CORRECT" | "INCORRECT" | "PARTIAL";
 
+function formatScore(value: number): string {
+  return Number(value).toFixed(4).replace(/\.?0+$/, "");
+}
+
 export default function JudgingDetailsModal({
   data,
   contestantName,
@@ -84,7 +88,7 @@ export default function JudgingDetailsModal({
       if (filter === "CORRECT") return tc.status === "AC";
       if (filter === "INCORRECT")
         return tc.status !== "AC" && tc.status !== "PE";
-      if (filter === "PARTIAL") return tc.status === "PE";
+      if (filter === "PARTIAL") return tc.status === "PE" || tc.status === "PARTIAL";
       return true;
     });
   }, [data.testCases, filter]);
@@ -103,8 +107,9 @@ export default function JudgingDetailsModal({
             <span className="text-text-muted text-2xs font-mono mt-0.5">
               {t("judgingDetails.problem")}: {data.problemName} |{" "}
               {t("judgingDetails.overall")}: {data.summary.status} |{" "}
-              {t("judgingDetails.score")}: {data.summary.score}/
-              {data.summary.maxScore}
+              {t("judgingDetails.score")}: {formatScore(data.summary.score)}/
+              {formatScore(data.summary.maxScore)} |{" "}
+              {t("judgingDetails.passedTests")}: {data.summary.passed}/{data.summary.total}
             </span>
           </div>
           <button
@@ -177,9 +182,7 @@ export default function JudgingDetailsModal({
                       )}
                       <span className="text-text-muted font-bold text-[10px]">
                         {t("judgingDetails.score")}:{" "}
-                        {Number(tc.score)
-                          .toFixed(4)
-                          .replace(/\.?0+$/, "")}
+                        {formatScore(Number(tc.score))}
                       </span>
                       <div
                         className={`flex items-center gap-1.5 font-bold text-[10px] uppercase tracking-wider w-24 ${dspl.col}`}

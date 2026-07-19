@@ -3,6 +3,7 @@
     "targets": ["msi"],
     "windows": {
       "wix": {
+        "upgradeCode": "4ac645a9-f719-5210-85be-f03f49c33869",
         "language": "en-US"
       }
     }

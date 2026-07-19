@@ -22,7 +22,7 @@ export function generateUpdaterManifest({
   });
   const manifest = {
     version,
-    notes: `ThemisV2 ${tag}. See the GitHub release notes for details.`,
+    notes: `JudgeDesk ${tag}. See the GitHub release notes for details.`,
     pub_date: publicationDate.toISOString(),
     platforms: {
       "windows-x86_64": platform(windowsBundle),

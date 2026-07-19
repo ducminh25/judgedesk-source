@@ -157,7 +157,7 @@ jobs:
       - name: Verify MSI signature when signing is configured
         shell: pwsh
         run: |
-          $msi = Get-ChildItem src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/ThemisV2_*.msi | Select-Object -First 1
+          $msi = Get-ChildItem src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/JudgeDesk_*.msi | Select-Object -First 1
           if (-not $msi) { throw 'MSI output was not created.' }
           $signature = Get-AuthenticodeSignature $msi.FullName
           $signature | Format-List Status,StatusMessage,SignerCertificate
@@ -167,8 +167,8 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force release-assets-windows | Out-Null
-          Copy-Item src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/ThemisV2_*.msi release-assets-windows/
-          Copy-Item src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/ThemisV2_*.msi.sig release-assets-windows/
+          Copy-Item src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/JudgeDesk_*.msi release-assets-windows/
+          Copy-Item src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/JudgeDesk_*.msi.sig release-assets-windows/
 
       - uses: actions/upload-artifact@v4
         with:
@@ -213,5 +213,5 @@ jobs:
           if gh release view "$GITHUB_REF_NAME" --repo "$PUBLIC_RELEASE_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber --repo "$PUBLIC_RELEASE_REPOSITORY"
           else
-            gh release create "$GITHUB_REF_NAME" release-assets/* --draft --generate-notes --title "ThemisV2 $GITHUB_REF_NAME" --repo "$PUBLIC_RELEASE_REPOSITORY"
+            gh release create "$GITHUB_REF_NAME" release-assets/* --draft --generate-notes --title "JudgeDesk $GITHUB_REF_NAME" --repo "$PUBLIC_RELEASE_REPOSITORY"
           fi

@@ -1,23 +1,26 @@
 import {
+  useEffect,
   useMemo,
+  useRef,
+  useState,
   type Dispatch,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
   type SetStateAction,
 } from "react";
-import {
-  ArrowUpDown,
-  Download,
-  EllipsisVertical,
-  Terminal,
-} from "lucide-react";
+import { ArrowUpDown, MoreVertical, Terminal } from "lucide-react";
 import type { BatchJudgeResult, ProblemResult } from "../../types";
 import { useTranslation } from "react-i18next";
 
 export interface ScoreboardActionTarget {
-  type: "problem" | "contestant";
+  type: "problem" | "contestant" | "result";
   name: string;
+  contestantName?: string;
+  problemName?: string;
   x: number;
   y: number;
+  hasResults: boolean;
+  canRegrade: boolean;
 }
 
 interface Props {
@@ -28,14 +31,17 @@ interface Props {
   result: BatchJudgeResult | null;
   selectedContestants: Record<string, boolean>;
   selectedProblems: Record<string, boolean>;
-  setContestantSort: Dispatch<
-    SetStateAction<"default" | "asc" | "desc" | "score">
-  >;
+  interactionLocked: boolean;
+  setContestantSort: Dispatch<SetStateAction<"default" | "asc" | "desc" | "score">>;
   setSelectedContestants: Dispatch<SetStateAction<Record<string, boolean>>>;
   setSelectedProblems: Dispatch<SetStateAction<Record<string, boolean>>>;
-  onExport: () => void;
   onOpenActions: (target: ScoreboardActionTarget) => void;
   onOpenDetails: (contestant: string, problem: ProblemResult) => void;
+}
+
+interface ViewportSize {
+  width: number;
+  height: number;
 }
 
 export default function Scoreboard({
@@ -46,310 +52,290 @@ export default function Scoreboard({
   result,
   selectedContestants,
   selectedProblems,
+  interactionLocked,
   setContestantSort,
   setSelectedContestants,
   setSelectedProblems,
-  onExport,
   onOpenActions,
   onOpenDetails,
 }: Props) {
   const { t } = useTranslation();
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const [viewport, setViewport] = useState<ViewportSize>({ width: 1280, height: 700 });
+
+  useEffect(() => {
+    const element = viewportRef.current;
+    if (!element) return;
+    const updateSize = () => setViewport({ width: element.clientWidth, height: element.clientHeight });
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+
   const resultsByContestant = useMemo(
-    () =>
-      new Map(
-        (result?.contestants || []).map((contestant) => [
-          contestant.contestantName,
-          contestant,
-        ]),
-      ),
+    () => new Map((result?.contestants || []).map((contestant) => [contestant.contestantName, contestant])),
     [result],
   );
   const selectedProblemNames = useMemo(
-    () =>
-      new Set(
-        Object.keys(selectedProblems)
-          .filter((problem) => selectedProblems[problem])
-          .map((name) => name.toLowerCase()),
-      ),
+    () => new Set(Object.keys(selectedProblems).filter((problem) => selectedProblems[problem]).map((name) => name.toLowerCase())),
     [selectedProblems],
   );
 
-  const renderCell = (contestantName: string, problemName: string) => {
-    const problem = resultsByContestant
-      .get(contestantName)
-      ?.problems.find(
-        (item) => item.problemName.toLowerCase() === problemName.toLowerCase(),
-      );
-    if (!problem) {
-      return (
-        <td
-          key={problemName}
-          className="p-3 text-center border-l border-surface-border text-surface-border-strong"
-        >
-          -
-        </td>
-      );
-    }
+  const contestantColumnWidth = Math.max(170, Math.min(260, Math.round(viewport.width * 0.2)));
+  const totalColumnWidth = Math.max(86, Math.min(110, Math.round(viewport.width * 0.075)));
+  const minimumProblemColumnWidth = 72;
+  const fittedProblemColumnWidth = problems.length > 0
+    ? (viewport.width - contestantColumnWidth - totalColumnWidth) / problems.length
+    : 0;
+  const problemColumnWidth = Math.max(minimumProblemColumnWidth, fittedProblemColumnWidth);
+  const tableWidth = Math.max(
+    viewport.width,
+    contestantColumnWidth + totalColumnWidth + problemColumnWidth * problems.length,
+  );
+  const fontSize = problemColumnWidth < 88 ? 9 : problemColumnWidth < 112 ? 10 : problemColumnWidth < 145 ? 11 : 12;
+  const headerHeight = problemColumnWidth < 120 ? 46 : 38;
+  const rowHeight = contestants.length > 0
+    ? Math.max(24, Math.min(38, Math.floor((viewport.height - headerHeight) / contestants.length)))
+    : 32;
 
-    let displayText: ReactNode = problem.summary.score;
+  const openContextMenu = (
+    event: ReactMouseEvent,
+    target: Omit<ScoreboardActionTarget, "x" | "y">,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    const requestedX = event.clientX || rect.left + 12;
+    const requestedY = event.clientY || rect.bottom + 4;
+    onOpenActions({
+      ...target,
+      x: Math.max(4, Math.min(requestedX, window.innerWidth - 224)),
+      y: Math.max(4, Math.min(requestedY, window.innerHeight - 196)),
+    });
+  };
+
+  const problemResultFor = (contestantName: string, problemName: string) =>
+    resultsByContestant
+      .get(contestantName)
+      ?.problems.find((item) => item.problemName.toLowerCase() === problemName.toLowerCase());
+
+  const renderCell = (contestantName: string, problemName: string) => {
+    const problem = problemResultFor(contestantName, problemName);
+    let displayText: ReactNode = "-";
     let colorClass = "text-text-muted";
-    if (
-      problem.compileStatus === "SKIPPED" &&
-      problem.compileError === "not_found"
-    ) {
-      displayText = t("scoreboard.notFound");
-      colorClass = "text-text-muted bg-surface-hover";
-    } else if (problem.compileStatus === "CE") {
-      displayText = "CE";
-      colorClass =
-        "text-rose-600 dark:text-rose-500 font-bold bg-rose-100 dark:bg-rose-950/20";
-    } else if (problem.summary.status === "AC") {
-      colorClass =
-        "text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-100 dark:bg-emerald-950/20";
-    } else if (problem.summary.status === "PARTIAL") {
-      colorClass =
-        "text-amber-600 dark:text-yellow-400 font-bold bg-amber-100 dark:bg-yellow-950/20";
-    } else {
-      colorClass =
-        "text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/10";
+    if (problem) {
+      displayText = problem.summary.score;
+      if (problem.compileStatus === "SKIPPED" && problem.compileError === "not_found") {
+        displayText = t("scoreboard.notFound");
+        colorClass = "text-text-muted bg-surface-hover";
+      } else if (problem.compileStatus === "CE") {
+        displayText = "CE";
+        colorClass = "bg-rose-100 font-bold text-rose-700 dark:bg-rose-950/30 dark:text-rose-400";
+      } else if (problem.summary.status === "AC") {
+        colorClass = "bg-emerald-100 font-bold text-emerald-700 dark:bg-emerald-950/25 dark:text-emerald-400";
+      } else if (problem.summary.status === "PARTIAL") {
+        colorClass = "bg-amber-100 font-bold text-amber-700 dark:bg-amber-950/25 dark:text-amber-400";
+      } else {
+        colorClass = "bg-rose-50 text-rose-700 dark:bg-rose-950/15 dark:text-rose-400";
+      }
     }
 
     return (
       <td
         key={problemName}
-        onDoubleClick={() =>
-          problem.compileStatus !== "SKIPPED" &&
-          onOpenDetails(contestantName, problem)
-        }
-        className={`p-3 text-center border-l border-surface-border cursor-pointer hover:brightness-95 dark:hover:brightness-110 transition ${colorClass}`}
-        title={t("scoreboard.resultStatus", {
-          status: problem.summary.status,
-          compileStatus: problem.compileStatus,
+        onContextMenu={(event) => openContextMenu(event, {
+          type: "result",
+          name: `${contestantName} · ${problemName}`,
+          contestantName,
+          problemName,
+          hasResults: !!problem,
+          canRegrade: true,
         })}
+        onDoubleClick={() => {
+          if (problem && problem.compileStatus !== "SKIPPED") onOpenDetails(contestantName, problem);
+        }}
+        className={`border-b border-l border-surface-border px-2 text-center align-middle transition-[filter] hover:brightness-95 dark:hover:brightness-110 ${problem ? "cursor-pointer" : "cursor-default"} ${colorClass}`}
+        style={{ height: rowHeight }}
+        title={problem ? t("scoreboard.resultStatus", { status: problem.summary.status, compileStatus: problem.compileStatus }) : undefined}
       >
-        {displayText}
+        <span className="block whitespace-nowrap">{displayText}</span>
       </td>
     );
   };
 
   return (
-    <main className="flex-1 overflow-hidden p-6 w-full flex flex-col relative bg-surface">
-      <div className="flex-1 flex flex-col min-w-0 bg-surface rounded-lg border border-surface-border shadow-xl shadow-black/5 dark:shadow-black/80 overflow-hidden">
-        <div className="h-12 border-b border-surface-border bg-surface-elevated flex flex-col justify-center px-4">
-          <div className="flex items-center justify-between">
-            <div className="text-2xs text-text-muted">
-              {t("scoreboard.description")}
-            </div>
-            {result?.contestants.some(
-              (contestant) => contestant.problems.length > 0,
-            ) && (
-              <button
-                onClick={onExport}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold uppercase tracking-wider rounded transition"
-              >
-                <Download className="w-3 h-3" /> {t("scoreboard.export")}
-              </button>
-            )}
+    <main
+      className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-surface"
+      onContextMenu={(event) => event.preventDefault()}
+    >
+      <div
+        ref={viewportRef}
+        className="min-h-0 flex-1 overflow-auto bg-surface select-none"
+        onDragStart={(event) => event.preventDefault()}
+      >
+        {allContestants.length === 0 && problems.length === 0 ? (
+          <div className="flex h-full min-h-80 w-full flex-col items-center justify-center text-center text-text-muted">
+            <Terminal className="mb-3 h-8 w-8 text-surface-border-strong" />
+            <p className="max-w-sm text-xs">{t("scoreboard.noContestants")}</p>
           </div>
-        </div>
-
-        <div className="flex-1 overflow-auto bg-surface">
-          {allContestants.length === 0 && problems.length === 0 ? (
-            <div className="w-full h-full min-h-[400px] flex flex-col items-center justify-center text-center text-text-muted">
-              <Terminal className="w-8 h-8 text-surface-border-strong mb-3" />
-              <p className="text-xs max-w-sm">
-                {t("scoreboard.noContestants")}
-              </p>
-            </div>
-          ) : (
-            <table className="w-full text-xs text-left relative border-collapse">
-              <thead className="bg-surface-elevated sticky top-0 z-20 shadow-sm border-b border-surface-border">
-                <tr>
-                  <th className="px-4 py-3 font-semibold text-text-primary whitespace-nowrap min-w-[220px] border-b border-surface-border sticky left-0 bg-surface-elevated z-30">
-                    <div className="flex items-center gap-3 justify-between">
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="checkbox"
-                          checked={
-                            allContestants.length > 0 &&
-                            allContestants.every(
-                              (name) => selectedContestants[name],
-                            )
-                          }
-                          onChange={(event) =>
-                            setSelectedContestants((previous) => ({
-                              ...previous,
-                              ...Object.fromEntries(
-                                allContestants.map((name) => [
-                                  name,
-                                  event.target.checked,
-                                ]),
-                              ),
-                            }))
-                          }
-                          className="w-4 h-4 bg-input-bg border-surface-border-strong rounded text-indigo-500 cursor-pointer"
-                          title={t("scoreboard.selectAllContestants")}
-                        />
-                        <span>{t("scoreboard.contestants")}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setContestantSort((previous) =>
-                            previous === "default"
-                              ? "asc"
-                              : previous === "asc"
-                                ? "desc"
-                                : "default",
-                          )
-                        }
-                        className={`p-1 hover:bg-surface-hover rounded transition ${contestantSort !== "default" && contestantSort !== "score" ? "text-indigo-500 dark:text-indigo-400 font-bold" : "text-text-muted"}`}
-                        title={t("scoreboard.sortAlphabetically")}
-                      >
-                        <ArrowUpDown className="w-3.5 h-3.5" />
-                      </button>
+        ) : (
+          <table
+            className="relative border-collapse text-left"
+            style={{ width: tableWidth, tableLayout: "fixed", fontSize }}
+          >
+            <colgroup>
+              <col style={{ width: contestantColumnWidth }} />
+              {problems.map((problemName) => <col key={problemName} style={{ width: problemColumnWidth }} />)}
+              <col style={{ width: totalColumnWidth }} />
+            </colgroup>
+            <thead className="sticky top-0 z-20 bg-surface-elevated shadow-sm">
+              <tr style={{ height: headerHeight }}>
+                <th className="sticky left-0 z-30 border-b border-r border-surface-border bg-surface-elevated px-2 font-semibold text-text-primary">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <input
+                        type="checkbox"
+                        disabled={interactionLocked}
+                        checked={allContestants.length > 0 && allContestants.every((name) => selectedContestants[name])}
+                        onChange={(event) => setSelectedContestants((previous) => ({
+                          ...previous,
+                          ...Object.fromEntries(allContestants.map((name) => [name, event.target.checked])),
+                        }))}
+                        className="h-4 w-4 flex-none cursor-pointer rounded border-surface-border-strong bg-input-bg text-indigo-500"
+                        title={t("scoreboard.selectAllContestants")}
+                      />
+                      <span className="whitespace-nowrap">{t("scoreboard.contestants")}</span>
                     </div>
-                  </th>
-                  {problems.map((problemName) => (
+                    <button
+                      type="button"
+                      disabled={interactionLocked}
+                      onClick={() => setContestantSort((previous) => previous === "default" ? "asc" : previous === "asc" ? "desc" : "default")}
+                      className={`flex h-6 w-6 flex-none items-center justify-center rounded hover:bg-surface-hover ${contestantSort !== "default" && contestantSort !== "score" ? "text-indigo-500" : "text-text-muted"}`}
+                      title={t("scoreboard.sortAlphabetically")}
+                    >
+                      <ArrowUpDown className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </th>
+                {problems.map((problemName) => {
+                  const hasResults = (result?.contestants || []).some((contestant) =>
+                    contestant.problems.some((problem) => problem.problemName.toLowerCase() === problemName.toLowerCase()),
+                  );
+                  return (
                     <th
                       key={problemName}
-                      className="px-4 py-3 font-semibold text-text-primary whitespace-nowrap text-center border-l border-b border-surface-border transition group hover:bg-surface-hover"
+                      onContextMenu={(event) => openContextMenu(event, {
+                        type: "problem",
+                        name: problemName,
+                        problemName,
+                        hasResults,
+                        canRegrade: contestants.length > 0,
+                      })}
+                      className="border-b border-l border-surface-border bg-surface-elevated px-1.5 text-center font-semibold text-text-primary hover:bg-surface-hover"
                     >
-                      <div className="flex items-center justify-center gap-2">
+                      <div className="flex min-w-0 items-center justify-center gap-1">
                         <input
                           type="checkbox"
+                          disabled={interactionLocked}
                           checked={!!selectedProblems[problemName]}
-                          onChange={(event) =>
-                            setSelectedProblems((previous) => ({
-                              ...previous,
-                              [problemName]: event.target.checked,
-                            }))
-                          }
-                          className="w-4 h-4 bg-input-bg border-surface-border-strong rounded text-indigo-500 cursor-pointer"
+                          onChange={(event) => setSelectedProblems((previous) => ({ ...previous, [problemName]: event.target.checked }))}
+                          className="h-4 w-4 flex-none cursor-pointer rounded border-surface-border-strong bg-input-bg text-indigo-500"
                           title={t("scoreboard.selectProblem")}
                         />
-                        <span>{problemName}</span>
+                        <span className="min-w-0 break-words [overflow-wrap:anywhere] leading-tight">{problemName}</span>
                         <button
                           type="button"
-                          onClick={(event) => {
-                            const rect =
-                              event.currentTarget.getBoundingClientRect();
-                            onOpenActions({
-                              type: "problem",
-                              name: problemName,
-                              x: Math.min(rect.left, window.innerWidth - 190),
-                              y: rect.bottom + 6,
-                            });
-                          }}
-                          className="flex h-6 w-6 items-center justify-center rounded text-text-muted transition hover:bg-surface-hover hover:text-text-primary"
-                          title={t("scoreboard.actionsFor", {
+                          onClick={(event) => openContextMenu(event, {
+                            type: "problem",
                             name: problemName,
+                            problemName,
+                            hasResults,
+                            canRegrade: contestants.length > 0,
                           })}
+                          className="flex h-6 w-5 flex-none items-center justify-center rounded text-text-muted hover:bg-surface-hover hover:text-text-primary"
+                          title={t("scoreboard.actionsFor", { name: problemName })}
+                          aria-label={t("scoreboard.actionsFor", { name: problemName })}
                         >
-                          <EllipsisVertical className="w-3.5 h-3.5" />
+                          <MoreVertical className="h-3.5 w-3.5" />
                         </button>
                       </div>
                     </th>
-                  ))}
-                  <th className="px-4 py-3 font-semibold text-indigo-700 dark:text-indigo-300 whitespace-nowrap text-center border-l border-b border-surface-border sticky right-0 bg-total-column z-20">
-                    <div className="flex items-center justify-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={
-                          problems.length > 0 &&
-                          problems.every((name) => selectedProblems[name])
-                        }
-                        onChange={(event) =>
-                          setSelectedProblems((previous) => ({
-                            ...previous,
-                            ...Object.fromEntries(
-                              problems.map((name) => [
-                                name,
-                                event.target.checked,
-                              ]),
-                            ),
-                          }))
-                        }
-                        className="w-4 h-4 bg-input-bg border-surface-border-strong rounded text-indigo-500 cursor-pointer"
-                        title={t("scoreboard.selectAllProblems")}
-                      />
-                      <span>{t("scoreboard.total")}</span>
-                    </div>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-surface-border">
-                {contestants.map((contestantName) => {
-                  const contestantResult =
-                    resultsByContestant.get(contestantName);
-                  const totalScore =
-                    contestantResult?.problems
-                      .filter((problem) =>
-                        selectedProblemNames.has(
-                          problem.problemName.toLowerCase(),
-                        ),
-                      )
-                      .reduce(
-                        (total, problem) => total + problem.summary.score,
-                        0,
-                      ) || 0;
-                  return (
-                    <tr
-                      key={contestantName}
-                      className={`transition ${selectedContestants[contestantName] ? "hover:bg-surface-hover/50" : "opacity-50"}`}
-                    >
-                      <td className="px-4 py-3 font-mono text-text-primary sticky left-0 bg-surface z-10 border-r border-surface-border">
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="checkbox"
-                            checked={!!selectedContestants[contestantName]}
-                            onChange={(event) =>
-                              setSelectedContestants((previous) => ({
-                                ...previous,
-                                [contestantName]: event.target.checked,
-                              }))
-                            }
-                            className="w-4 h-4 bg-input-bg border-surface-border-strong rounded text-indigo-500 cursor-pointer"
-                          />
-                          <span className="min-w-0 flex-1 truncate">
-                            {contestantName}
-                          </span>
-                          <button
-                            onClick={(event) => {
-                              const rect =
-                                event.currentTarget.getBoundingClientRect();
-                              onOpenActions({
-                                type: "contestant",
-                                name: contestantName,
-                                x: Math.min(
-                                  rect.right + 6,
-                                  window.innerWidth - 190,
-                                ),
-                                y: Math.min(rect.top, window.innerHeight - 170),
-                              });
-                            }}
-                            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-text-muted hover:bg-surface-hover hover:text-text-primary"
-                            title={t("scoreboard.actionsFor", {
-                              name: contestantName,
-                            })}
-                          >
-                            <EllipsisVertical className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                      {problems.map((problemName) =>
-                        renderCell(contestantName, problemName),
-                      )}
-                      <td className="px-4 py-3 text-center font-bold text-indigo-700 dark:text-indigo-300 border-l border-surface-border bg-total-column sticky right-0 z-10">
-                        {contestantResult ? totalScore.toFixed(2) : "-"}
-                      </td>
-                    </tr>
                   );
                 })}
-              </tbody>
-            </table>
-          )}
-        </div>
+                <th className="sticky right-0 z-30 border-b border-l border-surface-border bg-total-column px-2 text-center font-semibold text-indigo-700 dark:text-indigo-300">
+                  <div className="flex items-center justify-center gap-2">
+                    <input
+                      type="checkbox"
+                      disabled={interactionLocked}
+                      checked={problems.length > 0 && problems.every((name) => selectedProblems[name])}
+                      onChange={(event) => setSelectedProblems((previous) => ({
+                        ...previous,
+                        ...Object.fromEntries(problems.map((name) => [name, event.target.checked])),
+                      }))}
+                      className="h-4 w-4 flex-none cursor-pointer rounded border-surface-border-strong bg-input-bg text-indigo-500"
+                      title={t("scoreboard.selectAllProblems")}
+                    />
+                    <span>{t("scoreboard.total")}</span>
+                  </div>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {contestants.map((contestantName) => {
+                const contestantResult = resultsByContestant.get(contestantName);
+                const hasResults = !!contestantResult?.problems.length;
+                const totalScore = contestantResult?.problems
+                  .filter((problem) => selectedProblemNames.has(problem.problemName.toLowerCase()))
+                  .reduce((total, problem) => total + problem.summary.score, 0) || 0;
+                const contestantTarget = {
+                  type: "contestant" as const,
+                  name: contestantName,
+                  contestantName,
+                  hasResults,
+                  canRegrade: problems.length > 0,
+                };
+                return (
+                  <tr key={contestantName} className={selectedContestants[contestantName] ? "hover:bg-surface-hover/40" : "opacity-50"}>
+                    <td
+                      onContextMenu={(event) => openContextMenu(event, contestantTarget)}
+                      className="sticky left-0 z-10 cursor-default border-b border-r border-surface-border bg-surface px-2 font-mono text-text-primary"
+                      style={{ height: rowHeight }}
+                    >
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <input
+                          type="checkbox"
+                          disabled={interactionLocked}
+                          checked={!!selectedContestants[contestantName]}
+                          onChange={(event) => setSelectedContestants((previous) => ({ ...previous, [contestantName]: event.target.checked }))}
+                          className="h-4 w-4 flex-none cursor-pointer rounded border-surface-border-strong bg-input-bg text-indigo-500"
+                        />
+                        <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere] leading-tight">{contestantName}</span>
+                        <button
+                          type="button"
+                          onClick={(event) => openContextMenu(event, contestantTarget)}
+                          className="flex h-6 w-5 flex-none items-center justify-center rounded text-text-muted hover:bg-surface-hover hover:text-text-primary"
+                          title={t("scoreboard.actionsFor", { name: contestantName })}
+                          aria-label={t("scoreboard.actionsFor", { name: contestantName })}
+                        >
+                          <MoreVertical className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                    {problems.map((problemName) => renderCell(contestantName, problemName))}
+                    <td
+                      onContextMenu={(event) => openContextMenu(event, contestantTarget)}
+                      className="sticky right-0 z-10 cursor-default border-b border-l border-surface-border bg-total-column px-2 text-center font-bold text-indigo-700 dark:text-indigo-300"
+                      style={{ height: rowHeight }}
+                    >
+                      {contestantResult ? totalScore.toFixed(2) : "-"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
       </div>
     </main>
   );

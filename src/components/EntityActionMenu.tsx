@@ -1,10 +1,11 @@
+import { useEffect } from "react";
 import { FileText, RefreshCw, Settings2, Trash2 } from "lucide-react";
 import type { ScoreboardActionTarget } from "../features/scoreboard/Scoreboard";
 import { useTranslation } from "react-i18next";
 
 interface Props {
   target: ScoreboardActionTarget;
-  isJudging: boolean;
+  mutationsLocked: boolean;
   onClose: () => void;
   onConfig: () => void;
   onDelete: () => void;
@@ -12,9 +13,12 @@ interface Props {
   onRegrade: () => void;
 }
 
+const menuButton =
+  "flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-primary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-40";
+
 export default function EntityActionMenu({
   target,
-  isJudging,
+  mutationsLocked,
   onClose,
   onConfig,
   onDelete,
@@ -22,6 +26,21 @@ export default function EntityActionMenu({
   onRegrade,
 }: Props) {
   const { t } = useTranslation();
+  const deleteDisabled = mutationsLocked || !target.hasResults;
+  const regradeDisabled = mutationsLocked || !target.canRegrade;
+  const detailsDisabled = !target.hasResults;
+  const unavailableReason = mutationsLocked
+    ? t("actions.unavailableWhileBusy")
+    : t("actions.noResults");
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
   return (
     <>
       <button
@@ -30,38 +49,51 @@ export default function EntityActionMenu({
         aria-label={t("actions.closeMenu")}
       />
       <div
-        className="fixed z-[61] w-44 overflow-hidden rounded-md border border-surface-border-strong bg-surface-elevated py-1 shadow-2xl"
+        role="menu"
+        className="fixed z-[61] w-52 overflow-hidden rounded-md border border-surface-border-strong bg-surface-elevated py-1 shadow-2xl"
         style={{ left: target.x, top: target.y }}
       >
         {target.type === "problem" && (
-          <button
-            onClick={onConfig}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-primary hover:bg-surface-hover transition-colors"
-          >
-            <Settings2 className="h-3.5 w-3.5 text-indigo-500 dark:text-indigo-400" />{" "}
-            {t("actions.configProblem")}
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={onConfig}
+              className={menuButton}
+            >
+              <Settings2 className="h-3.5 w-3.5 text-indigo-500 dark:text-indigo-400" />
+              {t("actions.configProblem")}
+            </button>
+            <div className="my-1 border-t border-surface-border" />
+          </>
         )}
         <button
+          type="button"
+          disabled={deleteDisabled}
           onClick={onDelete}
-          className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-primary hover:bg-surface-hover transition-colors"
+          title={deleteDisabled ? unavailableReason : undefined}
+          className={menuButton}
         >
-          <Trash2 className="h-3.5 w-3.5 text-rose-500 dark:text-rose-400" />{" "}
+          <Trash2 className="h-3.5 w-3.5 text-rose-500 dark:text-rose-400" />
           {t("actions.deleteScore")}
         </button>
         <button
-          disabled={isJudging}
+          type="button"
+          disabled={regradeDisabled}
           onClick={onRegrade}
-          className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-primary hover:bg-surface-hover disabled:opacity-40 transition-colors"
+          title={regradeDisabled ? (mutationsLocked ? t("actions.unavailableWhileBusy") : t("actions.missingData")) : undefined}
+          className={menuButton}
         >
-          <RefreshCw className="h-3.5 w-3.5 text-emerald-500 dark:text-emerald-400" />{" "}
+          <RefreshCw className="h-3.5 w-3.5 text-emerald-500 dark:text-emerald-400" />
           {t("actions.regrade")}
         </button>
         <button
+          type="button"
+          disabled={detailsDisabled}
           onClick={onDetails}
-          className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-text-primary hover:bg-surface-hover transition-colors"
+          title={detailsDisabled ? t("actions.noResults") : undefined}
+          className={menuButton}
         >
-          <FileText className="h-3.5 w-3.5 text-sky-500 dark:text-sky-400" />{" "}
+          <FileText className="h-3.5 w-3.5 text-sky-500 dark:text-sky-400" />
           {t("actions.details")}
         </button>
       </div>

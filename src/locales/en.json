@@ -22,14 +22,14 @@
     "PARTIAL": "Partial"
   },
   "toolbar": {
-    "title": "ThemisV2 Judging System",
-    "loadTests": "Load tests",
+    "title": "JudgeDesk",
+    "loadTests": "Load problems",
     "loadContestants": "Load contestants",
-    "refresh": "Refresh",
+    "refresh": "Reload",
+    "reloadHint": "Reload problems and contestants",
     "stop": "Stop",
-    "run": "Run",
-    "timeLimit": "Time limit",
-    "toggleTheme": "Toggle dark/light mode",
+    "run": "Judge",
+    "toggleTheme": "Change theme",
     "toggleLanguage": "Change language",
     "settings": "Tools",
     "openGitHub": "Open GitHub repository",
@@ -45,12 +45,36 @@
       "checking": "Checking environment..."
     }
   },
+  "contest": {
+    "new": "New contest",
+    "open": "Open contest",
+    "save": "Save contest",
+    "saving": "Saving contest...",
+    "savingDescription": "Packing problems, contestant sources, configuration, and judging results. Please wait.",
+    "untitled": "Untitled contest",
+    "saveChangesTitle": "Save the contest before continuing?",
+    "saveChangesMessage": "The current contest has unsaved changes. Save all problems, contestant sources, and judging results?",
+    "discard": "Don't save",
+    "saveFailed": "Could not save the contest",
+    "openFailed": "Could not open the contest"
+  },
   "actions": {
     "configProblem": "Config Problem",
     "deleteScore": "Delete Score",
+    "deleteSelectedScores": "Delete selected scores",
     "regrade": "Re-grade",
-    "details": "Details",
-    "closeMenu": "Close actions menu"
+    "details": "Judging details",
+    "closeMenu": "Close actions menu",
+    "noResults": "No judged results are available",
+    "missingData": "Load both problems and contestants first",
+    "unavailableWhileJudging": "Unavailable while judging is in progress",
+    "unavailableWhileBusy": "Unavailable while judging or saving is in progress",
+    "confirmDeleteTitle": "Delete judging results?",
+    "confirmDelete": "Delete scores",
+    "confirmDeleteSelectedMessage": "Delete existing scores for {{contestants}} selected contestant(s) and {{problems}} selected problem(s)? This cannot be undone.",
+    "confirmDeleteResultMessage": "Delete the score for {{contestant}} · {{problem}}? This cannot be undone.",
+    "confirmDeleteProblemMessage": "Delete all scores for problem {{problem}}? This cannot be undone.",
+    "confirmDeleteContestantMessage": "Delete all scores for contestant {{contestant}}? This cannot be undone."
   },
   "progress": {
     "batchGrading": "Batch Grading",
@@ -97,6 +121,7 @@
     "showContent": "Show content?",
     "cancel": "Cancel",
     "saving": "Saving...",
+    "readOnlyWhileBusy": "You can inspect this configuration, but it cannot be saved while judging or saving is in progress.",
     "close": "Close problem configuration",
     "testEdit": {
       "pointFor": "Set point for {{name}}",
@@ -225,6 +250,7 @@
     "problem": "Problem",
     "overall": "Overall",
     "score": "Score",
+    "passedTests": "Tests passed",
     "compilationFailure": "Compilation Failure",
     "compiledSuccessfully": "Compiled successfully in",
     "expectedOutput": "Expected Output",
@@ -290,7 +316,7 @@
     "checkFailed": "Update check failed",
     "downloadFailed": "Update download failed",
     "installTitle": "Install update now?",
-    "installMessage": "Installing will stop any active judging session and close ThemisV2. Make sure the results you need have finished and been saved.",
+    "installMessage": "Installing will stop any active judging session and close JudgeDesk. Make sure the results you need have finished and been saved.",
     "installing": "Installing...",
     "installNow": "Install now",
     "installFailed": "Update installation failed"

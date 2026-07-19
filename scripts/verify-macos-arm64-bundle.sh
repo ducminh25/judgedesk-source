@@ -2,7 +2,7 @@
 set -euo pipefail
 
 target_root="src-tauri/target/aarch64-apple-darwin/release/bundle"
-dmg_file="$(find "$target_root/dmg" -maxdepth 1 -name 'ThemisV2_*.dmg' -print -quit)"
+dmg_file="$(find "$target_root/dmg" -maxdepth 1 -name 'JudgeDesk_*.dmg' -print -quit)"
 test -n "$dmg_file"
 
 mount_dir="$(mktemp -d)"
@@ -32,12 +32,12 @@ node scripts/smoke-test-sidecar.js \
 
 rm -rf release-assets-mac
 mkdir -p release-assets-mac
-cp "$target_root"/dmg/ThemisV2_*.dmg release-assets-mac/
+cp "$target_root"/dmg/JudgeDesk_*.dmg release-assets-mac/
 cp "$target_root"/macos/*.app.tar.gz release-assets-mac/
 cp "$target_root"/macos/*.app.tar.gz.sig release-assets-mac/
 (
   cd release-assets-mac
-  shasum --algorithm 256 ThemisV2_*.dmg ThemisV2.app.tar.gz \
+  shasum --algorithm 256 JudgeDesk_*.dmg JudgeDesk.app.tar.gz \
     > SHA256SUMS-macos
 )
 

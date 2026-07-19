@@ -11,7 +11,6 @@ import type { JudgeResultsAction } from "./judge-results";
 interface JudgeSessionOptions {
   contestantsPath: string;
   testPath: string;
-  timeLimit: number;
   problemConfigs: Record<string, ProblemConfig>;
   dispatchResults: Dispatch<JudgeResultsAction>;
 }
@@ -19,7 +18,6 @@ interface JudgeSessionOptions {
 export function useJudgeSession({
   contestantsPath,
   testPath,
-  timeLimit,
   problemConfigs,
   dispatchResults
 }: JudgeSessionOptions) {
@@ -28,8 +26,10 @@ export function useJudgeSession({
   const [jobId, setJobId] = useState<string | null>(null);
   const [progressState, setProgressState] = useState<JudgeProgress | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const activeRunRef = useRef(false);
 
   const runJudge = async (targetContestants: string[], targetProblems: string[]) => {
+    if (activeRunRef.current) return;
     if (!contestantsPath.trim()) {
       setErrorMessage("Please enter the path to the contestants folder.");
       return;
@@ -44,6 +44,7 @@ export function useJudgeSession({
     }
 
     setErrorMessage("");
+    activeRunRef.current = true;
     setIsJudging(true);
     dispatchResults({ type: "initialize" });
     const newJobId = Math.random().toString(36).substring(7);
@@ -55,7 +56,6 @@ export function useJudgeSession({
       const request: BatchJudgeRequest = {
         thisinhPath: contestantsPath,
         testPath,
-        timeLimit,
         problemConfigs,
         targetContestants,
         targetProblems,
@@ -73,6 +73,7 @@ export function useJudgeSession({
         setErrorMessage(error.message || "Something went wrong during local execution.");
       }
     } finally {
+      activeRunRef.current = false;
       setIsJudging(false);
       setJobId(null);
       setProgressState(null);
@@ -91,6 +92,7 @@ export function useJudgeSession({
         body: JSON.stringify({ jobId })
       });
     } finally {
+      activeRunRef.current = false;
       setIsJudging(false);
       setJobId(null);
       setProgressState(null);

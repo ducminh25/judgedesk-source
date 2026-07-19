@@ -1,6 +1,6 @@
 workflows:
   macos-arm64-release:
-    name: ThemisV2 Apple Silicon release
+    name: JudgeDesk Apple Silicon release
     instance_type: mac_mini_m2
     max_build_duration: 120
     environment:
@@ -55,13 +55,13 @@ workflows:
         script: |
           bash scripts/verify-macos-arm64-bundle.sh
     artifacts:
-      - release-assets-mac/ThemisV2_*.dmg
-      - release-assets-mac/ThemisV2.app.tar.gz
-      - release-assets-mac/ThemisV2.app.tar.gz.sig
+      - release-assets-mac/JudgeDesk_*.dmg
+      - release-assets-mac/JudgeDesk.app.tar.gz
+      - release-assets-mac/JudgeDesk.app.tar.gz.sig
       - release-assets-mac/SHA256SUMS-macos
 
   windows-x64-release:
-    name: ThemisV2 Windows x64 release
+    name: JudgeDesk Windows x64 release
     instance_type: windows_x2
     max_build_duration: 120
     environment:
@@ -110,7 +110,7 @@ workflows:
         script: |
           $ErrorActionPreference = 'Stop'
           $bundleDirectory = 'src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi'
-          $msi = Get-ChildItem "$bundleDirectory/ThemisV2_*.msi" | Select-Object -First 1
+          $msi = Get-ChildItem "$bundleDirectory/JudgeDesk_*.msi" | Select-Object -First 1
           if (-not $msi) { throw 'MSI output was not created.' }
           $signaturePath = "$($msi.FullName).sig"
           if (-not (Test-Path $signaturePath)) { throw 'Signed MSI updater artifact was not created.' }
@@ -128,12 +128,12 @@ workflows:
             } | Set-Content release-assets-windows/SHA256SUMS-windows -Encoding ascii
           Get-Content release-assets-windows/SHA256SUMS-windows
     artifacts:
-      - release-assets-windows/ThemisV2_*.msi
-      - release-assets-windows/ThemisV2_*.msi.sig
+      - release-assets-windows/JudgeDesk_*.msi
+      - release-assets-windows/JudgeDesk_*.msi.sig
       - release-assets-windows/SHA256SUMS-windows
 
   windows-updater-signing:
-    name: ThemisV2 Windows updater signing
+    name: JudgeDesk Windows updater signing
     instance_type: mac_mini_m2
     max_build_duration: 30
     environment:
@@ -151,7 +151,7 @@ workflows:
             exit 1
           fi
           version="$(node -p "require('./package.json').version")"
-          msi_name="ThemisV2_${version}_x64_en-US.msi"
+          msi_name="JudgeDesk_${version}_x64_en-US.msi"
           staging_tag="v${version}-staging"
           staging_url="https://github.com/ducminh25/themis-v2/releases/download/${staging_tag}/${msi_name}"
           mkdir -p release-assets-windows
@@ -165,6 +165,6 @@ workflows:
             cat SHA256SUMS-windows
           )
     artifacts:
-      - release-assets-windows/ThemisV2_*.msi
-      - release-assets-windows/ThemisV2_*.msi.sig
+      - release-assets-windows/JudgeDesk_*.msi
+      - release-assets-windows/JudgeDesk_*.msi.sig
       - release-assets-windows/SHA256SUMS-windows

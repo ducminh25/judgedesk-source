@@ -1,4 +1,4 @@
-# Building ThemisV2
+# Building JudgeDesk
 
 ## Required toolchains
 
@@ -22,22 +22,55 @@ cargo fmt --check --manifest-path src-tauri/Cargo.toml
 cargo check --manifest-path src-tauri/Cargo.toml
 ```
 
-Run the development application with:
+## Test the desktop UI locally
+
+The closest development-mode test to the installed application is:
+
+```powershell
+npm run test:desktop
+```
+
+This rebuilds the SEA sidecar, starts Vite with hot reload, and opens a real
+Tauri/WebView2 JudgeDesk window. After the first run, frontend-only changes can
+be tested faster with `npx tauri dev`; rebuild the sidecar when files under
+`server/`, `shared/`, or `scripts/build-server*` change.
+
+For browser-only debugging, run:
 
 ```bash
 npm run dev
 ```
 
+and open `http://127.0.0.1:3000`. Native dialogs, updater, checker preview,
+window maximize behavior, and sidecar lifecycle must still be verified through
+the Tauri window.
+
 ## Local desktop packages
 
-Windows x64:
+Windows x64 local test installer (unsigned, updater signing disabled):
 
 ```powershell
-npm run build:server
-npx tauri build --config src-tauri/tauri.windows.conf.json --target x86_64-pc-windows-msvc
+npm run build:windows:local
 ```
 
-macOS universal packages are produced by GitHub Actions because the Intel and Apple Silicon SEA sidecars must first be built on their native runner and merged with `lipo`. A local Mac can build its own architecture with `npm run build:server` followed by `npx tauri build`.
+The local unsigned installer is written to:
+
+`src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/JudgeDesk_<version>_x64_en-US.msi`
+
+The release workflow uses `tauri.windows.conf.json` instead and requires the
+private updater signing key. For a faster executable-only smoke test, run
+`npm run build:server` and then `npx tauri build --no-bundle --target
+x86_64-pc-windows-msvc`; the executable is created in the target release
+directory.
+
+The supported macOS release is Apple Silicon (`aarch64-apple-darwin`). It is
+built and smoke-tested on a macOS runner by GitHub Actions and Codemagic. The
+workflow verifies the app and sidecar architectures, code signatures,
+entitlements, DMG contents, updater bundle, and a real sidecar HTTP startup.
+Use the existing `workflow_dispatch` action on a branch to produce test
+artifacts without publishing a release. A local M-series Mac can use
+`bash scripts/build-macos-arm64-sidecar.sh` followed by the Tauri build command
+from `.github/workflows/release.yml`.
 
 ## Managed compiler packages
 
@@ -49,5 +82,9 @@ Installed packages are stored in:
 
 - Windows: `%LOCALAPPDATA%/ThemisV2/toolchains/`
 - macOS: `~/Library/Application Support/ThemisV2/toolchains/`
+
+The legacy `ThemisV2` data directory and application identifier are retained
+for this rename so existing managed toolchains, preferences, and updater
+identity continue to work.
 
 Set `THEMIS_TOOLCHAIN_MANIFEST_URL` only when testing a private or pre-release manifest.
