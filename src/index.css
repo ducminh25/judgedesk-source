@@ -41,3 +41,21 @@
     --total-column: #1e1b4b;
   }
 }
+
+.command-bar-scroll {
+  scrollbar-color: color-mix(in srgb, currentColor 24%, transparent) transparent;
+  scrollbar-width: thin;
+}
+
+.command-bar-scroll::-webkit-scrollbar {
+  height: 4px;
+}
+
+.command-bar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.command-bar-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, currentColor 24%, transparent);
+  border-radius: 999px;
+}

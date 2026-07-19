@@ -48,6 +48,9 @@ export function calculateProblemSummary({
   let score = testCases.reduce((total, test) => total + test.score, 0);
   const status = calculateProblemStatus(compileStatus, testCases);
   const polygonConfig = config.polygonConfig;
+  const hasConfiguredPolygonPoints = testDirectories.some(
+    (testDirectory) => polygonConfig?.tests?.[testDirectory]?.points !== undefined
+  );
   let maxScore = 0;
 
   if (polygonConfig?.enableGroups) {
@@ -57,6 +60,12 @@ export function calculateProblemSummary({
     );
   } else if (config.totalScore !== undefined && config.totalScore !== null && config.totalScore !== "") {
     maxScore = Number(config.totalScore);
+    score = roundDisplayScore(score);
+  } else if (hasConfiguredPolygonPoints) {
+    maxScore = testDirectories.reduce(
+      (total, testDirectory) => total + (Number(polygonConfig?.tests?.[testDirectory]?.points) || 0),
+      0
+    );
     score = roundDisplayScore(score);
   } else {
     if (testCases.length > 0) {
@@ -78,7 +87,7 @@ export function calculateProblemSummary({
     total: testCases.length,
     passed,
     score,
-    maxScore,
+    maxScore: roundDisplayScore(maxScore),
     status
   };
 }

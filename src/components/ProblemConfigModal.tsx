@@ -16,6 +16,7 @@ interface Props {
   onSave: (problemName: string, config: ProblemConfig) => void;
   onClose: () => void;
   customCheckers?: string[];
+  saveDisabled?: boolean;
 }
 
 export default function ProblemConfigModal({
@@ -25,6 +26,7 @@ export default function ProblemConfigModal({
   onSave,
   onClose,
   customCheckers = [],
+  saveDisabled = false,
 }: Props) {
   const { t } = useTranslation();
   const editor = useProblemConfigEditor({
@@ -49,7 +51,7 @@ export default function ProblemConfigModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div
-        className="bg-surface border border-surface-border rounded-lg w-full max-w-4xl shadow-2xl flex flex-col max-h-[95vh]"
+        className="bg-surface border border-surface-border rounded-lg w-full max-w-6xl shadow-2xl flex flex-col max-h-[95vh]"
         onClick={() => popover && closePopover()}
       >
         <div className="flex items-center justify-between p-4 border-b border-surface-border bg-surface-elevated">
@@ -74,6 +76,12 @@ export default function ProblemConfigModal({
             <div className="flex items-center gap-2 border border-rose-300 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/20 px-3 py-2 text-xs text-rose-600 dark:text-rose-300 rounded">
               <AlertCircle className="w-4 h-4 flex-shrink-0" />{" "}
               {editor.loadError}
+            </div>
+          )}
+          {saveDisabled && (
+            <div className="flex items-center gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300">
+              <AlertCircle className="h-4 w-4 flex-none" />
+              {t("problemConfig.readOnlyWhileBusy")}
             </div>
           )}
           <BasicProblemSettings
@@ -156,7 +164,7 @@ export default function ProblemConfigModal({
             {t("problemConfig.cancel")}
           </button>
           <button
-            disabled={editor.isSaving}
+            disabled={editor.isSaving || saveDisabled}
             onClick={() => void editor.save()}
             className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded shadow transition"
           >

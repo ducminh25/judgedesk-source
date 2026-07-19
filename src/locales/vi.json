@@ -22,14 +22,14 @@
     "PARTIAL": "Đúng một phần"
   },
   "toolbar": {
-    "title": "Hệ thống chấm ThemisV2",
-    "loadTests": "Tải bộ test",
-    "loadContestants": "Tải bài thi",
-    "refresh": "Làm mới",
+    "title": "JudgeDesk",
+    "loadTests": "Nạp danh sách bài thi",
+    "loadContestants": "Nạp danh sách thí sinh",
+    "refresh": "Tải lại",
+    "reloadHint": "Nạp lại bài thi và thí sinh",
     "stop": "Dừng",
-    "run": "Chấm điểm",
-    "timeLimit": "Giới hạn thời gian",
-    "toggleTheme": "Đổi giao diện sáng/tối",
+    "run": "Chấm bài",
+    "toggleTheme": "Đổi nền",
     "toggleLanguage": "Đổi ngôn ngữ",
     "settings": "Công cụ",
     "openGitHub": "Mở repository GitHub",
@@ -45,12 +45,36 @@
       "checking": "Đang kiểm tra môi trường..."
     }
   },
+  "contest": {
+    "new": "Tạo kỳ thi mới",
+    "open": "Mở kỳ thi",
+    "save": "Lưu kỳ thi",
+    "saving": "Đang lưu kỳ thi...",
+    "savingDescription": "Đang đóng gói bài thi, source thí sinh, cấu hình và kết quả chấm. Vui lòng chờ.",
+    "untitled": "Kỳ thi chưa đặt tên",
+    "saveChangesTitle": "Lưu kỳ thi trước khi tiếp tục?",
+    "saveChangesMessage": "Kỳ thi hiện tại có thay đổi chưa được lưu. Bạn có muốn lưu toàn bộ đề, source thí sinh và kết quả chấm không?",
+    "discard": "Không lưu",
+    "saveFailed": "Không thể lưu kỳ thi",
+    "openFailed": "Không thể mở kỳ thi"
+  },
   "actions": {
     "configProblem": "Cấu hình Bài tập",
     "deleteScore": "Xóa điểm",
+    "deleteSelectedScores": "Xóa điểm đã chọn",
     "regrade": "Chấm lại",
-    "details": "Chi tiết",
-    "closeMenu": "Đóng menu thao tác"
+    "details": "Chi tiết chấm",
+    "closeMenu": "Đóng menu thao tác",
+    "noResults": "Chưa có kết quả chấm",
+    "missingData": "Cần nạp cả bài thi và thí sinh",
+    "unavailableWhileJudging": "Không khả dụng khi đang chấm bài",
+    "unavailableWhileBusy": "Không khả dụng khi đang chấm hoặc lưu kỳ thi",
+    "confirmDeleteTitle": "Xóa kết quả chấm?",
+    "confirmDelete": "Xóa điểm",
+    "confirmDeleteSelectedMessage": "Xóa các điểm hiện có của {{contestants}} thí sinh và {{problems}} bài đã chọn? Thao tác này không thể hoàn tác.",
+    "confirmDeleteResultMessage": "Xóa điểm của {{contestant}} · {{problem}}? Thao tác này không thể hoàn tác.",
+    "confirmDeleteProblemMessage": "Xóa toàn bộ điểm của bài {{problem}}? Thao tác này không thể hoàn tác.",
+    "confirmDeleteContestantMessage": "Xóa toàn bộ điểm của thí sinh {{contestant}}? Thao tác này không thể hoàn tác."
   },
   "progress": {
     "batchGrading": "Đang chấm điểm",
@@ -97,6 +121,7 @@
     "showContent": "Hiện nội dung?",
     "cancel": "Hủy",
     "saving": "Đang lưu...",
+    "readOnlyWhileBusy": "Bạn có thể xem cấu hình nhưng không thể lưu khi đang chấm hoặc lưu kỳ thi.",
     "close": "Đóng cấu hình bài tập",
     "testEdit": {
       "pointFor": "Đặt điểm cho {{name}}",
@@ -225,6 +250,7 @@
     "problem": "Bài tập",
     "overall": "Tổng quát",
     "score": "Điểm",
+    "passedTests": "Test đạt",
     "compilationFailure": "Lỗi Biên Dịch",
     "compiledSuccessfully": "Biên dịch thành công trong",
     "expectedOutput": "Kết quả Đúng (Expected)",
@@ -290,7 +316,7 @@
     "checkFailed": "Kiểm tra cập nhật thất bại",
     "downloadFailed": "Tải bản cập nhật thất bại",
     "installTitle": "Cài đặt bản cập nhật ngay?",
-    "installMessage": "Việc cài đặt sẽ dừng lượt chấm đang chạy và đóng ThemisV2. Hãy bảo đảm các kết quả cần thiết đã chấm xong và được lưu.",
+    "installMessage": "Việc cài đặt sẽ dừng lượt chấm đang chạy và đóng JudgeDesk. Hãy bảo đảm các kết quả cần thiết đã chấm xong và được lưu.",
     "installing": "Đang cài đặt...",
     "installNow": "Cài đặt ngay",
     "installFailed": "Cài đặt bản cập nhật thất bại"

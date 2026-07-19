@@ -93,6 +93,40 @@ test("bundleServer uses esbuild's cross-platform JavaScript API", () => {
   }
 });
 
+test("bundleServer embeds canonical testlib without shipping the header as a resource", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-testlib-"));
+  try {
+    fs.mkdirSync(path.join(directory, "judgers"), { recursive: true });
+    fs.writeFileSync(path.join(directory, "judgers", "testlib.h"), "JUDGEDESK_TESTLIB_SENTINEL");
+    fs.writeFileSync(
+      path.join(directory, "server.ts"),
+      "declare const __JUDGEDESK_TESTLIB__: string; console.log(__JUDGEDESK_TESTLIB__);",
+    );
+    bundleServer(directory, "server.ts", "dist/server.cjs");
+    const output = fs.readFileSync(path.join(directory, "dist", "server.cjs"), "utf8");
+    assert.match(output, /JUDGEDESK_TESTLIB_SENTINEL/);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("Tauri embeds checker previews and does not install editable checker resources", () => {
+  const tauriConfig = JSON.parse(
+    fs.readFileSync(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8"),
+  );
+  const resources = JSON.stringify(tauriConfig.bundle.resources);
+  assert.doesNotMatch(resources, /judgers|testlib|\.cpp/);
+
+  const viewerSource = fs.readFileSync(
+    new URL("../src-tauri/src/checker_sources.rs", import.meta.url),
+    "utf8",
+  );
+  assert.match(viewerSource, /include_str!\("\.\.\/\.\.\/judgers\/testlib\.h"\)/);
+  assert.match(viewerSource, /unique_preview_directory/);
+  assert.match(viewerSource, /fs::write\(preview_directory\.join\("testlib\.h"\)/);
+  assert.doesNotMatch(viewerSource, /copy_once/);
+});
+
 test("macOS SEA build removes the inherited signature before injection and signs afterward", () => {
   const buildSource = fs.readFileSync(
     new URL("./build-server-lib.js", import.meta.url),
@@ -266,7 +300,7 @@ test("Codemagic builds verified Apple Silicon release artifacts on M2", () => {
   assert.match(codemagic, />> "\$CM_ENV"/);
   assert.match(codemagic, /--target aarch64-apple-darwin/);
   assert.match(codemagic, /TAURI_SIGNING_PRIVATE_KEY_PASSWORD/);
-  assert.match(codemagic, /ThemisV2\.app\.tar\.gz\.sig/);
+  assert.match(codemagic, /JudgeDesk\.app\.tar\.gz\.sig/);
   assert.match(sidecarScript, /TAURI_TARGET=aarch64-apple-darwin/);
   assert.doesNotMatch(sidecarScript, /x86_64/);
   assert.match(bundleScript, /Contents\/MacOS\/themis-v2" -verify_arch arm64/);
@@ -289,7 +323,7 @@ test("Codemagic builds signed Windows updater artifacts on a Windows VM", () => 
   assert.match(windowsWorkflow, /TAURI_SIGNING_PRIVATE_KEY/);
   assert.match(windowsWorkflow, /TAURI_TARGET = 'x86_64-pc-windows-msvc'/);
   assert.match(windowsWorkflow, /tauri\.windows\.conf\.json/);
-  assert.match(windowsWorkflow, /ThemisV2_\*\.msi\.sig/);
+  assert.match(windowsWorkflow, /JudgeDesk_\*\.msi\.sig/);
   assert.match(windowsWorkflow, /SHA256SUMS-windows/);
 });
 
@@ -306,5 +340,5 @@ test("Codemagic can sign a locally built Windows MSI with the existing updater k
   assert.match(signingWorkflow, /groups:\s+\- themis_signing/);
   assert.match(signingWorkflow, /v\$\{version\}-staging/);
   assert.match(signingWorkflow, /tauri signer sign/);
-  assert.match(signingWorkflow, /ThemisV2_\*\.msi\.sig/);
+  assert.match(signingWorkflow, /JudgeDesk_\*\.msi\.sig/);
 });

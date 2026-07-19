@@ -109,7 +109,6 @@ export interface JudgeProgress {
 export interface BatchJudgeRequest {
   thisinhPath: string;
   testPath: string;
-  timeLimit: number;
   jobId: string;
   problemConfigs: Record<string, ProblemConfig>;
   targetContestants: string[];

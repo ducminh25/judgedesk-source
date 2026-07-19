@@ -23,8 +23,7 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
   const { request, contestantsDirectory: resolvedThisinh, testDirectory: resolvedTest, tempDirectory: tempDir, events } = options;
   const thisinhPath = request.thisinhPath!;
   const testPath = request.testPath!;
-  const { timeLimit, jobId } = request;
-  const timeLimitInput = parseInt(String(timeLimit || "1000"), 10);
+  const { jobId } = request;
   const sendEvent = events.send;
   const getTestProblemDirObj = createProblemDirectoryResolver(resolvedTest);
   const contestantDirs = listContestants(resolvedThisinh, request.targetContestants);
@@ -196,7 +195,7 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
            }
 
            // Determine specific time limit for this test case
-           let tcTimeLimitMs = timeLimitInput;
+           let tcTimeLimitMs = 1_000;
            if (poly && poly.tests && poly.tests[tcDir] && poly.tests[tcDir].timeLimit !== undefined) {
                tcTimeLimitMs = Math.round(Number(poly.tests[tcDir].timeLimit) * 1000);
            }

@@ -49,7 +49,7 @@ export function BasicProblemSettings(props: Props) {
   
   return (
     <>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-[minmax(260px,0.8fr)_minmax(520px,1.4fr)] gap-4">
         <FileSetting
           label={t("problemConfig.inputFile")}
           standardLabel="Use standard input"
@@ -87,7 +87,7 @@ export function BasicProblemSettings(props: Props) {
           <select
             value={config.checkerType || "C1"}
             onChange={event => setConfig(previous => ({ ...previous, checkerType: event.target.value }))}
-            className="flex-1 bg-input-bg border border-surface-border-strong rounded px-2.5 py-1.5 text-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
+            className="min-w-0 flex-1 bg-input-bg border border-surface-border-strong rounded px-2.5 py-1.5 text-text-primary text-xs focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer"
           >
             {customCheckers.length > 0 && (
               <optgroup label={t("checkers.groups.custom")}>
@@ -101,7 +101,7 @@ export function BasicProblemSettings(props: Props) {
                 const key = checkerTranslationKey(checker);
                 return (
                   <option key={checker} value={checker}>
-                    {t(`checkers.entries.${key}.title`)} — {t(`checkers.entries.${key}.summary`)}
+                    {t(`checkers.entries.${key}.title`)}
                   </option>
                 );
               })}

@@ -18,6 +18,10 @@ export function resolveTarget(platform, architecture, envTarget) {
 
 export function bundleServer(appRoot, srcFile, outFile) {
   console.log("Compiling server with esbuild...");
+  const testlibPath = path.join(appRoot, "judgers", "testlib.h");
+  const bundledTestlib = fs.existsSync(testlibPath)
+    ? fs.readFileSync(testlibPath, "utf8")
+    : "";
   buildSync({
     absWorkingDir: appRoot,
     entryPoints: [srcFile],
@@ -25,6 +29,9 @@ export function bundleServer(appRoot, srcFile, outFile) {
     platform: "node",
     format: "cjs",
     external: ["vite"],
+    define: {
+      __JUDGEDESK_TESTLIB__: JSON.stringify(bundledTestlib),
+    },
     outfile: outFile,
     logLevel: "info",
   });

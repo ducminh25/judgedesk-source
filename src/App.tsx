@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef, useReducer } from "react";
+import React, { useCallback, useEffect, useState, useMemo, useRef, useReducer } from "react";
 import { HostStatus, ProblemResult } from "./types";
 import ProblemConfigModal from "./components/ProblemConfigModal";
 import ProgressWindow from "./components/ProgressWindow";
@@ -6,7 +6,7 @@ import JudgingDetailsModal from "./components/JudgingDetailsModal";
 import ScoringLogModal from "./components/ScoringLogModal";
 import { apiFetch } from "./api";
 import { buildScoreWorkbookBase64 } from "./features/export/score-workbook";
-import { judgeResultsReducer } from "./features/judging/judge-results";
+import { judgeResultsReducer, type JudgeResultsAction } from "./features/judging/judge-results";
 import { useJudgeSession } from "./features/judging/useJudgeSession";
 import { useContestWorkspace } from "./features/workspace/useContestWorkspace";
 import { createDefaultProblemConfig } from "../shared/problem-config";
@@ -21,6 +21,21 @@ import { ToolchainSetupModal } from "./features/toolchains/ToolchainSetupModal.j
 import { preferencesStorage } from "./features/preferences/storage.js";
 import ToolchainManager from "./features/toolchains/ToolchainManager.js";
 import { useAppUpdater } from "./features/updates/useAppUpdater.js";
+import UnsavedContestDialog from "./components/UnsavedContestDialog";
+import ScoreDeleteConfirmDialog from "./components/ScoreDeleteConfirmDialog";
+import ContestSaveProgressDialog from "./components/ContestSaveProgressDialog";
+import {
+  buildContestManifest,
+  chooseAndOpenContestArchive,
+  saveContestArchive,
+} from "./features/contest/contest-file";
+
+type PendingContestAction = "new" | "open" | "close";
+type PendingScoreDeletion =
+  | { type: "selected"; contestantNames: string[]; problemNames: string[] }
+  | { type: "result"; contestantName: string; problemName: string }
+  | { type: "problem"; problemName: string }
+  | { type: "contestant"; contestantName: string };
 
 export default function App() {
   const { t } = useTranslation();
@@ -32,6 +47,8 @@ export default function App() {
     loadProblems: handleFetchProblems,
     problemConfigs,
     problems: problemsList,
+    resetWorkspace,
+    restoreWorkspace,
     saveProblemConfig,
     selectedContestants,
     selectedProblems,
@@ -39,9 +56,7 @@ export default function App() {
     setSelectedContestants,
     setSelectedProblems,
     setTestPath,
-    setTimeLimit,
     testPath,
-    timeLimit,
   } = useContestWorkspace();
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [contestantSort, setContestantSort] = useState<
@@ -74,7 +89,24 @@ export default function App() {
   const [openToolchainSetup, setOpenToolchainSetup] = useState(false);
   const [showInstallUpdate, setShowInstallUpdate] = useState(false);
   const [isInstallingUpdate, setIsInstallingUpdate] = useState(false);
+  const [contestFilePath, setContestFilePath] = useState<string | null>(null);
+  const [contestCreatedAt, setContestCreatedAt] = useState<string | undefined>();
+  const [isContestDirty, setIsContestDirty] = useState(false);
+  const [isSavingContest, setIsSavingContest] = useState(false);
+  const [pendingContestAction, setPendingContestAction] = useState<PendingContestAction | null>(null);
+  const [pendingScoreDeletion, setPendingScoreDeletion] = useState<PendingScoreDeletion | null>(null);
+  const contestDirtyRef = useRef(false);
+  const interactionLockedRef = useRef(false);
+  const hostStatusRequestRef = useRef<Promise<void> | null>(null);
+  const saveOperationRef = useRef(false);
   const updater = useAppUpdater();
+
+  const setContestDirty = useCallback((dirty: boolean) => {
+    contestDirtyRef.current = dirty;
+    setIsContestDirty(dirty);
+  }, []);
+
+  const markContestDirty = useCallback(() => setContestDirty(true), [setContestDirty]);
 
   useEffect(() => {
     if (!preferencesStorage.isToolchainSetupCompleted()) {
@@ -88,6 +120,10 @@ export default function App() {
     judgeResultsReducer,
     null,
   );
+  const dispatchResults = useCallback((action: JudgeResultsAction) => {
+    dispatchJudgeResults(action);
+    if (action.type !== "replace") markContestDirty();
+  }, [markContestDirty]);
 
   const displayedProblems = useMemo(() => {
     let list = problemsList;
@@ -159,47 +195,22 @@ export default function App() {
 
   const activeLoadModalRef = useRef<"tests" | "contestants" | null>(null);
 
-  useEffect(() => {
-    const preventBrowserMenu = (event: MouseEvent) => event.preventDefault();
-    document.addEventListener("contextmenu", preventBrowserMenu);
-
-    let cancelled = false;
-    let retryTimer: ReturnType<typeof setTimeout> | undefined;
-    let consecutiveFailures = 0;
-
-    async function fetchStatus() {
+  const requestHostStatus = useCallback(() => {
+    if (hostStatus || hostStatusRequestRef.current) return;
+    const request = (async () => {
       try {
         const response = await apiFetch("/api/status");
-        const status = await response.json();
-        if (cancelled) return;
-        setHostStatus(status);
+        setHostStatus(await response.json());
         setBackendErrorMessage("");
       } catch (error) {
-        if (cancelled) return;
-        consecutiveFailures += 1;
-        if (consecutiveFailures >= 30) {
-          console.error("Failed to load host status", error);
-          setBackendErrorMessage(t("errors.backendConnection"));
-        } else {
-          console.log(
-            `[API Retry] Backend is not ready yet (attempt ${consecutiveFailures}/30).`,
-          );
-        }
-
-        // Keep checking after displaying the error so a slow backend can recover
-        // without forcing the user to restart the desktop application.
-        const retryDelay = consecutiveFailures >= 30 ? 5000 : 1000;
-        retryTimer = setTimeout(fetchStatus, retryDelay);
+        console.error("Failed to load host status", error);
+        setBackendErrorMessage(t("errors.backendConnection"));
+      } finally {
+        hostStatusRequestRef.current = null;
       }
-    }
-    fetchStatus();
-
-    return () => {
-      cancelled = true;
-      if (retryTimer) clearTimeout(retryTimer);
-      document.removeEventListener("contextmenu", preventBrowserMenu);
-    };
-  }, [t]);
+    })();
+    hostStatusRequestRef.current = request;
+  }, [hostStatus, t]);
 
   useEffect(() => {
     activeLoadModalRef.current = loadModal;
@@ -216,6 +227,7 @@ export default function App() {
         const appWebview = getCurrentWebview();
         unlisten = await appWebview.onDragDropEvent((event) => {
           if (event.payload.type === "drop") {
+            if (interactionLockedRef.current) return;
             const paths = event.payload.paths;
             if (paths && paths.length > 0) {
               const absolutePath = paths[0];
@@ -224,11 +236,13 @@ export default function App() {
               const currentModal = activeLoadModalRef.current;
               if (currentModal === "tests") {
                 setTestPath(absolutePath);
-                handleFetchProblems(absolutePath);
+                void handleFetchProblems(absolutePath);
+                markContestDirty();
                 setLoadModal(null);
               } else if (currentModal === "contestants") {
                 setThisinhPath(absolutePath);
-                handleFetchContestants(absolutePath);
+                void handleFetchContestants(absolutePath);
+                markContestDirty();
                 setLoadModal(null);
               }
             }
@@ -242,7 +256,7 @@ export default function App() {
     return () => {
       if (unlisten) unlisten();
     };
-  }, []);
+  }, [handleFetchContestants, handleFetchProblems, markContestDirty, setTestPath, setThisinhPath]);
 
   const {
     errorMessage,
@@ -254,15 +268,163 @@ export default function App() {
   } = useJudgeSession({
     contestantsPath: thisinhPath,
     testPath,
-    timeLimit,
     problemConfigs,
-    dispatchResults: dispatchJudgeResults,
+    dispatchResults,
   });
+
+  useEffect(() => {
+    interactionLockedRef.current = isJudging || isSavingContest;
+  }, [isJudging, isSavingContest]);
+
+  useEffect(() => {
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (!contestDirtyRef.current) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    if ("__TAURI_INTERNALS__" in window) {
+      void (async () => {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        const stopListening = await getCurrentWindow().onCloseRequested((event) => {
+          if (interactionLockedRef.current || saveOperationRef.current) {
+            event.preventDefault();
+            setErrorMessage(t("actions.unavailableWhileBusy"));
+            return;
+          }
+          if (!contestDirtyRef.current) return;
+          event.preventDefault();
+          setPendingContestAction("close");
+        });
+        if (disposed) stopListening();
+        else unlisten = stopListening;
+      })();
+    }
+    return () => {
+      disposed = true;
+      unlisten?.();
+      window.removeEventListener("beforeunload", beforeUnload);
+    };
+  }, [t]);
+
+  const handleSaveContest = async (): Promise<boolean> => {
+    if (interactionLockedRef.current || saveOperationRef.current) return false;
+    if (!thisinhPath.trim() && !testPath.trim()) return false;
+    saveOperationRef.current = true;
+    setIsSavingContest(true);
+    try {
+      const manifest = buildContestManifest({
+        contestants: contestantsList,
+        problems: problemsList,
+        problemConfigs,
+        selectedContestants,
+        selectedProblems,
+        judgeResult,
+      }, contestCreatedAt);
+      const savedPath = await saveContestArchive({
+        currentPath: contestFilePath,
+        contestantsPath: thisinhPath,
+        testsPath: testPath,
+        manifest,
+      });
+      if (!savedPath) return false;
+      setContestFilePath(savedPath);
+      setContestCreatedAt(manifest.createdAt);
+      setContestDirty(false);
+      setErrorMessage("");
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setErrorMessage(`${t("contest.saveFailed")}: ${message}`);
+      return false;
+    } finally {
+      saveOperationRef.current = false;
+      setIsSavingContest(false);
+    }
+  };
+
+  const executeContestAction = async (action: PendingContestAction): Promise<boolean> => {
+    if (action === "close") {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        // The close request was already confirmed. Destroying avoids emitting
+        // another closeRequested event and works consistently on Windows and
+        // macOS (where the title-bar close control follows the same path).
+        await getCurrentWindow().destroy();
+        return true;
+      } catch (error) {
+        setContestDirty(true);
+        setErrorMessage(error instanceof Error ? error.message : String(error));
+        return false;
+      }
+    }
+
+    if (action === "new") {
+      resetWorkspace();
+      dispatchJudgeResults({ type: "replace", result: null });
+      setContestFilePath(null);
+      setContestCreatedAt(undefined);
+      setSearchTerm("");
+      setContestantSort("default");
+      setProblemSort("default");
+      setErrorMessage("");
+      setContestDirty(false);
+      return true;
+    }
+
+    try {
+      const opened = await chooseAndOpenContestArchive();
+      if (!opened) return false;
+      const workspace = opened.manifest.workspace;
+      await restoreWorkspace({
+        contestantsPath: opened.contestantsPath,
+        testsPath: opened.testsPath,
+        problemConfigs: workspace.problemConfigs,
+        selectedContestants: workspace.selectedContestants,
+        selectedProblems: workspace.selectedProblems,
+      });
+      dispatchJudgeResults({ type: "replace", result: workspace.judgeResult });
+      setContestFilePath(opened.path);
+      setContestCreatedAt(opened.manifest.createdAt);
+      setSearchTerm("");
+      setContestantSort("default");
+      setProblemSort("default");
+      setErrorMessage("");
+      setContestDirty(false);
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setErrorMessage(`${t("contest.openFailed")}: ${message}`);
+      return false;
+    }
+  };
+
+  const requestContestAction = (action: PendingContestAction) => {
+    if (interactionLockedRef.current || saveOperationRef.current) return;
+    if (contestDirtyRef.current) {
+      setPendingContestAction(action);
+      return;
+    }
+    void executeContestAction(action);
+  };
+
+  const continuePendingAction = async (saveFirst: boolean) => {
+    const action = pendingContestAction;
+    if (!action) return;
+    if (saveFirst && !(await handleSaveContest())) return;
+    setPendingContestAction(null);
+    if (!saveFirst && action !== "open") setContestDirty(false);
+    await executeContestAction(action);
+  };
 
   const runJudge = (
     contestantsOverride?: string[],
     problemsOverride?: string[],
   ) => {
+    if (interactionLockedRef.current || saveOperationRef.current) return Promise.resolve();
     const contestants =
       contestantsOverride ??
       displayedContestants.filter((name) => selectedContestants[name]);
@@ -272,16 +434,75 @@ export default function App() {
     return runJudgeTargets(contestants, problems);
   };
 
-  const deleteProblemScore = (problemName: string) => {
-    dispatchJudgeResults({ type: "delete_problem", problemName });
+  const selectedContestantNames = displayedContestants.filter(
+    (name) => selectedContestants[name],
+  );
+  const selectedProblemNames = displayedProblems.filter(
+    (name) => selectedProblems[name],
+  );
+  const canRun = !!thisinhPath.trim()
+    && !!testPath.trim()
+    && selectedContestantNames.length > 0
+    && selectedProblemNames.length > 0;
+  const canDeleteSelected = !!judgeResult?.contestants.some(
+    (contestant) => selectedContestants[contestant.contestantName]
+      && contestant.problems.some((problem) => selectedProblemNames.some(
+        (selected) => selected.toLowerCase() === problem.problemName.toLowerCase(),
+      )),
+  );
+
+  const pendingScoreDeletionDescription = useMemo(() => {
+    if (!pendingScoreDeletion) return "";
+    if (pendingScoreDeletion.type === "selected") {
+      return t("actions.confirmDeleteSelectedMessage", {
+        contestants: pendingScoreDeletion.contestantNames.length,
+        problems: pendingScoreDeletion.problemNames.length,
+      });
+    }
+    if (pendingScoreDeletion.type === "result") {
+      return t("actions.confirmDeleteResultMessage", {
+        contestant: pendingScoreDeletion.contestantName,
+        problem: pendingScoreDeletion.problemName,
+      });
+    }
+    if (pendingScoreDeletion.type === "problem") {
+      return t("actions.confirmDeleteProblemMessage", { problem: pendingScoreDeletion.problemName });
+    }
+    return t("actions.confirmDeleteContestantMessage", { contestant: pendingScoreDeletion.contestantName });
+  }, [pendingScoreDeletion, t]);
+
+  const confirmScoreDeletion = () => {
+    const request = pendingScoreDeletion;
+    if (!request || interactionLockedRef.current || saveOperationRef.current) return;
+    if (request.type === "selected") {
+      dispatchResults({
+        type: "delete_selected",
+        contestantNames: request.contestantNames,
+        problemNames: request.problemNames,
+      });
+    } else if (request.type === "result") {
+      dispatchResults({
+        type: "delete_result",
+        contestantName: request.contestantName,
+        problemName: request.problemName,
+      });
+    } else if (request.type === "problem") {
+      dispatchResults({ type: "delete_problem", problemName: request.problemName });
+    } else {
+      dispatchResults({ type: "delete_contestant", contestantName: request.contestantName });
+    }
+    setPendingScoreDeletion(null);
   };
 
-  const deleteContestantScore = (contestantName: string) => {
-    dispatchJudgeResults({ type: "delete_contestant", contestantName });
-  };
+  const findProblemResult = (contestantName: string, problemName: string) =>
+    judgeResult?.contestants
+      .find((contestant) => contestant.contestantName === contestantName)
+      ?.problems.find(
+        (problem) => problem.problemName.toLowerCase() === problemName.toLowerCase(),
+      );
 
   const handleExportExcel = async () => {
-    if (!judgeResult) return;
+    if (!judgeResult || interactionLockedRef.current || saveOperationRef.current) return;
     try {
       const activeProblems = displayedProblems.filter(
         (problem) => selectedProblems[problem],
@@ -309,12 +530,29 @@ export default function App() {
     <div
       id="local-online-judge"
       className="h-screen bg-surface text-text-primary font-sans flex flex-col overflow-hidden"
+      onContextMenu={(event) => event.preventDefault()}
     >
       <AppToolbar
+        canDeleteSelected={canDeleteSelected}
+        canExport={!!judgeResult?.contestants.some((contestant) => contestant.problems.length > 0)}
+        canRun={canRun}
+        canSaveContest={isContestDirty && (contestantsList.length > 0 || problemsList.length > 0)}
         errorMessage={backendErrorMessage || errorMessage}
         hostStatus={hostStatus}
         isJudging={isJudging}
-        timeLimit={timeLimit}
+        isSavingContest={isSavingContest}
+        onDeleteSelected={() => {
+          setPendingScoreDeletion({
+            type: "selected",
+            contestantNames: selectedContestantNames,
+            problemNames: selectedProblemNames,
+          });
+        }}
+        onExport={() => {
+          void handleExportExcel();
+        }}
+        onNewContest={() => requestContestAction("new")}
+        onOpenContest={() => requestContestAction("open")}
         onOpenContestants={() => {
           setLoadModal("contestants");
           setModalPath(thisinhPath);
@@ -324,14 +562,18 @@ export default function App() {
           setModalPath(testPath);
         }}
         onReload={() => {
-          void handleFetchContestants();
-          void handleFetchProblems();
+          void Promise.all([handleFetchContestants(), handleFetchProblems()]).then(() => {
+            markContestDirty();
+          });
         }}
         onRun={() => {
           void runJudge();
         }}
-        onTimeLimitChange={setTimeLimit}
+        onSaveContest={() => {
+          void handleSaveContest();
+        }}
         onOpenToolchains={() => setOpenToolchains(true)}
+        onRequestHostStatus={requestHostStatus}
         updateState={updater.state}
         onCheckUpdates={() => void updater.checkForUpdates()}
         onDownloadUpdate={() => void updater.downloadUpdate()}
@@ -346,13 +588,31 @@ export default function App() {
         result={judgeResult}
         selectedContestants={selectedContestants}
         selectedProblems={selectedProblems}
+        interactionLocked={isJudging || isSavingContest}
         setContestantSort={setContestantSort}
-        setSelectedContestants={setSelectedContestants}
-        setSelectedProblems={setSelectedProblems}
-        onExport={handleExportExcel}
+        setSelectedContestants={(update) => {
+          setSelectedContestants(update);
+          markContestDirty();
+        }}
+        setSelectedProblems={(update) => {
+          setSelectedProblems(update);
+          markContestDirty();
+        }}
         onOpenActions={setActionMenu}
         onOpenDetails={(cont, data) => setActiveDetails({ cont, data })}
       />
+
+      <footer className="flex h-7 flex-none items-center justify-between border-t border-surface-border bg-surface-elevated px-3 text-[10px] text-text-muted">
+        <div className="flex items-center gap-3">
+          <span>{isJudging ? t("status.judging") : t("status.ready")}</span>
+          <span>{contestantsList.length} {t("scoreboard.contestants").toLowerCase()}</span>
+          <span>{problemsList.length} {t("scoringLog.problem").toLowerCase()}</span>
+          <span className="max-w-64 truncate font-mono" title={contestFilePath || undefined}>
+            {contestFilePath ? contestFilePath.split(/[\\/]/).pop() : t("contest.untitled")}{isContestDirty ? " *" : ""}
+          </span>
+        </div>
+        {hostStatus?.sandbox?.mode && <div className="font-mono">{hostStatus.sandbox.mode}</div>}
+      </footer>
 
       {loadModal && (
         <DirectoryPickerModal
@@ -364,9 +624,11 @@ export default function App() {
             if (loadModal === "tests") {
               setTestPath(path);
               void handleFetchProblems(path);
+              markContestDirty();
             } else {
               setThisinhPath(path);
               void handleFetchContestants(path);
+              markContestDirty();
             }
             setLoadModal(null);
           }}
@@ -374,9 +636,11 @@ export default function App() {
             if (loadModal === "tests") {
               setTestPath(modalPath);
               void handleFetchProblems(modalPath);
+              markContestDirty();
             } else {
               setThisinhPath(modalPath);
               void handleFetchContestants(modalPath);
+              markContestDirty();
             }
             setLoadModal(null);
           }}
@@ -386,36 +650,55 @@ export default function App() {
       {actionMenu && (
         <EntityActionMenu
           target={actionMenu}
-          isJudging={isJudging}
+          mutationsLocked={isJudging || isSavingContest}
           onClose={() => setActionMenu(null)}
           onConfig={() => {
-            setActiveConfigProblem(actionMenu.name);
+            if (actionMenu.problemName) setActiveConfigProblem(actionMenu.problemName);
             setActionMenu(null);
           }}
           onDelete={() => {
-            if (actionMenu.type === "problem")
-              deleteProblemScore(actionMenu.name);
-            else deleteContestantScore(actionMenu.name);
+            if (actionMenu.type === "result" && actionMenu.contestantName && actionMenu.problemName) {
+              setPendingScoreDeletion({
+                type: "result",
+                contestantName: actionMenu.contestantName,
+                problemName: actionMenu.problemName,
+              });
+            } else if (actionMenu.type === "problem" && actionMenu.problemName) {
+              setPendingScoreDeletion({ type: "problem", problemName: actionMenu.problemName });
+            } else if (actionMenu.contestantName) {
+              setPendingScoreDeletion({ type: "contestant", contestantName: actionMenu.contestantName });
+            }
             setActionMenu(null);
           }}
           onRegrade={() => {
-            const request =
-              actionMenu.type === "problem"
-                ? runJudge(
+            let request: Promise<void> | undefined;
+            if (actionMenu.type === "result" && actionMenu.contestantName && actionMenu.problemName) {
+              request = runJudge([actionMenu.contestantName], [actionMenu.problemName]);
+            } else if (actionMenu.type === "problem" && actionMenu.problemName) {
+              request = runJudge(
                     displayedContestants.filter(
                       (name) => selectedContestants[name],
                     ),
-                    [actionMenu.name],
-                  )
-                : runJudge(
-                    [actionMenu.name],
+                    [actionMenu.problemName],
+                  );
+            } else if (actionMenu.contestantName) {
+              request = runJudge(
+                    [actionMenu.contestantName],
                     displayedProblems.filter((name) => selectedProblems[name]),
                   );
+            }
             setActionMenu(null);
-            void request;
+            if (request) void request;
           }}
           onDetails={() => {
-            setActiveLog({ type: actionMenu.type, name: actionMenu.name });
+            if (actionMenu.type === "result" && actionMenu.contestantName && actionMenu.problemName) {
+              const problem = findProblemResult(actionMenu.contestantName, actionMenu.problemName);
+              if (problem) setActiveDetails({ cont: actionMenu.contestantName, data: problem });
+            } else if (actionMenu.type === "problem" && actionMenu.problemName) {
+              setActiveLog({ type: "problem", name: actionMenu.problemName });
+            } else if (actionMenu.contestantName) {
+              setActiveLog({ type: "contestant", name: actionMenu.contestantName });
+            }
             setActionMenu(null);
           }}
         />
@@ -439,9 +722,13 @@ export default function App() {
             problemConfigs[activeConfigProblem] ||
             createDefaultProblemConfig(activeConfigProblem)
           }
-          onSave={saveProblemConfig}
+          onSave={(problemName, config) => {
+            saveProblemConfig(problemName, config);
+            markContestDirty();
+          }}
           onClose={() => setActiveConfigProblem(null)}
           customCheckers={customCheckersMap[activeConfigProblem] || []}
+          saveDisabled={isJudging || isSavingContest}
         />
       )}
 
@@ -486,6 +773,30 @@ export default function App() {
           onClose={() => setOpenToolchainSetup(false)}
         />
       )}
+
+      {pendingContestAction && (
+        <UnsavedContestDialog
+          isSaving={isSavingContest}
+          onCancel={() => setPendingContestAction(null)}
+          onDiscard={() => {
+            void continuePendingAction(false);
+          }}
+          onSave={() => {
+            void continuePendingAction(true);
+          }}
+        />
+      )}
+
+      {pendingScoreDeletion && (
+        <ScoreDeleteConfirmDialog
+          description={pendingScoreDeletionDescription}
+          disabled={isJudging || isSavingContest}
+          onCancel={() => setPendingScoreDeletion(null)}
+          onConfirm={confirmScoreDeletion}
+        />
+      )}
+
+      {isSavingContest && <ContestSaveProgressDialog />}
 
       {showInstallUpdate && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">

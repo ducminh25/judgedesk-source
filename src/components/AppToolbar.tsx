@@ -1,13 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import {
   CheckCircle2,
+  ClipboardList,
   Download,
+  FilePlus2,
+  FileSpreadsheet,
+  FolderOpen,
   Github,
+  Languages,
   Moon,
   Play,
   RefreshCw,
+  Save,
+  Settings2,
   Sun,
-  Timer,
+  Trash2,
+  UsersRound,
   Wrench,
   X,
   XCircle,
@@ -21,59 +29,85 @@ import type { AppUpdateState } from "../features/updates/useAppUpdater";
 const PUBLIC_REPOSITORY = "https://github.com/ducminh25/themis-v2";
 
 interface Props {
+  canDeleteSelected: boolean;
+  canExport: boolean;
+  canRun: boolean;
+  canSaveContest: boolean;
   errorMessage: string;
   hostStatus: HostStatus | null;
   isJudging: boolean;
-  timeLimit: number;
+  isSavingContest: boolean;
+  onDeleteSelected: () => void;
+  onExport: () => void;
+  onNewContest: () => void;
+  onOpenContest: () => void;
   onOpenContestants: () => void;
   onOpenTests: () => void;
   onReload: () => void;
   onRun: () => void;
-  onTimeLimitChange: (timeLimit: number) => void;
+  onSaveContest: () => void;
   onOpenToolchains: () => void;
+  onRequestHostStatus: () => void;
   updateState: AppUpdateState;
   onCheckUpdates: () => void;
   onDownloadUpdate: () => void;
   onRequestInstall: () => void;
 }
 
+const commandButton =
+  "flex h-9 flex-none items-center gap-2 rounded border border-surface-border bg-surface-elevated px-3 text-xs font-semibold text-text-primary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-40";
+const iconCommandButton =
+  "flex h-9 w-9 flex-none items-center justify-center rounded border border-surface-border bg-surface-elevated text-text-primary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-40";
+
 export default function AppToolbar({
+  canDeleteSelected,
+  canExport,
+  canRun,
+  canSaveContest,
   errorMessage,
   hostStatus,
   isJudging,
-  timeLimit,
+  isSavingContest,
+  onDeleteSelected,
+  onExport,
+  onNewContest,
+  onOpenContest,
   onOpenContestants,
   onOpenTests,
   onReload,
   onRun,
-  onTimeLimitChange,
+  onSaveContest,
   onOpenToolchains,
+  onRequestHostStatus,
   updateState,
   onCheckUpdates,
   onDownloadUpdate,
   onRequestInstall,
 }: Props) {
-  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
-  const statusMenuRef = useRef<HTMLDivElement>(null);
-  const statusMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const [utilityMenuOpen, setUtilityMenuOpen] = useState(false);
+  const utilityMenuRef = useRef<HTMLDivElement>(null);
+  const utilityMenuButtonRef = useRef<HTMLButtonElement>(null);
   const { t, i18n } = useTranslation();
   const { theme, toggleTheme } = useTheme();
+  const interactionLocked = isJudging || isSavingContest;
 
   useEffect(() => {
-    if (!statusMenuOpen) return;
+    if (interactionLocked) setUtilityMenuOpen(false);
+  }, [interactionLocked]);
 
+  useEffect(() => {
+    if (!utilityMenuOpen) return;
     const closeWhenOutside = (event: Event) => {
-      if (!statusMenuRef.current?.contains(event.target as Node)) {
-        setStatusMenuOpen(false);
+      if (!utilityMenuRef.current?.contains(event.target as Node)) {
+        setUtilityMenuOpen(false);
       }
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      setStatusMenuOpen(false);
-      statusMenuButtonRef.current?.focus();
+      setUtilityMenuOpen(false);
+      utilityMenuButtonRef.current?.focus();
     };
-    const closeOnWindowBlur = () => setStatusMenuOpen(false);
-
+    const closeOnWindowBlur = () => setUtilityMenuOpen(false);
     document.addEventListener("pointerdown", closeWhenOutside);
     document.addEventListener("focusin", closeWhenOutside);
     document.addEventListener("keydown", closeOnEscape);
@@ -84,7 +118,7 @@ export default function AppToolbar({
       document.removeEventListener("keydown", closeOnEscape);
       window.removeEventListener("blur", closeOnWindowBlur);
     };
-  }, [statusMenuOpen]);
+  }, [utilityMenuOpen]);
 
   const openRepository = async () => {
     try {
@@ -100,184 +134,179 @@ export default function AppToolbar({
   };
 
   return (
-    <>
-      <header className="relative h-14 border-b border-surface-border flex items-center justify-between px-6 bg-surface shadow-md flex-shrink-0">
-        <div className="flex items-center space-x-4">
-          <div className="w-8 h-8 bg-indigo-600 rounded flex items-center justify-center font-bold italic text-white shadow-md shadow-indigo-950/20">LJ</div>
-          <div className="flex items-baseline gap-2">
-            <h1 className="text-base font-semibold tracking-tight text-text-primary">{t("toolbar.title")}</h1>
-            <span className="text-[10px] text-text-muted font-medium">v{APP_VERSION}</span>
+    <header className="command-bar-scroll flex h-14 flex-none items-center overflow-x-auto border-b border-surface-border bg-surface px-3">
+      <div className="flex min-w-max flex-1 items-center gap-2">
+        <div className="mr-2 flex h-9 flex-none items-center gap-2 border-r border-surface-border pr-4">
+          <div className="flex h-7 w-7 items-center justify-center rounded bg-indigo-600 text-[11px] font-bold text-white">
+            JD
+          </div>
+          <div className="leading-tight">
+            <div className="text-sm font-semibold text-text-primary">JudgeDesk</div>
+            <div className="text-[9px] text-text-muted">v{APP_VERSION}</div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <UpdateButton
-            state={updateState}
-            onCheck={onCheckUpdates}
-            onDownload={onDownloadUpdate}
-            onInstall={onRequestInstall}
-          />
+
+        <button type="button" onClick={onOpenTests} disabled={interactionLocked} className={iconCommandButton} title={t("toolbar.loadTests")} aria-label={t("toolbar.loadTests")}>
+          <ClipboardList className="h-4 w-4 text-amber-500" />
+        </button>
+        <button type="button" onClick={onOpenContestants} disabled={interactionLocked} className={iconCommandButton} title={t("toolbar.loadContestants")} aria-label={t("toolbar.loadContestants")}>
+          <UsersRound className="h-4 w-4 text-sky-500" />
+        </button>
+        <button type="button" onClick={onReload} disabled={interactionLocked} className={commandButton} title={t("toolbar.reloadHint")}>
+          <RefreshCw className="h-4 w-4" />
+          <span>{t("toolbar.refresh")}</span>
+        </button>
+
+        <div className="mx-1 h-7 w-px flex-none bg-surface-border" />
+        <button type="button" onClick={onNewContest} disabled={interactionLocked} className={iconCommandButton} title={t("contest.new")} aria-label={t("contest.new")}>
+          <FilePlus2 className="h-4 w-4 text-text-muted" />
+        </button>
+        <button type="button" onClick={onOpenContest} disabled={interactionLocked} className={iconCommandButton} title={t("contest.open")} aria-label={t("contest.open")}>
+          <FolderOpen className="h-4 w-4 text-amber-500" />
+        </button>
+        <button type="button" onClick={onSaveContest} disabled={!canSaveContest || interactionLocked} className={iconCommandButton} title={t("contest.save")} aria-label={t("contest.save")}>
+          {isSavingContest ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 text-sky-600 dark:text-sky-400" />}
+        </button>
+
+        <div className="mx-1 h-7 w-px flex-none bg-surface-border" />
+        <button
+          type="button"
+          onClick={onRun}
+          disabled={interactionLocked || !canRun}
+          title={!canRun ? t("actions.missingData") : undefined}
+          className="flex h-9 flex-none items-center gap-2 rounded bg-indigo-600 px-4 text-xs font-bold text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isJudging ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+          <span>{isJudging ? t("status.judging") : t("toolbar.run")}</span>
+        </button>
+        <button type="button" onClick={onExport} disabled={!canExport || interactionLocked} className={commandButton}>
+          <FileSpreadsheet className="h-4 w-4 text-emerald-500" />
+          <span>{t("scoreboard.export")}</span>
+        </button>
+        <button
+          type="button"
+          onClick={onDeleteSelected}
+          disabled={!canDeleteSelected || interactionLocked}
+          className={iconCommandButton}
+          title={t("actions.deleteSelectedScores")}
+          aria-label={t("actions.deleteSelectedScores")}
+        >
+          <Trash2 className="h-4 w-4 text-rose-500" />
+        </button>
+
+        <div className="min-w-3 flex-1" />
+        {errorMessage && (
+          <div className="max-w-64 flex-none truncate rounded border border-rose-300 bg-rose-50 px-3 py-1.5 text-[10px] font-medium text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300" title={errorMessage}>
+            {errorMessage}
+          </div>
+        )}
+        <UpdateButton state={updateState} disabled={interactionLocked} onCheck={onCheckUpdates} onDownload={onDownloadUpdate} onInstall={onRequestInstall} />
+
+        <div ref={utilityMenuRef} className="relative flex-none">
           <button
-            onClick={() => void openRepository()}
-            className="flex h-8 w-8 items-center justify-center rounded border border-surface-border bg-input-bg text-text-primary hover:bg-surface-hover transition-colors"
-            title={t("toolbar.openGitHub")}
-            aria-label={t("toolbar.openGitHub")}
+            ref={utilityMenuButtonRef}
+            type="button"
+            onClick={() => {
+              setUtilityMenuOpen((open) => {
+                if (!open) onRequestHostStatus();
+                return !open;
+              });
+            }}
+            disabled={interactionLocked}
+            className="flex h-9 w-9 items-center justify-center rounded border border-surface-border bg-surface-elevated text-text-primary hover:bg-surface-hover"
+            title={t("toolbar.settings")}
+            aria-haspopup="menu"
+            aria-expanded={utilityMenuOpen}
           >
-            <Github className="h-4 w-4" />
+            <Settings2 className="h-4 w-4" />
           </button>
-          <button onClick={toggleTheme} className="flex h-8 w-8 items-center justify-center rounded border border-surface-border bg-input-bg text-text-primary hover:bg-surface-hover transition-colors" title={t("toolbar.toggleTheme")}>
-            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-          </button>
-          
-          <div className="flex items-center rounded border border-surface-border bg-input-bg overflow-hidden h-8" title={t("toolbar.toggleLanguage")}>
-            <button onClick={() => i18n.changeLanguage('en')} className={`px-2 h-full text-xs font-bold transition-colors cursor-pointer ${i18n.language === 'en' ? 'bg-indigo-600 text-white' : 'text-text-muted hover:bg-surface-hover'}`}>EN</button>
-            <button onClick={() => i18n.changeLanguage('vi')} className={`px-2 h-full text-xs font-bold transition-colors cursor-pointer ${i18n.language === 'vi' ? 'bg-indigo-600 text-white' : 'text-text-muted hover:bg-surface-hover'}`}>VI</button>
-          </div>
-
-          <div ref={statusMenuRef} className="relative">
-            <button
-              ref={statusMenuButtonRef}
-              onClick={() => setStatusMenuOpen((open) => !open)}
-              className="flex h-8 items-center gap-2 rounded border border-surface-border bg-input-bg px-3 text-xs font-semibold text-text-primary hover:bg-surface-hover transition-colors"
-              title={t("toolbar.settings")}
-              aria-haspopup="menu"
-              aria-expanded={statusMenuOpen}
-            >
-              <Wrench className="h-3.5 w-3.5" /> {t("toolbar.settings")}
-            </button>
-            {statusMenuOpen && (
-              <HostStatusMenu
-                status={hostStatus}
-                onClose={() => setStatusMenuOpen(false)}
-                onOpenToolchains={() => {
-                  setStatusMenuOpen(false);
-                  onOpenToolchains();
-                }}
-              />
-            )}
-          </div>
-        </div>
-      </header>
-
-      <div className="h-14 bg-surface border-b border-surface-border flex items-center justify-between px-6 flex-shrink-0">
-        <div className="flex items-center gap-4">
-          <button onClick={onOpenTests} className="flex items-center gap-2 px-3 py-1.5 bg-surface-elevated hover:bg-surface-hover text-text-primary text-xs font-semibold rounded border border-surface-border transition cursor-pointer shadow-sm" title={t("directoryPicker.selectTests")}>
-            <TestcasesIcon /> <span>{t("toolbar.loadTests")}</span>
-          </button>
-          <button onClick={onOpenContestants} className="flex items-center gap-2 px-3 py-1.5 bg-surface-elevated hover:bg-surface-hover text-text-primary text-xs font-semibold rounded border border-surface-border transition cursor-pointer shadow-sm" title={t("directoryPicker.selectContestants")}>
-            <ContestantsIcon /> <span>{t("toolbar.loadContestants")}</span>
-          </button>
-          <div className="flex items-center gap-2 bg-input-bg border border-surface-border rounded px-2.5 py-1">
-            <Timer className="w-3.5 h-3.5 text-text-muted" />
-            <span className="text-[10px] font-bold text-text-muted uppercase tracking-wider">{t("toolbar.timeLimit")}:</span>
-            <input type="number" value={timeLimit} onChange={(event) => onTimeLimitChange(Number(event.target.value))} className="bg-transparent text-xs text-text-primary font-bold focus:outline-none w-16 font-mono" />
-            <span className="text-[10px] text-text-muted font-medium">ms</span>
-          </div>
-          <button onClick={onReload} className="p-2 bg-surface-elevated hover:bg-surface-hover text-text-primary rounded border border-surface-border transition cursor-pointer" title={t("toolbar.refresh")}>
-            <RefreshCw className="w-3.5 h-3.5" />
-          </button>
-        </div>
-        <div className="flex items-center gap-3">
-          {errorMessage && <div className="text-[10px] font-medium bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-300 dark:border-rose-900/50 rounded px-3 py-1 max-w-xs truncate">{errorMessage}</div>}
-          <button onClick={onRun} disabled={isJudging} className="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold px-4 py-1.5 rounded text-xs transition-all shadow-md shadow-indigo-950/20 flex items-center gap-2 cursor-pointer">
-            {isJudging ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /><span>{t("status.judging")}...</span></> : <><Play className="w-3.5 h-3.5" /><span>{t("toolbar.run")}</span></>}
-          </button>
+          {utilityMenuOpen && (
+            <HostStatusMenu
+              status={hostStatus}
+              theme={theme}
+              language={i18n.language}
+              onClose={() => setUtilityMenuOpen(false)}
+              onOpenToolchains={() => {
+                setUtilityMenuOpen(false);
+                onOpenToolchains();
+              }}
+              onToggleTheme={toggleTheme}
+              onChangeLanguage={(language) => void i18n.changeLanguage(language)}
+              onOpenRepository={() => void openRepository()}
+            />
+          )}
         </div>
       </div>
-    </>
+    </header>
   );
 }
 
-function UpdateButton({
-  state,
-  onCheck,
-  onDownload,
-  onInstall,
-}: {
+function UpdateButton({ state, disabled, onCheck, onDownload, onInstall }: {
   state: AppUpdateState;
+  disabled: boolean;
   onCheck: () => void;
   onDownload: () => void;
   onInstall: () => void;
 }) {
   const { t } = useTranslation();
   const isBusy = state.status === "checking" || state.status === "downloading";
-  const onClick =
-    state.status === "available"
-      ? onDownload
-      : state.status === "downloaded"
-        ? onInstall
-        : onCheck;
+  const onClick = state.status === "available" ? onDownload : state.status === "downloaded" ? onInstall : onCheck;
   const label = (() => {
     switch (state.status) {
-      case "checking":
-        return t("updates.checking");
-      case "available":
-        return t("updates.download");
-      case "downloading":
-        return t("updates.downloading", { percent: state.percent });
-      case "downloaded":
-        return t("updates.installQuestion");
-      case "current":
-        return t("updates.upToDate");
-      case "error":
-        return state.phase === "download"
-          ? t("updates.downloadFailed")
-          : state.phase === "install"
-            ? t("updates.installFailed")
-            : t("updates.checkFailed");
-      default:
-        return t("updates.check");
+      case "checking": return t("updates.checking");
+      case "available": return t("updates.available", { version: state.version });
+      case "downloading": return t("updates.downloading", { percent: state.percent });
+      case "downloaded": return t("updates.installQuestion");
+      case "current": return t("updates.upToDate");
+      case "error": return state.phase === "download" ? t("updates.downloadFailed") : t("updates.checkFailed");
+      default: return t("updates.check");
     }
   })();
-  const title = state.status === "available"
-    ? t("updates.available", { version: state.version })
-    : state.status === "error"
-      ? state.message
-      : label;
-
   return (
     <button
+      type="button"
       onClick={onClick}
-      disabled={isBusy}
-      className={`flex h-8 items-center gap-2 rounded border px-3 text-xs font-semibold transition-colors disabled:cursor-wait ${
+      disabled={disabled || isBusy}
+      title={label}
+      aria-label={label}
+      className={`flex h-9 w-9 flex-none items-center justify-center rounded border transition-colors disabled:cursor-wait ${
         state.status === "available" || state.status === "downloaded"
           ? "border-indigo-500 bg-indigo-600 text-white hover:bg-indigo-500"
           : state.status === "error"
-            ? "border-rose-400 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950 dark:text-rose-300"
-            : "border-surface-border bg-input-bg text-text-primary hover:bg-surface-hover"
+            ? "border-rose-400 bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
+            : "border-surface-border bg-surface-elevated text-text-primary hover:bg-surface-hover"
       }`}
-      title={title}
     >
-      {state.status === "downloading" || state.status === "checking" ? (
-        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-      ) : (
-        <Download className="h-3.5 w-3.5" />
-      )}
-      <span>{label}</span>
+      {isBusy ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
     </button>
   );
 }
 
 export function HostStatusMenu({
   status,
+  theme = "light",
+  language = "en",
   onClose,
   onOpenToolchains,
+  onToggleTheme = () => {},
+  onChangeLanguage = () => {},
+  onOpenRepository = () => {},
 }: {
   status: HostStatus | null;
+  theme?: "light" | "dark";
+  language?: string;
   onClose: () => void;
   onOpenToolchains: () => void;
+  onToggleTheme?: () => void;
+  onChangeLanguage?: (language: "en" | "vi") => void;
+  onOpenRepository?: () => void;
 }) {
   const { t } = useTranslation();
   return (
-    <div role="menu" className="absolute right-0 top-10 z-[80] w-72 rounded-md border border-surface-border bg-surface-elevated p-2 shadow-2xl">
+    <div role="menu" className="fixed right-3 top-14 z-[80] w-72 overflow-hidden rounded-md border border-surface-border bg-surface-elevated p-2 shadow-2xl">
       <div className="flex items-center justify-between px-2 py-1.5">
         <div className="text-[10px] font-bold uppercase text-text-muted">{t("toolbar.statusMenu.title")}</div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded p-1 text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary"
-          title={t("common.close")}
-          aria-label={t("common.close")}
-        >
+        <button type="button" onClick={onClose} className="rounded p-1 text-text-muted hover:bg-surface-hover hover:text-text-primary" aria-label={t("common.close")}>
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
@@ -292,18 +321,25 @@ export function HostStatusMenu({
               <ToolRow label="Python" installed={status.python.installed} />
             </>
           )}
-          <div className="mt-1 border-t border-surface-border px-2 pt-2 text-[10px] text-text-muted">
+          <div className="border-t border-surface-border px-2 pt-2 text-[10px] text-text-muted">
             {t("toolbar.statusMenu.activeRunner")}: <span className="font-mono text-text-primary">{status.sandbox?.mode ?? "none"}</span>
           </div>
         </>
-      ) : <div className="px-2 py-4 text-xs text-text-muted">{t("toolbar.statusMenu.checking")}</div>}
-      <div className="mt-2 border-t border-surface-border pt-2">
-        <button
-          type="button"
-          onClick={onOpenToolchains}
-          className="w-full cursor-pointer rounded bg-indigo-600 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider text-white transition hover:bg-indigo-500"
-        >
-          {t("toolchains.managerTitle")}
+      ) : <div className="px-2 py-3 text-xs text-text-muted">{t("toolbar.statusMenu.checking")}</div>}
+
+      <div className="mt-2 grid grid-cols-2 gap-1 border-t border-surface-border pt-2">
+        <button type="button" onClick={onToggleTheme} className="flex items-center gap-2 rounded px-2 py-2 text-xs text-text-primary hover:bg-surface-hover">
+          {theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+          {t("toolbar.toggleTheme")}
+        </button>
+        <button type="button" onClick={() => onChangeLanguage?.(language?.startsWith("vi") ? "en" : "vi")} className="flex items-center gap-2 rounded px-2 py-2 text-xs text-text-primary hover:bg-surface-hover">
+          <Languages className="h-3.5 w-3.5" /> {language.startsWith("vi") ? "English" : "Tiếng Việt"}
+        </button>
+        <button type="button" onClick={onOpenRepository} className="flex items-center gap-2 rounded px-2 py-2 text-xs text-text-primary hover:bg-surface-hover">
+          <Github className="h-3.5 w-3.5" /> GitHub
+        </button>
+        <button type="button" onClick={onOpenToolchains} className="flex items-center gap-2 rounded px-2 py-2 text-xs text-text-primary hover:bg-surface-hover">
+          <Wrench className="h-3.5 w-3.5" /> {t("toolchains.managerTitle")}
         </button>
       </div>
     </div>
@@ -315,7 +351,7 @@ function StatusRow({ label, ready, installed, incompleteLabel }: { label: string
   return (
     <div className="flex items-center justify-between px-2 py-2 text-xs">
       <span className="text-text-primary">{label}</span>
-      <span className={`flex items-center gap-1.5 ${ready ? "text-emerald-500 dark:text-emerald-400" : installed ? "text-amber-500 dark:text-amber-400" : "text-rose-500 dark:text-rose-400"}`}>
+      <span className={`flex items-center gap-1.5 ${ready ? "text-emerald-500" : installed ? "text-amber-500" : "text-rose-500"}`}>
         {ready ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
         {ready ? t("toolbar.statusMenu.ready") : installed ? incompleteLabel : t("toolbar.statusMenu.notInstalled")}
       </span>
@@ -328,28 +364,10 @@ function ToolRow({ label, installed }: { label: string; installed: boolean }) {
   return (
     <div className="flex items-center justify-between px-2 py-2 text-xs">
       <span className="text-text-primary">{label}</span>
-      <span className={`flex items-center gap-1.5 ${installed ? "text-emerald-500 dark:text-emerald-400" : "text-rose-500 dark:text-rose-400"}`}>
+      <span className={`flex items-center gap-1.5 ${installed ? "text-emerald-500" : "text-rose-500"}`}>
         {installed ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
         {installed ? t("toolbar.statusMenu.inPath") : t("toolbar.statusMenu.notInPath")}
       </span>
     </div>
   );
 }
-
-const TestcasesIcon = () => (
-  <svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" className="flex-shrink-0">
-    <path d="M4 10C4 8.89543 4.89543 8 6 8H18L24 14H42C43.1046 14 44 14.8954 44 16V40C44 41.1046 43.1046 42 42 42H6C4.89543 42 4 41.1046 4 40V10Z" fill="#F59E0B" stroke="#D97706" strokeWidth="2" />
-    <path d="M28 20L34 26M34 26L28 32M34 26H18C15 26 14 28 14 32" stroke="#10B981" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
-const ContestantsIcon = () => (
-  <svg width="24" height="24" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" className="flex-shrink-0">
-    <circle cx="16" cy="18" r="6" fill="#10B981" />
-    <path d="M8 36C8 30 12 28 16 28C20 28 24 30 24 36" fill="#10B981" />
-    <circle cx="24" cy="14" r="6" fill="#FBBF24" />
-    <path d="M16 32C16 26 20 24 24 24C28 24 32 26 32 32" fill="#FBBF24" />
-    <circle cx="32" cy="22" r="6" fill="#3B82F6" />
-    <path d="M24 40C24 34 28 32 32 32C36 32 40 34 40 40" fill="#3B82F6" />
-  </svg>
-);
