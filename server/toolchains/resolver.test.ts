@@ -115,6 +115,8 @@ test("compiler probe uses production-compatible flags on Windows and macOS", () 
 
   const mac = buildCompilerProbeArgs("darwin", "probe.cpp", "probe");
   assert.equal(mac.includes("-static"), false);
+  assert.equal(mac.includes("-lm"), false);
+  assert.equal(mac.includes("-s"), false);
   assert.equal(mac.some((flag) => flag.includes("--stack")), false);
   assert.equal(mac.at(-3), "probe.cpp");
 });
