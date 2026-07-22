@@ -83,6 +83,50 @@ export function getExecutableVersion(
   }
 }
 
+export function isDarwinSandboxCompatibleCpp(
+  executablePath: string,
+): boolean {
+  try {
+    const compiler = fs.realpathSync(executablePath).replaceAll("\\", "/");
+    if (!isDarwinAppleToolchainLocation(compiler)) return false;
+
+    const identity = execFileSync(executablePath, ["--version"], {
+      encoding: "utf8",
+      timeout: 2_000,
+      stdio: ["ignore", "pipe", "ignore"],
+      env: buildToolchainEnvironment(executablePath, process.env, "darwin"),
+    });
+    return /\bApple clang version\b/i.test(identity);
+  } catch {
+    return false;
+  }
+}
+
+export function isDarwinAppleToolchainLocation(
+  executablePath: string,
+): boolean {
+  const compiler = executablePath.replaceAll("\\", "/");
+  return compiler.startsWith("/Library/Developer/CommandLineTools/") ||
+    /\/Contents\/Developer\/Toolchains\/[^/]+\.xctoolchain\//.test(compiler);
+}
+
+export function buildSelectedDarwinCppCandidates(
+  developerRoot: string | null,
+): string[] {
+  if (!developerRoot) return [];
+  return [
+    path.posix.join(
+      developerRoot,
+      "Toolchains",
+      "XcodeDefault.xctoolchain",
+      "usr",
+      "bin",
+      "clang++",
+    ),
+    path.posix.join(developerRoot, "usr", "bin", "clang++"),
+  ];
+}
+
 export function compareVersions(left: string, right: string): number {
   const a = left.split(".").map((part) => Number.parseInt(part, 10) || 0);
   const b = right.split(".").map((part) => Number.parseInt(part, 10) || 0);
@@ -232,7 +276,16 @@ function collectSystemCppCandidates(): string[] {
     candidates.push(...findNamedFiles(path.join(programFiles, "mingw-w64"), "g++.exe", 5));
     candidates.push(...findNamedFiles(path.join(programFilesX86, "mingw-w64"), "g++.exe", 5));
   } else if (platform === "darwin") {
+    const selectedDeveloperRoot = findWithCommand(
+      "/usr/bin/xcode-select",
+      ["-p"],
+    );
     candidates.push(
+      // On a normal Mac, xcrun may return /usr/bin/clang++, a system shim
+      // outside the sealed Developer root allowed by the compiler sandbox.
+      // Resolve the selected Xcode/CLT installation first so judging launches
+      // the real driver and its resource files inside the approved root.
+      ...buildSelectedDarwinCppCandidates(selectedDeveloperRoot),
       findWithCommand("/usr/bin/xcrun", ["--find", "clang++"]),
       "/usr/bin/clang++",
       "/usr/bin/g++",
@@ -307,6 +360,14 @@ function isSupportedExecutable(
   let supported = version !== "unknown";
   if (supported && kind === "python") {
     supported = probePythonExecutable(executablePath);
+  }
+
+  if (supported && kind === "cpp" && os.platform() === "darwin") {
+    // The macOS native executor intentionally grants compiler access only to
+    // Apple's sealed Xcode/Command Line Tools roots. A Homebrew compiler can
+    // compile during the discovery probe outside Seatbelt, but cannot be
+    // launched safely during judging and must not be reported as Ready.
+    supported = isDarwinSandboxCompatibleCpp(executablePath);
   }
 
   const basename = path.basename(executablePath).toLowerCase();

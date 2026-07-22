@@ -12,10 +12,51 @@ import {
   chooseNativeProtectedToolchain,
   compareVersions,
   buildCompilerProbeArgs,
+  buildSelectedDarwinCppCandidates,
   buildToolchainEnvironment,
+  isDarwinAppleToolchainLocation,
+  isDarwinSandboxCompatibleCpp,
   MIN_GNU_CPP_VERSION,
   MIN_GNU_GDB_VERSION,
 } from "./resolver.js";
+
+test("macOS native protection rejects non-Apple compiler locations", () => {
+  assert.equal(isDarwinSandboxCompatibleCpp("/opt/homebrew/bin/g++-14"), false);
+  assert.equal(isDarwinSandboxCompatibleCpp("/opt/homebrew/opt/llvm/bin/clang++"), false);
+  assert.equal(isDarwinSandboxCompatibleCpp("/usr/local/bin/g++"), false);
+  assert.equal(isDarwinSandboxCompatibleCpp("/path/that/does/not/exist/clang++"), false);
+});
+
+test("macOS resolves the real compiler inside the selected Developer root", () => {
+  assert.deepEqual(
+    buildSelectedDarwinCppCandidates("/Library/Developer/CommandLineTools"),
+    [
+      "/Library/Developer/CommandLineTools/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++",
+      "/Library/Developer/CommandLineTools/usr/bin/clang++",
+    ],
+  );
+  assert.deepEqual(
+    buildSelectedDarwinCppCandidates("/Applications/Xcode.app/Contents/Developer"),
+    [
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++",
+      "/Applications/Xcode.app/Contents/Developer/usr/bin/clang++",
+    ],
+  );
+  assert.equal(
+    isDarwinAppleToolchainLocation(
+      "/Applications/Xcode-beta.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+    ),
+    true,
+  );
+  assert.equal(
+    isDarwinAppleToolchainLocation(
+      "/Library/Developer/CommandLineTools/usr/bin/clang",
+    ),
+    true,
+  );
+  assert.equal(isDarwinAppleToolchainLocation("/usr/bin/clang"), false);
+  assert.equal(isDarwinAppleToolchainLocation("/opt/homebrew/bin/clang++"), false);
+});
 
 test("Windows native protection prefers an installed managed toolchain", () => {
   const managed = {
