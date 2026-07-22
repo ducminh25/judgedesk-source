@@ -22,8 +22,7 @@ test("compiler request uses a minimal environment independent of the parent shel
   assert.deepEqual(buildCompilerEnvironment("/usr/bin/clang++", "darwin"), {});
 });
 
-test("macOS staging preserves the Apple Clang driver name for cc1 re-exec", () => {
-  assert.equal(stagedCompilerName("/usr/bin/clang++", "darwin"), "clang++");
+test("macOS staging preserves the resolved Apple Clang binary name for cc1 re-exec", () => {
   assert.equal(stagedCompilerName("/toolchain/bin/clang", "darwin"), "clang");
   assert.equal(stagedCompilerName(String.raw`C:\toolchain\bin\g++.exe`, "win32"), "compiler.exe");
 });

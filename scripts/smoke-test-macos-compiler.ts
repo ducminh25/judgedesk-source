@@ -5,7 +5,12 @@ import path from "node:path";
 import { executorClient } from "../server/executor/client.js";
 import { DEFAULT_EXECUTOR_LIMITS } from "../server/executor/protocol.js";
 import { createExecutorWorkspace, importExecutorArtifact } from "../server/executor/workspace.js";
-import { compileSubmission } from "../server/judge/compiler.js";
+import {
+  buildSubmissionCompilerArgs,
+  compileSubmission,
+  resolveCompilationToolchain,
+  runCompilerWithLimits,
+} from "../server/judge/compiler.js";
 
 if (process.platform !== "darwin" || process.arch !== "arm64") {
   throw new Error("The macOS compiler smoke test requires an Apple Silicon host.");
@@ -28,7 +33,23 @@ try {
     tempDirectory: temporaryDirectory,
   });
   if (compilation.compileStatus !== "OK") {
-    throw new Error(`macOS compiler smoke failed: ${compilation.compileError}`);
+    const toolchain = await resolveCompilationToolchain("cpp");
+    const diagnosticOutput = path.join(temporaryDirectory, "diagnostic.out");
+    let verboseError = "toolchain unavailable";
+    if (toolchain.ready) {
+      try {
+        await runCompilerWithLimits(
+          toolchain.executablePath,
+          ["-v", ...buildSubmissionCompilerArgs("darwin", sourcePath, diagnosticOutput)],
+          temporaryDirectory,
+          diagnosticOutput,
+        );
+        verboseError = "verbose retry unexpectedly succeeded";
+      } catch (error) {
+        verboseError = error instanceof Error ? error.message : String(error);
+      }
+    }
+    throw new Error(`macOS compiler smoke failed: ${compilation.compileError}\nVerbose retry: ${verboseError}`);
   }
 
   const artifact = await importExecutorArtifact(compilation.executablePath);
