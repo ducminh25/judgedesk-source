@@ -360,7 +360,7 @@ export function resolveDarwinCompilerSupport(compilerPath: string): {
   return {
     argumentPrefix: [
       "--driver-mode=g++",
-      // sandbox-exec does not preserve Apple's inferred InstalledDir, which otherwise turns
+      // The macOS sandbox launcher does not preserve Apple's inferred InstalledDir, which turns
       // the frontend re-exec command into an empty path. Keep cc1 in the trusted driver process.
       "-fintegrated-cc1",
       "-resource-dir",
