@@ -37,7 +37,7 @@
     ],
     "resources": {
       "../sandbox/**/*": "sandbox/",
-      "../compiler-compat/**/*": "compiler-compat/"
+      "../compiler-compat/include/bits/stdc++.h": "compiler-compat/include/bits/stdc++.h"
     },
     "createUpdaterArtifacts": true,
     "externalBin": ["binaries/server", "binaries/judgedesk-executor"],
