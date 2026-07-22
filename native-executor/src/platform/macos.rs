@@ -226,11 +226,15 @@ impl MacosPlatform {
         // A fresh dyld/malloc launch can reserve substantially more VM than the already-running
         // executor, so retain at least one additional baseline of headroom.
         let executor_virtual_size = process_usage(std::process::id() as i32).virtual_memory_bytes;
-        let address_space = (executor_virtual_size > 0).then(|| {
-            executor_virtual_size
-                .saturating_mul(2)
-                .max(executor_virtual_size.saturating_add(address_space_slack))
-        });
+        // Diagnostic opt-in while validating Darwin's launch-time RLIMIT_AS behavior on the
+        // real Apple Silicon runner. The release path must not set this variable.
+        let address_space = (std::env::var_os("JUDGEDESK_DIAGNOSTIC_RLIMIT_AS").is_some()
+            && executor_virtual_size > 0)
+            .then(|| {
+                executor_virtual_size
+                    .saturating_mul(2)
+                    .max(executor_virtual_size.saturating_add(address_space_slack))
+            });
         unsafe {
             command.pre_exec(move || {
                 if libc::setpgid(0, 0) != 0 {
