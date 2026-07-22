@@ -471,6 +471,11 @@ fn build_profile(paths: &ValidatedRun) -> Result<String, String> {
         format!("(subpath \"{workspace}\")"),
         "(subpath \"/Library/Apple\")".into(),
         "(subpath \"/System/Library\")".into(),
+        // Modern macOS stores the dyld shared cache and other sealed OS content in Cryptexes.
+        // Without these read-only roots, dyld aborts in CacheFinder before the target reaches
+        // main(). Keep the allowance limited to sealed system Cryptex content.
+        "(subpath \"/System/Cryptexes\")".into(),
+        "(subpath \"/System/Volumes/Preboot/Cryptexes\")".into(),
         "(subpath \"/System/iOSSupport/System/Library\")".into(),
         "(subpath \"/usr/lib\")".into(),
         "(subpath \"/usr/share\")".into(),
@@ -509,6 +514,9 @@ fn build_profile(paths: &ValidatedRun) -> Result<String, String> {
   (literal "/System/Volumes")
   (literal "/System/Volumes/Data")
   (literal "/System/Volumes/Data/Users")
+  (literal "/System/Volumes/Preboot")
+  (literal "/System/Volumes/Preboot/Cryptexes")
+  (literal "/System/Cryptexes")
   (literal "/dev")
   (regex "^/dev/.*$"))
 (allow file-write* (subpath "{workspace}"))
