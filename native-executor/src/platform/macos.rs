@@ -201,11 +201,18 @@ impl MacosPlatform {
             .envs(minimal_environment(spec, &paths.workspace));
         let fsize = spec.limits.output_bytes;
         let nofile = spec.limits.open_files as u64;
-        let address_space = spec
+        let address_space_slack = spec
             .limits
             .memory_bytes
             .saturating_mul(8)
             .max(512 * 1024 * 1024);
+        // Darwin processes can begin with a very large reserved virtual address space
+        // (dyld/shared-cache and allocator reservations). A fixed RLIMIT_AS can therefore be
+        // below the launcher's existing VM size and setrlimit returns EINVAL before exec. Keep
+        // an emergency ceiling, but calibrate it from the trusted launcher's actual baseline.
+        let executor_virtual_size = process_usage(std::process::id() as i32).virtual_memory_bytes;
+        let address_space = (executor_virtual_size > 0)
+            .then(|| executor_virtual_size.saturating_add(address_space_slack));
         unsafe {
             command.pre_exec(move || {
                 if libc::setpgid(0, 0) != 0 {
@@ -214,7 +221,9 @@ impl MacosPlatform {
                 set_limit(libc::RLIMIT_CORE, 0)?;
                 set_limit(libc::RLIMIT_FSIZE, fsize)?;
                 set_limit(libc::RLIMIT_NOFILE, nofile)?;
-                set_limit(libc::RLIMIT_AS, address_space)?;
+                if let Some(address_space) = address_space {
+                    set_limit(libc::RLIMIT_AS, address_space)?;
+                }
                 Ok(())
             });
         }
@@ -393,7 +402,11 @@ unsafe fn set_limit(resource: libc::c_int, value: u64) -> std::io::Result<()> {
         rlim_max: value,
     };
     if libc::setrlimit(resource, &limit) != 0 {
-        Err(std::io::Error::last_os_error())
+        let error = std::io::Error::last_os_error();
+        Err(std::io::Error::new(
+            error.kind(),
+            format!("setrlimit resource={resource} value={value}: {error}"),
+        ))
     } else {
         Ok(())
     }
@@ -494,6 +507,7 @@ struct RusageInfoV2 {
 #[derive(Default)]
 struct ProcessUsage {
     memory_bytes: u64,
+    virtual_memory_bytes: u64,
     threads: u32,
     user_time_ns: u64,
     system_time_ns: u64,
@@ -550,6 +564,7 @@ fn process_usage(pid: i32) -> ProcessUsage {
                 .phys_footprint
                 .max(info.resident_size)
                 .max(if task_success { task.resident_size } else { 0 }),
+            virtual_memory_bytes: if task_success { task.virtual_size } else { 0 },
             threads: if task_success {
                 task.thread_count.max(0) as u32
             } else {
