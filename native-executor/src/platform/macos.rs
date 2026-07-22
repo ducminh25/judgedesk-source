@@ -387,7 +387,7 @@ fn kill_group(pgid: i32) {
     }
 }
 
-unsafe fn set_limit(resource: u32, value: u64) -> std::io::Result<()> {
+unsafe fn set_limit(resource: libc::c_int, value: u64) -> std::io::Result<()> {
     let limit = libc::rlimit {
         rlim_cur: value,
         rlim_max: value,
