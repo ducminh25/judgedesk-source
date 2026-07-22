@@ -242,15 +242,33 @@ test("Apple Silicon release scripts verify architecture, DMG, and sidecar", () =
     new URL("../native-executor/src/platform/macos.rs", import.meta.url),
     "utf8",
   );
+  const executorMain = fs.readFileSync(
+    new URL("../native-executor/src/main.rs", import.meta.url),
+    "utf8",
+  );
+  const securityHarness = fs.readFileSync(
+    new URL("../server/executor-tests/security.integration.test.ts", import.meta.url),
+    "utf8",
+  );
 
   assert.match(sidecarScript, /lipo "\$sidecar" -verify_arch arm64/);
   assert.match(sidecarScript, /smoke-test-sidecar\.js "\$sidecar"/);
   assert.match(sidecarScript, /test:executor/);
   assert.match(sidecarScript, /security\.integration\.test\.ts/);
   assert.match(sidecarScript, /smoke-test-macos-compiler\.ts/);
+  assert.match(sidecarScript, /set_limit\(libc::RLIMIT_NPROC/);
+  assert.match(sidecarScript, /--test-process-bomb/);
+  assert.match(sidecarScript, /kernel process ceiling contains a real process bomb/);
   assert.doesNotMatch(sidecarScript, /macOS diagnostics/);
   assert.match(macExecutor, /libc::wait4/);
   assert.match(macExecutor, /ru_maxrss/);
+  assert.match(macExecutor, /set_limit\(libc::RLIMIT_NPROC, nproc_ceiling\)/);
+  assert.match(macExecutor, /startup_process_limit_probe/);
+  assert.match(macExecutor, /wait_for_process_group_empty/);
+  assert.match(executorMain, /Some\("--test-process-bomb"\)/);
+  assert.match(securityHarness, /kernel process ceiling contains a real process bomb/);
+  assert.match(securityHarness, /processCount:\s*1/);
+  assert.match(securityHarness, /"process_limit"/);
   assert.match(bundleScript, /hdiutil attach "\$dmg_file" -readonly -nobrowse/);
   assert.match(bundleScript, /trap cleanup_dmg_mount EXIT/);
   assert.match(bundleScript, /Contents\/MacOS\/themis-v2" -verify_arch arm64/);
