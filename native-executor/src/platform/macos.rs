@@ -462,8 +462,11 @@ fn build_profile(paths: &ValidatedRun, spec: &RunSpec) -> Result<String, String>
     let mut read_rules = vec![
         format!("(literal \"{executable}\")"),
         format!("(subpath \"{workspace}\")"),
+        "(subpath \"/Library/Apple\")".into(),
         "(subpath \"/System/Library\")".into(),
+        "(subpath \"/System/iOSSupport/System/Library\")".into(),
         "(subpath \"/usr/lib\")".into(),
+        "(subpath \"/usr/share\")".into(),
         "(literal \"/usr/bin/sandbox-exec\")".into(),
         "(literal \"/dev/null\")".into(),
         "(literal \"/dev/random\")".into(),
@@ -490,12 +493,36 @@ fn build_profile(paths: &ValidatedRun, spec: &RunSpec) -> Result<String, String>
 (allow process-exec (literal "{executable}"))
 (allow process-exec (literal "/usr/bin/sandbox-exec"))
 {fork_rule}
+(allow signal (target same-sandbox))
+(allow process-info* (target same-sandbox))
 (deny network*)
-(allow file-read* {})
+(allow file-read* file-test-existence {})
+(allow file-map-executable {})
+(allow file-read-metadata file-test-existence
+  (literal "/")
+  (literal "/etc")
+  (literal "/tmp")
+  (literal "/var")
+  (subpath "/private/var")
+  (literal "/System/Volumes")
+  (literal "/System/Volumes/Data")
+  (literal "/System/Volumes/Data/Users")
+  (literal "/dev")
+  (regex "^/dev/.*$"))
 (allow file-write* (subpath "{workspace}"))
 (allow sysctl-read)
 (allow mach-lookup)
+(allow iokit-open (iokit-registry-entry-class "RootDomainUserClient"))
+(allow ipc-posix-sem)
+(allow ipc-posix-shm-read* (ipc-posix-name-prefix "apple.cfprefs."))
+(allow user-preference-read)
+(allow system-mac-syscall (mac-policy-name "vnguard"))
+(allow system-mac-syscall
+  (require-all
+    (mac-policy-name "Sandbox")
+    (mac-syscall-number 67)))
 "#,
+        read_rules.join(" "),
         read_rules.join(" ")
     ))
 }
