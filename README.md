@@ -9,6 +9,13 @@ Các thay đổi theo phiên bản được ghi tại [CHANGELOG.md](CHANGELOG.m
 khóa updater và thư mục dữ liệu cũ để người dùng `1.1.3`/`1.1.4` có thể cập nhật
 trực tiếp mà không mất cấu hình hoặc toolchain đã cài.
 
+Trên macOS, updater cập nhật bundle tại chỗ và không thể đổi tên thư mục bundle
+đang chạy. Vì vậy máy nâng cấp từ bản cũ có thể vẫn chứa
+`/Applications/ThemisV2.app` dù cửa sổ và metadata đã mang tên JudgeDesk. Để hoàn
+tất đổi tên, thoát ứng dụng, mở DMG JudgeDesk mới, kéo `JudgeDesk.app` vào
+Applications, mở bản mới thành công rồi xóa `ThemisV2.app`. Application identifier
+và thư mục dữ liệu được giữ nguyên nên thao tác này không xóa cấu hình/toolchain.
+
 ## Yêu cầu phát triển
 
 - Node.js đúng dòng `22.x` (các dòng 23+ không được dùng để đóng gói SEA).

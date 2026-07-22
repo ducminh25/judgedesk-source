@@ -12,6 +12,7 @@ import {
 import { attachExecutorRun, detachExecutorRun } from "../jobs.js";
 import type { ProblemResult } from "../types.js";
 import {
+  findDarwinSdkDirectory,
   getExecutableVersion,
   resolveNativeProtectedToolchain,
   resolveToolchain,
@@ -415,10 +416,7 @@ export function resolveDarwinCompilerSupport(compilerPath: string): {
     .map((entry) => path.join(resourceBase, entry.name))
     .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }))
     .at(-1);
-  const sdkDirectory = [
-    path.join(developerRoot, "Platforms", "MacOSX.platform", "Developer", "SDKs", "MacOSX.sdk"),
-    path.join(developerRoot, "SDKs", "MacOSX.sdk"),
-  ].find((candidate) => fs.existsSync(candidate));
+  const sdkDirectory = findDarwinSdkDirectory(compiler);
   if (!resourceDirectory || !sdkDirectory) {
     throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE: Apple Clang resource directory or macOS SDK was not found");
   }

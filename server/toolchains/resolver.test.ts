@@ -12,8 +12,10 @@ import {
   chooseNativeProtectedToolchain,
   compareVersions,
   buildCompilerProbeArgs,
+  buildDarwinSdkCandidates,
   buildSelectedDarwinCppCandidates,
   buildToolchainEnvironment,
+  inferDarwinDeveloperRoot,
   isDarwinAppleToolchainLocation,
   isDarwinSandboxCompatibleCpp,
   MIN_GNU_CPP_VERSION,
@@ -56,6 +58,25 @@ test("macOS resolves the real compiler inside the selected Developer root", () =
   );
   assert.equal(isDarwinAppleToolchainLocation("/usr/bin/clang"), false);
   assert.equal(isDarwinAppleToolchainLocation("/opt/homebrew/bin/clang++"), false);
+  assert.equal(
+    inferDarwinDeveloperRoot(
+      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+    ),
+    "/Applications/Xcode.app/Contents/Developer",
+  );
+  assert.equal(
+    inferDarwinDeveloperRoot(
+      "/Library/Developer/CommandLineTools/usr/bin/clang",
+    ),
+    "/Library/Developer/CommandLineTools",
+  );
+  assert.deepEqual(
+    buildDarwinSdkCandidates("/Applications/Xcode.app/Contents/Developer"),
+    [
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk",
+      "/Applications/Xcode.app/Contents/Developer/SDKs/MacOSX.sdk",
+    ],
+  );
 });
 
 test("Windows native protection prefers an installed managed toolchain", () => {
@@ -113,12 +134,28 @@ test("compiler probe uses production-compatible flags on Windows and macOS", () 
   assert.ok(windows.includes("-Wl,--stack,66060288"));
   assert.equal(windows.at(-3), "probe.cpp");
 
-  const mac = buildCompilerProbeArgs("darwin", "probe.cpp", "probe");
+  const mac = buildCompilerProbeArgs(
+    "darwin",
+    "probe.cpp",
+    "probe",
+    "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk",
+  );
   assert.equal(mac.includes("-static"), false);
   assert.equal(mac.includes("-lm"), false);
   assert.equal(mac.includes("-s"), false);
+  assert.deepEqual(
+    mac.slice(mac.indexOf("-isysroot"), mac.indexOf("-isysroot") + 2),
+    [
+      "-isysroot",
+      "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk",
+    ],
+  );
   assert.equal(mac.some((flag) => flag.includes("--stack")), false);
   assert.equal(mac.at(-3), "probe.cpp");
+  assert.throws(
+    () => buildCompilerProbeArgs("darwin", "probe.cpp", "probe"),
+    /macOS SDK was not found/,
+  );
 });
 
 test("toolchain storage preferences are saved and loaded correctly", (t) => {

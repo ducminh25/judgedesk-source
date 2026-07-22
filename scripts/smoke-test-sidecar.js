@@ -82,7 +82,12 @@ async function verifyWorkspaceRoutes(baseUrl, temporaryRoot) {
 
 export async function smokeTestSidecar(
   executablePath,
-  { args = [], resourceDirectory, timeoutMs = STARTUP_TIMEOUT_MS } = {},
+  {
+    args = [],
+    resourceDirectory,
+    timeoutMs = STARTUP_TIMEOUT_MS,
+    requireCpp = false,
+  } = {},
 ) {
   const resolvedExecutable = path.resolve(executablePath);
   if (!fs.existsSync(resolvedExecutable)) {
@@ -114,6 +119,7 @@ export async function smokeTestSidecar(
   });
 
   const deadline = Date.now() + timeoutMs;
+  let lastHealthError;
   try {
     while (Date.now() < deadline) {
       if (spawnError) {
@@ -129,18 +135,27 @@ export async function smokeTestSidecar(
         const response = await fetch(`${baseUrl}/api/status`);
         if (response.ok) {
           const status = await response.json();
+          if (requireCpp && !status.gpp?.installed) {
+            throw new Error(
+              `Packaged sidecar did not detect Apple Clang: ${JSON.stringify(status.gpp)}`,
+            );
+          }
           await verifyWorkspaceRoutes(baseUrl, temporaryRoot);
           console.log(`Sidecar smoke test passed on port ${port}.`);
           console.log("Contestant and problem discovery routes passed.");
           console.log(JSON.stringify(status, null, 2));
           return status;
         }
-      } catch {
+      } catch (error) {
         // The server has not started listening yet.
+        lastHealthError = error;
       }
       await delay(POLL_INTERVAL_MS);
     }
-    throw new Error(`Sidecar did not become healthy within ${timeoutMs} ms.`);
+    const detail = lastHealthError instanceof Error
+      ? ` Last check: ${lastHealthError.message}`
+      : "";
+    throw new Error(`Sidecar did not become healthy within ${timeoutMs} ms.${detail}`);
   } catch (error) {
     const output = [
       error.message,
@@ -157,13 +172,16 @@ export async function smokeTestSidecar(
 }
 
 async function main() {
-  const [, , executablePath, resourceDirectory] = process.argv;
+  const [, , executablePath, resourceDirectory, ...flags] = process.argv;
   if (!executablePath) {
     throw new Error(
       "Usage: node scripts/smoke-test-sidecar.js <executable> [resource-directory]",
     );
   }
-  await smokeTestSidecar(executablePath, { resourceDirectory });
+  await smokeTestSidecar(executablePath, {
+    resourceDirectory,
+    requireCpp: flags.includes("--require-cpp"),
+  });
 }
 
 if (

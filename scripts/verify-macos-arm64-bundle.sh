@@ -31,7 +31,8 @@ if ! grep -q 'com.apple.security.cs.allow-jit' <<<"$server_entitlements"; then
 fi
 node scripts/smoke-test-sidecar.js \
   "$server_binary" \
-  "$app_bundle/Contents/Resources"
+  "$app_bundle/Contents/Resources" \
+  --require-cpp
 
 rm -rf release-assets-mac
 mkdir -p release-assets-mac
