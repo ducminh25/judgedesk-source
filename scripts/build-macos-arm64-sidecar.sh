@@ -34,7 +34,7 @@ node scripts/smoke-test-sidecar.js "$sidecar"
 
 echo "[macOS diagnostics] Recent executor and sandbox log entries:"
 /usr/bin/log show --last 3m --style compact \
-  --predicate 'process == "security-probe" OR process == "sandbox-exec" OR process == "judgedesk-executor-aarch64-apple-darwin"' \
+  --predicate 'eventMessage CONTAINS[c] "security-probe" OR process == "sandbox-exec" OR process == "judgedesk-executor-aarch64-apple-darwin"' \
   2>/dev/null | tail -n 200 || true
 diagnostic_root="$HOME/Library/Logs/DiagnosticReports"
 if [[ -d "$diagnostic_root" ]]; then
