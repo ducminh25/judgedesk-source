@@ -3,6 +3,19 @@
 Tất cả thay đổi đáng chú ý của JudgeDesk được ghi tại đây. Dự án dùng Semantic
 Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng dụng hiện có.
 
+## [1.2.2] - 2026-07-22
+
+### Sửa lỗi macOS
+
+- Sửa toàn bộ bài C++ bị CE `TOOLCHAIN_NOT_SANDBOX_COMPATIBLE` trên các máy Mac
+  mà `xcrun --find clang++` trả về shim `/usr/bin/clang++`. JudgeDesk giờ lấy
+  binary Apple Clang thật từ Developer root do `xcode-select` chỉ định.
+- Không còn báo Homebrew GCC/LLVM là compiler tương thích với Native protection;
+  sandbox vẫn fail closed và chỉ cấp quyền cho Apple Clang từ Xcode hoặc Command
+  Line Tools.
+- New contest, Open contest và đóng ứng dụng không còn hỏi lưu một contest rỗng
+  khi scoreboard chưa có thí sinh hoặc problem.
+
 ## [1.2.1] - 2026-07-22
 
 ### Native protection và tính đúng đắn
@@ -104,3 +117,4 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 [1.2.0]: https://github.com/ducminh25/themis-v2/releases/tag/v1.2.0
 [1.2.1]: https://github.com/ducminh25/themis-v2/releases/tag/v1.2.1
+[1.2.2]: https://github.com/ducminh25/themis-v2/releases/tag/v1.2.2

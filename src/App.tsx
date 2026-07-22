@@ -38,6 +38,10 @@ import {
   chooseAndOpenContestArchive,
   saveContestArchive,
 } from "./features/contest/contest-file";
+import {
+  hasSavableContestData,
+  shouldPromptForUnsavedContest,
+} from "./features/contest/dirty-state";
 
 type PendingContestAction = "new" | "open" | "close";
 type PendingScoreDeletion =
@@ -107,6 +111,7 @@ export default function App() {
   const [pendingContestAction, setPendingContestAction] = useState<PendingContestAction | null>(null);
   const [pendingScoreDeletion, setPendingScoreDeletion] = useState<PendingScoreDeletion | null>(null);
   const contestDirtyRef = useRef(false);
+  const contestDataCountsRef = useRef({ contestants: 0, problems: 0 });
   const interactionLockedRef = useRef(false);
   const hostStatusRequestRef = useRef<Promise<void> | null>(null);
   const saveOperationRef = useRef(false);
@@ -118,6 +123,15 @@ export default function App() {
   }, []);
 
   const markContestDirty = useCallback(() => setContestDirty(true), [setContestDirty]);
+
+  const hasContestData = hasSavableContestData(
+    contestantsList.length,
+    problemsList.length,
+  );
+  contestDataCountsRef.current = {
+    contestants: contestantsList.length,
+    problems: problemsList.length,
+  };
 
   useEffect(() => {
     if (!preferencesStorage.isToolchainSetupCompleted()) {
@@ -296,7 +310,12 @@ export default function App() {
     const useBrowserBeforeUnload = shouldRegisterBrowserBeforeUnload(window);
     const isTauri = !useBrowserBeforeUnload;
     const beforeUnload = (event: BeforeUnloadEvent) => {
-      if (!contestDirtyRef.current) return;
+      const counts = contestDataCountsRef.current;
+      if (!shouldPromptForUnsavedContest(
+        contestDirtyRef.current,
+        counts.contestants,
+        counts.problems,
+      )) return;
       event.preventDefault();
       event.returnValue = "";
     };
@@ -322,7 +341,12 @@ export default function App() {
             setErrorMessage(t("actions.unavailableWhileBusy"));
             return;
           }
-          if (!contestDirtyRef.current) return;
+          const counts = contestDataCountsRef.current;
+          if (!shouldPromptForUnsavedContest(
+            contestDirtyRef.current,
+            counts.contestants,
+            counts.problems,
+          )) return;
           event.preventDefault();
           setPendingContestAction("close");
         });
@@ -432,7 +456,11 @@ export default function App() {
 
   const requestContestAction = (action: PendingContestAction) => {
     if (interactionLockedRef.current || saveOperationRef.current) return;
-    if (contestDirtyRef.current) {
+    if (shouldPromptForUnsavedContest(
+      contestDirtyRef.current,
+      contestantsList.length,
+      problemsList.length,
+    )) {
       setPendingContestAction(action);
       return;
     }
@@ -563,7 +591,7 @@ export default function App() {
         canDeleteSelected={canDeleteSelected}
         canExport={!!judgeResult?.contestants.some((contestant) => contestant.problems.length > 0)}
         canRun={canRun}
-        canSaveContest={isContestDirty && (contestantsList.length > 0 || problemsList.length > 0)}
+        canSaveContest={isContestDirty && hasContestData}
         errorMessage={backendErrorMessage || errorMessage}
         hostStatus={hostStatus}
         isJudging={isJudging}
@@ -635,7 +663,7 @@ export default function App() {
           <span>{contestantsList.length} {t("scoreboard.contestants").toLowerCase()}</span>
           <span>{problemsList.length} {t("scoringLog.problem").toLowerCase()}</span>
           <span className="max-w-64 truncate font-mono" title={contestFilePath || undefined}>
-            {contestFilePath ? contestFilePath.split(/[\\/]/).pop() : t("contest.untitled")}{isContestDirty ? " *" : ""}
+            {contestFilePath ? contestFilePath.split(/[\\/]/).pop() : t("contest.untitled")}{isContestDirty && hasContestData ? " *" : ""}
           </span>
         </div>
         {hostStatus?.sandbox?.mode && <div className="font-mono">{hostStatus.sandbox.mode}</div>}

@@ -403,6 +403,12 @@ pub fn open_contest_archive(path: String) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // These tests exercise the process-wide extracted-workspace cleanup. Cargo
+    // runs tests in parallel by default, so one test could delete the other's
+    // freshly extracted archive between open and assertion.
+    static ARCHIVE_TEST_LOCK: Mutex<()> = Mutex::new(());
 
     fn test_directory(label: &str) -> PathBuf {
         std::env::temp_dir().join(format!("judgedesk-{label}-{}", unique_suffix()))
@@ -410,6 +416,9 @@ mod tests {
 
     #[test]
     fn contest_archive_round_trips_manifest_sources_tests_and_permissions() {
+        let _guard = ARCHIVE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         cleanup_contest_workspaces();
         let root = test_directory("archive-test");
         let contestants = root.join("source-contestants");
@@ -449,6 +458,9 @@ mod tests {
 
     #[test]
     fn contest_archive_can_save_only_problems_or_only_contestants() {
+        let _guard = ARCHIVE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
         cleanup_contest_workspaces();
         let root = test_directory("partial-archive-test");
         let problems = root.join("source-problems");
