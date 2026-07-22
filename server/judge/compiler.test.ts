@@ -11,6 +11,7 @@ import {
   findGccIncludeDirectories,
   MAX_GENERATED_FILE_BYTES,
   resolveChecker,
+  resolveDarwinCompatibilityHeader,
   runCompilerWithLimits,
   stagedCompilerName,
 } from "./compiler";
@@ -26,6 +27,21 @@ test("compiler request uses a minimal environment independent of the parent shel
 test("macOS staging preserves the resolved Apple Clang binary name for cc1 re-exec", () => {
   assert.equal(stagedCompilerName("/toolchain/bin/clang", "darwin"), "clang");
   assert.equal(stagedCompilerName(String.raw`C:\toolchain\bin\g++.exe`, "win32"), "compiler.exe");
+});
+
+test("macOS resolves only a regular packaged bits/stdc++.h compatibility header", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-compat-header-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const header = path.join(root, "compiler-compat", "include", "bits", "stdc++.h");
+  fs.mkdirSync(path.dirname(header), { recursive: true });
+  fs.writeFileSync(header, "#include <vector>\n", "utf8");
+
+  assert.equal(resolveDarwinCompatibilityHeader(root), fs.realpathSync(header));
+  fs.rmSync(header);
+  assert.throws(
+    () => resolveDarwinCompatibilityHeader(root),
+    /compatibility headers were not found/,
+  );
 });
 
 test("macOS compilation separates the integrated frontend from the linker", () => {

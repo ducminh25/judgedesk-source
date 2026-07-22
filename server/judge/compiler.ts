@@ -19,6 +19,7 @@ import {
 } from "../toolchains/resolver.js";
 import { getToolchainsDir } from "../toolchains/storage.js";
 import type { ResolvedToolchain } from "../toolchains/types.js";
+import { RESOURCE_ROOT } from "../runtime.js";
 import { isBuiltInChecker } from "./standard-checkers.js";
 
 declare const __JUDGEDESK_TESTLIB__: string;
@@ -78,6 +79,7 @@ interface PreparedCompiler {
   root?: string;
   argumentPrefix: string[];
   environment: Record<string, string>;
+  compatibilityHeaderPath?: string;
 }
 
 function canonicalTestlibSource(): string {
@@ -225,6 +227,13 @@ export async function runCompilerWithLimits(
   attachExecutorRun(jobId, runId);
   try {
     const compiler = await prepareCompiler(workspace, compilerPath);
+    if (compiler.compatibilityHeaderPath) {
+      const stagedHeader = workspace.stage(
+        compiler.compatibilityHeaderPath,
+        "compiler-compat/include/bits/stdc++.h",
+      );
+      compiler.argumentPrefix.push("-isystem", path.dirname(path.dirname(stagedHeader)));
+    }
     const stagedOutput = path.join(workspace.path, "compiled-output.bin");
     const stagedArgs = stageCompilerArguments(workspace.path, args, outputPath, stagedOutput);
     stagedArgs.unshift(...compiler.argumentPrefix);
@@ -380,7 +389,24 @@ async function prepareCompiler(
     executablePath: staged,
     argumentPrefix: darwin?.argumentPrefix ?? [],
     environment: darwin?.environment ?? {},
+    compatibilityHeaderPath: darwin
+      ? resolveDarwinCompatibilityHeader(RESOURCE_ROOT)
+      : undefined,
   };
+}
+
+export function resolveDarwinCompatibilityHeader(resourceRoot: string): string {
+  const header = path.join(resourceRoot, "compiler-compat", "include", "bits", "stdc++.h");
+  let metadata: fs.Stats;
+  try {
+    metadata = fs.lstatSync(header);
+  } catch {
+    throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE: JudgeDesk C++ compatibility headers were not found");
+  }
+  if (!metadata.isFile() || metadata.isSymbolicLink()) {
+    throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE: JudgeDesk C++ compatibility header is invalid");
+  }
+  return fs.realpathSync(header);
 }
 
 export function stagedCompilerName(

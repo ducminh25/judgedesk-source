@@ -12,6 +12,8 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
   17/macOS 26.
 - Packaged DMG smoke test giờ bắt buộc backend sidecar thực sự nhận diện được
   Apple Clang; build sẽ fail nếu System Status còn báo G++ `Not detected`.
+- Đóng gói compatibility header `bits/stdc++.h` cho Apple Clang/libc++, sửa CE
+  của các bài thi C++ viết theo thói quen GCC mà không cần nới quyền sandbox.
 - Làm rõ bước cài DMG một lần để đổi bundle cũ `ThemisV2.app` thành
   `JudgeDesk.app`; updater in-place vẫn giữ nguyên identifier và dữ liệu.
 
