@@ -447,9 +447,14 @@ export function buildCompilerProbeArgs(
   sourcePath: string,
   outputPath: string,
 ): string[] {
-  const args = ["-std=c++14", "-pipe", "-O2", "-s"];
-  if (platform !== "darwin") args.push("-static");
-  args.push("-lm", "-x", "c++");
+  const args = ["-std=c++14", "-pipe", "-O2"];
+  if (platform !== "darwin") {
+    args.push("-s", "-static", "-lm");
+  }
+  // Current Apple SDKs expose the C math API through libSystem and no longer
+  // provide a standalone libm for `-lm`. The Xcode 17 linker also reports `-s`
+  // as obsolete, so neither flag belongs in the macOS availability probe.
+  args.push("-x", "c++");
   if (platform === "win32") args.push("-Wl,--stack,66060288");
   args.push(sourcePath, "-o", outputPath);
   return args;

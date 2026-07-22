@@ -3,6 +3,18 @@
 Tất cả thay đổi đáng chú ý của JudgeDesk được ghi tại đây. Dự án dùng Semantic
 Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng dụng hiện có.
 
+## [1.2.3] - 2026-07-22
+
+### Sửa lỗi macOS
+
+- Khôi phục auto-detect Apple Clang trên Xcode 17/macOS 26. JudgeDesk không còn
+  đánh dấu compiler hợp lệ là `Not detected` khi SDK không cung cấp `libm` độc
+  lập.
+- Bỏ `-lm` khỏi probe và lệnh compile C++ trên macOS vì các math symbol được
+  cung cấp qua `libSystem`; sửa toàn bộ bài C++ bị CE `library 'm' not found`.
+- Bỏ cờ strip `-s` đã obsolete trên linker mới của Apple. Windows và Linux vẫn
+  giữ nguyên các compiler flag hiện tại.
+
 ## [1.2.2] - 2026-07-22
 
 ### Sửa lỗi macOS
@@ -118,3 +130,4 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 [1.2.0]: https://github.com/ducminh25/themis-v2/releases/tag/v1.2.0
 [1.2.1]: https://github.com/ducminh25/themis-v2/releases/tag/v1.2.1
 [1.2.2]: https://github.com/ducminh25/themis-v2/releases/tag/v1.2.2
+[1.2.3]: https://github.com/ducminh25/themis-v2/releases/tag/v1.2.3

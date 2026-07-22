@@ -199,9 +199,13 @@ export function buildSubmissionCompilerArgs(
   sourcePath: string,
   outputPath: string,
 ): string[] {
-  const args = ["-std=c++14", "-pipe", "-O2", "-fno-finite-loops", "-s"];
-  if (platform !== "darwin") args.push("-static");
-  args.push("-lm", "-x", "c++");
+  const args = ["-std=c++14", "-pipe", "-O2", "-fno-finite-loops"];
+  if (platform !== "darwin") {
+    args.push("-s", "-static", "-lm");
+  }
+  // Apple SDKs provide math symbols through libSystem rather than a separate
+  // libm. Passing `-lm` fails on Xcode 17/macOS 26, while `-s` is obsolete.
+  args.push("-x", "c++");
   if (platform === "win32") args.push("-Wl,--stack,66060288");
   args.push(sourcePath, "-o", outputPath);
   return args;

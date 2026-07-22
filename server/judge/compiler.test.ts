@@ -133,6 +133,8 @@ test("compiler flags retain Windows limits and avoid unsupported macOS flags", (
 
   const mac = buildSubmissionCompilerArgs("darwin", "main.cpp", "main");
   assert.equal(mac.includes("-static"), false);
+  assert.equal(mac.includes("-lm"), false);
+  assert.equal(mac.includes("-s"), false);
   assert.ok(mac.includes("-fno-finite-loops"));
   assert.equal(
     mac.some((flag) => flag.includes("--stack")),
