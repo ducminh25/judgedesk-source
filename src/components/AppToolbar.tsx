@@ -312,9 +312,13 @@ export function HostStatusMenu({
       </div>
       {status ? (
         <>
-          <StatusRow label="WSL2" ready={!!status.sandbox?.wsl.ready} installed={!!status.sandbox?.wsl.installed} incompleteLabel={t("toolbar.statusMenu.incomplete")} />
-          <StatusRow label="Docker" ready={!!status.sandbox?.docker.ready} installed={!!status.sandbox?.docker.installed} incompleteLabel={t("toolbar.statusMenu.unavailable")} />
-          {!status.sandbox?.ready && (
+          <StatusRow label="Native protection" ready={status.secureRunner.ready} installed={status.secureRunner.mode !== "unavailable"} incompleteLabel={t("toolbar.statusMenu.unavailable")} />
+          {!status.secureRunner.ready && status.secureRunner.diagnostics.length > 0 && (
+            <div className="mx-2 my-1 rounded border border-rose-200 bg-rose-50 p-2 text-[9px] text-rose-700 dark:border-rose-900 dark:bg-rose-950/20 dark:text-rose-300">
+              {status.secureRunner.diagnostics.join("; ")}
+            </div>
+          )}
+          {(
             <>
               <div className="my-1 border-t border-surface-border" />
               <ToolRow label="G++" installed={status.gpp.installed} />
@@ -322,7 +326,7 @@ export function HostStatusMenu({
             </>
           )}
           <div className="border-t border-surface-border px-2 pt-2 text-[10px] text-text-muted">
-            {t("toolbar.statusMenu.activeRunner")}: <span className="font-mono text-text-primary">{status.sandbox?.mode ?? "none"}</span>
+            {t("toolbar.statusMenu.activeRunner")}: <span className="font-mono text-text-primary">{status.secureRunner.mode}</span>
           </div>
         </>
       ) : <div className="px-2 py-3 text-xs text-text-muted">{t("toolbar.statusMenu.checking")}</div>}

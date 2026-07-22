@@ -1,0 +1,22 @@
+export function selectedNames(
+  names: readonly string[],
+  selection: Readonly<Record<string, boolean>>,
+): string[] {
+  return names.filter((name) => selection[name] === true);
+}
+
+export interface JudgeAvailability {
+  contestantsPath: string;
+  testsPath: string;
+  contestantNames: readonly string[];
+  problemNames: readonly string[];
+  secureRunnerReady: boolean;
+}
+
+export function canStartJudge(availability: JudgeAvailability): boolean {
+  return availability.contestantsPath.trim().length > 0
+    && availability.testsPath.trim().length > 0
+    && availability.contestantNames.length > 0
+    && availability.problemNames.length > 0
+    && availability.secureRunnerReady;
+}

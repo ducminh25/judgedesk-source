@@ -3,15 +3,29 @@ import path from "path";
 import { registerBatchJudgeRoute } from "./server/judge/batch-judge-route.js";
 import { registerJobRoutes } from "./server/jobs.js";
 import { APP_ROOT, IS_PRODUCTION, SERVER_PORT } from "./server/runtime.js";
-import { sandbox } from "./server/sandbox.js";
+import { executorClient } from "./server/executor/client.js";
 import { registerExportRoutes } from "./server/routes/export-routes.js";
 import { registerProblemRoutes } from "./server/routes/problem-routes.js";
 import { registerSystemRoutes } from "./server/routes/system-routes.js";
 import { registerToolchainRoutes } from "./server/routes/toolchain-routes.js";
+import { startParentWatchdog } from "./server/platform/parent-watchdog.js";
 
-sandbox.initialize();
+startParentWatchdog(process.env.JUDGEDESK_PARENT_PID, async () => {
+  console.error("[Tauri Shell] Parent process ended; shutting down backend sidecars.");
+  try {
+    await executorClient.shutdown();
+  } finally {
+    process.exit(0);
+  }
+});
 
 async function startServer() {
+  const secureRunner = await executorClient.start();
+  if (!secureRunner.ready) {
+    console.error(`[Secure Runner] Unavailable: ${secureRunner.diagnostics.join("; ")}`);
+  } else {
+    console.log(`[Secure Runner] Ready: ${secureRunner.mode} v${secureRunner.executorVersion}`);
+  }
   const app = express();
 
   // Use JSON and URL encoded parsers
@@ -67,6 +81,12 @@ async function startServer() {
 
   app.listen(SERVER_PORT, "127.0.0.1", () => {
     console.log(`[Online Judge Server] Live on http://127.0.0.1:${SERVER_PORT}`);
+  });
+}
+
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.once(signal, () => {
+    void executorClient.shutdown().finally(() => process.exit(0));
   });
 }
 

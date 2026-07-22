@@ -1,6 +1,12 @@
+import {
+  BACKEND_STARTUP_TIMEOUT_MS,
+  fetchWithStartupRetry,
+} from "./features/desktop/browser-lifecycle.js";
+
 export let API_BASE = window.location.origin.includes("localhost:3000")
   ? ""
   : "http://127.0.0.1:3000";
+let backendStartupDeadline = Date.now() + BACKEND_STARTUP_TIMEOUT_MS;
 
 export async function initializeApiPort() {
   const isTauri = !!(window as any).__TAURI_INTERNALS__;
@@ -9,6 +15,7 @@ export async function initializeApiPort() {
       const { invoke } = await import("@tauri-apps/api/core");
       const port = await invoke<number>("get_backend_port");
       API_BASE = `http://127.0.0.1:${port}`;
+      backendStartupDeadline = Date.now() + BACKEND_STARTUP_TIMEOUT_MS;
       console.log(`[API Init] Resolved backend port from Tauri: ${API_BASE}`);
     } catch (error) {
       console.error("[API Init] Failed to resolve backend port from Tauri, using fallback:", error);
@@ -17,7 +24,9 @@ export async function initializeApiPort() {
 }
 
 export async function apiFetch(path: string, init?: RequestInit) {
-  const response = await fetch(`${API_BASE}${path}`, init);
+  const response = await fetchWithStartupRetry(`${API_BASE}${path}`, init, {
+    deadline: backendStartupDeadline,
+  });
   if (!response.ok) {
     let message = `Request failed (${response.status})`;
     try {

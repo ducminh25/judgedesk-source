@@ -4,7 +4,8 @@
 
 - `package.json`, `package-lock.json`, `src/version.ts`,
   `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock` and
-  `src-tauri/tauri.conf.json` must use the same version.
+  `src-tauri/tauri.conf.json`, plus `native-executor/Cargo.toml` and
+  `native-executor/Cargo.lock`, must use the same version.
 - Keep `com.themisv2.judge`, the updater public key and the public endpoint
   unchanged. Existing `1.x` installations depend on this identity.
 - Keep Windows MSI UpgradeCode `4ac645a9-f719-5210-85be-f03f49c33869`

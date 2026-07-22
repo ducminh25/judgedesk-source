@@ -8,9 +8,12 @@ release-downloads/
 release-assets/
 release-assets-mac/
 release-assets-windows/
+release-v*/
 src-tauri/target/
 src-tauri/gen/
 src-tauri/binaries/server-*
+src-tauri/binaries/judgedesk-executor-*
+native-executor/target/
 sea-prep.blob
 .DS_Store
 *.log

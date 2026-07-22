@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { BatchJudgeResult, ProblemResult } from "../../types";
-import { judgeResultsReducer } from "./judge-results";
+import { judgeResultsReducer, problemHasPositiveScore } from "./judge-results";
 
 function problem(problemName: string, score: number): ProblemResult {
   return {
@@ -66,4 +66,32 @@ test("delete_selected removes only the selected contestant/problem intersection"
     ]),
     [["Alice", ["A"]], ["Bob", ["A", "B"]]],
   );
+});
+
+test("problem configuration confirmation is required only for a positive score", () => {
+  const result = {
+    success: true,
+    contestants: [
+      { contestantName: "Alice", problems: [problem("A", 0), problem("B", 3)] },
+      { contestantName: "Bob", problems: [problem("a", 2)] },
+    ],
+  };
+  assert.equal(problemHasPositiveScore(result, "A"), true);
+  assert.equal(problemHasPositiveScore(result, "B"), true);
+  assert.equal(problemHasPositiveScore(result, "C"), false);
+  assert.equal(problemHasPositiveScore(null, "A"), false);
+});
+
+test("saving a problem configuration can remove every score and judging log for that problem", () => {
+  const state: BatchJudgeResult = {
+    success: true,
+    contestants: [
+      { contestantName: "Alice", problems: [problem("A", 10), problem("B", 20)] },
+      { contestantName: "Bob", problems: [problem("a", 30)] },
+    ],
+  };
+  const next = judgeResultsReducer(state, { type: "delete_problem", problemName: "A" });
+  assert.deepEqual(next?.contestants, [
+    { contestantName: "Alice", problems: [problem("B", 20)] },
+  ]);
 });

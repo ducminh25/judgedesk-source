@@ -1,4 +1,4 @@
-export type TestVerdict = "AC" | "WA" | "PE" | "TLE" | "RE" | "CE" | "MLE" | "FAIL" | "PARTIAL";
+export type TestVerdict = "AC" | "WA" | "PE" | "TLE" | "RE" | "CE" | "MLE" | "OLE" | "JE" | "FAIL" | "PARTIAL";
 export type ProblemVerdict = TestVerdict | "PENDING";
 export type CompileStatus = "OK" | "CE" | "SKIPPED";
 export type SubmissionLanguage = "cpp" | "python";
@@ -96,6 +96,17 @@ export interface HostStatus {
     ready: boolean;
     wsl: { installed: boolean; ready: boolean };
     docker: { installed: boolean; ready: boolean };
+  };
+  secureRunner: {
+    mode: "windows-lpac-job" | "macos-seatbelt-native" | "unavailable";
+    ready: boolean;
+    executorVersion: string;
+    selfTestAt?: string;
+    diagnostics: string[];
+    networkBlocked: boolean;
+    filesystemIsolated: boolean;
+    processTreeControlled: boolean;
+    memoryLimitSupported: boolean;
   };
 }
 

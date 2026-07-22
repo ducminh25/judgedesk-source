@@ -77,4 +77,15 @@ describe("toolchain settings UI regressions", () => {
       /handleFetchProblems/,
     );
   });
+
+  it("refreshes host toolchain status every time the status menu is opened", () => {
+    const appSource = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
+    const requestStart = appSource.indexOf("const requestHostStatus = useCallback");
+    const requestEnd = appSource.indexOf("useEffect(() =>", requestStart);
+    assert.notEqual(requestStart, -1);
+    assert.notEqual(requestEnd, -1);
+    const requestSource = appSource.slice(requestStart, requestEnd);
+    assert.doesNotMatch(requestSource, /hostStatus\s*\|\|/);
+    assert.match(requestSource, /setHostStatus\(null\)/);
+  });
 });

@@ -9,6 +9,17 @@ export type JudgeResultsAction =
   | { type: "delete_problem"; problemName: string }
   | { type: "delete_contestant"; contestantName: string };
 
+export function problemHasPositiveScore(
+  result: BatchJudgeResult | null,
+  problemName: string,
+): boolean {
+  const normalizedProblemName = problemName.toLowerCase();
+  return result?.contestants.some((contestant) => contestant.problems.some(
+    (problem) => problem.problemName.toLowerCase() === normalizedProblemName
+      && problem.summary.score > 0,
+  )) ?? false;
+}
+
 export function judgeResultsReducer(
   state: BatchJudgeResult | null,
   action: JudgeResultsAction
@@ -26,12 +37,14 @@ export function judgeResultsReducer(
     return state
       ? {
           ...state,
-          contestants: state.contestants.map((contestant) => ({
-            ...contestant,
-            problems: contestant.problems.filter(
-              (problem) => problem.problemName.toLowerCase() !== action.problemName.toLowerCase()
-            )
-          }))
+          contestants: state.contestants
+            .map((contestant) => ({
+              ...contestant,
+              problems: contestant.problems.filter(
+                (problem) => problem.problemName.toLowerCase() !== action.problemName.toLowerCase()
+              )
+            }))
+            .filter((contestant) => contestant.problems.length > 0)
         }
       : state;
   }

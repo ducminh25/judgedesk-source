@@ -1,106 +1,48 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { clearToolchainDetectionCache, findSystemPython } from "../toolchains/resolver.js";
-import { normalizeProblemConfig } from "../../shared/problem-config.js";
+import { managedToolchainSourceRoot } from "../executor/workspace.js";
 import { compileSubmission } from "./compiler.js";
-import { buildMacSandboxProfile, runTestCase } from "./testcase-runner.js";
 
-test("macOS sandbox grants runtime reads but only temp writes", () => {
-  const runtimeRoot = path.resolve("python-runtime");
-  const writableRoot = path.resolve("themis-run");
-  const escapedRuntimeRoot = runtimeRoot.replaceAll("\\", "\\\\");
-  const escapedWritableRoot = writableRoot.replaceAll("\\", "\\\\");
-  const profile = buildMacSandboxProfile({
-    readPaths: [runtimeRoot],
-    writePaths: [writableRoot],
-  });
-  assert.ok(profile.includes(`file-read* (subpath "${escapedRuntimeRoot}")`));
-  assert.ok(profile.includes(`file-write* (subpath "${escapedWritableRoot}")`));
-  assert.ok(!profile.includes(`file-write* (subpath "${escapedRuntimeRoot}")`));
-  assert.match(profile, /\(deny network\*\)/);
-  assert.ok(profile.includes("(allow file-read*)"));
-  assert.ok(profile.includes('(allow file-read* (literal "/"))'));
-  assert.ok(profile.includes("(allow file-read-metadata (vnode-type DIRECTORY))"));
-  assert.ok(profile.includes("(allow process-exec)"));
-  assert.ok(profile.includes("(deny process-fork)"));
-  assert.ok(!profile.includes("(allow process*)"));
+test("production testcase runner has no raw child-process or broad macOS profile path", () => {
+  const source = fs.readFileSync(path.join(process.cwd(), "server", "judge", "testcase-runner.ts"), "utf8");
+  assert.doesNotMatch(source, /from ["'](?:node:)?child_process["']/);
+  assert.doesNotMatch(source, /tree-kill|sandbox-exec|\(allow file-read\*\)/);
+  assert.match(source, /executorClient\.run/);
 });
 
-test(
-  "macOS sandbox permits exec but rejects contestant forks",
-  { skip: process.platform !== "darwin" },
-  () => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "themis-fork-test-"));
-    const sourcePath = path.join(directory, "fork-test.c");
-    const executablePath = path.join(directory, "fork-test");
-    const profilePath = path.join(directory, "sandbox.sb");
+test("managed macOS Python imports the complete package root instead of only bin", () => {
+  const packageRoot = path.join(os.tmpdir(), "python-package");
+  assert.equal(
+    managedToolchainSourceRoot(path.join(packageRoot, "bin", "python3"), "bin/python3"),
+    path.resolve(packageRoot),
+  );
+  assert.equal(
+    managedToolchainSourceRoot(path.join(packageRoot, "python.exe"), "python.exe"),
+    path.resolve(packageRoot),
+  );
+});
 
-    try {
-      fs.writeFileSync(
-        sourcePath,
-        [
-          "#include <errno.h>",
-          "#include <sys/types.h>",
-          "#include <unistd.h>",
-          "int main(void) {",
-          "  pid_t child = fork();",
-          "  if (child == -1 && errno == EPERM) return 0;",
-          "  if (child == 0) _exit(0);",
-          "  return 1;",
-          "}",
-        ].join("\n"),
-      );
-      const compilation = spawnSync("cc", [sourcePath, "-o", executablePath], {
-        encoding: "utf8",
-      });
-      assert.equal(compilation.status, 0, compilation.stderr);
-
-      fs.writeFileSync(
-        profilePath,
-        buildMacSandboxProfile({
-          readPaths: [directory],
-          writePaths: [directory],
-        }),
-      );
-      const execution = spawnSync(
-        "sandbox-exec",
-        ["-f", profilePath, executablePath],
-        { encoding: "utf8", timeout: 5_000 },
-      );
-      assert.equal(
-        execution.status,
-        0,
-        `fork was not blocked: ${execution.stderr}`,
-      );
-    } finally {
-      fs.rmSync(directory, { recursive: true, force: true });
-    }
-  },
-);
-
-test("a Python submission is accepted and runnable without resolving C++", async (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "themis-python-submission-"));
-  const appData = path.join(root, "app-data");
+test("an unmanaged Python runtime fails closed instead of running on the host", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-python-fail-closed-"));
   const source = path.join(root, "sum.py");
-  fs.writeFileSync(source, "a, b = map(int, input().split())\nprint(a + b)\n", "utf8");
+  fs.writeFileSync(source, "print(42)\n", "utf8");
   t.after(() => {
     delete process.env.THEMIS_APP_DATA_DIR;
     clearToolchainDetectionCache();
     fs.rmSync(root, { recursive: true, force: true });
   });
-  process.env.THEMIS_APP_DATA_DIR = appData;
+  process.env.THEMIS_APP_DATA_DIR = path.join(root, "empty-app-data");
   clearToolchainDetectionCache();
 
   const detectedPython = findSystemPython();
   if (!detectedPython) {
-    t.skip("No supported Python runtime is installed on this test host.");
+    t.skip("No supported unmanaged Python runtime is installed on this test host.");
     return;
   }
-
   const compiled = await compileSubmission({
     language: "python",
     contestantName: "Alice",
@@ -108,48 +50,6 @@ test("a Python submission is accepted and runnable without resolving C++", async
     submissionPath: source,
     tempDirectory: root,
   });
-  assert.equal(compiled.compileStatus, "OK");
-  assert.equal(compiled.executablePath, detectedPython);
-
-  const run = spawnSync(compiled.executablePath, [source], {
-    input: "20 22\n",
-    encoding: "utf8",
-    timeout: 5_000,
-  });
-  assert.equal(run.status, 0, run.stderr);
-  assert.equal(run.stdout.trim(), "42");
-
-  const inputPath = path.join(root, "SUM.inp");
-  const expectedOutputPath = path.join(root, "SUM.out");
-  const runDirectory = path.join(root, "run");
-  fs.mkdirSync(runDirectory);
-  fs.writeFileSync(inputPath, "20 22\n", "utf8");
-  fs.writeFileSync(expectedOutputPath, "42\n", "utf8");
-  const judged = await runTestCase({
-    contestant: "Alice",
-    problemName: "SUM",
-    testName: "1",
-    language: "python",
-    submissionPath: source,
-    executablePath: compiled.executablePath,
-    inputPath,
-    expectedOutputPath,
-    expectedOutput: "42\n",
-    testRoot: root,
-    contestantsRoot: root,
-    tempDirectory: runDirectory,
-    pythonCommand: compiled.executablePath,
-    timeLimitMs: 1_000,
-    score: 1,
-    config: normalizeProblemConfig("SUM", {
-      useStdIn: true,
-      useStdOut: true,
-      memoryLimit: 256,
-      checkerType: "C1",
-    }),
-    checker: { path: null },
-  });
-  assert.equal(judged.status, "AC", JSON.stringify(judged, null, 2));
-  assert.equal(judged.score, 1);
-  assert.ok(judged.executionTime < 1_000);
+  assert.equal(compiled.compileStatus, "CE");
+  assert.equal(compiled.compileError, "TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
 });

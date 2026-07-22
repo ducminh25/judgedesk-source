@@ -9,12 +9,33 @@ import {
   getToolchainsDir,
 } from "./storage.js";
 import {
+  chooseNativeProtectedToolchain,
   compareVersions,
   buildCompilerProbeArgs,
   buildToolchainEnvironment,
   MIN_GNU_CPP_VERSION,
   MIN_GNU_GDB_VERSION,
 } from "./resolver.js";
+
+test("Windows native protection prefers an installed managed toolchain", () => {
+  const managed = {
+    kind: "cpp" as const,
+    source: "managed" as const,
+    executablePath: String.raw`C:\managed\g++.exe`,
+    version: "14.2.0",
+    ready: true,
+  };
+  const system = {
+    kind: "cpp" as const,
+    source: "system" as const,
+    executablePath: String.raw`C:\system\g++.exe`,
+    version: "16.1.0",
+    ready: true,
+  };
+  assert.equal(chooseNativeProtectedToolchain("win32", managed, system), managed);
+  assert.equal(chooseNativeProtectedToolchain("darwin", managed, system), system);
+  assert.equal(chooseNativeProtectedToolchain("win32", { ...managed, ready: false }, system), system);
+});
 
 test("toolchain environment prepends the detected executable directory", () => {
   const environment = buildToolchainEnvironment(

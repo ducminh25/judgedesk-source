@@ -3,6 +3,12 @@ import { apiFetch } from "../../api";
 import type { ProblemConfig } from "../../types";
 import { createDefaultProblemConfig } from "../../../shared/problem-config";
 import { preferencesStorage } from "../preferences/storage";
+import {
+  activateWorkspacePath,
+  initializeWorkspacePathMemory,
+  resetActiveWorkspacePath,
+  workspacePickerPath,
+} from "./path-memory";
 
 interface ProblemsResponse {
   success: boolean;
@@ -40,8 +46,12 @@ async function fetchProblems(path: string): Promise<Required<Pick<ProblemsRespon
 }
 
 export function useContestWorkspace() {
-  const [contestantsPath, setContestantsPathState] = useState(preferencesStorage.getContestantsPath() || "");
-  const [testPath, setTestPathState] = useState(preferencesStorage.getTestsPath() || "");
+  const [contestantsPathMemory, setContestantsPathMemory] = useState(() =>
+    initializeWorkspacePathMemory(preferencesStorage.getContestantsPath()));
+  const [testPathMemory, setTestPathMemory] = useState(() =>
+    initializeWorkspacePathMemory(preferencesStorage.getTestsPath()));
+  const contestantsPath = contestantsPathMemory.activePath;
+  const testPath = testPathMemory.activePath;
   const [contestants, setContestants] = useState<string[]>([]);
   const [problems, setProblems] = useState<string[]>([]);
   const [problemConfigs, setProblemConfigs] = useState<Record<string, ProblemConfig>>({});
@@ -90,8 +100,8 @@ export function useContestWorkspace() {
       fetchContestants(workspace.contestantsPath),
       fetchProblems(workspace.testsPath),
     ]);
-    setContestantsPathState(workspace.contestantsPath);
-    setTestPathState(workspace.testsPath);
+    setContestantsPathMemory((memory) => activateWorkspacePath(memory, workspace.contestantsPath, false));
+    setTestPathMemory((memory) => activateWorkspacePath(memory, workspace.testsPath, false));
     setContestants(loadedContestants);
     setProblems(loadedProblems.data);
     setCustomCheckers(loadedProblems.customCheckers);
@@ -110,16 +120,14 @@ export function useContestWorkspace() {
   }, []);
 
   const resetWorkspace = useCallback(() => {
-    setContestantsPathState("");
-    setTestPathState("");
+    setContestantsPathMemory(resetActiveWorkspacePath);
+    setTestPathMemory(resetActiveWorkspacePath);
     setContestants([]);
     setProblems([]);
     setCustomCheckers({});
     setProblemConfigs({});
     setSelectedContestants({});
     setSelectedProblems({});
-    preferencesStorage.setContestantsPath("");
-    preferencesStorage.setTestsPath("");
   }, []);
 
   const saveProblemConfig = useCallback((problemName: string, config: ProblemConfig) => {
@@ -127,18 +135,19 @@ export function useContestWorkspace() {
   }, []);
 
   const setContestantsPath = useCallback((path: string) => {
-    setContestantsPathState(path);
+    setContestantsPathMemory((memory) => activateWorkspacePath(memory, path));
     preferencesStorage.setContestantsPath(path);
   }, []);
 
   const setTestPath = useCallback((path: string) => {
-    setTestPathState(path);
+    setTestPathMemory((memory) => activateWorkspacePath(memory, path));
     preferencesStorage.setTestsPath(path);
   }, []);
 
   return {
     contestants,
     contestantsPath,
+    contestantsPickerPath: workspacePickerPath(contestantsPathMemory),
     customCheckers,
     loadContestants,
     loadProblems,
@@ -153,6 +162,7 @@ export function useContestWorkspace() {
     setSelectedContestants,
     setSelectedProblems,
     setTestPath,
-    testPath
+    testPath,
+    testsPickerPath: workspacePickerPath(testPathMemory),
   };
 }
