@@ -306,7 +306,7 @@ async function prepareCompiler(
     };
   }
   const darwin = process.platform === "darwin" ? resolveDarwinCompilerSupport(realCompiler) : null;
-  const name = stagedCompilerName(compilerPath);
+  const name = stagedCompilerName(realCompiler);
   const staged = workspace.stage(realCompiler, name, true);
   return {
     executableId: workspace.relative(name),
@@ -359,6 +359,7 @@ export function resolveDarwinCompilerSupport(compilerPath: string): {
 
   return {
     argumentPrefix: [
+      "--driver-mode=g++",
       "-resource-dir",
       fs.realpathSync(resourceDirectory),
       "-isysroot",
