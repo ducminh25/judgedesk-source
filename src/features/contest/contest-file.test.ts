@@ -5,6 +5,18 @@ import {
   ensureContestExtension,
   validateContestManifest,
 } from "./contest-file";
+import {
+  hasSavableContestData,
+  shouldPromptForUnsavedContest,
+} from "./dirty-state";
+
+test("an empty scoreboard never prompts to save a phantom contest", () => {
+  assert.equal(hasSavableContestData(0, 0), false);
+  assert.equal(shouldPromptForUnsavedContest(true, 0, 0), false);
+  assert.equal(shouldPromptForUnsavedContest(false, 1, 1), false);
+  assert.equal(shouldPromptForUnsavedContest(true, 1, 0), true);
+  assert.equal(shouldPromptForUnsavedContest(true, 0, 1), true);
+});
 
 const workspace = {
   contestants: ["Alice"],
