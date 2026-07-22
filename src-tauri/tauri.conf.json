@@ -36,7 +36,8 @@
       "icons/icon.png"
     ],
     "resources": {
-      "../sandbox/**/*": "sandbox/"
+      "../sandbox/**/*": "sandbox/",
+      "../compiler-compat/**/*": "compiler-compat/"
     },
     "createUpdaterArtifacts": true,
     "externalBin": ["binaries/server", "binaries/judgedesk-executor"],

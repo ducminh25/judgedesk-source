@@ -93,6 +93,18 @@ export async function smokeTestSidecar(
   if (!fs.existsSync(resolvedExecutable)) {
     throw new Error(`Sidecar executable was not found: ${resolvedExecutable}`);
   }
+  if (requireCpp) {
+    const compatibilityHeader = path.join(
+      path.resolve(resourceDirectory || ""),
+      "compiler-compat",
+      "include",
+      "bits",
+      "stdc++.h",
+    );
+    if (!resourceDirectory || !fs.statSync(compatibilityHeader, { throwIfNoEntry: false })?.isFile()) {
+      throw new Error(`Packaged C++ compatibility header was not found: ${compatibilityHeader}`);
+    }
+  }
 
   const port = await allocatePort();
   const temporaryRoot = fs.mkdtempSync(

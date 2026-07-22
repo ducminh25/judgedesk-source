@@ -20,7 +20,15 @@ const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-maco
 const sourcePath = path.join(temporaryDirectory, "hello.cpp");
 fs.writeFileSync(
   sourcePath,
-  "#include <iostream>\nint main() { std::cout << \"JUDGEDESK_COMPILER_SMOKE\\n\"; }\n",
+  [
+    "#include <bits/stdc++.h>",
+    "int main() {",
+    "  std::vector<int> values{3, 1, 2};",
+    "  std::sort(values.begin(), values.end());",
+    "  std::cout << \"JUDGEDESK_COMPILER_SMOKE:\" << std::accumulate(values.begin(), values.end(), 0) << '\\n';",
+    "}",
+    "",
+  ].join("\n"),
   "utf8",
 );
 
@@ -71,7 +79,7 @@ try {
       },
     });
     const output = fs.readFileSync(path.join(workspace.path, "stdout.txt"), "utf8");
-    if (run.reason !== "exited" || run.exitCode !== 0 || output.trim() !== "JUDGEDESK_COMPILER_SMOKE") {
+    if (run.reason !== "exited" || run.exitCode !== 0 || output.trim() !== "JUDGEDESK_COMPILER_SMOKE:6") {
       throw new Error(`compiled binary smoke failed: ${JSON.stringify({ run, output })}`);
     }
   } finally {
