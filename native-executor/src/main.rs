@@ -69,6 +69,32 @@ fn main() {
             }
             return;
         }
+        Some("--test-process-bomb") => {
+            let count = numeric_argument(2) as usize;
+            let hold_ms = numeric_argument(3);
+            let executable = std::env::current_exe().expect("locate process-bomb helper");
+            let mut children = Vec::with_capacity(count.min(64));
+            for _ in 0..count {
+                match std::process::Command::new(&executable)
+                    .arg("--test-sleep-ms")
+                    .arg(hold_ms.to_string())
+                    .spawn()
+                {
+                    Ok(child) => children.push(child),
+                    Err(_) => {
+                        // Keep every successfully-created child alive long enough for the
+                        // executor to observe the process-count violation. A kernel process
+                        // ceiling should make this branch happen almost immediately.
+                        std::thread::sleep(std::time::Duration::from_millis(hold_ms));
+                        break;
+                    }
+                }
+            }
+            for mut child in children {
+                let _ = child.wait();
+            }
+            return;
+        }
         Some("--test-spawn-child") => {
             let mut arguments = std::env::args_os().skip(2);
             let executable = arguments.next().expect("missing child executable");

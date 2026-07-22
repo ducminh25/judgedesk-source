@@ -125,6 +125,15 @@ impl MacosPlatform {
                     run.reason, run.exit_code, run.signal_or_status
                 )
             })?;
+            let mut process_limit_spec = spec.clone();
+            process_limit_spec.run_id = "startup_process_limit_probe".into();
+            process_limit_spec.args =
+                vec!["--test-process-bomb".into(), "128".into(), "500".into()];
+            process_limit_spec.stdout_file = "process-limit.stdout".into();
+            process_limit_spec.stderr_file = "process-limit.stderr".into();
+            let process_limit_paths = validate_run(root, &process_limit_spec)?;
+            let process_limit_run =
+                self.run_inner(&process_limit_spec, &process_limit_paths, &active)?;
             let sentinel_intact = fs::read(&sentinel)
                 .map(|value| value == b"JUDGEDESK_SENTINEL")
                 .unwrap_or(false);
@@ -139,11 +148,13 @@ impl MacosPlatform {
             // every non-approved binary, while the group monitor enforces the process-count cap.
             // The child flushes this marker before the attempt and exits with reserved code 97
             // only if the forbidden shell actually ran.
-            let process = probe["processAttemptStarted"].as_bool() == Some(true)
+            let exec_boundary = probe["processAttemptStarted"].as_bool() == Some(true)
                 && (matches!(run.reason, RunReason::ProcessLimit)
                     || (matches!(run.reason, RunReason::Exited)
                         && (run.exit_code == Some(0)
                             || (run.exit_code.is_none() && run.signal_or_status.is_some()))));
+            let process_limit = matches!(process_limit_run.reason, RunReason::ProcessLimit);
+            let process = exec_boundary && process_limit;
             let ready = filesystem && network && process;
             Ok(SelfTest {
                 ready,
@@ -151,8 +162,8 @@ impl MacosPlatform {
                     Vec::new()
                 } else {
                     vec![format!(
-                        "SECURE_RUNNER_SELF_TEST_FAILED: filesystem={filesystem}, network={network}, process={process}, reason={:?}",
-                        run.reason
+                        "SECURE_RUNNER_SELF_TEST_FAILED: filesystem={filesystem}, network={network}, execBoundary={exec_boundary}, processLimit={process_limit}, probeReason={:?}, processLimitReason={:?}",
+                        run.reason, process_limit_run.reason
                     )]
                 },
                 network_blocked: network,
@@ -245,6 +256,23 @@ impl MacosPlatform {
                 .saturating_mul(2)
                 .max(executor_virtual_size.saturating_add(address_space_slack))
         });
+        // Seatbelt must allow fork because sandbox-exec itself forks before exec. A polling
+        // process-group monitor is therefore not a sufficient security boundary: a fork bomb can
+        // exhaust the user's process table between samples. Calibrate RLIMIT_NPROC against the
+        // current real-user process count and permit only one observable overflow process beyond
+        // this run's configured allowance. The monitor can then classify process_limit while the
+        // kernel prevents an unbounded burst.
+        let user_process_baseline = real_user_process_count()?;
+        let inherited_nproc_max = hard_resource_limit(libc::RLIMIT_NPROC)?;
+        let nproc_ceiling = user_process_baseline
+            .saturating_add(spec.limits.process_count as u64)
+            .saturating_add(1)
+            .min(inherited_nproc_max);
+        if nproc_ceiling <= user_process_baseline {
+            return Err(format!(
+                "RLIMIT_NPROC has no safe launch headroom: baseline={user_process_baseline}, hardMax={inherited_nproc_max}"
+            ));
+        }
         unsafe {
             command.pre_exec(move || {
                 if libc::setpgid(0, 0) != 0 {
@@ -253,6 +281,7 @@ impl MacosPlatform {
                 set_limit(libc::RLIMIT_CORE, 0)?;
                 set_limit(libc::RLIMIT_FSIZE, fsize)?;
                 set_limit(libc::RLIMIT_NOFILE, nofile)?;
+                set_limit(libc::RLIMIT_NPROC, nproc_ceiling)?;
                 if let Some(address_space) = address_space {
                     set_limit(libc::RLIMIT_AS, address_space)?;
                 }
@@ -295,6 +324,9 @@ impl MacosPlatform {
             peak_memory = peak_memory.max(usage.memory_bytes);
             if cancelled.load(Ordering::Acquire) {
                 reason = RunReason::Cancelled;
+            } else if usage.inventory_failed {
+                reason = RunReason::InternalError;
+                diagnostic = Some("cannot inventory sandbox process group".into());
             } else if started.elapsed() >= Duration::from_millis(spec.limits.wall_time_ms) {
                 reason = RunReason::WallTimeLimit;
             } else if usage.memory_bytes > spec.limits.memory_bytes {
@@ -326,9 +358,24 @@ impl MacosPlatform {
         };
         let wall_time_us = started.elapsed().as_micros().min(u64::MAX as u128) as u64;
         let collection_started = Instant::now();
-        active.lock().unwrap().remove(&spec.run_id);
         let usage = process_group_usage(pgid);
         peak_memory = peak_memory.max(usage.memory_bytes);
+        if matches!(reason, RunReason::Exited)
+            && usage.processes.saturating_add(1) > spec.limits.process_count
+        {
+            // The leader can exit between monitor samples while descendants remain. Include the
+            // reaped leader when classifying that race, then terminate the surviving group.
+            reason = RunReason::ProcessLimit;
+        }
+        if usage.inventory_failed || usage.processes > 0 {
+            kill_group(pgid);
+            if !wait_for_process_group_empty(pgid, Duration::from_secs(2)) {
+                reason = RunReason::InternalError;
+                diagnostic =
+                    Some("sandbox process group did not become empty during teardown".into());
+            }
+        }
+        active.lock().unwrap().remove(&spec.run_id);
         // Darwin reports ru_maxrss in bytes (Linux uses KiB). This survives process exit and
         // catches short resident-memory spikes that the 2 ms live sampler can miss.
         peak_memory = peak_memory.max(final_rusage.ru_maxrss.max(0) as u64);
@@ -437,6 +484,21 @@ fn kill_group(pgid: i32) {
     }
 }
 
+fn wait_for_process_group_empty(pgid: i32, timeout: Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    loop {
+        let usage = process_group_usage(pgid);
+        if !usage.inventory_failed && usage.processes == 0 {
+            return true;
+        }
+        kill_group(pgid);
+        if Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
+}
+
 unsafe fn set_limit(resource: libc::c_int, value: u64) -> std::io::Result<()> {
     let limit = libc::rlimit {
         rlim_cur: value,
@@ -451,6 +513,17 @@ unsafe fn set_limit(resource: libc::c_int, value: u64) -> std::io::Result<()> {
     } else {
         Ok(())
     }
+}
+
+fn hard_resource_limit(resource: libc::c_int) -> Result<u64, String> {
+    let mut limit: libc::rlimit = unsafe { std::mem::zeroed() };
+    if unsafe { libc::getrlimit(resource, &mut limit) } != 0 {
+        return Err(format!(
+            "getrlimit resource={resource}: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    Ok(limit.rlim_max)
 }
 
 fn minimal_environment(spec: &RunSpec, workspace: &Path) -> Vec<(String, String)> {
@@ -664,6 +737,7 @@ struct ProcessUsage {
     threads: u32,
     user_time_ns: u64,
     system_time_ns: u64,
+    inventory_failed: bool,
 }
 
 #[repr(C)]
@@ -701,6 +775,37 @@ extern "C" {
     fn proc_pidinfo(pid: i32, flavor: i32, arg: u64, buffer: *mut libc::c_void, size: i32) -> i32;
 }
 
+fn real_user_process_count() -> Result<u64, String> {
+    const PROC_RUID_ONLY: u32 = 5;
+    // This is deliberately bounded and fail-closed. A healthy macOS desktop is far below this
+    // inventory size; reaching it means it is unsafe to launch more untrusted processes.
+    let mut pids = vec![0_i32; 8192];
+    let buffer_size = std::mem::size_of_val(pids.as_slice()) as i32;
+    let bytes = unsafe {
+        proc_listpids(
+            PROC_RUID_ONLY,
+            libc::getuid(),
+            pids.as_mut_ptr().cast(),
+            buffer_size,
+        )
+    };
+    if bytes < 0 {
+        return Err(format!(
+            "cannot inventory real-user processes: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    if bytes as usize >= buffer_size as usize {
+        return Err("real-user process inventory reached its 8192-PID safety ceiling".into());
+    }
+    let count = (bytes as usize / std::mem::size_of::<i32>()).min(pids.len());
+    let live = pids[..count].iter().filter(|pid| **pid > 0).count() as u64;
+    if live == 0 {
+        return Err("real-user process inventory unexpectedly returned no processes".into());
+    }
+    Ok(live)
+}
+
 fn process_group_usage(pgid: i32) -> ProcessUsage {
     const PROC_PGRP_ONLY: u32 = 2;
     // RunSpec rejects process_count above 32. Keep ample room for observing a hostile burst
@@ -715,8 +820,22 @@ fn process_group_usage(pgid: i32) -> ProcessUsage {
             buffer_size,
         )
     };
-    if bytes <= 0 {
+    if bytes < 0 {
+        return ProcessUsage {
+            processes: u32::MAX,
+            inventory_failed: true,
+            ..ProcessUsage::default()
+        };
+    }
+    if bytes == 0 {
         return ProcessUsage::default();
+    }
+    if bytes as usize >= buffer_size as usize {
+        return ProcessUsage {
+            processes: u32::MAX,
+            inventory_failed: true,
+            ..ProcessUsage::default()
+        };
     }
 
     let count = (bytes as usize / std::mem::size_of::<i32>()).min(pids.len());
@@ -769,6 +888,7 @@ fn process_usage(pid: i32) -> ProcessUsage {
             },
             user_time_ns: info.user_time,
             system_time_ns: info.system_time,
+            inventory_failed: false,
         }
     } else {
         ProcessUsage::default()
