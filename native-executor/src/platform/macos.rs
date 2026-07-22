@@ -132,13 +132,15 @@ impl MacosPlatform {
                 && probe["writeBlocked"].as_bool() == Some(true)
                 && sentinel_intact;
             let network = probe["networkBlocked"].as_bool() == Some(true);
-            // Seatbelt may terminate the caller (SIGABRT on current macOS) for a denied fork
-            // instead of returning EPERM. The child flushes this marker immediately before the
-            // process attempt and exits with reserved code 97 only if the forbidden shell ran.
+            // sandbox-exec needs process-fork to launch the target. Seatbelt still denies exec of
+            // every non-approved binary, while the group monitor enforces the process-count cap.
+            // The child flushes this marker before the attempt and exits with reserved code 97
+            // only if the forbidden shell actually ran.
             let process = probe["processAttemptStarted"].as_bool() == Some(true)
-                && matches!(run.reason, RunReason::Exited)
-                && (run.exit_code == Some(0)
-                    || (run.exit_code.is_none() && run.signal_or_status.is_some()));
+                && (matches!(run.reason, RunReason::ProcessLimit)
+                    || (matches!(run.reason, RunReason::Exited)
+                        && (run.exit_code == Some(0)
+                            || (run.exit_code.is_none() && run.signal_or_status.is_some()))));
             let ready = filesystem && network && process;
             Ok(SelfTest {
                 ready,
@@ -179,7 +181,7 @@ impl MacosPlatform {
         active: &ActiveRuns,
     ) -> Result<RunResult, String> {
         let setup_started = Instant::now();
-        let profile = build_profile(paths, spec)?;
+        let profile = build_profile(paths)?;
         let profile_path = paths.workspace.join(".judgedesk-seatbelt.sb");
         fs::write(&profile_path, profile)
             .map_err(|error| format!("write Seatbelt profile: {error}"))?;
@@ -281,7 +283,7 @@ impl MacosPlatform {
             if let Some((status, rusage)) = wait4_process(pgid, libc::WNOHANG)? {
                 break (status, rusage);
             }
-            let usage = process_usage(pgid);
+            let usage = process_group_usage(pgid);
             peak_memory = peak_memory.max(usage.memory_bytes);
             if cancelled.load(Ordering::Acquire) {
                 reason = RunReason::Cancelled;
@@ -289,6 +291,8 @@ impl MacosPlatform {
                 reason = RunReason::WallTimeLimit;
             } else if usage.memory_bytes > spec.limits.memory_bytes {
                 reason = RunReason::MemoryLimit;
+            } else if usage.processes > spec.limits.process_count {
+                reason = RunReason::ProcessLimit;
             } else if usage.threads > spec.limits.thread_count {
                 reason = RunReason::ThreadLimit;
             } else if file_size(&paths.stdout).saturating_add(file_size(&paths.stderr))
@@ -315,7 +319,7 @@ impl MacosPlatform {
         let wall_time_us = started.elapsed().as_micros().min(u64::MAX as u128) as u64;
         let collection_started = Instant::now();
         active.lock().unwrap().remove(&spec.run_id);
-        let usage = process_usage(pgid);
+        let usage = process_group_usage(pgid);
         peak_memory = peak_memory.max(usage.memory_bytes);
         // Darwin reports ru_maxrss in bytes (Linux uses KiB). This survives process exit and
         // catches short resident-memory spikes that the 2 ms live sampler can miss.
@@ -448,7 +452,7 @@ fn minimal_environment(spec: &RunSpec, workspace: &Path) -> Vec<(String, String)
     values
 }
 
-fn build_profile(paths: &ValidatedRun, spec: &RunSpec) -> Result<String, String> {
+fn build_profile(paths: &ValidatedRun) -> Result<String, String> {
     let workspace = seatbelt_literal(
         &fs::canonicalize(&paths.workspace)
             .map_err(|error| error.to_string())?
@@ -482,17 +486,12 @@ fn build_profile(paths: &ValidatedRun, spec: &RunSpec) -> Result<String, String>
             seatbelt_literal(&toolchain_root.to_string_lossy())
         ));
     }
-    let fork_rule = if matches!(spec.role, crate::protocol::RunRole::Compiler) {
-        ""
-    } else {
-        "(deny process-fork)"
-    };
     Ok(format!(
         r#"(version 1)
 (deny default)
 (allow process-exec (literal "{executable}"))
 (allow process-exec (literal "/usr/bin/sandbox-exec"))
-{fork_rule}
+(allow process-fork)
 (allow signal (target same-sandbox))
 (allow process-info* (target same-sandbox))
 (deny network*)
@@ -557,6 +556,7 @@ struct RusageInfoV2 {
 struct ProcessUsage {
     memory_bytes: u64,
     virtual_memory_bytes: u64,
+    processes: u32,
     threads: u32,
     user_time_ns: u64,
     system_time_ns: u64,
@@ -587,8 +587,51 @@ struct ProcTaskInfo {
 
 #[link(name = "proc")]
 extern "C" {
+    fn proc_listpids(
+        list_type: u32,
+        type_info: u32,
+        buffer: *mut libc::c_void,
+        buffer_size: i32,
+    ) -> i32;
     fn proc_pid_rusage(pid: i32, flavor: i32, buffer: *mut RusageInfoV2) -> i32;
     fn proc_pidinfo(pid: i32, flavor: i32, arg: u64, buffer: *mut libc::c_void, size: i32) -> i32;
+}
+
+fn process_group_usage(pgid: i32) -> ProcessUsage {
+    const PROC_PGRP_ONLY: u32 = 2;
+    // RunSpec rejects process_count above 32. Keep ample room for observing a hostile burst
+    // before the monitor kills the group, without allocating inside the polling loop repeatedly.
+    let mut pids = [0_i32; 256];
+    let buffer_size = std::mem::size_of_val(&pids) as i32;
+    let bytes = unsafe {
+        proc_listpids(
+            PROC_PGRP_ONLY,
+            pgid.max(0) as u32,
+            pids.as_mut_ptr().cast(),
+            buffer_size,
+        )
+    };
+    if bytes <= 0 {
+        return ProcessUsage::default();
+    }
+
+    let count = (bytes as usize / std::mem::size_of::<i32>()).min(pids.len());
+    pids[..count]
+        .iter()
+        .copied()
+        .filter(|pid| *pid > 0)
+        .map(process_usage)
+        .fold(ProcessUsage::default(), |mut group, process| {
+            group.memory_bytes = group.memory_bytes.saturating_add(process.memory_bytes);
+            group.virtual_memory_bytes = group
+                .virtual_memory_bytes
+                .saturating_add(process.virtual_memory_bytes);
+            group.processes = group.processes.saturating_add(process.processes);
+            group.threads = group.threads.saturating_add(process.threads);
+            group.user_time_ns = group.user_time_ns.saturating_add(process.user_time_ns);
+            group.system_time_ns = group.system_time_ns.saturating_add(process.system_time_ns);
+            group
+        })
 }
 
 fn process_usage(pid: i32) -> ProcessUsage {
@@ -614,6 +657,7 @@ fn process_usage(pid: i32) -> ProcessUsage {
                 .max(info.resident_size)
                 .max(if task_success { task.resident_size } else { 0 }),
             virtual_memory_bytes: if task_success { task.virtual_size } else { 0 },
+            processes: 1,
             threads: if task_success {
                 task.thread_count.max(0) as u32
             } else {
