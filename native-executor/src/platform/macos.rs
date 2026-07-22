@@ -217,7 +217,10 @@ impl MacosPlatform {
             .stderr(Stdio::from(stderr))
             .env_clear()
             .envs(minimal_environment(spec, &paths.workspace));
-        let fsize = spec.limits.output_bytes;
+        // RLIMIT_FSIZE applies to every regular file, not just redirected stdout/stderr. Use
+        // the aggregate write ceiling here and distinguish output from workspace writes after
+        // wait4; otherwise a workspace bomb is incorrectly reported as OLE.
+        let fsize = spec.limits.total_write_bytes;
         let nofile = spec.limits.open_files as u64;
         let address_space_slack = spec
             .limits
@@ -331,17 +334,24 @@ impl MacosPlatform {
         let exit_signal = exit_status.signal();
         let stdout_bytes = file_size(&paths.stdout);
         let stderr_bytes = file_size(&paths.stderr);
+        if matches!(reason, RunReason::Exited) && cancelled.load(Ordering::Acquire) {
+            // cancel() can kill the group immediately before wait4 reaps it. Preserve the
+            // user's cancellation intent even when reap wins that small race.
+            reason = RunReason::Cancelled;
+        }
         if matches!(reason, RunReason::Exited) {
             // RLIMIT_FSIZE can terminate a fast writer before the polling loop observes a file
-            // larger than the limit. The file then normally has exactly output_bytes, so keep
-            // SIGXFSZ as OLE instead of leaking it as RE (or a later TLE).
+            // larger than the limit. Attribute SIGXFSZ to output only when redirected output
+            // reached its own cap; otherwise it is a workspace write-limit violation.
             if peak_memory > spec.limits.memory_bytes {
                 reason = RunReason::MemoryLimit;
-            } else if exit_signal == Some(libc::SIGXFSZ)
-                || stdout_bytes.saturating_add(stderr_bytes) > spec.limits.output_bytes
+            } else if stdout_bytes.saturating_add(stderr_bytes) > spec.limits.output_bytes
+                || (exit_signal == Some(libc::SIGXFSZ)
+                    && stdout_bytes.saturating_add(stderr_bytes) >= spec.limits.output_bytes)
             {
                 reason = RunReason::OutputLimit;
-            } else if workspace_bytes.saturating_sub(baseline_bytes) > spec.limits.total_write_bytes
+            } else if exit_signal == Some(libc::SIGXFSZ)
+                || workspace_bytes.saturating_sub(baseline_bytes) > spec.limits.total_write_bytes
             {
                 reason = RunReason::WriteLimit;
             } else if files.saturating_sub(baseline_files) > spec.limits.created_files {
