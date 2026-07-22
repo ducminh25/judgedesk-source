@@ -51,8 +51,16 @@ pub fn validate_run(root: &Path, spec: &RunSpec) -> Result<ValidatedRun, String>
             "executableId must resolve inside the run workspace, artifact cache, or managed toolchain cache".into(),
         );
     }
-    if in_artifacts && !matches!(spec.role, RunRole::Submission | RunRole::Checker) {
-        return Err("only submissions and checkers may execute from artifact cache".into());
+    if in_artifacts
+        && !matches!(
+            spec.role,
+            RunRole::Submission | RunRole::Checker | RunRole::SecurityProbe
+        )
+    {
+        return Err(
+            "only submissions, checkers, and the startup security probe may execute from artifact cache"
+                .into(),
+        );
     }
     if in_toolchains
         && matches!(
