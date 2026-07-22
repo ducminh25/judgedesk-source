@@ -469,7 +469,9 @@ fn build_profile(paths: &ValidatedRun) -> Result<String, String> {
     let mut read_rules = vec![
         format!("(literal \"{executable}\")"),
         format!("(subpath \"{workspace}\")"),
+        "(literal \"/\")".into(),
         "(subpath \"/Library/Apple\")".into(),
+        "(subpath \"/System\")".into(),
         "(subpath \"/System/Library\")".into(),
         // Modern macOS stores the dyld shared cache and other sealed OS content in Cryptexes.
         // Without these read-only roots, dyld aborts in CacheFinder before the target reaches
