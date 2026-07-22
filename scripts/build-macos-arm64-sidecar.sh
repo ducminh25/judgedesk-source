@@ -9,6 +9,15 @@ if [[ "$(uname -s)" != "Darwin" || "$(uname -m)" != "arm64" ]]; then
   exit 1
 fi
 
+# Keep kernel-backed process containment and its hostile regression probe as mandatory release
+# contracts. The dynamic security suite below proves the behavior on the M2 builder; these checks
+# prevent a future refactor from silently deleting the hard limit or the fork-bomb case while
+# leaving a superficially green release workflow behind.
+grep -Fq 'set_limit(libc::RLIMIT_NPROC' native-executor/src/platform/macos.rs
+grep -Fq -- '--test-process-bomb' native-executor/src/main.rs
+grep -Fq 'kernel process ceiling contains a real process bomb' \
+  server/executor-tests/security.integration.test.ts
+
 TAURI_TARGET=aarch64-apple-darwin npm run build:executor
 TAURI_TARGET=aarch64-apple-darwin npm run build:server
 sidecar="src-tauri/binaries/server-aarch64-apple-darwin"
