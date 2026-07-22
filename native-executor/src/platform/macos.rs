@@ -496,6 +496,7 @@ fn build_profile(paths: &ValidatedRun) -> Result<String, String> {
     }
     Ok(format!(
         r#"(version 1)
+(debug deny)
 (deny default)
 (allow process-exec (literal "{executable}"))
 (allow process-exec (literal "/usr/bin/sandbox-exec"))
