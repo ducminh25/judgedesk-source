@@ -127,6 +127,54 @@ export function buildSelectedDarwinCppCandidates(
   ];
 }
 
+export function inferDarwinDeveloperRoot(
+  executablePath: string,
+): string | null {
+  const compiler = executablePath.replaceAll("\\", "/");
+  const commandLineTools = "/Library/Developer/CommandLineTools";
+  if (
+    compiler === commandLineTools ||
+    compiler.startsWith(`${commandLineTools}/`)
+  ) {
+    return commandLineTools;
+  }
+
+  const marker = "/Contents/Developer/";
+  const markerIndex = compiler.indexOf(marker);
+  if (markerIndex < 0) return null;
+  return compiler.slice(0, markerIndex + marker.length - 1);
+}
+
+export function buildDarwinSdkCandidates(developerRoot: string): string[] {
+  return [
+    path.posix.join(
+      developerRoot,
+      "Platforms",
+      "MacOSX.platform",
+      "Developer",
+      "SDKs",
+      "MacOSX.sdk",
+    ),
+    path.posix.join(developerRoot, "SDKs", "MacOSX.sdk"),
+  ];
+}
+
+export function findDarwinSdkDirectory(
+  executablePath: string,
+): string | null {
+  try {
+    const compiler = fs.realpathSync(executablePath).replaceAll("\\", "/");
+    const developerRoot = inferDarwinDeveloperRoot(compiler);
+    if (!developerRoot) return null;
+    const sdk = buildDarwinSdkCandidates(developerRoot).find((candidate) =>
+      fs.existsSync(candidate),
+    );
+    return sdk ? fs.realpathSync(sdk) : null;
+  } catch {
+    return null;
+  }
+}
+
 export function compareVersions(left: string, right: string): number {
   const a = left.split(".").map((part) => Number.parseInt(part, 10) || 0);
   const b = right.split(".").map((part) => Number.parseInt(part, 10) || 0);
@@ -428,14 +476,26 @@ function probeCppCompiler(executablePath: string): boolean {
     // MinGW.org GCC 9.2.0 (bundled with Themis) does not accept `-` as a
     // source file on Windows, so use a real temporary file for the probe.
     fs.writeFileSync(sourcePath, "int main() { return 0; }\n", "utf8");
-    execFileSync(executablePath, buildCompilerProbeArgs(os.platform(), sourcePath, outputPath), {
+    const platform = os.platform();
+    const sdkDirectory = platform === "darwin"
+      ? findDarwinSdkDirectory(executablePath)
+      : undefined;
+    execFileSync(executablePath, buildCompilerProbeArgs(platform, sourcePath, outputPath, sdkDirectory), {
       encoding: "utf8",
       timeout: 5_000,
-      stdio: ["ignore", "ignore", "ignore"],
+      stdio: ["ignore", "ignore", "pipe"],
       env: buildToolchainEnvironment(executablePath),
     });
     return fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0;
-  } catch {
+  } catch (error) {
+    if (os.platform() === "darwin") {
+      const stderr = typeof error === "object" && error && "stderr" in error
+        ? String(error.stderr || "").trim()
+        : "";
+      console.warn(
+        `[Toolchains] Apple Clang probe failed for ${executablePath}: ${stderr || String(error)}`,
+      );
+    }
     return false;
   } finally {
     fs.rmSync(probeDirectory, { recursive: true, force: true });
@@ -446,10 +506,16 @@ export function buildCompilerProbeArgs(
   platform: NodeJS.Platform,
   sourcePath: string,
   outputPath: string,
+  darwinSdkDirectory?: string | null,
 ): string[] {
   const args = ["-std=c++14", "-pipe", "-O2"];
   if (platform !== "darwin") {
     args.push("-s", "-static", "-lm");
+  } else {
+    if (!darwinSdkDirectory) {
+      throw new Error("macOS SDK was not found for the Apple Clang probe");
+    }
+    args.push("-isysroot", darwinSdkDirectory);
   }
   // Current Apple SDKs expose the C math API through libSystem and no longer
   // provide a standalone libm for `-lm`. The Xcode 17 linker also reports `-s`

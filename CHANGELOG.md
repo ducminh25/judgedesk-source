@@ -3,6 +3,18 @@
 Tất cả thay đổi đáng chú ý của JudgeDesk được ghi tại đây. Dự án dùng Semantic
 Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng dụng hiện có.
 
+## [Unreleased]
+
+### Sửa lỗi macOS
+
+- Truyền macOS SDK sysroot vào bước auto-detect Apple Clang, sửa trường hợp
+  compiler tồn tại nhưng probe bị `ld: library 'c++' not found` trên Xcode
+  17/macOS 26.
+- Packaged DMG smoke test giờ bắt buộc backend sidecar thực sự nhận diện được
+  Apple Clang; build sẽ fail nếu System Status còn báo G++ `Not detected`.
+- Làm rõ bước cài DMG một lần để đổi bundle cũ `ThemisV2.app` thành
+  `JudgeDesk.app`; updater in-place vẫn giữ nguyên identifier và dữ liệu.
+
 ## [1.2.3] - 2026-07-22
 
 ### Sửa lỗi macOS

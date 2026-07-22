@@ -248,6 +248,7 @@ test("Apple Silicon release scripts verify architecture, DMG, and sidecar", () =
   assert.match(bundleScript, /codesign -d --entitlements :- "\$server_binary"/);
   assert.match(bundleScript, /com\.apple\.security\.cs\.allow-jit/);
   assert.match(bundleScript, /smoke-test-sidecar\.js/);
+  assert.match(bundleScript, /--require-cpp/);
 });
 
 test("release publishing targets the public distribution repository", () => {
