@@ -147,19 +147,24 @@ fn security_probe_child() {
     } else {
         ("/bin/sh", &["-c", "exit 0"])
     };
-    let process_blocked = Command::new(process_command)
-        .args(process_args)
-        .status()
-        .is_err();
     println!(
         "{}",
         serde_json::json!({
             "readBlocked": read_blocked,
             "writeBlocked": write_blocked,
             "networkBlocked": network_blocked,
-            "processBlocked": process_blocked,
+            "processAttemptStarted": true,
         })
     );
+    let _ = io::stdout().flush();
+    let process_blocked = Command::new(process_command)
+        .args(process_args)
+        .status()
+        .is_err();
+    if !process_blocked {
+        // The parent treats this reserved code as proof that a forbidden child really ran.
+        std::process::exit(97);
+    }
 }
 
 fn run() -> Result<(), String> {
