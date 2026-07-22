@@ -3,7 +3,7 @@
 Tất cả thay đổi đáng chú ý của JudgeDesk được ghi tại đây. Dự án dùng Semantic
 Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng dụng hiện có.
 
-## [Unreleased]
+## [1.2.4] - 2026-07-22
 
 ### Sửa lỗi macOS
 
@@ -143,3 +143,4 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 [1.2.1]: https://github.com/ducminh25/themis-v2/releases/tag/v1.2.1
 [1.2.2]: https://github.com/ducminh25/themis-v2/releases/tag/v1.2.2
 [1.2.3]: https://github.com/ducminh25/themis-v2/releases/tag/v1.2.3
+[1.2.4]: https://github.com/ducminh25/themis-v2/releases/tag/v1.2.4
