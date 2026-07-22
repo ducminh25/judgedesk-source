@@ -360,6 +360,10 @@ export function resolveDarwinCompilerSupport(compilerPath: string): {
   return {
     argumentPrefix: [
       "--driver-mode=g++",
+      // Seatbelt can prevent the driver from inferring this directory through realpath.
+      // Pin it to the Apple toolchain path already validated by the native executor.
+      "-ccc-install-dir",
+      path.dirname(compiler),
       "-resource-dir",
       fs.realpathSync(resourceDirectory),
       "-isysroot",
