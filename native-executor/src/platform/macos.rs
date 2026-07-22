@@ -205,11 +205,17 @@ impl MacosPlatform {
             .open(&paths.stderr)
             .map_err(|error| format!("open stderr: {error}"))?;
 
+        let launch_executable = if matches!(spec.role, RunRole::Compiler) {
+            validated_compiler_executable(spec)?
+        } else {
+            paths.executable.clone()
+        };
+
         let mut command = Command::new("/usr/bin/sandbox-exec");
         command
             .arg("-f")
             .arg(&profile_path)
-            .arg(&paths.executable)
+            .arg(&launch_executable)
             .args(&spec.args)
             .current_dir(&paths.workspace)
             .stdin(Stdio::from(stdin))
@@ -606,6 +612,22 @@ fn validated_compiler_roots(spec: &RunSpec) -> Result<(PathBuf, PathBuf), String
         return Err("compiler support roots are outside approved Apple developer locations".into());
     }
     Ok((toolchain_root, developer_root))
+}
+
+fn validated_compiler_executable(spec: &RunSpec) -> Result<PathBuf, String> {
+    let (toolchain_root, _) = validated_compiler_roots(spec)?;
+    let executable_value = spec
+        .environment
+        .get("JUDGEDESK_COMPILER_EXECUTABLE")
+        .ok_or_else(|| "compiler executable was not provided".to_string())?;
+    let executable = fs::canonicalize(executable_value)
+        .map_err(|error| format!("compiler executable unavailable: {error}"))?;
+    let expected = fs::canonicalize(toolchain_root.join("usr").join("bin").join("clang"))
+        .map_err(|error| format!("approved Apple Clang unavailable: {error}"))?;
+    if executable != expected || !executable.is_file() {
+        return Err("compiler executable is not the approved Apple Clang driver".into());
+    }
+    Ok(executable)
 }
 
 fn seatbelt_literal(value: &str) -> String {

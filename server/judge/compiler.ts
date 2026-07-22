@@ -360,9 +360,6 @@ export function resolveDarwinCompilerSupport(compilerPath: string): {
   return {
     argumentPrefix: [
       "--driver-mode=g++",
-      // The macOS sandbox launcher does not preserve Apple's inferred InstalledDir, which turns
-      // the frontend re-exec command into an empty path. Keep cc1 in the trusted driver process.
-      "-fintegrated-cc1",
       "-resource-dir",
       fs.realpathSync(resourceDirectory),
       "-isysroot",
@@ -372,6 +369,7 @@ export function resolveDarwinCompilerSupport(compilerPath: string): {
     environment: {
       JUDGEDESK_COMPILER_TOOLCHAIN_ROOT: fs.realpathSync(toolchainRoot),
       JUDGEDESK_COMPILER_DEVELOPER_ROOT: fs.realpathSync(developerRoot),
+      JUDGEDESK_COMPILER_EXECUTABLE: compiler,
     },
   };
 }
