@@ -184,7 +184,7 @@ impl MacosPlatform {
         active: &ActiveRuns,
     ) -> Result<RunResult, String> {
         let setup_started = Instant::now();
-        let profile = build_profile(paths)?;
+        let profile = build_profile(spec, paths)?;
         let profile_path = paths.workspace.join(".judgedesk-seatbelt.sb");
         fs::write(&profile_path, profile)
             .map_err(|error| format!("write Seatbelt profile: {error}"))?;
@@ -234,15 +234,11 @@ impl MacosPlatform {
         // A fresh dyld/malloc launch can reserve substantially more VM than the already-running
         // executor, so retain at least one additional baseline of headroom.
         let executor_virtual_size = process_usage(std::process::id() as i32).virtual_memory_bytes;
-        // Diagnostic opt-in while validating Darwin's launch-time RLIMIT_AS behavior on the
-        // real Apple Silicon runner. The release path must not set this variable.
-        let address_space = (std::env::var_os("JUDGEDESK_DIAGNOSTIC_RLIMIT_AS").is_some()
-            && executor_virtual_size > 0)
-            .then(|| {
-                executor_virtual_size
-                    .saturating_mul(2)
-                    .max(executor_virtual_size.saturating_add(address_space_slack))
-            });
+        let address_space = (executor_virtual_size > 0).then(|| {
+            executor_virtual_size
+                .saturating_mul(2)
+                .max(executor_virtual_size.saturating_add(address_space_slack))
+        });
         unsafe {
             command.pre_exec(move || {
                 if libc::setpgid(0, 0) != 0 {
@@ -465,7 +461,7 @@ fn minimal_environment(spec: &RunSpec, workspace: &Path) -> Vec<(String, String)
     values
 }
 
-fn build_profile(paths: &ValidatedRun) -> Result<String, String> {
+fn build_profile(spec: &RunSpec, paths: &ValidatedRun) -> Result<String, String> {
     let workspace = seatbelt_literal(
         &fs::canonicalize(&paths.workspace)
             .map_err(|error| error.to_string())?
@@ -506,12 +502,29 @@ fn build_profile(paths: &ValidatedRun) -> Result<String, String> {
             seatbelt_literal(&toolchain_root.to_string_lossy())
         ));
     }
+    let mut process_exec_rules = vec![
+        format!("(literal \"{executable}\")"),
+        "(literal \"/usr/bin/sandbox-exec\")".into(),
+    ];
+    if matches!(spec.role, RunRole::Compiler) {
+        let (toolchain_root, developer_root) = validated_compiler_roots(spec)?;
+        for root in [&toolchain_root, &developer_root] {
+            read_rules.push(format!(
+                "(subpath \"{}\")",
+                seatbelt_literal(&root.to_string_lossy())
+            ));
+        }
+        process_exec_rules.push(format!(
+            "(subpath \"{}\")",
+            seatbelt_literal(&toolchain_root.to_string_lossy())
+        ));
+        process_exec_rules.push("(literal \"/usr/bin/ld\")".into());
+        process_exec_rules.push("(literal \"/usr/bin/as\")".into());
+    }
     Ok(format!(
         r#"(version 1)
-(debug deny)
 (deny default)
-(allow process-exec (literal "{executable}"))
-(allow process-exec (literal "/usr/bin/sandbox-exec"))
+(allow process-exec {})
 (allow process-fork)
 (allow signal (target same-sandbox))
 (allow process-info* (target same-sandbox))
@@ -549,9 +562,50 @@ fn build_profile(paths: &ValidatedRun) -> Result<String, String> {
     (mac-policy-name "Sandbox")
     (mac-syscall-number 67)))
 "#,
+        process_exec_rules.join(" "),
         read_rules.join(" "),
         read_rules.join(" ")
     ))
+}
+
+fn validated_compiler_roots(spec: &RunSpec) -> Result<(PathBuf, PathBuf), String> {
+    let toolchain_value = spec
+        .environment
+        .get("JUDGEDESK_COMPILER_TOOLCHAIN_ROOT")
+        .ok_or_else(|| "compiler toolchain root was not provided".to_string())?;
+    let developer_value = spec
+        .environment
+        .get("JUDGEDESK_COMPILER_DEVELOPER_ROOT")
+        .ok_or_else(|| "compiler developer root was not provided".to_string())?;
+    let toolchain_root = fs::canonicalize(toolchain_value)
+        .map_err(|error| format!("compiler toolchain root unavailable: {error}"))?;
+    let developer_root = fs::canonicalize(developer_value)
+        .map_err(|error| format!("compiler developer root unavailable: {error}"))?;
+
+    let command_line_tools = Path::new("/Library/Developer/CommandLineTools");
+    let approved_developer = developer_root == command_line_tools
+        || (developer_root
+            .file_name()
+            .is_some_and(|name| name == "Developer")
+            && developer_root
+                .parent()
+                .and_then(Path::file_name)
+                .is_some_and(|name| name == "Contents")
+            && developer_root
+                .parent()
+                .and_then(Path::parent)
+                .and_then(Path::extension)
+                .is_some_and(|extension| extension == "app")
+            && developer_root.starts_with("/Applications"));
+    let approved_toolchain = toolchain_root == developer_root
+        || (toolchain_root.starts_with(developer_root.join("Toolchains"))
+            && toolchain_root
+                .file_name()
+                .is_some_and(|name| name.to_string_lossy().ends_with(".xctoolchain")));
+    if !approved_developer || !approved_toolchain {
+        return Err("compiler support roots are outside approved Apple developer locations".into());
+    }
+    Ok((toolchain_root, developer_root))
 }
 
 fn seatbelt_literal(value: &str) -> String {

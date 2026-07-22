@@ -71,6 +71,14 @@ export interface CompilationResult {
   compileTime: number;
 }
 
+interface PreparedCompiler {
+  executableId: string;
+  executablePath: string;
+  root?: string;
+  argumentPrefix: string[];
+  environment: Record<string, string>;
+}
+
 function canonicalTestlibSource(): string {
   if (typeof __JUDGEDESK_TESTLIB__ !== "undefined" && __JUDGEDESK_TESTLIB__.length > 0) return __JUDGEDESK_TESTLIB__;
   const developmentPath = path.join(process.cwd(), "judgers", "testlib.h");
@@ -214,7 +222,11 @@ export async function runCompilerWithLimits(
     const compiler = await prepareCompiler(workspace, compilerPath);
     const stagedOutput = path.join(workspace.path, "compiled-output.bin");
     const stagedArgs = stageCompilerArguments(workspace.path, args, outputPath, stagedOutput);
-    const environment = buildCompilerEnvironment(compiler.executablePath);
+    stagedArgs.unshift(...compiler.argumentPrefix);
+    const environment = {
+      ...buildCompilerEnvironment(compiler.executablePath),
+      ...compiler.environment,
+    };
     if (process.platform === "win32" && compiler.root) {
       const programDirectory = findGccProgramDirectory(compiler.root);
       // A relocated GCC driver otherwise remembers the source installation prefix and reports
@@ -265,27 +277,105 @@ export function buildCompilerEnvironment(
 async function prepareCompiler(
   workspace: Awaited<ReturnType<typeof createExecutorWorkspace>>,
   compilerPath: string,
-): Promise<{ executableId: string; executablePath: string; root?: string }> {
+): Promise<PreparedCompiler> {
   const cached = await findCachedManagedToolchain("cpp");
   if (cached && sameFile(cached.executablePath, compilerPath)) {
     return {
       executableId: cached.executableId,
       executablePath: cached.executablePath,
       root: cached.root,
+      argumentPrefix: [],
+      environment: {},
     };
   }
   const resolved = resolveToolchain("cpp");
   if (resolved.ready && resolved.source === "managed" && sameFile(resolved.executablePath, compilerPath)) {
-    return importManagedToolchain("cpp", resolved.executablePath, resolved.version);
+    return {
+      ...await importManagedToolchain("cpp", resolved.executablePath, resolved.version),
+      argumentPrefix: [],
+      environment: {},
+    };
   }
   const realCompiler = fs.realpathSync(compilerPath);
   const managedRoot = fs.realpathSync(getToolchainsDir());
   if (isDescendant(managedRoot, realCompiler)) {
-    return importManagedToolchain("cpp", realCompiler, getExecutableVersion(realCompiler, "cpp"));
+    return {
+      ...await importManagedToolchain("cpp", realCompiler, getExecutableVersion(realCompiler, "cpp")),
+      argumentPrefix: [],
+      environment: {},
+    };
   }
+  const darwin = process.platform === "darwin" ? resolveDarwinCompilerSupport(realCompiler) : null;
   const name = process.platform === "win32" ? "compiler.exe" : "compiler";
   const staged = workspace.stage(realCompiler, name, true);
-  return { executableId: workspace.relative(name), executablePath: staged };
+  return {
+    executableId: workspace.relative(name),
+    executablePath: staged,
+    argumentPrefix: darwin?.argumentPrefix ?? [],
+    environment: darwin?.environment ?? {},
+  };
+}
+
+export function resolveDarwinCompilerSupport(compilerPath: string): {
+  argumentPrefix: string[];
+  environment: Record<string, string>;
+} {
+  const compiler = fs.realpathSync(compilerPath);
+  const commandLineTools = fs.existsSync("/Library/Developer/CommandLineTools")
+    ? fs.realpathSync("/Library/Developer/CommandLineTools")
+    : null;
+  const toolchainRoot = findAncestor(compiler, (candidate) =>
+    path.basename(candidate).endsWith(".xctoolchain"),
+  ) ?? (commandLineTools && isDescendantOrEqual(commandLineTools, compiler) ? commandLineTools : null);
+  const developerRoot = findAncestor(compiler, (candidate) =>
+    path.basename(candidate) === "Developer" && path.basename(path.dirname(candidate)) === "Contents",
+  ) ?? (commandLineTools && isDescendantOrEqual(commandLineTools, compiler) ? commandLineTools : null);
+  if (!toolchainRoot || !developerRoot) {
+    throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE: use Apple Clang from Xcode or Command Line Tools");
+  }
+
+  const resourceBase = path.join(toolchainRoot, "usr", "lib", "clang");
+  const resourceDirectory = fs.readdirSync(resourceBase, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && fs.existsSync(path.join(resourceBase, entry.name, "include")))
+    .map((entry) => path.join(resourceBase, entry.name))
+    .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }))
+    .at(-1);
+  const sdkDirectory = [
+    path.join(developerRoot, "Platforms", "MacOSX.platform", "Developer", "SDKs", "MacOSX.sdk"),
+    path.join(developerRoot, "SDKs", "MacOSX.sdk"),
+  ].find((candidate) => fs.existsSync(candidate));
+  if (!resourceDirectory || !sdkDirectory) {
+    throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE: Apple Clang resource directory or macOS SDK was not found");
+  }
+
+  return {
+    argumentPrefix: [
+      "-resource-dir",
+      fs.realpathSync(resourceDirectory),
+      "-isysroot",
+      fs.realpathSync(sdkDirectory),
+      `-B${path.dirname(compiler)}${path.sep}`,
+    ],
+    environment: {
+      JUDGEDESK_COMPILER_TOOLCHAIN_ROOT: fs.realpathSync(toolchainRoot),
+      JUDGEDESK_COMPILER_DEVELOPER_ROOT: fs.realpathSync(developerRoot),
+    },
+  };
+}
+
+function findAncestor(candidate: string, matches: (value: string) => boolean): string | null {
+  let current = path.resolve(candidate);
+  while (true) {
+    if (matches(current)) return current;
+    const parent = path.dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
+}
+
+function isDescendantOrEqual(root: string, candidate: string): boolean {
+  const relative = path.relative(path.resolve(root), path.resolve(candidate));
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 function isDescendant(root: string, candidate: string): boolean {
