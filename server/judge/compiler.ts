@@ -306,7 +306,7 @@ async function prepareCompiler(
     };
   }
   const darwin = process.platform === "darwin" ? resolveDarwinCompilerSupport(realCompiler) : null;
-  const name = process.platform === "win32" ? "compiler.exe" : "compiler";
+  const name = stagedCompilerName(compilerPath);
   const staged = workspace.stage(realCompiler, name, true);
   return {
     executableId: workspace.relative(name),
@@ -314,6 +314,15 @@ async function prepareCompiler(
     argumentPrefix: darwin?.argumentPrefix ?? [],
     environment: darwin?.environment ?? {},
   };
+}
+
+export function stagedCompilerName(
+  compilerPath: string,
+  platform: NodeJS.Platform = process.platform,
+): string {
+  // Apple Clang re-executes its own driver for the cc1 phase. Keeping clang/clang++ in argv[0]
+  // is therefore functional, not cosmetic; renaming it to "compiler" makes posix_spawn fail.
+  return platform === "win32" ? "compiler.exe" : path.basename(compilerPath);
 }
 
 export function resolveDarwinCompilerSupport(compilerPath: string): {
