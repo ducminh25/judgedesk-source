@@ -199,7 +199,8 @@ function findCachedSystemToolchain(
 
 function collectSystemCppCandidates(): string[] {
   const platform = os.platform();
-  const candidates = [searchInPath("g++"), searchInPath("clang++")];
+  const pathCandidates = [searchInPath("g++"), searchInPath("clang++")];
+  const candidates = platform === "darwin" ? [] : [...pathCandidates];
   if (platform === "win32") {
     const programFiles = process.env.ProgramFiles || "C:\\Program Files";
     const programFilesX86 =
@@ -245,6 +246,7 @@ function collectSystemCppCandidates(): string[] {
       "/opt/local/bin/g++",
       findInLoginShell("g++"),
       findInLoginShell("clang++"),
+      ...pathCandidates,
     );
     candidates.push(...findVersionedCommands("/opt/homebrew/bin", ["g++-", "clang++-"]));
     candidates.push(...findVersionedCommands("/usr/local/bin", ["g++-", "clang++-"]));

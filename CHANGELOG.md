@@ -38,9 +38,11 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 - Sửa nhận diện executor đã được bundle trong desktop dev và installer.
 - macOS dùng `wait4`/`ru_maxrss` cho peak memory và phân loại signal/resource
-  limit; tên bundle hiển thị JudgeDesk thay vì ThemisV2.
-- CodeMagic Apple Silicon chạy executor unit/security tests, xác minh kiến trúc,
-  chữ ký ad-hoc, entitlements, DMG và updater tarball trước khi xuất artifact.
+  limit; hỗ trợ đầy đủ Apple Clang/Xcode SDK trong compiler sandbox; tên bundle
+  hiển thị JudgeDesk thay vì ThemisV2.
+- CodeMagic Apple Silicon chạy executor unit/security tests và compile-run C++
+  thật, xác minh kiến trúc, chữ ký ad-hoc, entitlements, DMG và updater tarball
+  trước khi xuất artifact.
 
 ### Kiểm thử
 

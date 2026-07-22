@@ -237,6 +237,8 @@ test("Apple Silicon release scripts verify architecture, DMG, and sidecar", () =
   assert.match(sidecarScript, /smoke-test-sidecar\.js "\$sidecar"/);
   assert.match(sidecarScript, /test:executor/);
   assert.match(sidecarScript, /security\.integration\.test\.ts/);
+  assert.match(sidecarScript, /smoke-test-macos-compiler\.ts/);
+  assert.doesNotMatch(sidecarScript, /macOS diagnostics/);
   assert.match(macExecutor, /libc::wait4/);
   assert.match(macExecutor, /ru_maxrss/);
   assert.match(bundleScript, /hdiutil attach "\$dmg_file" -readonly -nobrowse/);
@@ -316,6 +318,7 @@ test("Codemagic builds verified Apple Silicon release artifacts on M2", () => {
   assert.match(codemagic, /JudgeDesk\.app\.tar\.gz\.sig/);
   assert.match(sidecarScript, /TAURI_TARGET=aarch64-apple-darwin/);
   assert.doesNotMatch(sidecarScript, /x86_64/);
+  assert.match(sidecarScript, /smoke-test-macos-compiler\.ts/);
   assert.match(bundleScript, /Contents\/MacOS\/themis-v2" -verify_arch arm64/);
   assert.match(bundleScript, /lipo "\$server_binary" -verify_arch arm64/);
   assert.match(bundleScript, /smoke-test-sidecar\.js/);

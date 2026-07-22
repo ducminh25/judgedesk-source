@@ -123,11 +123,6 @@ fn security_probe_child() {
     use std::process::Command;
     use std::time::Duration;
 
-    let checkpoint = |phase: &str| {
-        let _ = writeln!(io::stderr(), "security-probe:{phase}");
-        let _ = io::stderr().flush();
-    };
-    checkpoint("started");
     let sentinel = std::env::args()
         .nth(2)
         .map(std::path::PathBuf::from)
@@ -135,11 +130,9 @@ fn security_probe_child() {
     let read_blocked = sentinel
         .as_ref()
         .is_some_and(|path| std::fs::read(path).is_err());
-    checkpoint("read-checked");
     let write_blocked = sentinel
         .as_ref()
         .is_some_and(|path| std::fs::write(path, b"OVERWRITTEN").is_err());
-    checkpoint("write-checked");
     let address: SocketAddr = "127.0.0.1:9".parse().unwrap();
     let network_blocked = std::panic::catch_unwind(|| {
         let network_error = TcpStream::connect_timeout(&address, Duration::from_millis(500)).err();
@@ -149,7 +142,6 @@ fn security_probe_child() {
         })
     })
     .unwrap_or(true);
-    checkpoint("network-checked");
     let (process_command, process_args): (&str, &[&str]) = if cfg!(windows) {
         ("cmd.exe", &["/c", "exit", "0"])
     } else {
