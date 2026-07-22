@@ -143,6 +143,20 @@ test("output, workspace-write, and thread bombs get distinct reasons", { timeout
   assert.equal(threads.reason, "thread_limit");
 });
 
+test("kernel process ceiling contains a real process bomb", { timeout: 30_000 }, async () => {
+  for (let index = 0; index < 20; index += 1) {
+    const processes = await runHelper(["--test-process-bomb", "128", "500"], {
+      processCount: 1,
+      wallTimeMs: 2_000,
+    });
+    assert.equal(
+      processes.reason,
+      "process_limit",
+      `process-limit repetition ${index}: ${JSON.stringify(processes)}`,
+    );
+  }
+});
+
 test("explicit cancellation kills the whole active run", { timeout: 10_000 }, async () => {
   const workspace = await createExecutorWorkspace();
   try {
