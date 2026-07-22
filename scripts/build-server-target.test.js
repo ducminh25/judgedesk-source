@@ -116,7 +116,10 @@ test("Tauri embeds checker previews and does not install editable checker resour
   );
   const resources = JSON.stringify(tauriConfig.bundle.resources);
   assert.doesNotMatch(resources, /judgers|testlib|\.cpp/);
-  assert.match(resources, /compiler-compat/);
+  assert.equal(
+    tauriConfig.bundle.resources["../compiler-compat/include/bits/stdc++.h"],
+    "compiler-compat/include/bits/stdc++.h",
+  );
   const compatibilityHeader = fs.readFileSync(
     new URL("../compiler-compat/include/bits/stdc++.h", import.meta.url),
     "utf8",
