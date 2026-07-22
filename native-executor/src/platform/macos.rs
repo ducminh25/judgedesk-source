@@ -67,11 +67,14 @@ impl MacosPlatform {
                 .map_err(|error| format!("cannot create security probe workspace: {error}"))?;
             let current_exe = std::env::current_exe()
                 .map_err(|error| format!("cannot locate security probe executable: {error}"))?;
-            let staged_exe = workspace.join("security-probe");
+            // Keep executable code outside the writable workspace. macOS vnguard can abort
+            // executable mappings from a sandbox-writable location before the target reaches
+            // main(), even when Seatbelt otherwise permits process-exec for that exact path.
+            let staged_exe = root.join("artifacts").join("security-probe");
             fs::copy(&current_exe, &staged_exe)
                 .map_err(|error| format!("cannot stage security probe: {error}"))?;
             use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&staged_exe, fs::Permissions::from_mode(0o700))
+            fs::set_permissions(&staged_exe, fs::Permissions::from_mode(0o500))
                 .map_err(|error| format!("cannot make security probe executable: {error}"))?;
 
             let sentinel = std::env::temp_dir().join(format!(
@@ -85,7 +88,7 @@ impl MacosPlatform {
                 run_id: "startup_self_test_run".into(),
                 role: RunRole::SecurityProbe,
                 workspace_id: workspace_id.into(),
-                executable_id: format!("workspaces/{workspace_id}/security-probe"),
+                executable_id: "artifacts/security-probe".into(),
                 args: vec![
                     "--security-probe-child".into(),
                     sentinel.to_string_lossy().into_owned(),
