@@ -111,8 +111,17 @@ impl MacosPlatform {
             let run = self.run_inner(&spec, &validated, &active)?;
             let output = fs::read_to_string(workspace.join("probe.stdout"))
                 .map_err(|error| format!("cannot read security probe: {error}"))?;
-            let probe: serde_json::Value = serde_json::from_str(output.trim())
-                .map_err(|error| format!("security probe returned invalid JSON: {error}"))?;
+            let probe: serde_json::Value = serde_json::from_str(output.trim()).map_err(|error| {
+                let stderr = fs::read_to_string(workspace.join("probe.stderr"))
+                    .unwrap_or_default()
+                    .chars()
+                    .take(1024)
+                    .collect::<String>();
+                format!(
+                    "security probe returned invalid JSON: {error}; reason={:?}; exitCode={:?}; signal={:?}; stderr={stderr:?}",
+                    run.reason, run.exit_code, run.signal_or_status
+                )
+            })?;
             let sentinel_intact = fs::read(&sentinel)
                 .map(|value| value == b"JUDGEDESK_SENTINEL")
                 .unwrap_or(false);
