@@ -506,7 +506,6 @@ fn build_profile(paths: &ValidatedRun) -> Result<String, String> {
 (allow syscall-unix
   (syscall-number
     SYS_shared_region_check_np
-    SYS_shared_region_map_and_slide_np
     SYS_shared_region_map_and_slide_2_np))
 (deny network*)
 (allow file-read* file-test-existence {})
