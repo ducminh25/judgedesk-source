@@ -219,9 +219,14 @@ impl MacosPlatform {
         // (dyld/shared-cache and allocator reservations). A fixed RLIMIT_AS can therefore be
         // below the launcher's existing VM size and setrlimit returns EINVAL before exec. Keep
         // an emergency ceiling, but calibrate it from the trusted launcher's actual baseline.
+        // A fresh dyld/malloc launch can reserve substantially more VM than the already-running
+        // executor, so retain at least one additional baseline of headroom.
         let executor_virtual_size = process_usage(std::process::id() as i32).virtual_memory_bytes;
-        let address_space = (executor_virtual_size > 0)
-            .then(|| executor_virtual_size.saturating_add(address_space_slack));
+        let address_space = (executor_virtual_size > 0).then(|| {
+            executor_virtual_size
+                .saturating_mul(2)
+                .max(executor_virtual_size.saturating_add(address_space_slack))
+        });
         unsafe {
             command.pre_exec(move || {
                 if libc::setpgid(0, 0) != 0 {
