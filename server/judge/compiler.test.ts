@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import {
   buildCompilerEnvironment,
+  buildDarwinCompilerPhases,
   buildSubmissionCompilerArgs,
   COMPILE_TIMEOUT_MS,
   findGccIncludeDirectories,
@@ -25,6 +26,22 @@ test("compiler request uses a minimal environment independent of the parent shel
 test("macOS staging preserves the resolved Apple Clang binary name for cc1 re-exec", () => {
   assert.equal(stagedCompilerName("/toolchain/bin/clang", "darwin"), "clang");
   assert.equal(stagedCompilerName(String.raw`C:\toolchain\bin\g++.exe`, "win32"), "compiler.exe");
+});
+
+test("macOS compilation separates the integrated frontend from the linker", () => {
+  const output = path.resolve("program.out");
+  const object = path.resolve("program.o");
+  const source = path.resolve("main.cpp");
+  const phases = buildDarwinCompilerPhases(
+    ["-std=c++14", "-O2", "-s", "-lm", "-x", "c++", source, "-o", output],
+    output,
+    object,
+  );
+  assert.deepEqual(
+    phases.compile,
+    ["-std=c++14", "-O2", "-x", "c++", source, "-c", "-o", object],
+  );
+  assert.deepEqual(phases.link, [object, "-o", output, "-s", "-lm"]);
 });
 
 test("relocated managed GCC discovers only cache-contained system include directories", (t) => {

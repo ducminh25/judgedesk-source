@@ -1,6 +1,6 @@
 # Native executor benchmark (win32/x64)
 
-- Generated: 2026-07-22T04:11:32.636Z
+- Generated: 2026-07-22T06:53:37.065Z
 - CPU: 13th Gen Intel(R) Core(TM) i5-13420H (12 logical CPUs)
 - OS: Windows 11 Pro
 - Runner: windows-lpac-job 1.2.1
@@ -8,19 +8,19 @@
 
 | Stage | p50 (ms) | p95 (ms) |
 |---|---:|---:|
-| Staging | 0.209 | 0.403 |
-| Executor dispatch/IPC | 1.041 | 1.614 |
-| OS sandbox setup | 5.630 | 8.888 |
-| Dispatch + security setup | 6.703 | 10.512 |
-| Execution | 33.136 | 58.248 |
-| Result collection | 0.210 | 0.490 |
-| Cleanup | 0.948 | 1.791 |
-| End-to-end | 41.476 | 68.951 |
+| Staging | 0.443 | 0.734 |
+| Executor dispatch/IPC | 1.443 | 2.168 |
+| OS sandbox setup | 8.657 | 13.507 |
+| Dispatch + security setup | 10.186 | 15.400 |
+| Execution | 48.601 | 66.802 |
+| Result collection | 0.372 | 0.595 |
+| Cleanup | 1.587 | 2.506 |
+| End-to-end | 62.191 | 82.343 |
 
 | Gate | Actual | Limit | Result |
 |---|---:|---:|---|
-| dispatchP50Ms | 6.703 | 5 | FAIL |
-| dispatchP95Ms | 10.512 | 10 | FAIL |
+| dispatchP50Ms | 10.186 | 5 | FAIL |
+| dispatchP95Ms | 15.400 | 10 | FAIL |
 | backendMemoryGrowthMiB | 0.000 | 100 | PASS |
 
 Backend RSS growth: 0.00 MiB.

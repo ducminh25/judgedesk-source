@@ -131,7 +131,7 @@ export async function compileSubmission(options: CompileSubmissionOptions): Prom
     if (process.platform === "win32" && cpp.source !== "managed") {
       throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
     }
-    await runCompilerWithLimits(
+    await runCompilerPipelineWithLimits(
       cpp.executablePath,
       buildSubmissionCompilerArgs(os.platform(), submissionPath, executablePath),
       tempDirectory,
@@ -169,7 +169,7 @@ async function compileCustomChecker(
     if (process.platform === "win32" && cpp.source !== "managed") {
       return { path: null, error: "TOOLCHAIN_NOT_SANDBOX_COMPATIBLE" };
     }
-    await runCompilerWithLimits(
+    await runCompilerPipelineWithLimits(
       cpp.executablePath,
       ["-std=c++14", "-O2", "-I", checkerSupportDirectory, checkerSourcePath, "-o", checkerBinaryPath],
       tempDirectory,
@@ -262,6 +262,68 @@ export async function runCompilerWithLimits(
     detachExecutorRun(jobId, runId);
     workspace.dispose();
   }
+}
+
+async function runCompilerPipelineWithLimits(
+  compilerPath: string,
+  args: string[],
+  cwd: string | undefined,
+  outputPath: string,
+  jobId?: string,
+  limits: CompileLimits = DEFAULT_COMPILE_LIMITS,
+): Promise<void> {
+  if (process.platform !== "darwin") {
+    await runCompilerWithLimits(compilerPath, args, cwd, outputPath, jobId, limits);
+    return;
+  }
+
+  const objectPath = `${outputPath}.${crypto.randomUUID()}.o`;
+  const phases = buildDarwinCompilerPhases(args, outputPath, objectPath);
+  const started = process.hrtime.bigint();
+  try {
+    await runCompilerWithLimits(compilerPath, phases.compile, cwd, objectPath, jobId, limits);
+    const elapsed = elapsedMs(started);
+    const remaining = Math.max(1, limits.timeoutMs - Math.ceil(elapsed));
+    await runCompilerWithLimits(
+      compilerPath,
+      phases.link,
+      cwd,
+      outputPath,
+      jobId,
+      { ...limits, timeoutMs: remaining },
+    );
+  } finally {
+    fs.rmSync(objectPath, { force: true });
+  }
+}
+
+export function buildDarwinCompilerPhases(
+  args: string[],
+  outputPath: string,
+  objectPath: string,
+): { compile: string[]; link: string[] } {
+  const compile: string[] = [];
+  const linkerFlags: string[] = [];
+  let foundOutput = false;
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    if (argument === "-o" && index + 1 < args.length && samePath(args[index + 1], outputPath)) {
+      foundOutput = true;
+      index += 1;
+      continue;
+    }
+    if (argument === "-s" || argument === "-lm" || argument.startsWith("-Wl,")) {
+      linkerFlags.push(argument);
+      continue;
+    }
+    compile.push(argument);
+  }
+  if (!foundOutput) throw new Error("Compiler output argument was not found.");
+  compile.push("-c", "-o", objectPath);
+  return {
+    compile,
+    link: [objectPath, "-o", outputPath, ...linkerFlags],
+  };
 }
 
 export function buildCompilerEnvironment(
@@ -360,6 +422,7 @@ export function resolveDarwinCompilerSupport(compilerPath: string): {
   return {
     argumentPrefix: [
       "--driver-mode=g++",
+      "-fintegrated-cc1",
       // Seatbelt can prevent the driver from inferring this directory through realpath.
       // Pin it to the Apple toolchain path already validated by the native executor.
       "-ccc-install-dir",
