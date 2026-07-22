@@ -1,22 +1,34 @@
-import fs from "fs";
-import os from "os";
-import path from "path";
-import { spawn, type ChildProcess } from "child_process";
-import treeKill from "tree-kill";
-import { sandbox } from "../sandbox.js";
-import { activeJobs } from "../jobs.js";
-import type { ProblemResult } from "../types.js";
-import { isBuiltInChecker } from "./standard-checkers.js";
+import crypto from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { executorClient } from "../executor/client.js";
+import { DEFAULT_EXECUTOR_LIMITS, type ExecutorRunResult } from "../executor/protocol.js";
 import {
-  buildToolchainEnvironment,
+  createExecutorWorkspace,
+  findCachedManagedToolchain,
+  importManagedToolchain,
+} from "../executor/workspace.js";
+import { attachExecutorRun, detachExecutorRun } from "../jobs.js";
+import type { ProblemResult } from "../types.js";
+import {
+  getExecutableVersion,
+  resolveNativeProtectedToolchain,
   resolveToolchain,
 } from "../toolchains/resolver.js";
+import { getToolchainsDir } from "../toolchains/storage.js";
+import type { ResolvedToolchain } from "../toolchains/types.js";
+import { isBuiltInChecker } from "./standard-checkers.js";
 
 declare const __JUDGEDESK_TESTLIB__: string;
 
 export const COMPILE_TIMEOUT_MS = 15_000;
 export const MAX_GENERATED_FILE_BYTES = 32 * 1024 * 1024;
 const MAX_COMPILER_DIAGNOSTIC_BYTES = 256 * 1024;
+const COMPILER_MEMORY_BYTES = 1024 * 1024 * 1024;
+const gccProgramDirectoryCache = new Map<string, string>();
+const gccLibraryDirectoryCache = new Map<string, string[]>();
+const gccIncludeDirectoryCache = new Map<string, string[]>();
 
 export interface CompileLimits {
   timeoutMs: number;
@@ -28,22 +40,9 @@ const DEFAULT_COMPILE_LIMITS: CompileLimits = {
   maxGeneratedFileBytes: MAX_GENERATED_FILE_BYTES,
 };
 
-function canonicalTestlibSource(): string {
-  if (
-    typeof __JUDGEDESK_TESTLIB__ !== "undefined" &&
-    __JUDGEDESK_TESTLIB__.length > 0
-  ) {
-    return __JUDGEDESK_TESTLIB__;
-  }
-  const developmentPath = path.join(process.cwd(), "judgers", "testlib.h");
-  if (fs.existsSync(developmentPath)) {
-    return fs.readFileSync(developmentPath, "utf8");
-  }
-  throw new Error("Bundled testlib.h was not found.");
-}
-
 export interface CompiledChecker {
   path: string | null;
+  runtime?: "native" | "python";
   error?: string;
 }
 
@@ -62,6 +61,7 @@ interface CompileSubmissionOptions {
   submissionPath: string;
   tempDirectory: string;
   jobId?: string;
+  cppToolchain?: ResolvedToolchain;
 }
 
 export interface CompilationResult {
@@ -71,145 +71,73 @@ export interface CompilationResult {
   compileTime: number;
 }
 
-export async function resolveChecker({
-  checkerType,
-  problemName,
-  problemDirectory,
-  tempDirectory,
-  jobId,
-}: ResolveCheckerOptions): Promise<CompiledChecker> {
-  if (isBuiltInChecker(checkerType)) {
-    return { path: null };
-  }
-
-  if (checkerType.toLowerCase().endsWith(".cpp")) {
-    return compileCustomChecker(
-      checkerType,
-      problemName,
-      problemDirectory,
-      tempDirectory,
-      jobId,
-    );
-  }
-
-  if (checkerType.toLowerCase().endsWith(".exe")) {
-    if (os.platform() !== "win32") {
-      return {
-        path: null,
-        error: "Precompiled Windows checker executables cannot run on macOS.",
-      };
-    }
-    const checkerPath = path.join(problemDirectory, checkerType);
-    return fs.existsSync(checkerPath)
-      ? { path: checkerPath }
-      : { path: null, error: `Custom checker ${checkerType} not found.` };
-  }
-
-  return {
-    path: null,
-    error: `Unsupported checker type '${checkerType}'.`,
-  };
+function canonicalTestlibSource(): string {
+  if (typeof __JUDGEDESK_TESTLIB__ !== "undefined" && __JUDGEDESK_TESTLIB__.length > 0) return __JUDGEDESK_TESTLIB__;
+  const developmentPath = path.join(process.cwd(), "judgers", "testlib.h");
+  if (fs.existsSync(developmentPath)) return fs.readFileSync(developmentPath, "utf8");
+  throw new Error("Bundled testlib.h was not found.");
 }
 
-export async function compileSubmission({
-  language,
-  contestantName,
-  problemName,
-  submissionPath,
-  tempDirectory,
-  jobId,
-}: CompileSubmissionOptions): Promise<CompilationResult> {
+export async function resolveChecker(options: ResolveCheckerOptions): Promise<CompiledChecker> {
+  const { checkerType, problemName, problemDirectory, tempDirectory, jobId } = options;
+  if (isBuiltInChecker(checkerType)) return { path: null };
+  if (checkerType.toLowerCase().endsWith(".cpp")) {
+    return compileCustomChecker(checkerType, problemName, problemDirectory, tempDirectory, jobId);
+  }
+  if (checkerType.toLowerCase().endsWith(".py")) {
+    const checkerPath = path.join(problemDirectory, checkerType);
+    return fs.existsSync(checkerPath)
+      ? { path: checkerPath, runtime: "python" }
+      : { path: null, error: `Custom checker ${checkerType} not found.` };
+  }
+  if (checkerType.toLowerCase().endsWith(".exe")) {
+    return {
+      path: null,
+      error: "Precompiled checker executables are not supported. Use a .cpp or .py source checker.",
+    };
+  }
+  return { path: null, error: `Unsupported checker type '${checkerType}'.` };
+}
+
+export async function compileSubmission(options: CompileSubmissionOptions): Promise<CompilationResult> {
+  const { language, contestantName, problemName, submissionPath, tempDirectory, jobId } = options;
+  const compileStart = process.hrtime.bigint();
   if (language !== "cpp") {
-    const resolvedPy = resolveToolchain("python");
-    if (!resolvedPy.ready) {
-      return {
-        executablePath: "",
-        compileStatus: "CE",
-        compileError: "TOOLCHAIN_PYTHON_MISSING",
-        compileTime: 0,
-      };
+    const python = await resolveCompilationToolchain("python");
+    if (!python.ready) return compilationFailure("", "TOOLCHAIN_PYTHON_MISSING", compileStart);
+    if (process.platform === "win32" && python.source !== "managed") {
+      return compilationFailure("", "TOOLCHAIN_NOT_SANDBOX_COMPATIBLE", compileStart);
     }
     return {
-      executablePath: resolvedPy.executablePath,
+      executablePath: python.executablePath,
       compileStatus: "OK",
       compileError: "",
       compileTime: 0,
     };
   }
 
-  const executablePath = path.join(
-    tempDirectory,
-    `${contestantName}_${problemName}.out`,
-  );
-  const compileStart = process.hrtime.bigint();
+  const executablePath = path.join(tempDirectory, `${safeName(contestantName)}_${safeName(problemName)}.out`);
   try {
-    if (sandbox.mode !== "none") {
-      try {
-        sandbox.runCommand([
-          "cp",
-          sandbox.toPath(submissionPath),
-          "/tmp/compile.cpp",
-        ]);
-        await runCompilerWithLimits(
-          "g++",
-          [
-          "-std=c++14",
-          "-pipe",
-          "-O2",
-          "-s",
-          "-static",
-          "-lm",
-          "-x",
-          "c++",
-          "/tmp/compile.cpp",
-          "-o",
-          "/tmp/compile.out",
-          ],
-          tempDirectory,
-          "/tmp/compile.out",
-          jobId,
-        );
-        sandbox.runCommand([
-          "cp",
-          "/tmp/compile.out",
-          sandbox.toPath(executablePath),
-        ]);
-        if (fileExceedsLimit(executablePath))
-          throw new Error("GENERATED_FILE_TOO_LARGE");
-      } finally {
-        sandbox.runCommand(["rm", "-f", "/tmp/compile.cpp", "/tmp/compile.out"]);
-      }
-    } else {
-      const resolvedCpp = resolveToolchain("cpp");
-      if (!resolvedCpp.ready) {
-        throw new Error("TOOLCHAIN_CPP_MISSING");
-      }
-      await runCompilerWithLimits(
-        resolvedCpp.executablePath,
-        buildSubmissionCompilerArgs(
-          os.platform(),
-          submissionPath,
-          executablePath,
-        ),
-        tempDirectory,
-        executablePath,
-        jobId,
-      );
+    const cpp = options.cppToolchain ?? await resolveCompilationToolchain("cpp");
+    if (!cpp.ready) throw new Error("TOOLCHAIN_CPP_MISSING");
+    if (process.platform === "win32" && cpp.source !== "managed") {
+      throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
     }
-
+    await runCompilerWithLimits(
+      cpp.executablePath,
+      buildSubmissionCompilerArgs(os.platform(), submissionPath, executablePath),
+      tempDirectory,
+      executablePath,
+      jobId,
+    );
     return {
       executablePath,
       compileStatus: "OK",
       compileError: "",
-      compileTime: Number(process.hrtime.bigint() - compileStart) / 1_000_000,
+      compileTime: elapsedMs(compileStart),
     };
-  } catch (error: any) {
-    return {
-      executablePath,
-      compileStatus: "CE",
-      compileError: normalizeCompilerError(error),
-      compileTime: Number(process.hrtime.bigint() - compileStart) / 1_000_000,
-    };
+  } catch (error) {
+    return compilationFailure(executablePath, normalizeCompilerError(error), compileStart);
   }
 }
 
@@ -221,82 +149,41 @@ async function compileCustomChecker(
   jobId?: string,
 ): Promise<CompiledChecker> {
   const checkerSourcePath = path.join(problemDirectory, checkerType);
-  if (!fs.existsSync(checkerSourcePath)) {
-    return { path: null, error: `Custom checker ${checkerType} not found.` };
-  }
-
-  const checkerBinaryPath = path.join(
-    tempDirectory,
-    `checker_${problemName}_${checkerType.replace(/\./g, "_")}.out`,
-  );
+  if (!fs.existsSync(checkerSourcePath)) return { path: null, error: `Custom checker ${checkerType} not found.` };
+  const checkerBinaryPath = path.join(tempDirectory, `checker_${safeName(problemName)}_${safeName(checkerType)}.out`);
+  const checkerSupportDirectory = path.join(tempDirectory, `checker-support-${crypto.randomUUID()}`);
+  const bundledTestlibPath = path.join(checkerSupportDirectory, "testlib.h");
   try {
-    const checkerSupportDirectory = path.join(tempDirectory, "checker-support");
-    const bundledTestlibPath = path.join(checkerSupportDirectory, "testlib.h");
     fs.mkdirSync(checkerSupportDirectory, { recursive: true });
-    // Always restore the canonical embedded copy. Preview files opened by the
-    // user are intentionally unrelated to the copy used for compilation.
     fs.writeFileSync(bundledTestlibPath, canonicalTestlibSource(), "utf8");
-
-    if (sandbox.mode !== "none") {
-      try {
-        sandbox.runCommand([
-          "cp",
-          sandbox.toPath(checkerSourcePath),
-          "/tmp/checker.cpp",
-        ]);
-        sandbox.runCommand([
-          "cp",
-          sandbox.toPath(bundledTestlibPath),
-          "/tmp/testlib.h",
-        ]);
-        await runCompilerWithLimits(
-          "g++",
-          [
-          "-std=c++14",
-          "-O2",
-          "/tmp/checker.cpp",
-          "-o",
-          "/tmp/checker.out",
-          ],
-          tempDirectory,
-          "/tmp/checker.out",
-          jobId,
-        );
-        sandbox.runCommand([
-          "cp",
-          "/tmp/checker.out",
-          sandbox.toPath(checkerBinaryPath),
-        ]);
-        if (fileExceedsLimit(checkerBinaryPath))
-          throw new Error("GENERATED_FILE_TOO_LARGE");
-      } finally {
-        sandbox.runCommand([
-          "rm",
-          "-f",
-          "/tmp/checker.cpp",
-          "/tmp/checker.out",
-          "/tmp/testlib.h",
-        ]);
-      }
-    } else {
-      const resolvedCpp = resolveToolchain("cpp");
-      if (!resolvedCpp.ready) {
-        return { path: null, error: "TOOLCHAIN_CPP_MISSING" };
-      }
-      await runCompilerWithLimits(resolvedCpp.executablePath, [
-        "-std=c++14",
-        "-O2",
-        "-I",
-        path.dirname(bundledTestlibPath),
-        checkerSourcePath,
-        "-o",
-        checkerBinaryPath,
-      ], tempDirectory, checkerBinaryPath, jobId);
+    const cpp = await resolveCompilationToolchain("cpp");
+    if (!cpp.ready) return { path: null, error: "TOOLCHAIN_CPP_MISSING" };
+    if (process.platform === "win32" && cpp.source !== "managed") {
+      return { path: null, error: "TOOLCHAIN_NOT_SANDBOX_COMPATIBLE" };
     }
-    return { path: checkerBinaryPath };
-  } catch (error: any) {
+    await runCompilerWithLimits(
+      cpp.executablePath,
+      ["-std=c++14", "-O2", "-I", checkerSupportDirectory, checkerSourcePath, "-o", checkerBinaryPath],
+      tempDirectory,
+      checkerBinaryPath,
+      jobId,
+    );
+    return { path: checkerBinaryPath, runtime: "native" };
+  } catch (error) {
     return { path: null, error: normalizeCompilerError(error) };
+  } finally {
+    fs.rmSync(checkerSupportDirectory, { recursive: true, force: true });
   }
+}
+
+export async function resolveCompilationToolchain(
+  kind: "cpp" | "python",
+): Promise<ResolvedToolchain> {
+  const selected = resolveNativeProtectedToolchain(kind);
+  if (process.platform !== "win32" || selected.source === "managed" || selected.source === "sandbox") {
+    return selected;
+  }
+  return await findCachedManagedToolchain(kind) ?? selected;
 }
 
 export function buildSubmissionCompilerArgs(
@@ -304,7 +191,7 @@ export function buildSubmissionCompilerArgs(
   sourcePath: string,
   outputPath: string,
 ): string[] {
-  const args = ["-std=c++14", "-pipe", "-O2", "-s"];
+  const args = ["-std=c++14", "-pipe", "-O2", "-fno-finite-loops", "-s"];
   if (platform !== "darwin") args.push("-static");
   args.push("-lm", "-x", "c++");
   if (platform === "win32") args.push("-Wl,--stack,66060288");
@@ -313,211 +200,294 @@ export function buildSubmissionCompilerArgs(
 }
 
 export async function runCompilerWithLimits(
-  gppPath: string,
+  compilerPath: string,
   args: string[],
   cwd: string | undefined,
   outputPath: string,
   jobId?: string,
   limits: CompileLimits = DEFAULT_COMPILE_LIMITS,
 ): Promise<void> {
-  const scratchDirectory = fs.mkdtempSync(
-    path.join(cwd || os.tmpdir(), "compile-scratch-"),
-  );
-  let child: ChildProcess | undefined;
-  let timedOut = false;
-  let generatedFileTooLarge = false;
-  let settled = false;
-  let stderr = "";
-
+  const workspace = await createExecutorWorkspace();
+  const runId = `compile_${crypto.randomUUID().replaceAll("-", "_")}`;
+  attachExecutorRun(jobId, runId);
   try {
-    const command = buildLimitedCompilerCommand(gppPath, args, limits);
-    const spawnOptions = {
-      cwd,
-      stdio: ["ignore", "ignore", "pipe"] as ["ignore", "ignore", "pipe"],
-      env: {
-        ...buildToolchainEnvironment(gppPath),
-        TMP: scratchDirectory,
-        TEMP: scratchDirectory,
-        TMPDIR: scratchDirectory,
+    const compiler = await prepareCompiler(workspace, compilerPath);
+    const stagedOutput = path.join(workspace.path, "compiled-output.bin");
+    const stagedArgs = stageCompilerArguments(workspace.path, args, outputPath, stagedOutput);
+    const environment = buildCompilerEnvironment(compiler.executablePath);
+    if (process.platform === "win32" && compiler.root) {
+      const programDirectory = findGccProgramDirectory(compiler.root);
+      // A relocated GCC driver otherwise remembers the source installation prefix and reports
+      // "cannot execute cc1plus" inside LPAC. -B and COMPILER_PATH keep every compiler child in
+      // the verified read-only toolchain cache and the same Job Object.
+      stagedArgs.unshift(`-B${programDirectory}${path.sep}`);
+      stagedArgs.unshift(...findGccIncludeDirectories(compiler.root).flatMap((directory) => ["-isystem", directory]));
+      environment.COMPILER_PATH = [programDirectory, path.dirname(compiler.executablePath)].join(path.delimiter);
+      environment.LIBRARY_PATH = findGccLibraryDirectories(compiler.root).join(path.delimiter);
+    }
+    const result = await executorClient.run({
+      runId,
+      role: "compiler",
+      workspaceId: workspace.id,
+      executableId: compiler.executableId,
+      args: stagedArgs,
+      stdoutFile: "compiler.stdout",
+      stderrFile: "compiler.stderr",
+      environment,
+      limits: {
+        ...DEFAULT_EXECUTOR_LIMITS.compiler,
+        wallTimeMs: limits.timeoutMs,
+        memoryBytes: COMPILER_MEMORY_BYTES,
+        totalWriteBytes: limits.maxGeneratedFileBytes + 4 * 1024 * 1024,
       },
-    };
-    child = sandbox.mode === "none"
-      ? spawn(command[0], command.slice(1), spawnOptions)
-      : sandbox.spawnCommand(command, {
-          cwd,
-          stdio: spawnOptions.stdio,
-          paths: cwd ? [cwd] : undefined,
-        });
-
-    if (jobId) {
-      const job = activeJobs.get(jobId);
-      if (job) job.childProcess = child;
-    }
-
-    child.stderr?.on("data", (chunk: Buffer | string) => {
-      const remaining =
-        MAX_COMPILER_DIAGNOSTIC_BYTES - Buffer.byteLength(stderr, "utf8");
-      if (remaining <= 0) return;
-      stderr += Buffer.from(chunk).subarray(0, remaining).toString();
-      if (stderr.includes("__THEMIS_GENERATED_FILE_TOO_LARGE__")) {
-        generatedFileTooLarge = true;
-      }
-      if (/file (?:size limit exceeded|too large)/i.test(stderr)) {
-        generatedFileTooLarge = true;
-      }
-      if (stderr.includes("__THEMIS_COMPILE_TIMEOUT__")) timedOut = true;
     });
-
-    await new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        timedOut = true;
-        if (child) killCompilerProcess(child);
-      }, limits.timeoutMs);
-      const sizeMonitor = setInterval(() => {
-        if (
-          fileExceedsLimit(outputPath, limits.maxGeneratedFileBytes) ||
-          directoryContainsOversizedFile(
-            scratchDirectory,
-            limits.maxGeneratedFileBytes,
-          )
-        ) {
-          generatedFileTooLarge = true;
-          if (child) killCompilerProcess(child);
-        }
-      }, 25);
-
-      const finish = (callback: () => void) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timeout);
-        clearInterval(sizeMonitor);
-        callback();
-      };
-
-      child?.once("error", (error) => finish(() => reject(error)));
-      child?.once("close", (code, signal) => {
-        finish(() => {
-          generatedFileTooLarge =
-            generatedFileTooLarge ||
-            fileExceedsLimit(outputPath, limits.maxGeneratedFileBytes) ||
-            directoryContainsOversizedFile(
-              scratchDirectory,
-              limits.maxGeneratedFileBytes,
-            );
-          if (generatedFileTooLarge) {
-            reject(new Error("GENERATED_FILE_TOO_LARGE"));
-          } else if (timedOut) {
-            reject(new Error("COMPILER_TIMEOUT"));
-          } else if (code !== 0) {
-            reject(
-              new Error(
-                stripCompilerSentinels(stderr).trim() ||
-                  `Compilation failed (exit code ${code ?? signal ?? "unknown"})`,
-              ),
-            );
-          } else {
-            resolve();
-          }
-        });
-      });
-    });
+    const stderr = readPreview(path.join(workspace.path, "compiler.stderr"), MAX_COMPILER_DIAGNOSTIC_BYTES);
+    assertCompilerSucceeded(result, stderr);
+    if (!fs.existsSync(stagedOutput)) throw new Error(stderr.trim() || "Compilation did not produce an output file.");
+    if (fs.statSync(stagedOutput).size > limits.maxGeneratedFileBytes) throw new Error("GENERATED_FILE_TOO_LARGE");
+    fs.copyFileSync(stagedOutput, outputPath);
   } finally {
-    if (jobId) {
-      const job = activeJobs.get(jobId);
-      if (job?.childProcess === child) delete job.childProcess;
-    }
-    fs.rmSync(scratchDirectory, { recursive: true, force: true });
-    if (timedOut || generatedFileTooLarge) {
-      fs.rmSync(outputPath, { force: true });
-    }
+    detachExecutorRun(jobId, runId);
+    workspace.dispose();
   }
 }
 
-function buildLimitedCompilerCommand(
+export function buildCompilerEnvironment(
   compilerPath: string,
-  args: string[],
-  limits: CompileLimits,
-): string[] {
-  if (os.platform() === "win32" && sandbox.mode === "none") {
-    return [compilerPath, ...args];
-  }
-
-  // Leave one extra filesystem block so the host-side monitor can observe a
-  // value greater than the configured limit before the OS hard-stop fires.
-  const fileLimitBlocks = Math.floor(limits.maxGeneratedFileBytes / 512) + 1;
-  const timeoutSeconds = Math.ceil(limits.timeoutMs / 1000);
-  const useInnerTimeout = sandbox.mode !== "none" || os.platform() === "linux";
-  const run = useInnerTimeout
-    ? `timeout --signal=KILL ${timeoutSeconds}s "$@"`
-    : `"$@"`;
-  const script = [
-    `ulimit -f ${fileLimitBlocks}`,
-    run,
-    "code=$?",
-    'if [ "$code" -eq 153 ]; then echo __THEMIS_GENERATED_FILE_TOO_LARGE__ >&2; fi',
-    'if [ "$code" -eq 124 ] || [ "$code" -eq 137 ]; then echo __THEMIS_COMPILE_TIMEOUT__ >&2; fi',
-    'exit "$code"',
-  ].join("; ");
-  return ["sh", "-c", script, "themis-compiler", compilerPath, ...args];
+  platform: NodeJS.Platform = process.platform,
+): Record<string, string> {
+  // The native executor supplies a small set of safe OS variables itself. Sending
+  // process.env here is both unnecessary and unsafe: Visual Studio Developer
+  // PowerShell commonly contains more than the protocol's 128-entry limit.
+  return platform === "win32" ? { Path: path.dirname(compilerPath) } : {};
 }
 
-function killCompilerProcess(child: ChildProcess): void {
-  if (!child.pid) {
-    child.kill("SIGKILL");
-    return;
+async function prepareCompiler(
+  workspace: Awaited<ReturnType<typeof createExecutorWorkspace>>,
+  compilerPath: string,
+): Promise<{ executableId: string; executablePath: string; root?: string }> {
+  const cached = await findCachedManagedToolchain("cpp");
+  if (cached && sameFile(cached.executablePath, compilerPath)) {
+    return {
+      executableId: cached.executableId,
+      executablePath: cached.executablePath,
+      root: cached.root,
+    };
   }
-  try {
-    treeKill(child.pid, "SIGKILL");
-  } catch {
-    child.kill("SIGKILL");
+  const resolved = resolveToolchain("cpp");
+  if (resolved.ready && resolved.source === "managed" && sameFile(resolved.executablePath, compilerPath)) {
+    return importManagedToolchain("cpp", resolved.executablePath, resolved.version);
   }
+  const realCompiler = fs.realpathSync(compilerPath);
+  const managedRoot = fs.realpathSync(getToolchainsDir());
+  if (isDescendant(managedRoot, realCompiler)) {
+    return importManagedToolchain("cpp", realCompiler, getExecutableVersion(realCompiler, "cpp"));
+  }
+  const name = process.platform === "win32" ? "compiler.exe" : "compiler";
+  const staged = workspace.stage(realCompiler, name, true);
+  return { executableId: workspace.relative(name), executablePath: staged };
 }
 
-function fileExceedsLimit(
-  filePath: string,
-  maxGeneratedFileBytes = MAX_GENERATED_FILE_BYTES,
-): boolean {
-  try {
-    return fs.statSync(filePath).size > maxGeneratedFileBytes;
-  } catch {
-    return false;
-  }
+function isDescendant(root: string, candidate: string): boolean {
+  const relative = path.relative(path.resolve(root), path.resolve(candidate));
+  return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
 }
 
-function directoryContainsOversizedFile(
-  directory: string,
-  maxGeneratedFileBytes: number,
-): boolean {
-  const pending = [directory];
+function findGccProgramDirectory(root: string): string {
+  const cached = gccProgramDirectoryCache.get(root);
+  if (cached) return cached;
+  const pending = [root];
   while (pending.length > 0) {
-    const current = pending.pop()!;
-    try {
-      for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
-        const entryPath = path.join(current, entry.name);
-        if (entry.isDirectory()) pending.push(entryPath);
-        else if (
-          entry.isFile() &&
-          fs.statSync(entryPath).size > maxGeneratedFileBytes
-        )
-          return true;
+    const directory = pending.pop()!;
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) pending.push(entryPath);
+      if (entry.isFile() && entry.name.toLowerCase() === "cc1plus.exe") {
+        gccProgramDirectoryCache.set(root, directory);
+        return directory;
       }
-    } catch {
-      // The compiler can remove temporary files while they are being scanned.
     }
   }
-  return false;
+  throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE: cc1plus.exe was not found in the managed GCC cache");
 }
 
-function stripCompilerSentinels(value: string): string {
-  return value
-    .replaceAll("__THEMIS_GENERATED_FILE_TOO_LARGE__", "")
-    .replaceAll("__THEMIS_COMPILE_TIMEOUT__", "");
+function findGccLibraryDirectories(root: string): string[] {
+  const cached = gccLibraryDirectoryCache.get(root);
+  if (cached) return cached;
+  const markerNames = new Set([
+    "crt2.o",
+    "crtbegin.o",
+    "libgcc.a",
+    "libmingw32.a",
+    "libstdc++.a",
+  ]);
+  const directories = new Set<string>();
+  const pending = [root];
+  while (pending.length > 0) {
+    const directory = pending.pop()!;
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) pending.push(entryPath);
+      else if (entry.isFile() && markerNames.has(entry.name.toLowerCase())) {
+        directories.add(directory);
+      }
+    }
+  }
+  const result = [...directories];
+  if (result.length === 0) {
+    throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE: managed GCC libraries were not found");
+  }
+  gccLibraryDirectoryCache.set(root, result);
+  return result;
+}
+
+export function findGccIncludeDirectories(root: string): string[] {
+  const cached = gccIncludeDirectoryCache.get(root);
+  if (cached) return cached;
+  let cppRoot: string | undefined;
+  const cppTargets = new Set<string>();
+  const gccIncludes = new Set<string>();
+  const fixedIncludes = new Set<string>();
+  const systemIncludes = new Set<string>();
+  const pending = [root];
+  while (pending.length > 0) {
+    const directory = pending.pop()!;
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        pending.push(entryPath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const normalized = entryPath.replaceAll("\\", "/").toLowerCase();
+      if (entry.name === "iostream" && normalized.includes("/include/c++/")) {
+        cppRoot = directory;
+        for (const child of fs.readdirSync(directory, { withFileTypes: true })) {
+          if (!child.isDirectory() || child.name === "backward") continue;
+          const candidate = path.join(directory, child.name);
+          if (fs.existsSync(path.join(candidate, "bits", "c++config.h"))) cppTargets.add(candidate);
+        }
+      } else if (entry.name.toLowerCase() === "stddef.h" && normalized.includes("/lib/gcc/")) {
+        gccIncludes.add(directory);
+        const fixed = path.join(path.dirname(directory), "include-fixed");
+        if (fs.existsSync(fixed)) fixedIncludes.add(fixed);
+      } else if (entry.name.toLowerCase() === "windows.h" && /\/[^/]+-w64-mingw32\/include\/windows\.h$/.test(normalized)) {
+        systemIncludes.add(directory);
+      }
+    }
+  }
+  if (!cppRoot || gccIncludes.size === 0 || systemIncludes.size === 0) {
+    throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE: managed GCC headers were not found");
+  }
+  const backward = path.join(cppRoot, "backward");
+  const result = [
+    cppRoot,
+    ...cppTargets,
+    ...(fs.existsSync(backward) ? [backward] : []),
+    ...gccIncludes,
+    ...fixedIncludes,
+    ...systemIncludes,
+  ];
+  gccIncludeDirectoryCache.set(root, result);
+  return result;
+}
+
+function stageCompilerArguments(
+  workspacePath: string,
+  args: string[],
+  outputPath: string,
+  stagedOutput: string,
+): string[] {
+  const staged = new Map<string, string>();
+  return args.map((argument, index) => {
+    if (samePath(argument, outputPath)) return stagedOutput;
+    if (!path.isAbsolute(argument) || !fs.existsSync(argument)) return argument;
+    const canonical = fs.realpathSync(argument);
+    const existing = staged.get(canonical);
+    if (existing) return existing;
+    const metadata = fs.lstatSync(canonical);
+    if (metadata.isSymbolicLink()) throw new Error("Compiler inputs cannot be symlinks.");
+    const destination = path.join(workspacePath, "inputs", `${index}_${safeName(path.basename(canonical))}`);
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    if (metadata.isDirectory()) {
+      assertTreeContainsNoLinks(canonical);
+      fs.cpSync(canonical, destination, { recursive: true, dereference: false, force: false });
+    } else if (metadata.isFile()) {
+      fs.copyFileSync(canonical, destination);
+    } else {
+      throw new Error("Compiler inputs must be regular files or directories.");
+    }
+    staged.set(canonical, destination);
+    return destination;
+  });
+}
+
+function assertCompilerSucceeded(result: ExecutorRunResult, stderr: string): void {
+  switch (result.reason) {
+    case "wall_time_limit":
+      throw new Error("COMPILER_TIMEOUT");
+    case "output_limit":
+    case "write_limit":
+      throw new Error("GENERATED_FILE_TOO_LARGE");
+    case "cancelled":
+      throw new Error("COMPILATION_CANCELLED");
+    case "sandbox_denied":
+    case "launch_error":
+    case "internal_error":
+      throw new Error(`SECURE_RUNNER_LAUNCH_FAILED: ${result.diagnostic || stderr}`);
+    case "memory_limit":
+      throw new Error("COMPILER_MEMORY_LIMIT");
+    case "process_limit":
+    case "thread_limit":
+      throw new Error("COMPILER_RESOURCE_LIMIT");
+    case "exited":
+      if (result.exitCode !== 0) throw new Error(stderr.trim() || `Compilation failed (exit code ${result.exitCode})`);
+  }
+}
+
+function assertTreeContainsNoLinks(root: string): void {
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    const entryPath = path.join(root, entry.name);
+    const metadata = fs.lstatSync(entryPath);
+    if (metadata.isSymbolicLink()) throw new Error("Compiler input directories cannot contain symlinks.");
+    if (metadata.isDirectory()) assertTreeContainsNoLinks(entryPath);
+  }
+}
+
+function readPreview(filePath: string, maxBytes: number): string {
+  if (!fs.existsSync(filePath)) return "";
+  const handle = fs.openSync(filePath, "r");
+  try {
+    const buffer = Buffer.allocUnsafe(Math.min(maxBytes, fs.fstatSync(handle).size));
+    return buffer.subarray(0, fs.readSync(handle, buffer, 0, buffer.length, 0)).toString("utf8");
+  } finally {
+    fs.closeSync(handle);
+  }
+}
+
+function compilationFailure(executablePath: string, error: string, started: bigint): CompilationResult {
+  return { executablePath, compileStatus: "CE", compileError: error, compileTime: elapsedMs(started) };
 }
 
 function normalizeCompilerError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
-  if (message.includes("GENERATED_FILE_TOO_LARGE"))
-    return "GENERATED_FILE_TOO_LARGE";
+  if (message.includes("GENERATED_FILE_TOO_LARGE")) return "GENERATED_FILE_TOO_LARGE";
   if (message.includes("COMPILER_TIMEOUT")) return "COMPILER_TIMEOUT";
-  return stripCompilerSentinels(message).trim() || "Compilation failed";
+  return message.trim() || "Compilation failed";
+}
+
+function safeName(value: string): string {
+  return value.replaceAll(/[^A-Za-z0-9_.-]/g, "_").slice(0, 96) || "artifact";
+}
+
+function elapsedMs(started: bigint): number {
+  return Number(process.hrtime.bigint() - started) / 1_000_000;
+}
+
+function samePath(left: string, right: string): boolean {
+  return path.resolve(left).toLowerCase() === path.resolve(right).toLowerCase();
+}
+
+function sameFile(left: string, right: string): boolean {
+  try { return samePath(fs.realpathSync(left), fs.realpathSync(right)); } catch { return false; }
 }

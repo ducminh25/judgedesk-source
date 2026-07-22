@@ -8,11 +8,13 @@ import { TestEditPopover } from "../features/problem-config/TestEditPopover";
 import { TestEditPopover as PopoverState } from "../features/problem-config/editor-state";
 import { useProblemConfigEditor } from "../features/problem-config/useProblemConfigEditor";
 import { useTranslation } from "react-i18next";
+import ProblemConfigSaveConfirmDialog from "./ProblemConfigSaveConfirmDialog";
 
 interface Props {
   problemName: string;
   testPath: string;
   initialConfig: ProblemConfig;
+  hasScoredResults?: boolean;
   onSave: (problemName: string, config: ProblemConfig) => void;
   onClose: () => void;
   customCheckers?: string[];
@@ -23,6 +25,7 @@ export default function ProblemConfigModal({
   problemName,
   testPath,
   initialConfig,
+  hasScoredResults = false,
   onSave,
   onClose,
   customCheckers = [],
@@ -40,12 +43,20 @@ export default function ProblemConfigModal({
   const [popover, setPopover] = useState<PopoverState | null>(null);
   const [popoverInput, setPopoverInput] = useState("");
   const [batchPointsTotal, setBatchPointsTotal] = useState("");
+  const [confirmingSave, setConfirmingSave] = useState(false);
 
   const closePopover = () => setPopover(null);
   const savePopover = () => {
     if (!popover) return;
     editor.applyEdit(popover, popoverInput);
     closePopover();
+  };
+  const requestSave = () => {
+    if (hasScoredResults) {
+      setConfirmingSave(true);
+      return;
+    }
+    void editor.save();
   };
 
   return (
@@ -165,7 +176,7 @@ export default function ProblemConfigModal({
           </button>
           <button
             disabled={editor.isSaving || saveDisabled}
-            onClick={() => void editor.save()}
+            onClick={requestSave}
             className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded shadow transition"
           >
             {editor.isSaving
@@ -187,6 +198,17 @@ export default function ProblemConfigModal({
           />
         )}
       </div>
+      {confirmingSave && (
+        <ProblemConfigSaveConfirmDialog
+          disabled={editor.isSaving || saveDisabled}
+          problemName={problemName}
+          onCancel={() => setConfirmingSave(false)}
+          onConfirm={() => {
+            setConfirmingSave(false);
+            void editor.save();
+          }}
+        />
+      )}
     </div>
   );
 }

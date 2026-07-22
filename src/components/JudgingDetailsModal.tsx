@@ -65,6 +65,8 @@ export default function JudgingDetailsModal({
           el: <AlertTriangle className="w-3.5 h-3.5" />,
         };
       case "RE":
+      case "OLE":
+      case "JE":
         return {
           col: "text-slate-600 dark:text-slate-400",
           el: <AlertTriangle className="w-3.5 h-3.5" />,

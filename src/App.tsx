@@ -6,8 +6,17 @@ import JudgingDetailsModal from "./components/JudgingDetailsModal";
 import ScoringLogModal from "./components/ScoringLogModal";
 import { apiFetch } from "./api";
 import { buildScoreWorkbookBase64 } from "./features/export/score-workbook";
-import { judgeResultsReducer, type JudgeResultsAction } from "./features/judging/judge-results";
+import {
+  judgeResultsReducer,
+  problemHasPositiveScore,
+  type JudgeResultsAction,
+} from "./features/judging/judge-results";
+import { canStartJudge, selectedNames } from "./features/judging/availability";
 import { useJudgeSession } from "./features/judging/useJudgeSession";
+import {
+  isDesktopReloadShortcut,
+  shouldRegisterBrowserBeforeUnload,
+} from "./features/desktop/browser-lifecycle";
 import { useContestWorkspace } from "./features/workspace/useContestWorkspace";
 import { createDefaultProblemConfig } from "../shared/problem-config";
 import Scoreboard, {
@@ -42,6 +51,7 @@ export default function App() {
   const {
     contestants: contestantsList,
     contestantsPath: thisinhPath,
+    contestantsPickerPath,
     customCheckers: customCheckersMap,
     loadContestants: handleFetchContestants,
     loadProblems: handleFetchProblems,
@@ -57,6 +67,7 @@ export default function App() {
     setSelectedProblems,
     setTestPath,
     testPath,
+    testsPickerPath,
   } = useContestWorkspace();
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [contestantSort, setContestantSort] = useState<
@@ -139,13 +150,8 @@ export default function App() {
     return list;
   }, [problemsList, problemSort]);
 
-  const displayedContestants = useMemo(() => {
-    let list = contestantsList;
-    if (searchTerm.trim()) {
-      const lower = searchTerm.toLowerCase();
-      list = list.filter((c) => c.toLowerCase().includes(lower));
-    }
-
+  const orderedContestants = useMemo(() => {
+    const list = contestantsList;
     if (contestantSort === "score") {
       const activeProblems = problemsList.filter((p) => selectedProblems[p]);
       const scoresMap: Record<string, number> = {};
@@ -186,17 +192,23 @@ export default function App() {
     return list;
   }, [
     contestantsList,
-    searchTerm,
     contestantSort,
     judgeResult,
     selectedProblems,
     problemsList,
   ]);
 
+  const displayedContestants = useMemo(() => {
+    if (!searchTerm.trim()) return orderedContestants;
+    const lower = searchTerm.toLowerCase();
+    return orderedContestants.filter((contestant) => contestant.toLowerCase().includes(lower));
+  }, [orderedContestants, searchTerm]);
+
   const activeLoadModalRef = useRef<"tests" | "contestants" | null>(null);
 
   const requestHostStatus = useCallback(() => {
-    if (hostStatus || hostStatusRequestRef.current) return;
+    if (hostStatusRequestRef.current) return;
+    setHostStatus(null);
     const request = (async () => {
       try {
         const response = await apiFetch("/api/status");
@@ -210,14 +222,18 @@ export default function App() {
       }
     })();
     hostStatusRequestRef.current = request;
-  }, [hostStatus, t]);
+  }, [t]);
+
+  useEffect(() => {
+    requestHostStatus();
+  }, [requestHostStatus]);
 
   useEffect(() => {
     activeLoadModalRef.current = loadModal;
     if (loadModal) {
-      setModalPath(loadModal === "tests" ? testPath : thisinhPath);
+      setModalPath(loadModal === "tests" ? testsPickerPath : contestantsPickerPath);
     }
-  }, [loadModal, testPath, thisinhPath]);
+  }, [contestantsPickerPath, loadModal, testsPickerPath]);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -277,16 +293,27 @@ export default function App() {
   }, [isJudging, isSavingContest]);
 
   useEffect(() => {
+    const useBrowserBeforeUnload = shouldRegisterBrowserBeforeUnload(window);
+    const isTauri = !useBrowserBeforeUnload;
     const beforeUnload = (event: BeforeUnloadEvent) => {
       if (!contestDirtyRef.current) return;
       event.preventDefault();
       event.returnValue = "";
     };
-    window.addEventListener("beforeunload", beforeUnload);
+    const blockDesktopReload = (event: KeyboardEvent) => {
+      if (!isTauri || !isDesktopReloadShortcut(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    // Chromium's browser-level beforeunload prompt fights Tauri's native close
+    // handler and can also interrupt Vite hot reloads. Only regular browser usage
+    // needs it; the desktop app is protected by onCloseRequested below.
+    if (useBrowserBeforeUnload) window.addEventListener("beforeunload", beforeUnload);
+    else window.addEventListener("keydown", blockDesktopReload, true);
 
     let disposed = false;
     let unlisten: (() => void) | undefined;
-    if ("__TAURI_INTERNALS__" in window) {
+    if (isTauri) {
       void (async () => {
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
         const stopListening = await getCurrentWindow().onCloseRequested((event) => {
@@ -306,7 +333,8 @@ export default function App() {
     return () => {
       disposed = true;
       unlisten?.();
-      window.removeEventListener("beforeunload", beforeUnload);
+      if (useBrowserBeforeUnload) window.removeEventListener("beforeunload", beforeUnload);
+      else window.removeEventListener("keydown", blockDesktopReload, true);
     };
   }, [t]);
 
@@ -427,23 +455,22 @@ export default function App() {
     if (interactionLockedRef.current || saveOperationRef.current) return Promise.resolve();
     const contestants =
       contestantsOverride ??
-      displayedContestants.filter((name) => selectedContestants[name]);
+      selectedNames(orderedContestants, selectedContestants);
     const problems =
       problemsOverride ??
-      displayedProblems.filter((name) => selectedProblems[name]);
+      selectedNames(displayedProblems, selectedProblems);
     return runJudgeTargets(contestants, problems);
   };
 
-  const selectedContestantNames = displayedContestants.filter(
-    (name) => selectedContestants[name],
-  );
-  const selectedProblemNames = displayedProblems.filter(
-    (name) => selectedProblems[name],
-  );
-  const canRun = !!thisinhPath.trim()
-    && !!testPath.trim()
-    && selectedContestantNames.length > 0
-    && selectedProblemNames.length > 0;
+  const selectedContestantNames = selectedNames(contestantsList, selectedContestants);
+  const selectedProblemNames = selectedNames(problemsList, selectedProblems);
+  const canRun = canStartJudge({
+    contestantsPath: thisinhPath,
+    testsPath: testPath,
+    contestantNames: selectedContestantNames,
+    problemNames: selectedProblemNames,
+    secureRunnerReady: hostStatus?.secureRunner.ready === true,
+  });
   const canDeleteSelected = !!judgeResult?.contestants.some(
     (contestant) => selectedContestants[contestant.contestantName]
       && contestant.problems.some((problem) => selectedProblemNames.some(
@@ -555,11 +582,11 @@ export default function App() {
         onOpenContest={() => requestContestAction("open")}
         onOpenContestants={() => {
           setLoadModal("contestants");
-          setModalPath(thisinhPath);
+          setModalPath(contestantsPickerPath);
         }}
         onOpenTests={() => {
           setLoadModal("tests");
-          setModalPath(testPath);
+          setModalPath(testsPickerPath);
         }}
         onReload={() => {
           void Promise.all([handleFetchContestants(), handleFetchProblems()]).then(() => {
@@ -722,9 +749,10 @@ export default function App() {
             problemConfigs[activeConfigProblem] ||
             createDefaultProblemConfig(activeConfigProblem)
           }
+          hasScoredResults={problemHasPositiveScore(judgeResult, activeConfigProblem)}
           onSave={(problemName, config) => {
             saveProblemConfig(problemName, config);
-            markContestDirty();
+            dispatchResults({ type: "delete_problem", problemName });
           }}
           onClose={() => setActiveConfigProblem(null)}
           customCheckers={customCheckersMap[activeConfigProblem] || []}

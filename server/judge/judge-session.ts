@@ -220,6 +220,7 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
              checker: compiledCheckers[`${problemName}_${checkerType}`],
              jobId
            });
+           if (jobId && activeJobs.get(jobId)?.cancel) break;
            tcRuns.push(tcRes);
          }
       }

@@ -1,6 +1,6 @@
 use std::fs::{self, OpenOptions};
-use std::io::Write;
-use std::net::TcpListener;
+use std::io::{Read, Write};
+use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{App, AppHandle, Manager};
@@ -11,6 +11,61 @@ use tauri_plugin_shell::ShellExt;
 pub struct BackendSidecar(Mutex<Option<CommandChild>>);
 
 pub struct BackendPort(pub u16);
+
+#[cfg(debug_assertions)]
+fn dev_state_path() -> Option<PathBuf> {
+    std::env::current_exe()
+        .ok()?
+        .parent()
+        .map(|directory| directory.join("judgedesk-backend-state.json"))
+}
+
+#[cfg(debug_assertions)]
+fn dev_state_contents(port: u16) -> String {
+    format!("{{\"parentPid\":{},\"port\":{port}}}", std::process::id())
+}
+
+#[cfg(debug_assertions)]
+fn write_dev_state(port: u16) {
+    let Some(path) = dev_state_path() else {
+        return;
+    };
+    if let Err(error) = fs::write(&path, dev_state_contents(port)) {
+        eprintln!("Failed to write desktop dev backend state: {error}");
+    }
+}
+
+#[cfg(not(debug_assertions))]
+fn write_dev_state(_port: u16) {}
+
+#[cfg(debug_assertions)]
+fn clear_dev_state(port: u16) {
+    let Some(path) = dev_state_path() else {
+        return;
+    };
+    if fs::read_to_string(&path).ok().as_deref() == Some(dev_state_contents(port).as_str()) {
+        let _ = fs::remove_file(path);
+    }
+}
+
+#[cfg(not(debug_assertions))]
+fn clear_dev_state(_port: u16) {}
+
+fn request_graceful_shutdown(port: u16) {
+    let address = SocketAddr::from(([127, 0, 0, 1], port));
+    let Ok(mut stream) = TcpStream::connect_timeout(&address, std::time::Duration::from_secs(1))
+    else {
+        return;
+    };
+    let _ = stream.set_read_timeout(Some(std::time::Duration::from_secs(5)));
+    let request = format!(
+        "POST /api/shutdown HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+    );
+    if stream.write_all(request.as_bytes()).is_ok() {
+        let mut response = [0_u8; 256];
+        let _ = stream.read(&mut response);
+    }
+}
 
 fn get_free_port() -> Option<u16> {
     TcpListener::bind("127.0.0.1:0")
@@ -86,6 +141,7 @@ pub fn spawn(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     };
     let (mut events, child) = match sidecar
         .env("PORT", port.to_string())
+        .env("JUDGEDESK_PARENT_PID", std::process::id().to_string())
         .env("THEMIS_RESOURCE_DIR", resource_dir)
         .spawn()
     {
@@ -101,6 +157,7 @@ pub fn spawn(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     };
 
     *app.state::<BackendSidecar>().0.lock().unwrap() = Some(child);
+    write_dev_state(port);
     let handle = app.handle().clone();
     tauri::async_runtime::spawn(async move {
         while let Some(event) = events.recv().await {
@@ -127,6 +184,7 @@ pub fn spawn(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
                     );
                     println!("{message}");
                     handle.state::<BackendSidecar>().0.lock().unwrap().take();
+                    clear_dev_state(port);
                     Some(message)
                 }
                 _ => None,
@@ -140,10 +198,17 @@ pub fn spawn(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub fn stop(app: &AppHandle) {
+    let port = app.try_state::<BackendPort>().map(|port| port.0);
+    if let Some(port) = port {
+        request_graceful_shutdown(port);
+    }
     let child = app.state::<BackendSidecar>().0.lock().unwrap().take();
     if let Some(child) = child {
         if let Err(error) = child.kill() {
             eprintln!("Failed to stop server sidecar: {error}");
         }
+    }
+    if let Some(port) = port {
+        clear_dev_state(port);
     }
 }

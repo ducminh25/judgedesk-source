@@ -16,10 +16,13 @@ hdiutil attach "$dmg_file" -readonly -nobrowse -mountpoint "$mount_dir" >/dev/nu
 app_bundle="$(find "$mount_dir" -maxdepth 1 -name '*.app' -print -quit)"
 test -n "$app_bundle"
 server_binary="$app_bundle/Contents/MacOS/server"
+executor_binary="$app_bundle/Contents/MacOS/judgedesk-executor"
 
 lipo "$app_bundle/Contents/MacOS/themis-v2" -verify_arch arm64
 lipo "$server_binary" -verify_arch arm64
+lipo "$executor_binary" -verify_arch arm64
 codesign --verify --deep --strict --verbose=2 "$app_bundle"
+codesign --verify --strict --verbose=2 "$executor_binary"
 server_entitlements="$(codesign -d --entitlements :- "$server_binary" 2>&1)"
 printf '%s\n' "$server_entitlements"
 if ! grep -q 'com.apple.security.cs.allow-jit' <<<"$server_entitlements"; then

@@ -38,22 +38,7 @@ export function registerProblemRoutes(app: Express): void {
       const customCheckers: Record<string, string[]> = {};
       for (const dir of dirs) {
         const problemPath = path.join(resolved, dir);
-        const executableFiles: string[] = [];
-        const cppFiles: string[] = [];
-        try {
-          for (const file of fs.readdirSync(problemPath)) {
-            if (!fs.statSync(path.join(problemPath, file)).isFile()) continue;
-            const lowerFile = file.toLowerCase();
-            if (lowerFile.endsWith(".exe")) {
-              executableFiles.push(file);
-            } else if (lowerFile.endsWith(".cpp")) {
-              cppFiles.push(file);
-            }
-          }
-        } catch {}
-        executableFiles.sort(naturalSort);
-        cppFiles.sort(naturalSort);
-        customCheckers[dir] = [...executableFiles, ...cppFiles];
+        customCheckers[dir] = discoverCustomCheckers(problemPath);
       }
 
       return res.json({ success: true, data: dirs, customCheckers });
@@ -161,4 +146,18 @@ export function registerProblemRoutes(app: Express): void {
       return res.status(500).json({ success: false, message: error.message });
     }
   });
+}
+
+export function discoverCustomCheckers(problemPath: string): string[] {
+  try {
+    return fs.readdirSync(problemPath)
+      .filter((file) => {
+        const lower = file.toLowerCase();
+        return (lower.endsWith(".cpp") || lower.endsWith(".py"))
+          && fs.statSync(path.join(problemPath, file)).isFile();
+      })
+      .sort(naturalSort);
+  } catch {
+    return [];
+  }
 }

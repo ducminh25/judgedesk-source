@@ -5,6 +5,7 @@ import { activeJobs } from "../jobs.js";
 import { createJudgeEventWriter } from "./judge-event-writer.js";
 import { runJudgeSession } from "./judge-session.js";
 import { createRunWorkspace } from "./run-workspace.js";
+import { executorClient } from "../executor/client.js";
 
 export function registerBatchJudgeRoute(app: Express): void {
   // Batch Judge Endpoint
@@ -12,7 +13,14 @@ export function registerBatchJudgeRoute(app: Express): void {
     const events = createJudgeEventWriter(res);
     const { thisinhPath, testPath, jobId } = req.body;
     const sendEvent = events.send;
-    if (jobId) activeJobs.set(jobId, { cancel: false });
+    if (!executorClient.health.ready) {
+      sendEvent("error", {
+        message: `SECURE_RUNNER_UNAVAILABLE: ${executorClient.health.diagnostics.join("; ")}`,
+      });
+      events.end();
+      return;
+    }
+    if (jobId) activeJobs.set(jobId, { cancel: false, runIds: new Set() });
 
     if (!thisinhPath || !testPath) {
       if (jobId) activeJobs.delete(jobId);

@@ -4,12 +4,54 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
+  buildCompilerEnvironment,
   buildSubmissionCompilerArgs,
   COMPILE_TIMEOUT_MS,
+  findGccIncludeDirectories,
   MAX_GENERATED_FILE_BYTES,
   resolveChecker,
   runCompilerWithLimits,
 } from "./compiler";
+
+test("compiler request uses a minimal environment independent of the parent shell", () => {
+  assert.deepEqual(
+    buildCompilerEnvironment("D:\\Managed GCC\\bin\\g++.exe", "win32"),
+    { Path: "D:\\Managed GCC\\bin" },
+  );
+  assert.deepEqual(buildCompilerEnvironment("/usr/bin/clang++", "darwin"), {});
+});
+
+test("relocated managed GCC discovers only cache-contained system include directories", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-gcc-includes-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const directories = [
+    path.join(root, "include", "c++", "14.2.0"),
+    path.join(root, "include", "c++", "14.2.0", "x86_64-w64-mingw32", "bits"),
+    path.join(root, "include", "c++", "14.2.0", "backward"),
+    path.join(root, "lib", "gcc", "x86_64-w64-mingw32", "14.2.0", "include"),
+    path.join(root, "x86_64-w64-mingw32", "include"),
+  ];
+  for (const directory of directories) fs.mkdirSync(directory, { recursive: true });
+  fs.writeFileSync(path.join(directories[0], "iostream"), "");
+  fs.writeFileSync(path.join(directories[1], "c++config.h"), "");
+  fs.writeFileSync(path.join(directories[3], "stddef.h"), "");
+  fs.writeFileSync(path.join(directories[4], "windows.h"), "");
+
+  const found = findGccIncludeDirectories(root).map((directory) => path.resolve(directory));
+  for (const expected of [directories[0], path.dirname(directories[1]), directories[2], directories[3], directories[4]]) {
+    assert.ok(found.includes(path.resolve(expected)), `missing ${expected}`);
+  }
+  assert.ok(found.every((directory) => path.relative(root, directory) && !path.relative(root, directory).startsWith("..")));
+});
+
+function executorTestHelper(): string {
+  const target = process.platform === "win32"
+    ? "judgedesk-executor-x86_64-pc-windows-msvc.exe"
+    : process.arch === "arm64"
+      ? "judgedesk-executor-aarch64-apple-darwin"
+      : "judgedesk-executor-x86_64-apple-darwin";
+  return path.join(process.cwd(), "src-tauri", "binaries", target);
+}
 
 test("production compiler limits are 15 seconds and 32 MiB", () => {
   assert.equal(COMPILE_TIMEOUT_MS, 15_000);
@@ -21,8 +63,8 @@ test("compiler watchdog terminates a stuck compiler", async (t) => {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   await assert.rejects(
     runCompilerWithLimits(
-      process.execPath,
-      ["-e", "setInterval(() => {}, 1000)"],
+      executorTestHelper(),
+      ["--test-sleep"],
       root,
       path.join(root, "never-created.out"),
       undefined,
@@ -38,11 +80,11 @@ test("compiler rejects and removes an oversized generated file", async (t) => {
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   await assert.rejects(
     runCompilerWithLimits(
-      process.execPath,
+      executorTestHelper(),
       [
-        "-e",
-        "require('node:fs').writeFileSync(process.argv[1], Buffer.alloc(131072))",
+        "--test-write",
         outputPath,
+        "131072",
       ],
       root,
       outputPath,
@@ -61,12 +103,14 @@ test("compiler flags retain Windows limits and avoid unsupported macOS flags", (
     "output file.exe",
   );
   assert.ok(windows.includes("-static"));
+  assert.ok(windows.includes("-fno-finite-loops"));
   assert.ok(windows.includes("-Wl,--stack,66060288"));
   assert.equal(windows.includes('"source file.cpp"'), false);
   assert.ok(windows.includes("source file.cpp"));
 
   const mac = buildSubmissionCompilerArgs("darwin", "main.cpp", "main");
   assert.equal(mac.includes("-static"), false);
+  assert.ok(mac.includes("-fno-finite-loops"));
   assert.equal(
     mac.some((flag) => flag.includes("--stack")),
     false,
@@ -89,5 +133,30 @@ test("standard checkers use the cross-platform built-in implementation", async (
       tempDirectory: ".",
     }),
     { path: null },
+  );
+});
+
+test("custom checker resolution accepts source files and rejects executables", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-checker-sources-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(root, "checker.py"), "raise SystemExit(0)\n", "utf8");
+
+  assert.deepEqual(
+    await resolveChecker({
+      checkerType: "checker.py",
+      problemName: "sample",
+      problemDirectory: root,
+      tempDirectory: root,
+    }),
+    { path: path.join(root, "checker.py"), runtime: "python" },
+  );
+  assert.match(
+    (await resolveChecker({
+      checkerType: "checker.exe",
+      problemName: "sample",
+      problemDirectory: root,
+      tempDirectory: root,
+    })).error || "",
+    /not supported.*\.cpp or \.py/i,
   );
 });

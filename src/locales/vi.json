@@ -16,6 +16,8 @@
     "PE": "Sai định dạng",
     "TLE": "Quá thời gian",
     "MLE": "Quá bộ nhớ",
+    "OLE": "Quá giới hạn đầu ra",
+    "JE": "Lỗi hệ thống chấm",
     "RE": "Lỗi khi chạy",
     "CE": "Lỗi biên dịch",
     "FAIL": "Lỗi trình chấm",
@@ -121,6 +123,9 @@
     "showContent": "Hiện nội dung?",
     "cancel": "Hủy",
     "saving": "Đang lưu...",
+    "confirmSaveTitle": "Lưu cấu hình và xóa kết quả?",
+    "confirmSaveMessage": "Bài {{problem}} đã có bài chấm được điểm. Khi lưu cấu hình, toàn bộ điểm và nhật ký chấm của bài này sẽ bị xóa vĩnh viễn.",
+    "saveAndClear": "Lưu và xóa kết quả",
     "readOnlyWhileBusy": "Bạn có thể xem cấu hình nhưng không thể lưu khi đang chấm hoặc lưu kỳ thi.",
     "close": "Đóng cấu hình bài tập",
     "testEdit": {
@@ -166,7 +171,7 @@
     },
     "viewSource": "Xem source",
     "sourceOpenFailed": "Không thể mở source checker",
-    "customDescription": "Checker tùy chỉnh {{name}} trong thư mục bài. Các file .exe đã biên dịch được xếp trước source C++.",
+    "customDescription": "Checker tùy chỉnh {{name}} trong thư mục bài. JudgeDesk chỉ nhận source C++ (.cpp) và Python (.py); file .exe không được hỗ trợ.",
     "entries": {
       "C1": {
         "title": "C1LinesWordsIgnoreCase",
@@ -303,7 +308,8 @@
     "COMPILER_TIMEOUT": "Trình biên dịch đã quá thời gian 15 giây và bị buộc dừng.",
     "GENERATED_FILE_TOO_LARGE": "Quá trình biên dịch đã sinh file lớn hơn giới hạn 32 MiB và bị buộc dừng.",
     "TOOLCHAIN_CPP_MISSING": "Không tìm thấy trình biên dịch. Cần C++ phiên bản 9.2.0 trở lên.",
-    "TOOLCHAIN_PYTHON_MISSING": "Không tìm thấy môi trường chạy Python."
+    "TOOLCHAIN_PYTHON_MISSING": "Không tìm thấy môi trường chạy Python.",
+    "TOOLCHAIN_NOT_SANDBOX_COMPATIBLE": "Toolchain này chưa phải runtime được quản lý và xác thực nên không thể chạy trong bảo vệ native."
   },
   "updates": {
     "check": "Kiểm tra cập nhật",

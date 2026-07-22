@@ -13,7 +13,13 @@ export function listContestants(contestantsDirectory: string, targets?: unknown)
   const contestants = fs.readdirSync(contestantsDirectory)
     .filter(name => fs.statSync(path.join(contestantsDirectory, name)).isDirectory());
   if (!Array.isArray(targets)) return contestants;
-  return contestants.filter(name => targets.includes(name));
+  const available = new Set(contestants);
+  const seen = new Set<string>();
+  return targets.filter((name): name is string => {
+    if (typeof name !== "string" || seen.has(name) || !available.has(name)) return false;
+    seen.add(name);
+    return true;
+  });
 }
 
 export function findSubmission(contestantDirectory: string, targetProblem: string): Submission | null {

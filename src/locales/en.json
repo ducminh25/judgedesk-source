@@ -16,6 +16,8 @@
     "PE": "Presentation error",
     "TLE": "Time limit exceeded",
     "MLE": "Memory limit exceeded",
+    "OLE": "Output limit exceeded",
+    "JE": "Judge error",
     "RE": "Runtime error",
     "CE": "Compilation error",
     "FAIL": "Checker failed",
@@ -121,6 +123,9 @@
     "showContent": "Show content?",
     "cancel": "Cancel",
     "saving": "Saving...",
+    "confirmSaveTitle": "Save configuration and clear results?",
+    "confirmSaveMessage": "Problem {{problem}} already has scored submissions. Saving this configuration will permanently delete every score and judging log for this problem.",
+    "saveAndClear": "Save and clear results",
     "readOnlyWhileBusy": "You can inspect this configuration, but it cannot be saved while judging or saving is in progress.",
     "close": "Close problem configuration",
     "testEdit": {
@@ -166,7 +171,7 @@
     },
     "viewSource": "View source",
     "sourceOpenFailed": "Could not open checker source",
-    "customDescription": "Custom checker {{name}} from the problem directory. Precompiled .exe files are listed before C++ sources.",
+    "customDescription": "Custom checker {{name}} from the problem directory. JudgeDesk accepts C++ (.cpp) and Python (.py) sources; .exe files are not supported.",
     "entries": {
       "C1": {
         "title": "C1LinesWordsIgnoreCase",
@@ -303,7 +308,8 @@
     "COMPILER_TIMEOUT": "Compiler timed out after 15 seconds. The compiler process was terminated.",
     "GENERATED_FILE_TOO_LARGE": "Compilation generated a file larger than the 32 MiB limit. The compiler process was terminated.",
     "TOOLCHAIN_CPP_MISSING": "No compiler found. C++ 9.2.0 or newer is required.",
-    "TOOLCHAIN_PYTHON_MISSING": "No Python runtime found."
+    "TOOLCHAIN_PYTHON_MISSING": "No Python runtime found.",
+    "TOOLCHAIN_NOT_SANDBOX_COMPATIBLE": "This toolchain is not a verified managed runtime and cannot run inside Native protection."
   },
   "updates": {
     "check": "Check for updates",

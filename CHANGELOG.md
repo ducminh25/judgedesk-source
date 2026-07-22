@@ -3,6 +3,52 @@
 Tất cả thay đổi đáng chú ý của JudgeDesk được ghi tại đây. Dự án dùng Semantic
 Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng dụng hiện có.
 
+## [1.2.1] - 2026-07-22
+
+### Native protection và tính đúng đắn
+
+- Thêm native secure executor mặc định: Windows dùng LPAC/AppContainer kết hợp
+  Job Object; macOS dùng sandbox profile theo từng run, process group và
+  resource limits. Không còn fallback sang đường chạy native không bảo vệ.
+- Chặn network, giới hạn cây process/thread, output, workspace write, wall time
+  và memory; thêm startup self-test và fail closed khi runner không sẵn sàng.
+- Chuẩn hóa verdict TLE/RE/OLE và số liệu time/memory giữa backend và giao diện.
+  TLE chỉ hiện một dòng, ẩn exit code nội bộ và hiển thị đúng time limit.
+- Sửa giới hạn môi trường compile gây `environment exceeds protocol limits`,
+  tăng độ ổn định của compiler watchdog và cache artifact.
+- Checker tùy chỉnh portable nhận source C++ hoặc Python; bỏ chạy checker `.exe`
+  để tránh sai khác và rủi ro giữa Windows/macOS.
+
+### Desktop và quy trình chấm
+
+- Ngăn WebView tự reload khi Alt+Tab/mất focus và tắt file watcher trong chế độ
+  manual desktop test để không restart sidecar ngoài ý muốn.
+- Backend chờ startup có retry; đóng app, `Ctrl+C`, End task hoặc Force Quit sẽ
+  dọn executor/backend theo đúng parent PID, không kill nhầm phiên khác.
+- Nút Judge chỉ bật khi secure runner sẵn sàng và có ít nhất một thí sinh cùng
+  một problem được chọn; chọn lại tất cả sau khi bỏ chọn hoạt động bình thường.
+- Thứ tự batch judging giữ đúng thứ tự đang hiển thị trên scoreboard.
+- Save problem configuration cảnh báo nếu đã có điểm và xóa toàn bộ điểm/log của
+  problem sau khi người dùng xác nhận.
+- Reload/New contest không tự kích hoạt workspace cũ; đường dẫn lần chọn gần nhất
+  chỉ được dùng để prefill hộp chọn thư mục.
+- Đồng bộ trạng thái compiler giữa System Status và Compilers & Runtimes Manager.
+
+### Windows và macOS
+
+- Sửa nhận diện executor đã được bundle trong desktop dev và installer.
+- macOS dùng `wait4`/`ru_maxrss` cho peak memory và phân loại signal/resource
+  limit; tên bundle hiển thị JudgeDesk thay vì ThemisV2.
+- CodeMagic Apple Silicon chạy executor unit/security tests, xác minh kiến trúc,
+  chữ ký ad-hoc, entitlements, DMG và updater tarball trước khi xuất artifact.
+
+### Kiểm thử
+
+- Thêm test executor Rust, security fixtures, boundary TLE/memory lặp 20 lần,
+  lifecycle/orphan checks, compiler containment và benchmark JSON/Markdown.
+- Đối chiếu 1.060 test với Themis: điểm cấp problem khớp sau quy đổi thang điểm;
+  JudgeDesk cho kết quả ổn định hơn trên các test sát ngưỡng thời gian.
+
 ## [1.2.0] - 2026-07-19
 
 ### Nổi bật
@@ -55,3 +101,4 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 - macOS hỗ trợ Apple Silicon, macOS 11 trở lên. Windows hỗ trợ Windows 10/11 x64.
 
 [1.2.0]: https://github.com/ducminh25/themis-v2/releases/tag/v1.2.0
+[1.2.1]: https://github.com/ducminh25/themis-v2/releases/tag/v1.2.1

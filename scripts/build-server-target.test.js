@@ -206,6 +206,11 @@ test("GitHub release workflow builds Apple Silicon only", () => {
   );
   assert.deepEqual(macConfig.bundle.targets, ["app", "dmg"]);
   assert.equal(macConfig.bundle.macOS.entitlements, "./Entitlements.plist");
+  const rootConfig = JSON.parse(
+    fs.readFileSync(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8"),
+  );
+  assert.equal(rootConfig.productName, "JudgeDesk");
+  assert.equal(rootConfig.app.windows[0].title, "JudgeDesk");
 
   const entitlements = fs.readFileSync(
     new URL("../src-tauri/Entitlements.plist", import.meta.url),
@@ -223,9 +228,17 @@ test("Apple Silicon release scripts verify architecture, DMG, and sidecar", () =
     new URL("./verify-macos-arm64-bundle.sh", import.meta.url),
     "utf8",
   );
+  const macExecutor = fs.readFileSync(
+    new URL("../native-executor/src/platform/macos.rs", import.meta.url),
+    "utf8",
+  );
 
   assert.match(sidecarScript, /lipo "\$sidecar" -verify_arch arm64/);
   assert.match(sidecarScript, /smoke-test-sidecar\.js "\$sidecar"/);
+  assert.match(sidecarScript, /test:executor/);
+  assert.match(sidecarScript, /security\.integration\.test\.ts/);
+  assert.match(macExecutor, /libc::wait4/);
+  assert.match(macExecutor, /ru_maxrss/);
   assert.match(bundleScript, /hdiutil attach "\$dmg_file" -readonly -nobrowse/);
   assert.match(bundleScript, /trap cleanup_dmg_mount EXIT/);
   assert.match(bundleScript, /Contents\/MacOS\/themis-v2" -verify_arch arm64/);

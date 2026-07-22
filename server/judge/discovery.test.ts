@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { findSubmission, listContestants } from "./submission-discovery";
 import { createProblemDirectoryResolver, listTestDirectories, resolveTestCaseFiles } from "./testcase-discovery";
+import { discoverCustomCheckers } from "../routes/problem-routes";
 
 test("discovery matches problem names case-insensitively and sorts tests naturally", t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "themis-discovery-"));
@@ -39,4 +40,25 @@ test("discovery recognizes Python submissions independently of C++", (t) => {
     language: "python",
     problemName: "GRAPH",
   });
+});
+
+test("contestant discovery preserves the requested scoreboard order", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-contestant-order-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const name of ["C03-BaHung", "C03-khanh", "C03_QUANGMINH"]) {
+    fs.mkdirSync(path.join(root, name));
+  }
+  assert.deepEqual(
+    listContestants(root, ["C03_QUANGMINH", "C03-BaHung", "C03-khanh"]),
+    ["C03_QUANGMINH", "C03-BaHung", "C03-khanh"],
+  );
+});
+
+test("custom checker discovery exposes portable C++ and Python sources only", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-checker-discovery-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const name of ["checker10.py", "checker2.cpp", "legacy.exe", "notes.txt"]) {
+    fs.writeFileSync(path.join(root, name), "", "utf8");
+  }
+  assert.deepEqual(discoverCustomCheckers(root), ["checker2.cpp", "checker10.py"]);
 });

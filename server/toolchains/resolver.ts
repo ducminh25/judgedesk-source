@@ -99,6 +99,49 @@ export function clearToolchainDetectionCache(): void {
   executableSupportCache.clear();
 }
 
+export function resolveManagedToolchain(kind: ToolchainKind): ResolvedToolchain {
+  const descriptor = getDescriptorForHost(os.platform(), os.arch(), kind);
+  if (descriptor) {
+    const executablePath = path.join(
+      getToolchainsDir(),
+      descriptor.id,
+      descriptor.executableRelativePath,
+    );
+    if (fs.existsSync(executablePath)) {
+      const version = getExecutableVersion(executablePath, kind);
+      return {
+        kind,
+        source: "managed",
+        executablePath,
+        version,
+        ready: isSupportedExecutable(executablePath, kind),
+      };
+    }
+  }
+  return {
+    kind,
+    source: "managed",
+    executablePath: "",
+    version: "",
+    ready: false,
+    diagnostic: "Managed toolchain not installed.",
+  };
+}
+
+export function chooseNativeProtectedToolchain(
+  platform: NodeJS.Platform,
+  managed: ResolvedToolchain,
+  selected: ResolvedToolchain,
+): ResolvedToolchain {
+  return platform === "win32" && managed.ready ? managed : selected;
+}
+
+export function resolveNativeProtectedToolchain(kind: ToolchainKind): ResolvedToolchain {
+  const managed = resolveManagedToolchain(kind);
+  if (os.platform() === "win32" && managed.ready) return managed;
+  return chooseNativeProtectedToolchain(os.platform(), managed, resolveToolchain(kind));
+}
+
 // Searches environment PATH for binary
 export function searchInPath(binaryName: string): string | null {
   const envPath = process.env.PATH || "";
@@ -501,19 +544,7 @@ export function resolveToolchain(kind: ToolchainKind): ResolvedToolchain {
   const customPath =
     kind === "cpp" ? prefs.customCppPath : prefs.customPythonPath;
 
-  // Let's resolve managed toolchain path
-  const descriptor = getDescriptorForHost(platform, arch, kind);
-  let managedPath: string | null = null;
-  if (descriptor) {
-    const managedExec = path.join(
-      getToolchainsDir(),
-      descriptor.id,
-      descriptor.executableRelativePath,
-    );
-    if (fs.existsSync(managedExec)) {
-      managedPath = managedExec;
-    }
-  }
+  const managed = resolveManagedToolchain(kind);
 
   // Helper to construct a System resolution result
   const resolveSystem = (): ResolvedToolchain => {
@@ -561,26 +592,7 @@ export function resolveToolchain(kind: ToolchainKind): ResolvedToolchain {
   };
 
   // Helper to construct a Managed resolution result
-  const resolveManaged = (): ResolvedToolchain => {
-    if (managedPath) {
-      const version = getExecutableVersion(managedPath, kind);
-      return {
-        kind,
-        source: "managed",
-        executablePath: managedPath,
-        version,
-        ready: isSupportedExecutable(managedPath, kind),
-      };
-    }
-    return {
-      kind,
-      source: "managed",
-      executablePath: "",
-      version: "",
-      ready: false,
-      diagnostic: "Managed toolchain not installed.",
-    };
-  };
+  const resolveManaged = (): ResolvedToolchain => managed;
 
   // Resolve according to user preference
   if (preferredSource === "custom") {
@@ -595,10 +607,7 @@ export function resolveToolchain(kind: ToolchainKind): ResolvedToolchain {
   }
 
   // Fallbacks: If preferred source fails, search remaining in order: Managed -> Custom -> System
-  if (managedPath) {
-    const res = resolveManaged();
-    if (res.ready) return res;
-  }
+  if (managed.ready) return managed;
   if (customPath && fs.existsSync(customPath)) {
     const res = resolveCustom();
     if (res.ready) return res;
