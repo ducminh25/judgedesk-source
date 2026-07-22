@@ -190,7 +190,7 @@ impl WindowsPlatform {
                 && probe["writeBlocked"].as_bool() == Some(true)
                 && sentinel_intact;
             let network = probe["networkBlocked"].as_bool() == Some(true);
-            let process = probe["processBlocked"].as_bool() == Some(true)
+            let process = probe["processAttemptStarted"].as_bool() == Some(true)
                 && (matches!(run.reason, RunReason::ProcessLimit)
                     || (matches!(run.reason, RunReason::Exited) && run.exit_code == Some(0)));
             let ready = filesystem && network && process;

@@ -132,9 +132,13 @@ impl MacosPlatform {
                 && probe["writeBlocked"].as_bool() == Some(true)
                 && sentinel_intact;
             let network = probe["networkBlocked"].as_bool() == Some(true);
-            let process = probe["processBlocked"].as_bool() == Some(true)
+            // Seatbelt may terminate the caller (SIGABRT on current macOS) for a denied fork
+            // instead of returning EPERM. The child flushes this marker immediately before the
+            // process attempt and exits with reserved code 97 only if the forbidden shell ran.
+            let process = probe["processAttemptStarted"].as_bool() == Some(true)
                 && matches!(run.reason, RunReason::Exited)
-                && run.exit_code == Some(0);
+                && (run.exit_code == Some(0)
+                    || (run.exit_code.is_none() && run.signal_or_status.is_some()));
             let ready = filesystem && network && process;
             Ok(SelfTest {
                 ready,
