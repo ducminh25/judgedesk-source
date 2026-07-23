@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { executorClient } from "../server/executor/client.js";
 import { DEFAULT_EXECUTOR_LIMITS } from "../server/executor/protocol.js";
+import { executorResultToVerdict } from "../server/executor/verdict-mapper.js";
 import { createExecutorWorkspace, importExecutorArtifact } from "../server/executor/workspace.js";
 import {
   buildSubmissionCompilerArgs,
@@ -86,6 +87,55 @@ try {
     workspace.dispose();
   }
   console.log(`Apple Clang compile-and-run smoke passed in ${compilation.compileTime.toFixed(0)} ms.`);
+
+  const divideByZeroSourcePath = path.join(temporaryDirectory, "integer-divide-by-zero.cpp");
+  fs.writeFileSync(
+    divideByZeroSourcePath,
+    [
+      "int main(int argc, char**) {",
+      "  volatile int runtimeDivisor = argc - 1;",
+      "  return 42 / runtimeDivisor;",
+      "}",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  const divideByZeroCompilation = await compileSubmission({
+    language: "cpp",
+    contestantName: "smoke",
+    problemName: "integer_divide_by_zero",
+    submissionPath: divideByZeroSourcePath,
+    tempDirectory: temporaryDirectory,
+  });
+  if (divideByZeroCompilation.compileStatus !== "OK") {
+    throw new Error(`macOS integer divide-by-zero probe failed to compile: ${divideByZeroCompilation.compileError}`);
+  }
+
+  const divideByZeroArtifact = await importExecutorArtifact(divideByZeroCompilation.executablePath);
+  const divideByZeroWorkspace = await createExecutorWorkspace();
+  try {
+    const run = await executorClient.run({
+      runId: `macos_divide_by_zero_smoke_${crypto.randomUUID().replaceAll("-", "_")}`,
+      role: "submission",
+      workspaceId: divideByZeroWorkspace.id,
+      executableId: divideByZeroArtifact.executableId,
+      args: [],
+      stdoutFile: "stdout.txt",
+      stderrFile: "stderr.txt",
+      environment: {},
+      limits: {
+        ...DEFAULT_EXECUTOR_LIMITS.submission,
+        wallTimeMs: 2_000,
+        memoryBytes: 128 * 1024 * 1024,
+      },
+    });
+    if (executorResultToVerdict(run) !== "RE") {
+      throw new Error(`integer divide-by-zero did not produce RE: ${JSON.stringify(run)}`);
+    }
+  } finally {
+    divideByZeroWorkspace.dispose();
+  }
+  console.log("Apple Clang integer divide-by-zero trap smoke passed with RE.");
 } finally {
   await executorClient.shutdown();
   fs.rmSync(temporaryDirectory, { recursive: true, force: true });

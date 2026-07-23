@@ -3,7 +3,7 @@
 Tất cả thay đổi đáng chú ý của JudgeDesk được ghi tại đây. Dự án dùng Semantic
 Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng dụng hiện có.
 
-## [1.2.4] - 2026-07-22
+## [1.2.4] - 2026-07-23
 
 ### Sửa lỗi macOS
 
@@ -14,6 +14,12 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
   Apple Clang; build sẽ fail nếu System Status còn báo G++ `Not detected`.
 - Đóng gói compatibility header `bits/stdc++.h` cho Apple Clang/libc++, sửa CE
   của các bài thi C++ viết theo thói quen GCC mà không cần nới quyền sandbox.
+- Dùng giới hạn process cấp kernel và hostile regression test để chặn fork bomb
+  trên Mac chip M; release gate sẽ fail nếu containment này bị bỏ trong các bản
+  cập nhật sau.
+- Chèn trap cho phép chia số nguyên với mẫu số thực sự bằng 0 khi compile bằng
+  Apple Clang. Chỉ test phát sinh lỗi nhận `RE`, nhất quán với GCC/x86 trên
+  Windows; checker, phép chia số thực và các test khác không bị thay đổi.
 - Làm rõ bước cài DMG một lần để đổi bundle cũ `ThemisV2.app` thành
   `JudgeDesk.app`; updater in-place vẫn giữ nguyên identifier và dữ liệu.
 

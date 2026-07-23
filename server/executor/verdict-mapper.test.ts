@@ -32,3 +32,16 @@ test("non-TLE results retain measured wall time and diagnostics", () => {
   assert.equal(executorDisplayTimeMs(runtimeError, 1_000), 76.25);
   assert.match(executorDiagnostic(runtimeError, "boom"), /0x4A440002.*Exit code 1245970434.*boom/);
 });
+
+test("runtime signals without an exit code map to RE", () => {
+  for (const signalOrStatus of ["signal 8", "signal 11"]) {
+    const signalled: ExecutorRunResult = {
+      ...tle,
+      reason: "exited",
+      exitCode: null,
+      signalOrStatus,
+    };
+    assert.equal(executorResultToVerdict(signalled), "RE");
+    assert.match(executorDiagnostic(signalled, ""), new RegExp(signalOrStatus));
+  }
+});
