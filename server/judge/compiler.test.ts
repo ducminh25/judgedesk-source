@@ -49,13 +49,36 @@ test("macOS compilation separates the integrated frontend from the linker", () =
   const object = path.resolve("program.o");
   const source = path.resolve("main.cpp");
   const phases = buildDarwinCompilerPhases(
-    ["-std=c++14", "-O2", "-s", "-lm", "-x", "c++", source, "-o", output],
+    [
+      "-std=c++14",
+      "-O2",
+      "-fsanitize=integer-divide-by-zero",
+      "-fsanitize-trap=integer-divide-by-zero",
+      "-s",
+      "-lm",
+      "-x",
+      "c++",
+      source,
+      "-o",
+      output,
+    ],
     output,
     object,
   );
   assert.deepEqual(
     phases.compile,
-    ["-std=c++14", "-O2", "-x", "c++", source, "-c", "-o", object],
+    [
+      "-std=c++14",
+      "-O2",
+      "-fsanitize=integer-divide-by-zero",
+      "-fsanitize-trap=integer-divide-by-zero",
+      "-x",
+      "c++",
+      source,
+      "-c",
+      "-o",
+      object,
+    ],
   );
   assert.deepEqual(phases.link, [object, "-o", output, "-s", "-lm"]);
 });
@@ -152,6 +175,8 @@ test("compiler flags retain Windows limits and avoid unsupported macOS flags", (
   assert.equal(mac.includes("-lm"), false);
   assert.equal(mac.includes("-s"), false);
   assert.ok(mac.includes("-fno-finite-loops"));
+  assert.ok(mac.includes("-fsanitize=integer-divide-by-zero"));
+  assert.ok(mac.includes("-fsanitize-trap=integer-divide-by-zero"));
   assert.equal(
     mac.some((flag) => flag.includes("--stack")),
     false,
@@ -159,6 +184,8 @@ test("compiler flags retain Windows limits and avoid unsupported macOS flags", (
 
   const linux = buildSubmissionCompilerArgs("linux", "main.cpp", "main");
   assert.ok(linux.includes("-static"));
+  assert.equal(linux.some((flag) => flag.includes("integer-divide-by-zero")), false);
+  assert.equal(windows.some((flag) => flag.includes("integer-divide-by-zero")), false);
   assert.equal(
     linux.some((flag) => flag.includes("--stack")),
     false,

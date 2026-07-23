@@ -203,7 +203,15 @@ export function buildSubmissionCompilerArgs(
   outputPath: string,
 ): string[] {
   const args = ["-std=c++14", "-pipe", "-O2", "-fno-finite-loops"];
-  if (platform !== "darwin") {
+  if (platform === "darwin") {
+    // AArch64 integer division by zero does not trap in hardware like x86 IDIV.
+    // Ask Apple Clang to emit a runtime trap so the affected testcase receives
+    // the same RE verdict on Apple Silicon as it does on Windows.
+    args.push(
+      "-fsanitize=integer-divide-by-zero",
+      "-fsanitize-trap=integer-divide-by-zero",
+    );
+  } else {
     args.push("-s", "-static", "-lm");
   }
   // Apple SDKs provide math symbols through libSystem rather than a separate
