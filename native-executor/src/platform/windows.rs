@@ -1,4 +1,4 @@
-use super::{failure, root_display, ActiveRuns, Cancellation};
+use super::{failure, reported_peak_memory_bytes, root_display, ActiveRuns, Cancellation};
 use crate::protocol::{ExecutorHealth, RunReason, RunResult, RunRole, RunSpec};
 use crate::request_validation::ValidatedRun;
 use crate::workspace::{file_size, initialize_root, inspect_workspace};
@@ -507,12 +507,11 @@ impl WindowsPlatform {
             .elapsed()
             .as_micros()
             .min(u64::MAX as u128) as u64;
-        let peak_memory_bytes = metrics.map(|value| value.PeakJobMemoryUsed as u64);
-        let peak_memory_bytes = if matches!(reason, RunReason::MemoryLimit) {
-            peak_memory_bytes.map(|value| value.min(spec.limits.memory_bytes))
-        } else {
-            peak_memory_bytes
-        };
+        let peak_memory_bytes = reported_peak_memory_bytes(
+            &reason,
+            metrics.map(|value| value.PeakJobMemoryUsed as u64),
+            spec.limits.memory_bytes,
+        );
 
         Ok(RunResult {
             run_id: spec.run_id.clone(),
