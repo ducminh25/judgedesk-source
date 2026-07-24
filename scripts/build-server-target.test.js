@@ -177,6 +177,7 @@ test("macOS SEA build removes the inherited signature before injection and signs
   );
 
   assert.match(buildSource, /codesign[^\n]+--remove-signature/);
+  assert.match(buildSource, /chmodSync\(targetPath,[^\n]+\| 0o200\)/);
   assert.ok(removeSignatureAt >= 0);
   assert.ok(injectAt > removeSignatureAt);
   assert.ok(signAt > injectAt);

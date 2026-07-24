@@ -122,6 +122,9 @@ export function prepareExecutableForInjection(targetPath, platform) {
       stdio: "inherit",
     });
   }
+  // Homebrew may install Node as 0555. copyFileSync preserves that mode, while
+  // postject requires read/write access to modify the copied executable.
+  fs.chmodSync(targetPath, fs.statSync(targetPath).mode | 0o200);
 }
 
 export function signExecutable(targetPath, platform) {
