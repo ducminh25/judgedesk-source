@@ -426,7 +426,9 @@ export function buildCompilerEnvironment(
   // The native executor supplies a small set of safe OS variables itself. Sending
   // process.env here is both unnecessary and unsafe: Visual Studio Developer
   // PowerShell commonly contains more than the protocol's 128-entry limit.
-  return platform === "win32" ? { Path: path.dirname(compilerPath) } : {};
+  return platform === "win32"
+    ? { Path: path.win32.dirname(compilerPath) }
+    : {};
 }
 
 async function prepareCompiler(

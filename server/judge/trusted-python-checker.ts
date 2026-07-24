@@ -153,20 +153,24 @@ export function trustedCheckerEnvironment(
   tempDirectory: string,
   platform: NodeJS.Platform = process.platform,
 ): NodeJS.ProcessEnv {
-  const executableDirectory = path.dirname(pythonExecutablePath);
   if (platform === "win32") {
+    const executableDirectory = path.win32.dirname(pythonExecutablePath);
     const windowsDirectory = process.env.SystemRoot || process.env.WINDIR || "C:\\Windows";
     return {
       SystemRoot: windowsDirectory,
       WINDIR: windowsDirectory,
       TEMP: tempDirectory,
       TMP: tempDirectory,
-      Path: [executableDirectory, path.join(windowsDirectory, "System32")].join(";"),
+      Path: [
+        executableDirectory,
+        path.win32.join(windowsDirectory, "System32"),
+      ].join(";"),
       PYTHONNOUSERSITE: "1",
       PYTHONDONTWRITEBYTECODE: "1",
       PYTHONUTF8: "1",
     };
   }
+  const executableDirectory = path.posix.dirname(pythonExecutablePath);
   return {
     HOME: tempDirectory,
     TMPDIR: tempDirectory,
