@@ -116,12 +116,16 @@ function executorTestHelper(): string {
   return path.join(process.cwd(), "src-tauri", "binaries", target);
 }
 
+const fakeCompilerHarnessSkip = process.platform === "win32"
+  ? false
+  : "the fake compiler is intentionally rejected by macOS; release tests cover Seatbelt limits and real Apple Clang separately";
+
 test("production compiler limits are 15 seconds and 32 MiB", () => {
   assert.equal(COMPILE_TIMEOUT_MS, 15_000);
   assert.equal(MAX_GENERATED_FILE_BYTES, 32 * 1024 * 1024);
 });
 
-test("compiler watchdog terminates a stuck compiler", async (t) => {
+test("compiler watchdog terminates a stuck compiler", { skip: fakeCompilerHarnessSkip }, async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "themis-compiler-timeout-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   await assert.rejects(
@@ -137,7 +141,7 @@ test("compiler watchdog terminates a stuck compiler", async (t) => {
   );
 });
 
-test("compiler rejects and removes an oversized generated file", async (t) => {
+test("compiler rejects and removes an oversized generated file", { skip: fakeCompilerHarnessSkip }, async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "themis-compiler-size-"));
   const outputPath = path.join(root, "oversized.out");
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
