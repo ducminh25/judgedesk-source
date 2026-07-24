@@ -240,6 +240,23 @@ test("GitHub release workflow builds Apple Silicon only", () => {
   );
   assert.deepEqual(macConfig.bundle.targets, ["app", "dmg"]);
   assert.equal(macConfig.bundle.macOS.entitlements, "./Entitlements.plist");
+  const localMacConfig = JSON.parse(
+    fs.readFileSync(
+      new URL("../src-tauri/tauri.macos.local.conf.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.deepEqual(localMacConfig.bundle.targets, ["app", "dmg"]);
+  assert.equal(localMacConfig.bundle.createUpdaterArtifacts, false);
+  assert.equal(localMacConfig.bundle.macOS.signingIdentity, "-");
+  assert.equal(localMacConfig.bundle.macOS.entitlements, "./Entitlements.plist");
+  const packageJson = JSON.parse(
+    fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+  );
+  assert.match(
+    packageJson.scripts["build:macos:local"],
+    /tauri\.macos\.local\.conf\.json.*aarch64-apple-darwin/,
+  );
   const rootConfig = JSON.parse(
     fs.readFileSync(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8"),
   );
