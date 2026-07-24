@@ -4,6 +4,7 @@ import os from "os";
 import path from "path";
 import {
   clearToolchainDetectionCache,
+  resolveManagedToolchain,
   resolveToolchain,
 } from "../toolchains/resolver.js";
 import {
@@ -36,6 +37,8 @@ export function registerToolchainRoutes(app: Express): void {
 
     const resolvedCpp = resolveToolchain("cpp");
     const resolvedPython = resolveToolchain("python");
+    const managedCpp = resolveManagedToolchain("cpp");
+    const managedPython = resolveManagedToolchain("python");
 
     let manifestError: string | undefined;
     const manifest = await loadOfficialManifest().catch((error: Error) => {
@@ -73,6 +76,26 @@ export function registerToolchainRoutes(app: Express): void {
       active: {
         cpp: resolvedCpp,
         python: resolvedPython,
+      },
+      capabilities: {
+        cpp: {
+          detected: resolvedCpp.ready,
+          managed: managedCpp.ready,
+          submissionReady: platform === "win32" ? managedCpp.ready : resolvedCpp.ready,
+          checkerReady: platform === "win32" ? managedCpp.ready : resolvedCpp.ready,
+          installable: TOOLCHAIN_CATALOG.some(
+            (entry) => entry.kind === "cpp" && entry.platform === platform && entry.arch === arch,
+          ),
+        },
+        python: {
+          detected: resolvedPython.ready,
+          managed: managedPython.ready,
+          submissionReady: managedPython.ready,
+          checkerReady: resolvedPython.ready,
+          installable: TOOLCHAIN_CATALOG.some(
+            (entry) => entry.kind === "python" && entry.platform === platform && entry.arch === arch,
+          ),
+        },
       },
       toolchains: toolchainsList,
       manifestError,
@@ -141,7 +164,7 @@ export function registerToolchainRoutes(app: Express): void {
   });
 
   // DELETE /api/toolchains/:id
-  app.delete("/api/toolchains/:id", (req, res) => {
+  app.delete("/api/toolchains/:id", async (req, res) => {
     const { id } = req.params;
     if (!TOOLCHAIN_CATALOG.some((entry) => entry.id === id)) {
       return res.status(404).json({
@@ -150,7 +173,7 @@ export function registerToolchainRoutes(app: Express): void {
       });
     }
     try {
-      uninstallToolchain(id);
+      await uninstallToolchain(id);
       res.json({
         success: true,
         message: `Toolchain '${id}' uninstalled successfully.`,

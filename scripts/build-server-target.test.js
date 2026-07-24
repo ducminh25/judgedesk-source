@@ -7,6 +7,7 @@ import { targetTripleForHost } from "./build-server-target.js";
 import {
   bundleServer,
   replaceFileAtomically,
+  resolveBuildMetadata,
   resolveTarget,
 } from "./build-server-lib.js";
 import { smokeTestSidecar } from "./smoke-test-sidecar.js";
@@ -21,6 +22,28 @@ test("sidecar target names match Tauri target triples", () => {
     "aarch64-unknown-linux-gnu",
   );
   assert.throws(() => targetTripleForHost("win32", "arm64"), /Unsupported/);
+});
+
+test("build metadata is deterministic when release environment values are provided", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-build-metadata-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  fs.writeFileSync(
+    path.join(directory, "package.json"),
+    JSON.stringify({ version: "9.8.7" }),
+  );
+  assert.deepEqual(
+    resolveBuildMetadata(directory, {
+      JUDGEDESK_GIT_COMMIT: "abc123",
+      JUDGEDESK_BUILD_NUMBER: "42",
+      SOURCE_DATE_EPOCH: "1700000000",
+    }),
+    {
+      appVersion: "9.8.7",
+      gitCommit: "abc123",
+      buildNumber: "42",
+      builtAt: "2023-11-14T22:13:20.000Z",
+    },
+  );
 });
 
 test("resolveTarget matches host targets and handles errors", () => {

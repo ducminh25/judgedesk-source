@@ -5,7 +5,10 @@ import path from "node:path";
 import test from "node:test";
 import { clearToolchainDetectionCache, findSystemPython } from "../toolchains/resolver.js";
 import { managedToolchainSourceRoot } from "../executor/workspace.js";
-import { compileSubmission } from "./compiler.js";
+import {
+  chooseCompilationToolchain,
+  compileSubmission,
+} from "./compiler.js";
 
 test("production testcase runner has no raw child-process or broad macOS profile path", () => {
   const source = fs.readFileSync(path.join(process.cwd(), "server", "judge", "testcase-runner.ts"), "utf8");
@@ -49,7 +52,57 @@ test("an unmanaged Python runtime fails closed instead of running on the host", 
     problemName: "SUM",
     submissionPath: source,
     tempDirectory: root,
+    pythonToolchain: {
+      kind: "python",
+      source: "system",
+      executablePath: detectedPython,
+      version: "test",
+      ready: true,
+    },
   });
   assert.equal(compiled.compileStatus, "CE");
   assert.equal(compiled.compileError, "TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+});
+
+test("an executor cache cannot keep submissions ready after managed Python is uninstalled", () => {
+  const selectedSystem = {
+    kind: "python" as const,
+    source: "system" as const,
+    executablePath: String.raw`C:\msys64\ucrt64\bin\python3.exe`,
+    version: "3.14.5",
+    ready: true,
+  };
+  const missingManaged = {
+    kind: "python" as const,
+    source: "managed" as const,
+    executablePath: "",
+    version: "",
+    ready: false,
+  };
+  const staleCache = {
+    kind: "python" as const,
+    source: "managed" as const,
+    executablePath: String.raw`C:\executor-cache\python.exe`,
+    version: "3.12.13",
+    ready: true,
+  };
+
+  assert.equal(
+    chooseCompilationToolchain(
+      "python",
+      selectedSystem,
+      missingManaged,
+      staleCache,
+    ),
+    selectedSystem,
+  );
+  assert.equal(
+    chooseCompilationToolchain(
+      "python",
+      selectedSystem,
+      { ...staleCache, executablePath: String.raw`C:\installed\python.exe` },
+      staleCache,
+    ),
+    staleCache,
+  );
 });

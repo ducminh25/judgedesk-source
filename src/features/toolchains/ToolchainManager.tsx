@@ -181,10 +181,15 @@ export default function ToolchainManager({ onClose }: Props) {
                       <span className="text-xs font-bold text-text-primary">
                         {t("toolchains.status")}:
                       </span>
-                      {state.active.cpp.ready ? (
+                      {state.capabilities.cpp.submissionReady ? (
                         <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-xs font-bold">
                           <ShieldCheck className="w-4 h-4" />{" "}
                           {t("toolchains.ready")}
+                        </span>
+                      ) : state.capabilities.cpp.detected ? (
+                        <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400 text-xs font-bold">
+                          <AlertTriangle className="w-4 h-4" />{" "}
+                          {t("toolbar.statusMenu.managedRequired")}
                         </span>
                       ) : (
                         <span className="flex items-center gap-1 text-rose-600 dark:text-rose-400 text-xs font-bold">
@@ -299,10 +304,15 @@ export default function ToolchainManager({ onClose }: Props) {
                       <span className="text-xs font-bold text-text-primary">
                         {t("toolchains.status")}:
                       </span>
-                      {state.active.python.ready ? (
+                      {state.capabilities.python.submissionReady ? (
                         <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 text-xs font-bold">
                           <ShieldCheck className="w-4 h-4" />{" "}
                           {t("toolchains.ready")}
+                        </span>
+                      ) : state.capabilities.python.checkerReady ? (
+                        <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400 text-xs font-bold">
+                          <AlertTriangle className="w-4 h-4" />{" "}
+                          {t("toolbar.statusMenu.checkerOnly")}
                         </span>
                       ) : (
                         <span className="flex items-center gap-1 text-rose-600 dark:text-rose-400 text-xs font-bold">

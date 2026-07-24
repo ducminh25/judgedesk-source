@@ -43,6 +43,9 @@
       "ready": "Ready",
       "inPath": "Detected",
       "notInPath": "Not detected",
+      "submissionReady": "Submission ready",
+      "checkerOnly": "Checker only",
+      "managedRequired": "Managed runtime required",
       "activeRunner": "Active runner",
       "checking": "Checking environment..."
     }
@@ -115,6 +118,7 @@
     "outputFile": "Output file",
     "timeLimit": "Time limit (ms)",
     "memoryLimit": "Memory limit (MB)",
+    "windowsMemoryPolicy": "On Windows, each active judge process is capped at 512 MB so the whole JudgeDesk judging pipeline stays below a 1,024 MB peak.",
     "checker": "Checker",
     "save": "Save Configuration",
     "useStandardInput": "Use standard input",
@@ -385,7 +389,8 @@
       "pythonTitle": "Python Interpreter Only",
       "pythonDesc": "Installs the standalone Python 3.12 interpreter (about 45 MB download).",
       "judgerTitle": "Judger Only (Skip download)",
-      "judgerDesc": "Uses pre-installed G++/Python system runtimes. Skip all downloading.",
+      "judgerDesc": "Skips downloads. System Python can run trusted Python checkers, but Python submissions receive CE until managed Python is installed. Windows C++ submissions also require managed GCC.",
+      "managedPythonNotice": "Native protection requires managed Python for contestant submissions. You may decline now; system Python remains available only for trusted Python checkers, and Python submissions will receive CE until you install the managed runtime.",
       "skip": "Skip for now",
       "next": "Start Setup",
       "installingTitle": "Downloading & Installing Packages",

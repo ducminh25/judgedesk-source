@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import {
   buildCompilerEnvironment,
+  buildCustomCheckerCompilerArgs,
   buildDarwinCompilerPhases,
   buildSubmissionCompilerArgs,
   COMPILE_TIMEOUT_MS,
@@ -166,6 +167,9 @@ test("compiler flags retain Windows limits and avoid unsupported macOS flags", (
   );
   assert.ok(windows.includes("-static"));
   assert.ok(windows.includes("-fno-finite-loops"));
+  assert.ok(windows.includes("-fsanitize=integer-divide-by-zero"));
+  assert.ok(windows.includes("-fsanitize-undefined-trap-on-error"));
+  assert.ok(windows.includes("-s"));
   assert.ok(windows.includes("-Wl,--stack,66060288"));
   assert.equal(windows.includes('"source file.cpp"'), false);
   assert.ok(windows.includes("source file.cpp"));
@@ -185,7 +189,6 @@ test("compiler flags retain Windows limits and avoid unsupported macOS flags", (
   const linux = buildSubmissionCompilerArgs("linux", "main.cpp", "main");
   assert.ok(linux.includes("-static"));
   assert.equal(linux.some((flag) => flag.includes("integer-divide-by-zero")), false);
-  assert.equal(windows.some((flag) => flag.includes("integer-divide-by-zero")), false);
   assert.equal(
     linux.some((flag) => flag.includes("--stack")),
     false,
@@ -204,20 +207,48 @@ test("standard checkers use the cross-platform built-in implementation", async (
   );
 });
 
+test("Windows custom C++ checkers use a self-contained linker policy", () => {
+  const windows = buildCustomCheckerCompilerArgs(
+    "win32",
+    "checker support",
+    "checker source.cpp",
+    "checker output.exe",
+  );
+  assert.ok(windows.includes("-static"));
+  assert.ok(windows.includes("-s"));
+  assert.ok(windows.includes("-lm"));
+  assert.ok(windows.includes("-Wl,--stack,66060288"));
+  assert.ok(windows.includes("checker support"));
+  assert.ok(windows.includes("checker source.cpp"));
+
+  const mac = buildCustomCheckerCompilerArgs("darwin", "include", "checker.cpp", "checker");
+  assert.equal(mac.includes("-static"), false);
+  assert.equal(mac.includes("-s"), false);
+  assert.equal(mac.includes("-lm"), false);
+});
+
 test("custom checker resolution accepts source files and rejects executables", async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-checker-sources-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   fs.writeFileSync(path.join(root, "checker.py"), "raise SystemExit(0)\n", "utf8");
 
-  assert.deepEqual(
-    await resolveChecker({
-      checkerType: "checker.py",
-      problemName: "sample",
-      problemDirectory: root,
-      tempDirectory: root,
-    }),
-    { path: path.join(root, "checker.py"), runtime: "python" },
-  );
+  const pythonChecker = await resolveChecker({
+    checkerType: "checker.py",
+    problemName: "sample",
+    problemDirectory: root,
+    tempDirectory: root,
+  });
+  if (pythonChecker.error) {
+    assert.equal(
+      pythonChecker.error,
+      "CHECKER_TOOLCHAIN_UNAVAILABLE: cannot compile Python checker; Python is missing",
+    );
+  } else {
+    assert.equal(pythonChecker.path, path.join(root, "checker.py"));
+    assert.equal(pythonChecker.runtime, "python");
+    assert.ok(pythonChecker.pythonExecutablePath);
+    assert.ok(pythonChecker.pythonSource);
+  }
   assert.match(
     (await resolveChecker({
       checkerType: "checker.exe",
@@ -227,4 +258,17 @@ test("custom checker resolution accepts source files and rejects executables", a
     })).error || "",
     /not supported.*\.cpp or \.py/i,
   );
+
+  if (!pythonChecker.error) {
+    fs.writeFileSync(path.join(root, "broken.py"), "def broken(:\n", "utf8");
+    assert.match(
+      (await resolveChecker({
+        checkerType: "broken.py",
+        problemName: "sample",
+        problemDirectory: root,
+        tempDirectory: root,
+      })).error || "",
+      /^PYTHON_CHECKER_COMPILE_ERROR:/,
+    );
+  }
 });

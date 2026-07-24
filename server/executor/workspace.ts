@@ -34,7 +34,7 @@ export async function findCachedManagedToolchain(
   if (!descriptor) return null;
   const health = await executorClient.start();
   if (!health.ready) return null;
-  const cacheId = `${kind}_${descriptor.version.replaceAll(/[^A-Za-z0-9_.-]/g, "_")}`;
+  const cacheId = managedCacheId(kind, descriptor.version);
   const root = path.join(health.executorRoot, "toolchains", cacheId);
   const marker = path.join(root, ".judgedesk-import-complete");
   const executablePath = path.join(root, descriptor.executableRelativePath);
@@ -55,6 +55,24 @@ export async function findCachedManagedToolchain(
   } catch {
     return null;
   }
+}
+
+export async function purgeCachedManagedToolchain(
+  kind: ToolchainKind,
+): Promise<void> {
+  const descriptor = getDescriptorForHost(os.platform(), os.arch(), kind);
+  if (!descriptor) return;
+  const health = await executorClient.start();
+  if (!health.ready) return;
+  const toolchainsRoot = path.join(health.executorRoot, "toolchains");
+  const cacheRoot = path.join(
+    toolchainsRoot,
+    managedCacheId(kind, descriptor.version),
+  );
+  if (!isDescendant(toolchainsRoot, cacheRoot)) {
+    throw new Error("Refusing to purge a toolchain cache outside the executor root.");
+  }
+  fs.rmSync(cacheRoot, { recursive: true, force: true });
 }
 
 export async function createExecutorWorkspace(): Promise<ExecutorWorkspace> {
@@ -113,7 +131,7 @@ export async function importManagedToolchain(
   if (executableWithinSource.startsWith("..") || path.isAbsolute(executableWithinSource)) {
     throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
   }
-  const cacheId = `${kind}_${version.replaceAll(/[^A-Za-z0-9_.-]/g, "_")}`;
+  const cacheId = managedCacheId(kind, version);
   const destinationRoot = path.join(health.executorRoot, "toolchains", cacheId);
   const marker = path.join(destinationRoot, ".judgedesk-import-complete");
   const expectedMarker = `${MANAGED_CACHE_SCHEMA}\n${kind}\n${version}\n`;
@@ -221,4 +239,8 @@ function assertSafeRelative(value: string): void {
 function isDescendant(root: string, candidate: string): boolean {
   const relative = path.relative(path.resolve(root), path.resolve(candidate));
   return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+}
+
+function managedCacheId(kind: ToolchainKind, version: string): string {
+  return `${kind}_${version.replaceAll(/[^A-Za-z0-9_.-]/g, "_")}`;
 }

@@ -6,8 +6,11 @@ import { createJudgeEventWriter } from "./judge-event-writer.js";
 import { runJudgeSession } from "./judge-session.js";
 import { createRunWorkspace } from "./run-workspace.js";
 import { executorClient } from "../executor/client.js";
+import { createRunMetadata } from "../platform/run-metadata.js";
+import { SingleJudgeSessionGate } from "./resource-policy.js";
 
 export function registerBatchJudgeRoute(app: Express): void {
+  const sessionGate = new SingleJudgeSessionGate();
   // Batch Judge Endpoint
   app.post("/api/batch-judge", async (req, res) => {
     const events = createJudgeEventWriter(res);
@@ -20,10 +23,7 @@ export function registerBatchJudgeRoute(app: Express): void {
       events.end();
       return;
     }
-    if (jobId) activeJobs.set(jobId, { cancel: false, runIds: new Set() });
-
     if (!thisinhPath || !testPath) {
-      if (jobId) activeJobs.delete(jobId);
       res.status(400).json({ success: false, message: "Missing thisinhPath or testPath." });
       return;
     }
@@ -44,24 +44,30 @@ export function registerBatchJudgeRoute(app: Express): void {
       return;
     }
 
-    // Prepare temp space for compiling contestant solutions
-    const workspace = createRunWorkspace();
-    const tempDir = workspace.path;
-
+    if (!sessionGate.tryAcquire()) {
+      sendEvent("error", { message: "JUDGE_BUSY: another judging session is already running." });
+      events.end();
+      return;
+    }
+    let workspace: ReturnType<typeof createRunWorkspace> | undefined;
     try {
+      if (jobId) activeJobs.set(jobId, { cancel: false, runIds: new Set() });
+      sendEvent("metadata", createRunMetadata());
+      workspace = createRunWorkspace();
       await runJudgeSession({
         request: req.body,
         contestantsDirectory: resolvedThisinh,
         testDirectory: resolvedTest,
-        tempDirectory: tempDir,
+        tempDirectory: workspace.path,
         events
       });
       sendEvent("done", { success: true });
     } catch (error) {
       sendEvent("error", { message: error instanceof Error ? error.message : String(error) });
     } finally {
-      workspace.dispose();
+      workspace?.dispose();
       if (jobId) activeJobs.delete(jobId);
+      sessionGate.release();
       events.end();
     }
   });

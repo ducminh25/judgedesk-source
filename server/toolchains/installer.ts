@@ -4,6 +4,7 @@ import os from "os";
 import path from "path";
 import { spawnSync } from "child_process";
 import { once } from "events";
+import { purgeCachedManagedToolchain } from "../executor/workspace.js";
 import { TOOLCHAIN_CATALOG } from "./manifest.js";
 import { InstallProgress, ToolchainDescriptor } from "./types.js";
 import {
@@ -377,8 +378,9 @@ export async function installToolchain(
   }
 }
 
-export function uninstallToolchain(id: string): void {
-  if (!TOOLCHAIN_CATALOG.some((entry) => entry.id === id)) {
+export async function uninstallToolchain(id: string): Promise<void> {
+  const descriptor = TOOLCHAIN_CATALOG.find((entry) => entry.id === id);
+  if (!descriptor) {
     throw new Error(`Unknown toolchain package '${id}'.`);
   }
   const installDir = path.join(getToolchainsDir(), id);
@@ -390,6 +392,17 @@ export function uninstallToolchain(id: string): void {
     );
     savePreferences(prefs);
     installProgressMap.delete(id);
+    try {
+      await purgeCachedManagedToolchain(descriptor.kind);
+    } catch (cacheError) {
+      // The installed package is already gone and compilation now fails
+      // closed. Cache cleanup is best-effort so a locked stale file cannot
+      // make a successful uninstall appear to have failed.
+      console.warn(
+        `[Storage] Managed ${descriptor.kind} executor cache cleanup deferred:`,
+        cacheError instanceof Error ? cacheError.message : String(cacheError),
+      );
+    }
   } catch (error: any) {
     console.error(
       `[Storage] Failed to uninstall toolchain ${id}:`,

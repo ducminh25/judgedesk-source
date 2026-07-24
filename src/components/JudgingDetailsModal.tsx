@@ -215,11 +215,6 @@ export default function JudgingDetailsModal({
                       </div>
                     </div>
                   )}
-                  {tc.errorDetail && tc.status !== "WA" && (
-                    <div className="bg-rose-50 dark:bg-rose-950/20 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/40 p-2 text-2xs font-mono rounded mt-2">
-                      {tc.errorDetail}
-                    </div>
-                  )}
                 </div>
               );
             })}

@@ -14,20 +14,22 @@ import type { ProblemResult } from "../types.js";
 import {
   findDarwinSdkDirectory,
   getExecutableVersion,
+  resolveManagedToolchain,
   resolveNativeProtectedToolchain,
   resolveToolchain,
 } from "../toolchains/resolver.js";
 import { getToolchainsDir } from "../toolchains/storage.js";
 import type { ResolvedToolchain } from "../toolchains/types.js";
 import { RESOURCE_ROOT } from "../runtime.js";
+import { resolveCompilerMemoryLimitBytes } from "./resource-policy.js";
 import { isBuiltInChecker } from "./standard-checkers.js";
+import { validatePythonCheckerSource } from "./trusted-python-checker.js";
 
 declare const __JUDGEDESK_TESTLIB__: string;
 
 export const COMPILE_TIMEOUT_MS = 15_000;
 export const MAX_GENERATED_FILE_BYTES = 32 * 1024 * 1024;
 const MAX_COMPILER_DIAGNOSTIC_BYTES = 256 * 1024;
-const COMPILER_MEMORY_BYTES = 1024 * 1024 * 1024;
 const gccProgramDirectoryCache = new Map<string, string>();
 const gccLibraryDirectoryCache = new Map<string, string[]>();
 const gccIncludeDirectoryCache = new Map<string, string[]>();
@@ -45,6 +47,8 @@ const DEFAULT_COMPILE_LIMITS: CompileLimits = {
 export interface CompiledChecker {
   path: string | null;
   runtime?: "native" | "python";
+  pythonExecutablePath?: string;
+  pythonSource?: ResolvedToolchain["source"];
   error?: string;
 }
 
@@ -64,6 +68,7 @@ interface CompileSubmissionOptions {
   tempDirectory: string;
   jobId?: string;
   cppToolchain?: ResolvedToolchain;
+  pythonToolchain?: ResolvedToolchain;
 }
 
 export interface CompilationResult {
@@ -97,9 +102,30 @@ export async function resolveChecker(options: ResolveCheckerOptions): Promise<Co
   }
   if (checkerType.toLowerCase().endsWith(".py")) {
     const checkerPath = path.join(problemDirectory, checkerType);
-    return fs.existsSync(checkerPath)
-      ? { path: checkerPath, runtime: "python" }
-      : { path: null, error: `Custom checker ${checkerType} not found.` };
+    if (!fs.existsSync(checkerPath)) {
+      return { path: null, error: `Custom checker ${checkerType} not found.` };
+    }
+    const python = resolveToolchain("python");
+    if (!python.ready) {
+      return {
+        path: null,
+        error: "CHECKER_TOOLCHAIN_UNAVAILABLE: cannot compile Python checker; Python is missing",
+      };
+    }
+    try {
+      validatePythonCheckerSource(python.executablePath, checkerPath);
+      return {
+        path: checkerPath,
+        runtime: "python",
+        pythonExecutablePath: python.executablePath,
+        pythonSource: python.source,
+      };
+    } catch (error) {
+      return {
+        path: null,
+        error: `PYTHON_CHECKER_COMPILE_ERROR: ${normalizeCompilerError(error)}`,
+      };
+    }
   }
   if (checkerType.toLowerCase().endsWith(".exe")) {
     return {
@@ -114,9 +140,9 @@ export async function compileSubmission(options: CompileSubmissionOptions): Prom
   const { language, contestantName, problemName, submissionPath, tempDirectory, jobId } = options;
   const compileStart = process.hrtime.bigint();
   if (language !== "cpp") {
-    const python = await resolveCompilationToolchain("python");
+    const python = options.pythonToolchain ?? await resolveCompilationToolchain("python");
     if (!python.ready) return compilationFailure("", "TOOLCHAIN_PYTHON_MISSING", compileStart);
-    if (process.platform === "win32" && python.source !== "managed") {
+    if (python.source !== "managed") {
       return compilationFailure("", "TOOLCHAIN_NOT_SANDBOX_COMPATIBLE", compileStart);
     }
     return {
@@ -174,7 +200,12 @@ async function compileCustomChecker(
     }
     await runCompilerPipelineWithLimits(
       cpp.executablePath,
-      ["-std=c++14", "-O2", "-I", checkerSupportDirectory, checkerSourcePath, "-o", checkerBinaryPath],
+      buildCustomCheckerCompilerArgs(
+        os.platform(),
+        checkerSupportDirectory,
+        checkerSourcePath,
+        checkerBinaryPath,
+      ),
       tempDirectory,
       checkerBinaryPath,
       jobId,
@@ -191,10 +222,28 @@ export async function resolveCompilationToolchain(
   kind: "cpp" | "python",
 ): Promise<ResolvedToolchain> {
   const selected = resolveNativeProtectedToolchain(kind);
-  if (process.platform !== "win32" || selected.source === "managed" || selected.source === "sandbox") {
-    return selected;
+  if (kind === "python") {
+    const managed = resolveManagedToolchain(kind);
+    const cached = managed.ready
+      ? await findCachedManagedToolchain(kind)
+      : null;
+    return chooseCompilationToolchain(kind, selected, managed, cached);
   }
-  return await findCachedManagedToolchain(kind) ?? selected;
+  return selected;
+}
+
+export function chooseCompilationToolchain(
+  kind: "cpp" | "python",
+  selected: ResolvedToolchain,
+  managed: ResolvedToolchain,
+  cached: ResolvedToolchain | null,
+): ResolvedToolchain {
+  if (kind !== "python") return selected;
+  // A cache is only an execution copy of the installed managed package. Once
+  // that package is uninstalled, the cache must not silently keep Python
+  // submissions runnable while the UI correctly reports "Checker only".
+  if (!managed.ready) return selected;
+  return cached ?? managed;
 }
 
 export function buildSubmissionCompilerArgs(
@@ -212,10 +261,32 @@ export function buildSubmissionCompilerArgs(
       "-fsanitize-trap=integer-divide-by-zero",
     );
   } else {
-    args.push("-s", "-static", "-lm");
+    if (platform === "win32") {
+      args.push(
+        "-fsanitize=integer-divide-by-zero",
+        "-fsanitize-undefined-trap-on-error",
+      );
+      args.push("-s", "-static", "-lm");
+    } else {
+      args.push("-s", "-static", "-lm");
+    }
   }
   // Apple SDKs provide math symbols through libSystem rather than a separate
   // libm. Passing `-lm` fails on Xcode 17/macOS 26, while `-s` is obsolete.
+  args.push("-x", "c++");
+  if (platform === "win32") args.push("-Wl,--stack,66060288");
+  args.push(sourcePath, "-o", outputPath);
+  return args;
+}
+
+export function buildCustomCheckerCompilerArgs(
+  platform: NodeJS.Platform,
+  includeDirectory: string,
+  sourcePath: string,
+  outputPath: string,
+): string[] {
+  const args = ["-std=c++14", "-pipe", "-O2", "-I", includeDirectory];
+  if (platform !== "darwin") args.push("-s", "-static", "-lm");
   args.push("-x", "c++");
   if (platform === "win32") args.push("-Wl,--stack,66060288");
   args.push(sourcePath, "-o", outputPath);
@@ -271,7 +342,7 @@ export async function runCompilerWithLimits(
       limits: {
         ...DEFAULT_EXECUTOR_LIMITS.compiler,
         wallTimeMs: limits.timeoutMs,
-        memoryBytes: COMPILER_MEMORY_BYTES,
+        memoryBytes: resolveCompilerMemoryLimitBytes(),
         totalWriteBytes: limits.maxGeneratedFileBytes + 4 * 1024 * 1024,
       },
     });

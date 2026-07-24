@@ -22,6 +22,31 @@ cargo fmt --check --manifest-path src-tauri/Cargo.toml
 cargo check --manifest-path src-tauri/Cargo.toml
 ```
 
+## Windows resource envelope
+
+JudgeDesk permits only one active judge batch. On Windows, compiler and
+submission jobs are each capped at 512 MiB so the packaged app, WebView,
+backend, executor and active child can stay below the 1,024 MiB combined peak
+release gate. Each active compiler/submission/checker job is also assigned to
+one logical processor and started below normal priority so judging cannot take
+over an older teacher PC. The macOS per-problem memory behavior is unchanged.
+
+Before release, measure the complete packaged-app process tree during both a
+compile workload and an MLE workload. A per-test executor peak by itself is not
+sufficient evidence. Also verify that a second concurrent batch request gets
+`JUDGE_BUSY` instead of starting more compiler/submission processes.
+
+For an already packaged app, the repeatable local gate is:
+
+```powershell
+npm run test:windows-resources -- `
+  -AppExecutable '<extracted-or-installed-path>\themis-v2.exe'
+```
+
+This local gate is valid resource evidence, but it is not the Windows security
+release gate: an unsigned local build can have different Defender/SmartScreen
+reputation from the public, Authenticode-signed release candidate.
+
 ## Test the desktop UI locally
 
 The closest development-mode test to the installed application is:
@@ -71,6 +96,14 @@ Use the existing `workflow_dispatch` action on a branch to produce test
 artifacts without publishing a release. A local M-series Mac can use
 `bash scripts/build-macos-arm64-sidecar.sh` followed by the Tauri build command
 from `.github/workflows/release.yml`.
+
+`src-tauri/tauri.macos.conf.json` is a distribution configuration: it expects
+`APPLE_SIGNING_IDENTITY` plus Apple notarization credentials and is not an
+ad-hoc-signing fallback. For a public download, Apple requires Developer ID,
+hardened runtime and notarization. CodeMagic validates all three and the
+stapled ticket. Keep the source/native checks before the Tauri build so a
+compiler, executor, TypeScript, version, or fixture failure does not consume a
+DMG/notarization attempt.
 
 ## Managed compiler packages
 

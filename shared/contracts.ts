@@ -3,6 +3,35 @@ export type ProblemVerdict = TestVerdict | "PENDING";
 export type CompileStatus = "OK" | "CE" | "SKIPPED";
 export type SubmissionLanguage = "cpp" | "python";
 
+export interface TestExecutionDiagnostics {
+  reason:
+    | "exited"
+    | "wall_time_limit"
+    | "memory_limit"
+    | "process_limit"
+    | "thread_limit"
+    | "output_limit"
+    | "write_limit"
+    | "cancelled"
+    | "sandbox_denied"
+    | "launch_error"
+    | "internal_error";
+  exitCode: number | null;
+  signalOrStatus?: string;
+  securitySetupTimeUs: number;
+  wallTimeUs: number;
+  resultCollectionTimeUs: number;
+  userCpuTimeUs?: number;
+  kernelCpuTimeUs?: number;
+  peakMemoryBytes?: number;
+  configuredMemoryLimitBytes?: number;
+  effectiveMemoryLimitBytes?: number;
+  stdoutBytes: number;
+  stderrBytes: number;
+  createdFiles?: number;
+  diagnostic?: string;
+}
+
 export interface TestCaseRun {
   name: string;
   status: TestVerdict;
@@ -14,6 +43,7 @@ export interface TestCaseRun {
   expectedOutputPreview?: string;
   actualOutputPreview?: string;
   errorDetail?: string;
+  execution?: TestExecutionDiagnostics;
 }
 
 export interface ProblemResult {
@@ -37,9 +67,38 @@ export interface ContestantResult {
   problems: ProblemResult[];
 }
 
+export interface BuildMetadata {
+  appVersion: string;
+  gitCommit: string;
+  buildNumber: string;
+  builtAt: string;
+}
+
+export interface RunMetadata {
+  startedAt: string;
+  platform: string;
+  arch: string;
+  build: BuildMetadata;
+  executor: {
+    mode: string;
+    version: string;
+    ready: boolean;
+  };
+  toolchains: {
+    cpp: { source: string; version: string; submissionReady: boolean };
+    python: {
+      source: string;
+      version: string;
+      submissionReady: boolean;
+      checkerReady: boolean;
+    };
+  };
+}
+
 export interface BatchJudgeResult {
   success: boolean;
   message?: string;
+  metadata?: RunMetadata;
   contestants: ContestantResult[];
 }
 
@@ -85,12 +144,29 @@ export interface NormalizedProblemConfig extends ProblemConfig {
 }
 
 export interface HostStatus {
-  gpp: { installed: boolean; version: string };
-  python: { installed: boolean; version: string };
+  gpp: {
+    installed: boolean;
+    version: string;
+    source?: string;
+    managedInstalled?: boolean;
+    submissionReady?: boolean;
+    checkerReady?: boolean;
+    diagnostic?: string;
+  };
+  python: {
+    installed: boolean;
+    version: string;
+    source?: string;
+    managedInstalled?: boolean;
+    submissionReady?: boolean;
+    checkerReady?: boolean;
+    diagnostic?: string;
+  };
   isolate?: { installed: boolean };
   tempDir: string;
   platform: string;
   isServerMode: boolean;
+  build?: BuildMetadata;
   sandbox?: {
     mode: "wsl" | "docker" | "none";
     ready: boolean;
@@ -127,6 +203,7 @@ export interface BatchJudgeRequest {
 }
 
 export type JudgeStreamEvent =
+  | { type: "metadata"; data: RunMetadata }
   | { type: "progress"; data: JudgeProgress }
   | { type: "problem_completed"; data: { contestant: string; problemResult: ProblemResult } }
   | { type: "done"; data: { success: boolean } }

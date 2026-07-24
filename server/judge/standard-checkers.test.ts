@@ -32,10 +32,15 @@ test("C5 compares raw bytes without UTF-8 normalization", () => {
     runStandardChecker("C5", Buffer.from([0, 255, 10]), Buffer.from([0, 255, 10])).status,
     "AC",
   );
-  assert.equal(
-    runStandardChecker("C5", Buffer.from([0, 255, 10]), Buffer.from([0, 254, 10])).message,
-    "Wrong answer at byte 2",
+  const mismatch = runStandardChecker(
+    "C5",
+    Buffer.from([0, 255, 10]),
+    Buffer.from([0, 254, 10]),
   );
+  assert.match(mismatch.message, /Wrong answer at byte 2/);
+  assert.match(mismatch.message, /expected 0xFF/);
+  assert.match(mismatch.message, /found 0xFE/);
+  assert.match(mismatch.message, /00 FF 0A/);
 });
 
 test("Polygon line checkers preserve their whitespace semantics", () => {

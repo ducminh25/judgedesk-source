@@ -143,6 +143,10 @@ export function ToolchainSetupModal({ isOpen, onClose }: Props) {
         <div className="p-6 overflow-y-auto flex-1 bg-surface space-y-6">
           {step === "choose" && (
             <div className="space-y-6">
+              <div className="flex items-start gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2.5 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+                <ShieldAlert className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                <span>{t("toolchains.setup.managedPythonNotice")}</span>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Option 1: Both */}
                 <PresetCard

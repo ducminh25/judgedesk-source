@@ -321,13 +321,36 @@ export function HostStatusMenu({
           {(
             <>
               <div className="my-1 border-t border-surface-border" />
-              <ToolRow label="G++" installed={status.gpp.installed} />
-              <ToolRow label="Python" installed={status.python.installed} />
+              <ToolRow
+                label="G++"
+                detected={status.gpp.installed}
+                submissionReady={status.gpp.submissionReady ?? status.gpp.installed}
+                checkerReady={status.gpp.checkerReady ?? status.gpp.installed}
+                diagnostic={status.gpp.diagnostic}
+              />
+              <ToolRow
+                label="Python"
+                detected={status.python.installed}
+                submissionReady={status.python.submissionReady ?? status.python.installed}
+                checkerReady={status.python.checkerReady ?? status.python.installed}
+                diagnostic={status.python.diagnostic}
+              />
             </>
           )}
           <div className="border-t border-surface-border px-2 pt-2 text-[10px] text-text-muted">
             {t("toolbar.statusMenu.activeRunner")}: <span className="font-mono text-text-primary">{status.secureRunner.mode}</span>
           </div>
+          {status.build && (
+            <div className="px-2 pt-1 text-[10px] text-text-muted">
+              JudgeDesk <span className="font-mono text-text-primary">v{status.build.appVersion}</span>
+              {" · "}
+              <span className="font-mono text-text-primary">
+                {status.build.gitCommit === "unknown" ? "unknown" : status.build.gitCommit.slice(0, 12)}
+              </span>
+              {" · build "}
+              <span className="font-mono text-text-primary">{status.build.buildNumber}</span>
+            </div>
+          )}
         </>
       ) : <div className="px-2 py-3 text-xs text-text-muted">{t("toolbar.statusMenu.checking")}</div>}
 
@@ -363,14 +386,42 @@ function StatusRow({ label, ready, installed, incompleteLabel }: { label: string
   );
 }
 
-function ToolRow({ label, installed }: { label: string; installed: boolean }) {
+function ToolRow({
+  label,
+  detected,
+  submissionReady,
+  checkerReady,
+  diagnostic,
+}: {
+  label: string;
+  detected: boolean;
+  submissionReady: boolean;
+  checkerReady: boolean;
+  diagnostic?: string;
+}) {
   const { t } = useTranslation();
+  const state = submissionReady
+    ? "ready"
+    : checkerReady
+      ? "checker"
+      : detected
+        ? "managed"
+        : "missing";
+  const labelText = state === "ready"
+    ? t("toolbar.statusMenu.submissionReady")
+    : state === "checker"
+      ? t("toolbar.statusMenu.checkerOnly")
+      : state === "managed"
+        ? t("toolbar.statusMenu.managedRequired")
+        : t("toolbar.statusMenu.notInPath");
   return (
-    <div className="flex items-center justify-between px-2 py-2 text-xs">
+    <div className="flex items-center justify-between px-2 py-2 text-xs" title={diagnostic}>
       <span className="text-text-primary">{label}</span>
-      <span className={`flex items-center gap-1.5 ${installed ? "text-emerald-500" : "text-rose-500"}`}>
-        {installed ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
-        {installed ? t("toolbar.statusMenu.inPath") : t("toolbar.statusMenu.notInPath")}
+      <span className={`flex items-center gap-1.5 ${
+        state === "ready" ? "text-emerald-500" : state === "missing" ? "text-rose-500" : "text-amber-500"
+      }`}>
+        {state === "ready" ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
+        {labelText}
       </span>
     </div>
   );

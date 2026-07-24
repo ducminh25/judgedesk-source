@@ -1,6 +1,9 @@
 import sys
 import threading
 import time
+import pathlib
+import socket
+import subprocess
 
 
 mode = sys.argv[1]
@@ -29,5 +32,40 @@ elif mode == "thread-bomb":
         thread.start()
     for thread in threads:
         thread.join()
+elif mode == "read":
+    try:
+        pathlib.Path(sys.argv[2]).read_bytes()
+        print("SECURITY_ESCAPE")
+        raise SystemExit(0)
+    except (OSError, PermissionError):
+        raise SystemExit(13)
+elif mode == "write":
+    try:
+        pathlib.Path(sys.argv[2]).write_text("SECURITY_ESCAPE", encoding="utf-8")
+        print("SECURITY_ESCAPE")
+        raise SystemExit(0)
+    except (OSError, PermissionError):
+        raise SystemExit(13)
+elif mode == "network":
+    try:
+        with socket.create_connection(("1.1.1.1", 53), timeout=0.5):
+            print("SECURITY_ESCAPE")
+            raise SystemExit(0)
+    except OSError:
+        raise SystemExit(13)
+elif mode == "subprocess":
+    try:
+        result = subprocess.run(
+            [sys.executable, "-I", "-B", "-c", "print('SECURITY_ESCAPE')"],
+            capture_output=True,
+            timeout=1,
+            check=False,
+        )
+        if result.returncode == 0:
+            print("SECURITY_ESCAPE")
+            raise SystemExit(0)
+        raise SystemExit(13)
+    except (OSError, subprocess.SubprocessError):
+        raise SystemExit(13)
 else:
     raise SystemExit(65)
