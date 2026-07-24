@@ -131,3 +131,36 @@ pub fn failure(spec: &RunSpec, reason: RunReason, diagnostic: String) -> RunResu
 pub fn root_display(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
+
+pub fn reported_peak_memory_bytes(
+    reason: &RunReason,
+    observed_peak_bytes: Option<u64>,
+    memory_limit_bytes: u64,
+) -> Option<u64> {
+    if matches!(reason, RunReason::MemoryLimit) {
+        observed_peak_bytes.map(|value| value.min(memory_limit_bytes))
+    } else {
+        observed_peak_bytes
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reported_mle_memory_is_capped_at_the_enforced_limit() {
+        assert_eq!(
+            reported_peak_memory_bytes(&RunReason::MemoryLimit, Some(80), 64),
+            Some(64)
+        );
+        assert_eq!(
+            reported_peak_memory_bytes(&RunReason::Exited, Some(80), 64),
+            Some(80)
+        );
+        assert_eq!(
+            reported_peak_memory_bytes(&RunReason::MemoryLimit, None, 64),
+            None
+        );
+    }
+}

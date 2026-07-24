@@ -1,4 +1,4 @@
-use super::{failure, root_display, ActiveRuns, Cancellation};
+use super::{failure, reported_peak_memory_bytes, root_display, ActiveRuns, Cancellation};
 use crate::protocol::{ExecutorHealth, RunLimits, RunReason, RunResult, RunRole, RunSpec};
 use crate::request_validation::{validate_run, ValidatedRun};
 use crate::workspace::{file_size, initialize_root, inspect_workspace};
@@ -414,6 +414,11 @@ impl MacosPlatform {
             .min(u64::MAX as u128) as u64;
         let final_user_cpu_time_us = timeval_us(final_rusage.ru_utime);
         let final_kernel_cpu_time_us = timeval_us(final_rusage.ru_stime);
+        let peak_memory_bytes = reported_peak_memory_bytes(
+            &reason,
+            (peak_memory > 0).then_some(peak_memory),
+            spec.limits.memory_bytes,
+        );
         Ok(RunResult {
             run_id: spec.run_id.clone(),
             reason,
@@ -428,7 +433,7 @@ impl MacosPlatform {
             kernel_cpu_time_us: (final_kernel_cpu_time_us > 0)
                 .then_some(final_kernel_cpu_time_us)
                 .or_else(|| (usage.system_time_ns > 0).then_some(usage.system_time_ns / 1000)),
-            peak_memory_bytes: (peak_memory > 0).then_some(peak_memory),
+            peak_memory_bytes,
             stdout_bytes,
             stderr_bytes,
             created_files: Some(files),
