@@ -126,12 +126,41 @@ function compareBinary(
   const actual = toBuffer(actualOutput);
   const length = Math.min(expected.length, actual.length);
   for (let index = 0; index < length; index += 1) {
-    if (expected[index] !== actual[index])
-      return { status: "WA", message: `Wrong answer at byte ${index + 1}` };
+    if (expected[index] !== actual[index]) {
+      return {
+        status: "WA",
+        message: [
+          `Wrong answer at byte ${index + 1}`,
+          `expected 0x${hexByte(expected[index])}`,
+          `found 0x${hexByte(actual[index])}`,
+          `expected preview ${hexPreview(expected, index)}`,
+          `actual preview ${hexPreview(actual, index)}`,
+        ].join("; "),
+      };
+    }
   }
-  if (expected.length !== actual.length)
-    return { status: "WA", message: "Wrong answer: different file length" };
+  if (expected.length !== actual.length) {
+    return {
+      status: "WA",
+      message: [
+        `Wrong answer: different file length (expected ${expected.length}, found ${actual.length})`,
+        `expected preview ${hexPreview(expected, length)}`,
+        `actual preview ${hexPreview(actual, length)}`,
+      ].join("; "),
+    };
+  }
   return { status: "AC", message: `files are identical (${expected.length} bytes)` };
+}
+
+function hexByte(value: number): string {
+  return value.toString(16).padStart(2, "0").toUpperCase();
+}
+
+function hexPreview(value: Buffer, center: number): string {
+  const start = Math.max(0, center - 8);
+  const end = Math.min(value.length, center + 9);
+  const body = Array.from(value.subarray(start, end), hexByte).join(" ");
+  return `[${start}..${Math.max(start, end - 1)}] ${body || "<empty>"}`;
 }
 
 function comparePolygonLines(

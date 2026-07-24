@@ -5,7 +5,10 @@ import ProgressWindow from "./components/ProgressWindow";
 import JudgingDetailsModal from "./components/JudgingDetailsModal";
 import ScoringLogModal from "./components/ScoringLogModal";
 import { apiFetch } from "./api";
-import { buildScoreWorkbookBase64 } from "./features/export/score-workbook";
+import {
+  buildDiagnosticJson,
+  buildScoreWorkbookBase64,
+} from "./features/export/score-workbook";
 import {
   judgeResultsReducer,
   problemHasPositiveScore,
@@ -571,10 +574,15 @@ export default function App() {
         activeProblems,
         t,
       );
+      const diagnosticJson = buildDiagnosticJson(
+        judgeResult,
+        activeContestants,
+        activeProblems,
+      );
       await apiFetch("/api/open-excel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workbookBase64 }),
+        body: JSON.stringify({ workbookBase64, diagnosticJson }),
       });
     } catch (error: any) {
       setErrorMessage(error.message || "Failed to open the Excel workbook.");

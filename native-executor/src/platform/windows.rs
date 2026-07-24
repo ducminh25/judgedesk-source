@@ -14,9 +14,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use windows_sys::Win32::Foundation::{
-    CloseHandle, GetLastError, LocalFree, ERROR_ALREADY_EXISTS, ERROR_INSUFFICIENT_BUFFER,
-    FILETIME, GENERIC_READ, GENERIC_WRITE, HANDLE, INVALID_HANDLE_VALUE, WAIT_OBJECT_0,
-    WAIT_TIMEOUT,
+    CloseHandle, GetLastError, LocalFree, ERROR_ALREADY_EXISTS, ERROR_COMMITMENT_LIMIT,
+    ERROR_INSUFFICIENT_BUFFER, ERROR_NOT_ENOUGH_MEMORY, ERROR_OUTOFMEMORY, FILETIME, GENERIC_READ,
+    GENERIC_WRITE, HANDLE, INVALID_HANDLE_VALUE, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 use windows_sys::Win32::Security::Authorization::{
     ConvertSidToStringSidW, SetNamedSecurityInfoW, SE_FILE_OBJECT,
@@ -40,24 +40,25 @@ use windows_sys::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Thread32First, Thread32Next, TH32CS_SNAPTHREAD, THREADENTRY32,
 };
 use windows_sys::Win32::System::JobObjects::{
-    AssignProcessToJobObject, CreateJobObjectW, JobObjectAssociateCompletionPortInformation,
+    CreateJobObjectW, JobObjectAssociateCompletionPortInformation,
     JobObjectBasicAccountingInformation, JobObjectBasicProcessIdList,
     JobObjectExtendedLimitInformation, QueryInformationJobObject, SetInformationJobObject,
     TerminateJobObject, JOBOBJECT_ASSOCIATE_COMPLETION_PORT,
     JOBOBJECT_BASIC_ACCOUNTING_INFORMATION, JOBOBJECT_BASIC_PROCESS_ID_LIST,
     JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_ACTIVE_PROCESS,
-    JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION, JOB_OBJECT_LIMIT_JOB_MEMORY,
-    JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    JOB_OBJECT_LIMIT_AFFINITY, JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION,
+    JOB_OBJECT_LIMIT_JOB_MEMORY, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
 };
 use windows_sys::Win32::System::SystemServices::{
     JOB_OBJECT_MSG_ACTIVE_PROCESS_LIMIT, JOB_OBJECT_MSG_JOB_MEMORY_LIMIT,
 };
 use windows_sys::Win32::System::Threading::{
     CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess, GetExitCodeProcess,
-    GetProcessTimes, InitializeProcThreadAttributeList, OpenProcessToken, ResumeThread,
-    UpdateProcThreadAttribute, WaitForSingleObject, CREATE_NO_WINDOW, CREATE_SUSPENDED,
-    CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, PROCESS_INFORMATION,
-    PROC_THREAD_ATTRIBUTE_ALL_APPLICATION_PACKAGES_POLICY, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+    GetProcessAffinityMask, GetProcessTimes, InitializeProcThreadAttributeList, OpenProcessToken,
+    ResumeThread, UpdateProcThreadAttribute, WaitForSingleObject, BELOW_NORMAL_PRIORITY_CLASS,
+    CREATE_NO_WINDOW, CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT,
+    PROCESS_INFORMATION, PROC_THREAD_ATTRIBUTE_ALL_APPLICATION_PACKAGES_POLICY,
+    PROC_THREAD_ATTRIBUTE_HANDLE_LIST, PROC_THREAD_ATTRIBUTE_JOB_LIST,
     PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES, STARTF_USESTDHANDLES, STARTUPINFOEXW,
 };
 use windows_sys::Win32::System::WindowsProgramming::PROCESS_CREATION_ALL_APPLICATION_PACKAGES_OPT_OUT;
@@ -263,13 +264,25 @@ impl WindowsPlatform {
         let mut lpac_policy = PROCESS_CREATION_ALL_APPLICATION_PACKAGES_OPT_OUT;
         let mut handles = inherited;
         let compiler_may_spawn = matches!(spec.role, RunRole::Compiler);
-        let mut attributes = AttributeList::new(if compiler_may_spawn { 2 } else { 3 })?;
+        // The embeddable Python runtime depends on system DLLs and registry/file
+        // resources granted to regular AppContainers through ALL APPLICATION
+        // PACKAGES. LPAC opts out of those grants and Python terminates during
+        // startup with STATUS_ACCESS_DENIED. A regular AppContainer still has no
+        // capabilities, so network and user-file access remain default-deny; the
+        // Job Object continues to enforce process and resource limits.
+        let managed_python = spec
+            .environment
+            .get("JUDGEDESK_PYTHON_ISOLATED")
+            .map(String::as_str)
+            == Some("1");
+        let use_lpac = !compiler_may_spawn && !managed_python;
+        let mut attributes = AttributeList::new(if use_lpac { 4 } else { 3 })?;
         attributes.update(
             PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES as usize,
             &mut security as *mut _ as *mut c_void,
             size_of::<SECURITY_CAPABILITIES>(),
         )?;
-        if !compiler_may_spawn {
+        if use_lpac {
             attributes.update(
                 PROC_THREAD_ATTRIBUTE_ALL_APPLICATION_PACKAGES_POLICY as usize,
                 &mut lpac_policy as *mut _ as *mut c_void,
@@ -280,6 +293,15 @@ impl WindowsPlatform {
             PROC_THREAD_ATTRIBUTE_HANDLE_LIST as usize,
             handles.as_mut_ptr() as *mut c_void,
             size_of_val(&handles),
+        )?;
+        // Assign the child during CreateProcess. AssignProcessToJobObject after
+        // CREATE_SUSPENDED is still too late for PE image/stack commit: Windows
+        // explicitly excludes memory operations performed before association.
+        let mut job_handles = [job.handle()];
+        attributes.update(
+            PROC_THREAD_ATTRIBUTE_JOB_LIST as usize,
+            job_handles.as_mut_ptr().cast(),
+            size_of_val(&job_handles),
         )?;
 
         let mut startup: STARTUPINFOEXW = unsafe { zeroed() };
@@ -304,6 +326,7 @@ impl WindowsPlatform {
                 CREATE_SUSPENDED
                     | CREATE_UNICODE_ENVIRONMENT
                     | CREATE_NO_WINDOW
+                    | BELOW_NORMAL_PRIORITY_CLASS
                     | EXTENDED_STARTUPINFO_PRESENT,
                 environment.as_mut_ptr() as *const c_void,
                 current_directory.as_ptr(),
@@ -311,16 +334,25 @@ impl WindowsPlatform {
                 &mut process,
             )
         };
-        win_bool(created, "launch AppContainer process")?;
+        if created == 0 {
+            let error_code = unsafe { GetLastError() };
+            let error = io::Error::from_raw_os_error(error_code as i32);
+            if is_process_creation_memory_error(error_code) {
+                let mut result = failure(
+                    spec,
+                    RunReason::MemoryLimit,
+                    format!("process image exceeded the Job memory limit during creation: {error}"),
+                );
+                result.security_setup_time_us =
+                    setup_started.elapsed().as_micros().min(u64::MAX as u128) as u64;
+                result.peak_memory_bytes = query_metrics(job.handle())
+                    .map(|value| (value.PeakJobMemoryUsed as u64).min(spec.limits.memory_bytes));
+                return Ok(result);
+            }
+            return Err(format!("launch AppContainer process: {error}"));
+        }
         let process_handle = OwnedHandle(process.hProcess);
         let thread_handle = OwnedHandle(process.hThread);
-        if unsafe { AssignProcessToJobObject(job.handle(), process_handle.0) } == 0 {
-            let error = io::Error::last_os_error();
-            unsafe {
-                TerminateJobObject(job.handle(), LIMIT_EXIT_CODE);
-            }
-            return Err(format!("assign process to Job Object: {error}"));
-        }
 
         let cancelled = Arc::new(AtomicBool::new(false));
         let cancellation: Arc<dyn Cancellation> = Arc::new(RunCancellation {
@@ -475,6 +507,13 @@ impl WindowsPlatform {
             .elapsed()
             .as_micros()
             .min(u64::MAX as u128) as u64;
+        let peak_memory_bytes = metrics.map(|value| value.PeakJobMemoryUsed as u64);
+        let peak_memory_bytes = if matches!(reason, RunReason::MemoryLimit) {
+            peak_memory_bytes.map(|value| value.min(spec.limits.memory_bytes))
+        } else {
+            peak_memory_bytes
+        };
+
         Ok(RunResult {
             run_id: spec.run_id.clone(),
             reason,
@@ -487,7 +526,7 @@ impl WindowsPlatform {
             result_collection_time_us,
             user_cpu_time_us: user_cpu,
             kernel_cpu_time_us: kernel_cpu,
-            peak_memory_bytes: metrics.map(|value| value.PeakJobMemoryUsed as u64),
+            peak_memory_bytes,
             stdout_bytes,
             stderr_bytes,
             created_files: Some(created_files),
@@ -618,9 +657,11 @@ impl JobHandle {
         let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { zeroed() };
         limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
             | JOB_OBJECT_LIMIT_ACTIVE_PROCESS
+            | JOB_OBJECT_LIMIT_AFFINITY
             | JOB_OBJECT_LIMIT_JOB_MEMORY
             | JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION;
         limits.BasicLimitInformation.ActiveProcessLimit = spec.limits.process_count;
+        limits.BasicLimitInformation.Affinity = single_processor_affinity();
         limits.JobMemoryLimit = spec.limits.memory_bytes as usize;
         win_bool(
             unsafe {
@@ -639,6 +680,26 @@ impl JobHandle {
     fn handle(&self) -> HANDLE {
         self.0
     }
+}
+
+fn single_processor_affinity() -> usize {
+    let mut process_mask = 0_usize;
+    let mut system_mask = 0_usize;
+    let available =
+        unsafe { GetProcessAffinityMask(GetCurrentProcess(), &mut process_mask, &mut system_mask) }
+            != 0;
+    if available && process_mask != 0 {
+        process_mask & process_mask.wrapping_neg()
+    } else {
+        1
+    }
+}
+
+fn is_process_creation_memory_error(error: u32) -> bool {
+    matches!(
+        error,
+        ERROR_NOT_ENOUGH_MEMORY | ERROR_OUTOFMEMORY | ERROR_COMMITMENT_LIMIT
+    )
 }
 
 impl Drop for JobHandle {
@@ -1072,5 +1133,17 @@ mod tests {
             quote_windows_argument("C:\\path with space\\"),
             "\"C:\\path with space\\\\\""
         );
+    }
+
+    #[test]
+    fn process_creation_memory_errors_map_to_the_job_memory_limit() {
+        for error in [
+            ERROR_NOT_ENOUGH_MEMORY,
+            ERROR_OUTOFMEMORY,
+            ERROR_COMMITMENT_LIMIT,
+        ] {
+            assert!(is_process_creation_memory_error(error));
+        }
+        assert!(!is_process_creation_memory_error(225));
     }
 }

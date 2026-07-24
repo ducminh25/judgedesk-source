@@ -6,7 +6,10 @@ import { DEFAULT_EXECUTOR_LIMITS } from "../executor/protocol.js";
 import { createExecutorWorkspace } from "../executor/workspace.js";
 import { attachExecutorRun, detachExecutorRun } from "../jobs.js";
 import type { TestVerdict } from "../types.js";
+import type { ToolchainSource } from "../toolchains/types.js";
 import { prepareIsolatedPythonScript } from "./python-runtime.js";
+import { runTrustedHostPythonChecker } from "./trusted-python-checker.js";
+export { trustedCheckerEnvironment } from "./trusted-python-checker.js";
 
 export interface CustomCheckerResult {
   status: TestVerdict;
@@ -14,9 +17,11 @@ export interface CustomCheckerResult {
   message: string;
 }
 
-interface RunCustomCheckerOptions {
+export interface RunCustomCheckerOptions {
   checkerPath: string;
   checkerRuntime: "native" | "python";
+  pythonExecutablePath?: string;
+  pythonSource?: ToolchainSource;
   inputPath: string;
   actualOutputPath: string;
   expectedOutputPath: string;
@@ -25,6 +30,9 @@ interface RunCustomCheckerOptions {
   maxScore: number;
   jobId?: string;
 }
+
+const CHECKER_TIMEOUT_MS = 5_000;
+const CHECKER_OUTPUT_LIMIT_BYTES = 256 * 1024;
 
 export function parsePartialScore(message: string, stdout: string, maxScore: number): number | null {
   const match = message.match(/result\s*=\s*([0-9.]+)/i)
@@ -42,6 +50,10 @@ export function parsePartialScore(message: string, stdout: string, maxScore: num
 }
 
 export async function runCustomChecker(options: RunCustomCheckerOptions): Promise<CustomCheckerResult> {
+  if (options.checkerRuntime === "python" && options.pythonSource !== "managed") {
+    return runTrustedHostPythonChecker(options, checkerResultFromExit);
+  }
+
   const workspace = await createExecutorWorkspace();
   const runId = `checker_${crypto.randomUUID().replaceAll("-", "_")}`;
   attachExecutorRun(options.jobId, runId);
@@ -67,7 +79,7 @@ export async function runCustomChecker(options: RunCustomCheckerOptions): Promis
       environment: launch.environment,
       limits: {
         ...DEFAULT_EXECUTOR_LIMITS.checker,
-        wallTimeMs: 5_000,
+        wallTimeMs: CHECKER_TIMEOUT_MS,
         memoryBytes: 256 * 1024 * 1024,
       },
     });
@@ -99,6 +111,27 @@ export async function runCustomChecker(options: RunCustomCheckerOptions): Promis
     detachExecutorRun(options.jobId, runId);
     workspace.dispose();
   }
+}
+
+function checkerResultFromExit(
+  exitCode: number,
+  message: string,
+  stdout: string,
+  maxScore: number,
+): CustomCheckerResult {
+  if (exitCode === 0) return { status: "AC", score: maxScore, message };
+  if (exitCode === 1) return { status: "WA", score: 0, message };
+  if (exitCode === 2) return { status: "PE", score: 0, message };
+  if (exitCode !== 7) return { status: "JE", score: 0, message };
+  const multiplier = parsePartialScore(message, stdout, maxScore);
+  if (multiplier === null || multiplier < 0 || multiplier > 1) {
+    return { status: "JE", score: 0, message: message || "Checker returned an invalid partial score." };
+  }
+  return {
+    status: multiplier === 1 ? "AC" : multiplier === 0 ? "WA" : "PARTIAL",
+    score: Math.round(multiplier * maxScore * 10_000) / 10_000,
+    message,
+  };
 }
 
 function prepareNativeChecker(

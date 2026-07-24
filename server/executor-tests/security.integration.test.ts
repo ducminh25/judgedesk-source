@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test, { after } from "node:test";
 import { executorClient } from "../executor/client.js";
 import { DEFAULT_EXECUTOR_LIMITS, type ExecutorLimits, type ExecutorRunResult } from "../executor/protocol.js";
 import { createExecutorWorkspace, importExecutorArtifact } from "../executor/workspace.js";
+import { prepareIsolatedPythonScript } from "../judge/python-runtime.js";
+import { resolveManagedToolchain } from "../toolchains/resolver.js";
 
 const MiB = 1024 * 1024;
 const helperBinary = path.join(
@@ -16,7 +19,6 @@ const helperBinary = path.join(
     ? "judgedesk-executor-x86_64-pc-windows-msvc.exe"
     : `judgedesk-executor-${process.arch === "arm64" ? "aarch64" : "x86_64"}-apple-darwin`,
 );
-
 after(async () => {
   await executorClient.shutdown();
 });
@@ -77,6 +79,45 @@ test("submission cannot modify the immutable artifact cache", async () => {
   }
 });
 
+test(
+  "managed Python AppContainer blocks private files, network, and child processes",
+  {
+    timeout: 30_000,
+    skip: process.platform !== "win32" || !resolveManagedToolchain("python").ready,
+  },
+  async () => {
+    const hostDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-python-boundary-"));
+    const secretPath = path.join(hostDirectory, "secret.txt");
+    const escapePath = path.join(hostDirectory, "escape.txt");
+    fs.writeFileSync(secretPath, "PRIVATE", "utf8");
+    try {
+      const read = await runManagedPython(["read", secretPath]);
+      assert.equal(read.result.reason, "exited", JSON.stringify(read.result));
+      assert.notEqual(read.result.exitCode, 0, read.stdout);
+      assert.doesNotMatch(read.stdout, /SECURITY_ESCAPE/);
+
+      const write = await runManagedPython(["write", escapePath]);
+      assert.equal(write.result.reason, "exited", JSON.stringify(write.result));
+      assert.notEqual(write.result.exitCode, 0, write.stdout);
+      assert.equal(fs.existsSync(escapePath), false);
+
+      const network = await runManagedPython(["network"]);
+      assert.equal(network.result.reason, "exited", JSON.stringify(network.result));
+      assert.notEqual(network.result.exitCode, 0, network.stdout);
+
+      const child = await runManagedPython(["subprocess"]);
+      assert.ok(
+        child.result.reason === "process_limit"
+          || (child.result.reason === "exited" && child.result.exitCode !== 0),
+        JSON.stringify(child.result),
+      );
+      assert.doesNotMatch(child.stdout, /SECURITY_ESCAPE/);
+    } finally {
+      fs.rmSync(hostDirectory, { recursive: true, force: true });
+    }
+  },
+);
+
 test("wall-clock boundary matrix is stable across 20 repetitions", { timeout: 90_000 }, async () => {
   // LPAC/Seatbelt loader time is part of wall time, so calibrate it once and choose payloads whose
   // total observed workload targets 80/120% of the configured boundary.
@@ -121,6 +162,10 @@ test("job-wide memory boundary is stable across 20 repetitions", { timeout: 60_0
     const fail = await runHelper(["--test-allocate-mib", "80", "2000"], { memoryBytes: 64 * MiB });
     assert.equal(fail.reason, "memory_limit", `over-limit repetition ${index}: ${JSON.stringify(fail)}`);
     assert.ok((fail.peakMemoryBytes ?? 0) > 0);
+    assert.ok(
+      (fail.peakMemoryBytes ?? 0) <= 64 * MiB,
+      `reported MLE memory exceeded the configured limit: ${JSON.stringify(fail)}`,
+    );
   }
 });
 
@@ -187,6 +232,42 @@ async function runHelper(
   overrides: Partial<ExecutorLimits> = {},
 ): Promise<ExecutorRunResult> {
   return runHelperWithWorkspace(() => args, overrides);
+}
+
+async function runManagedPython(
+  args: string[],
+): Promise<{ result: ExecutorRunResult; stdout: string }> {
+  const workspace = await createExecutorWorkspace();
+  try {
+    const launch = await prepareIsolatedPythonScript(
+      workspace,
+      path.join(process.cwd(), "server/security-fixtures/python/resource_attacks.py"),
+      "resource_attacks.py",
+    );
+    const result = await executorClient.run({
+      runId: `python_security_${crypto.randomUUID().replaceAll("-", "_")}`,
+      role: "submission",
+      workspaceId: workspace.id,
+      executableId: launch.executableId,
+      args: [...launch.args, ...args],
+      stdoutFile: "stdout.txt",
+      stderrFile: "stderr.txt",
+      environment: launch.environment,
+      limits: limits({
+        wallTimeMs: 2_000,
+        memoryBytes: 128 * MiB,
+        processCount: 1,
+      }),
+    });
+    return {
+      result,
+      stdout: fs.existsSync(path.join(workspace.path, "stdout.txt"))
+        ? fs.readFileSync(path.join(workspace.path, "stdout.txt"), "utf8")
+        : "",
+    };
+  } finally {
+    workspace.dispose();
+  }
 }
 
 async function runHelperWithWorkspace(

@@ -43,6 +43,9 @@
       "ready": "Sẵn sàng",
       "inPath": "Đã tìm thấy",
       "notInPath": "Không tìm thấy",
+      "submissionReady": "Sẵn sàng chấm submission",
+      "checkerOnly": "Chỉ dùng cho checker",
+      "managedRequired": "Cần runtime được quản lý",
       "activeRunner": "Trình chạy hoạt động",
       "checking": "Đang kiểm tra môi trường..."
     }
@@ -115,6 +118,7 @@
     "outputFile": "File đầu ra",
     "timeLimit": "Giới hạn thời gian (ms)",
     "memoryLimit": "Giới hạn bộ nhớ (MB)",
+    "windowsMemoryPolicy": "Trên Windows, mỗi tiến trình chấm được giới hạn tối đa 512 MB để toàn bộ JudgeDesk giữ peak dưới 1.024 MB.",
     "checker": "Trình chấm (Checker)",
     "save": "Lưu Cấu Hình",
     "useStandardInput": "Dùng luồng nhập chuẩn",
@@ -385,7 +389,8 @@
       "pythonTitle": "Chỉ trình biên dịch Python",
       "pythonDesc": "Cài đặt trình thông dịch Python 3.12 cô lập (tải về khoảng 45 MB).",
       "judgerTitle": "Chỉ dùng Judger (Bỏ qua tải về)",
-      "judgerDesc": "Sử dụng môi trường G++/Python có sẵn trên máy chấm của bạn. Bỏ qua bước tải.",
+      "judgerDesc": "Bỏ qua tải về. Python hệ thống vẫn chạy được Python checker tin cậy, nhưng Python submission sẽ nhận CE cho đến khi cài managed Python. Trên Windows, C++ submission cũng cần managed GCC.",
+      "managedPythonNotice": "Native protection bắt buộc dùng managed Python cho submission của thí sinh. Bạn có thể từ chối lúc này; Python hệ thống chỉ còn dùng cho checker tin cậy và Python submission sẽ nhận CE cho đến khi cài managed runtime.",
       "skip": "Bỏ qua lúc này",
       "next": "Bắt đầu thiết lập",
       "installingTitle": "Đang tải và Cài đặt các gói",

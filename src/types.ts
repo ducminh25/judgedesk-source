@@ -1,6 +1,7 @@
 export type {
   BatchJudgeRequest,
   BatchJudgeResult,
+  BuildMetadata,
   CompileStatus,
   ContestantResult,
   HostStatus,
@@ -12,8 +13,10 @@ export type {
   PolygonTestConfig,
   ProblemConfig,
   ProblemResult,
+  RunMetadata,
   ProblemVerdict,
   SubmissionLanguage,
   TestCaseRun,
+  TestExecutionDiagnostics,
   TestVerdict
 } from "../shared/contracts";

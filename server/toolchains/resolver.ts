@@ -510,6 +510,12 @@ export function buildCompilerProbeArgs(
 ): string[] {
   const args = ["-std=c++14", "-pipe", "-O2"];
   if (platform !== "darwin") {
+    if (platform === "win32") {
+      args.push(
+        "-fsanitize=integer-divide-by-zero",
+        "-fsanitize-undefined-trap-on-error",
+      );
+    }
     args.push("-s", "-static", "-lm");
   } else {
     if (!darwinSdkDirectory) {

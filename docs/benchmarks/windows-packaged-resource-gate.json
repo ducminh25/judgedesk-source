@@ -1,0 +1,32 @@
+﻿{
+    "generatedAt":  "2026-07-24T14:10:35.6705132Z",
+    "appExecutable":  "themis-v2.exe",
+    "appVersion":  "1.2.5",
+    "platform":  "win32",
+    "arch":  "x64",
+    "logicalProcessors":  12,
+    "workload":  [
+                     "CE_cpp/A_plus_B",
+                     "MLE_python/A_plus_B",
+                     "TLE_CPU_python/A_plus_B"
+                 ],
+    "sampleIntervalMs":  100,
+    "sampleCount":  59,
+    "combinedPeakWorkingSetBytes":  896368640,
+    "combinedPeakWorkingSetMiB":  854.84,
+    "budgetMiB":  1024,
+    "memoryGatePassed":  true,
+    "peakCpuOneCorePercent":  196.39,
+    "peakCpuMachinePercent":  16.37,
+    "processPeakWorkingSetMiB":  {
+                                     "as":  8.1,
+                                     "cc1plus":  135.32,
+                                     "conhost":  7.82,
+                                     "g++":  6.64,
+                                     "judgedesk-executor":  8.64,
+                                     "msedgewebview2":  127.94,
+                                     "python":  338.88,
+                                     "server":  66.89,
+                                     "themis-v2":  42.16
+                                 }
+}

@@ -76,11 +76,20 @@ export function BasicProblemSettings(props: Props) {
           <label className="text-text-primary text-[11px] font-semibold w-24">{t("problemConfig.memoryLimit")}</label>
           <input
             type="number"
+            min={8}
+            step={1}
             placeholder="256"
             value={config.memoryLimit ?? ""}
             onChange={event => setConfig(previous => ({ ...previous, memoryLimit: event.target.value ? Number(event.target.value) : undefined }))}
             className="flex-1 bg-input-bg border border-surface-border-strong rounded px-2.5 py-1.5 text-text-primary text-xs focus:border-indigo-500 transition outline-none"
           />
+          <span
+            className="cursor-help text-[10px] text-text-muted"
+            title={t("problemConfig.windowsMemoryPolicy")}
+            aria-label={t("problemConfig.windowsMemoryPolicy")}
+          >
+            ⓘ
+          </span>
         </div>
         <div className="flex items-center gap-2 bg-surface-elevated p-2.5 rounded border border-surface-border">
           <label className="text-text-primary text-[11px] font-semibold w-24">{t("problemConfig.checker")}</label>

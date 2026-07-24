@@ -17,6 +17,10 @@ import type { NormalizedProblemConfig, SubmissionLanguage, TestCaseRun } from ".
 import type { CompiledChecker } from "./compiler.js";
 import { runCustomChecker } from "./custom-checker-runner.js";
 import { prepareIsolatedPythonScript } from "./python-runtime.js";
+import {
+  resolveConfiguredSubmissionMemoryLimitBytes,
+  resolveSubmissionMemoryLimitBytes,
+} from "./resource-policy.js";
 import { isBuiltInChecker, runStandardChecker } from "./standard-checkers.js";
 
 interface TestCaseRunnerOptions {
@@ -58,7 +62,7 @@ export async function runTestCase(options: TestCaseRunnerOptions): Promise<TestC
       workspace.stage(options.inputPath, inputFilename);
     }
 
-    const memoryBytes = Math.max(8 * 1024 * 1024, (options.config.memoryLimit || 256) * 1024 * 1024);
+    const memoryBytes = resolveSubmissionMemoryLimitBytes(options.config.memoryLimit);
     const result = await executorClient.run({
       runId,
       role: "submission",
@@ -89,10 +93,10 @@ export async function runTestCase(options: TestCaseRunnerOptions): Promise<TestC
     const diagnostic = executorDiagnostic(result, stderr);
 
     if (result.reason === "cancelled" || (options.jobId && activeJobs.get(options.jobId)?.cancel)) {
-      return createResult(options, "FAIL", executionTime, peakMemoryKb, 0, "cancelled", stdout);
+      return createResult(options, "FAIL", executionTime, peakMemoryKb, 0, "cancelled", stdout, undefined, result);
     }
     if (status) {
-      return createResult(options, status, executionTime, peakMemoryKb, 0, diagnostic, stdout);
+      return createResult(options, status, executionTime, peakMemoryKb, 0, diagnostic, stdout, undefined, result);
     }
 
     const actualOutputPath = path.join(options.tempDirectory, `actual-${crypto.randomUUID()}.out`);
@@ -113,17 +117,40 @@ export async function runTestCase(options: TestCaseRunnerOptions): Promise<TestC
           checked.status === "AC" ? "" : diagnostic,
           stdout,
           checked.message,
+          result,
         );
       }
       if (options.checker?.error) {
-        return createResult(options, "JE", executionTime, peakMemoryKb, 0, options.checker.error, stdout);
+        return createResult(
+          options,
+          "JE",
+          executionTime,
+          peakMemoryKb,
+          0,
+          options.checker.error,
+          stdout,
+          undefined,
+          result,
+        );
       }
       if (!options.checker?.path || !fs.existsSync(options.checker.path)) {
-        return createResult(options, "JE", executionTime, peakMemoryKb, 0, "Custom checker is unavailable.", stdout);
+        return createResult(
+          options,
+          "JE",
+          executionTime,
+          peakMemoryKb,
+          0,
+          "Custom checker is unavailable.",
+          stdout,
+          undefined,
+          result,
+        );
       }
       const checked = await runCustomChecker({
         checkerPath: options.checker.path,
         checkerRuntime: options.checker.runtime || "native",
+        pythonExecutablePath: options.checker.pythonExecutablePath,
+        pythonSource: options.checker.pythonSource,
         inputPath: options.inputPath,
         actualOutputPath,
         expectedOutputPath: options.expectedOutputPath,
@@ -142,6 +169,7 @@ export async function runTestCase(options: TestCaseRunnerOptions): Promise<TestC
         status === "AC" ? "" : diagnostic,
         stdout,
         checked.message,
+        result,
       );
     } finally {
       fs.rmSync(actualOutputPath, { force: true });
@@ -181,6 +209,7 @@ function createResult(
   errorDetail: string,
   actualOutput: string,
   checkerMessage?: string,
+  executorResult?: Awaited<ReturnType<typeof executorClient.run>>,
 ): TestCaseRun {
   return {
     name: options.testName,
@@ -192,6 +221,23 @@ function createResult(
     errorDetail,
     expectedOutputPreview: preview(options.expectedOutput),
     actualOutputPreview: preview(actualOutput),
+    execution: executorResult ? {
+      reason: executorResult.reason,
+      exitCode: executorResult.exitCode,
+      signalOrStatus: executorResult.signalOrStatus,
+      securitySetupTimeUs: executorResult.securitySetupTimeUs,
+      wallTimeUs: executorResult.wallTimeUs,
+      resultCollectionTimeUs: executorResult.resultCollectionTimeUs,
+      userCpuTimeUs: executorResult.userCpuTimeUs,
+      kernelCpuTimeUs: executorResult.kernelCpuTimeUs,
+      peakMemoryBytes: executorResult.peakMemoryBytes,
+      configuredMemoryLimitBytes: resolveConfiguredSubmissionMemoryLimitBytes(options.config.memoryLimit),
+      effectiveMemoryLimitBytes: resolveSubmissionMemoryLimitBytes(options.config.memoryLimit),
+      stdoutBytes: executorResult.stdoutBytes,
+      stderrBytes: executorResult.stderrBytes,
+      createdFiles: executorResult.createdFiles,
+      diagnostic: executorResult.diagnostic,
+    } : undefined,
   };
 }
 

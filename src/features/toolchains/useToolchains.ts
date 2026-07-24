@@ -51,7 +51,19 @@ export interface ToolchainState {
     cpp: ResolvedToolchain;
     python: ResolvedToolchain;
   };
+  capabilities: {
+    cpp: ToolchainCapabilities;
+    python: ToolchainCapabilities;
+  };
   toolchains: ToolchainDescriptor[];
+}
+
+export interface ToolchainCapabilities {
+  detected: boolean;
+  managed: boolean;
+  submissionReady: boolean;
+  checkerReady: boolean;
+  installable: boolean;
 }
 
 export function useToolchains() {

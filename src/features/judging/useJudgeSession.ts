@@ -102,6 +102,8 @@ export function useJudgeSession({
   const handleEvent = (event: JudgeStreamEvent) => {
     if (event.type === "progress") {
       setProgressState(event.data);
+    } else if (event.type === "metadata") {
+      dispatchResults({ type: "set_metadata", metadata: event.data });
     } else if (event.type === "problem_completed") {
       dispatchResults({
         type: "merge_problem",

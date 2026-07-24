@@ -1,5 +1,6 @@
 export type {
   BatchJudgeRequest,
+  BuildMetadata,
   CompileStatus,
   ContestantResult,
   HostStatus,
@@ -9,7 +10,9 @@ export type {
   PolygonConfig,
   ProblemConfig,
   ProblemResult,
+  RunMetadata,
   SubmissionLanguage,
   TestCaseRun,
+  TestExecutionDiagnostics,
   TestVerdict
 } from "../shared/contracts.js";

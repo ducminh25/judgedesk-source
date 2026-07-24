@@ -1,7 +1,8 @@
-import type { BatchJudgeResult, ProblemResult } from "../../types";
+import type { BatchJudgeResult, ProblemResult, RunMetadata } from "../../types";
 
 export type JudgeResultsAction =
   | { type: "initialize" }
+  | { type: "set_metadata"; metadata: RunMetadata }
   | { type: "replace"; result: BatchJudgeResult | null }
   | { type: "merge_problem"; contestant: string; problemResult: ProblemResult }
   | { type: "delete_result"; contestantName: string; problemName: string }
@@ -29,6 +30,12 @@ export function judgeResultsReducer(
   }
   if (action.type === "replace") {
     return action.result;
+  }
+  if (action.type === "set_metadata") {
+    return {
+      ...(state ?? { success: true, contestants: [] }),
+      metadata: action.metadata,
+    };
   }
   if (action.type === "merge_problem") {
     return mergeProblemResult(state, action.contestant, action.problemResult);

@@ -15,44 +15,98 @@ workflows:
         - $HOME/.npm
         - $HOME/.cargo/registry
         - $HOME/.cargo/git
+        - native-executor/target
         - src-tauri/target
     scripts:
+      - name: Fail fast on missing release credentials
+        script: |
+          set -euo pipefail
+          required=(
+            TAURI_SIGNING_PRIVATE_KEY
+            MACOS_DEVELOPER_ID_P12_BASE64
+            APPLE_API_ISSUER
+            APPLE_API_KEY
+            APPLE_API_PRIVATE_KEY_BASE64
+          )
+          for variable in "${required[@]}"; do
+            if [[ -z "${!variable:-}" ]]; then
+              echo "Missing $variable in the themis_signing variable group." >&2
+              exit 1
+            fi
+          done
       - name: Install Rust toolchain
         script: |
+          set -euo pipefail
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
             | sh -s -- -y --profile minimal
           source "$HOME/.cargo/env"
           rustup default stable
           rustup component add rustfmt
           echo "PATH=$HOME/.cargo/bin:$PATH" >> "$CM_ENV"
+      - name: Import Developer ID and configure notarization
+        script: |
+          set -euo pipefail
+          certificate="$CM_TEMPORARY_FOLDER/developer-id-application.p12"
+          api_key="$CM_TEMPORARY_FOLDER/AuthKey_${APPLE_API_KEY}.p8"
+          printf '%s' "$MACOS_DEVELOPER_ID_P12_BASE64" | /usr/bin/base64 -D > "$certificate"
+          printf '%s' "$APPLE_API_PRIVATE_KEY_BASE64" | /usr/bin/base64 -D > "$api_key"
+          chmod 600 "$certificate" "$api_key"
+          keychain initialize
+          keychain add-certificates \
+            --certificate "$certificate" \
+            --certificate-password "${MACOS_DEVELOPER_ID_PASSWORD:-}"
+          identity="$(
+            security find-identity -v -p codesigning \
+              | sed -n 's/.*"\(Developer ID Application:.*\)"/\1/p' \
+              | head -n 1
+          )"
+          if [[ -z "$identity" ]]; then
+            echo "A valid Developer ID Application identity was not imported." >&2
+            exit 1
+          fi
+          {
+            echo "APPLE_SIGNING_IDENTITY=$identity"
+            echo "APPLE_API_KEY_PATH=$api_key"
+            echo "JUDGEDESK_REQUIRE_NOTARIZATION=1"
+          } >> "$CM_ENV"
+          security find-identity -v -p codesigning
+      - name: Record deterministic build provenance
+        script: |
+          set -euo pipefail
+          source_epoch="$(git show -s --format=%ct "${CM_COMMIT:-HEAD}")"
+          {
+            echo "JUDGEDESK_GIT_COMMIT=${CM_COMMIT:-unknown}"
+            echo "JUDGEDESK_BUILD_NUMBER=${BUILD_NUMBER:-unknown}"
+            echo "SOURCE_DATE_EPOCH=$source_epoch"
+          } >> "$CM_ENV"
       - name: Install and verify source
         script: |
+          set -euo pipefail
           npm ci --no-audit --no-fund
           npm run release:check-version
           npm run lint
           npm run test:server
+          npm run build:frontend
           cargo fmt --check --manifest-path src-tauri/Cargo.toml
+          cargo fmt --check --manifest-path native-executor/Cargo.toml
       - name: Install the Apple Silicon Rust target
         script: |
+          set -euo pipefail
           rustup target add aarch64-apple-darwin
       - name: Build and smoke-test the Apple Silicon sidecar
         script: |
+          set -euo pipefail
           bash scripts/build-macos-arm64-sidecar.sh
-      - name: Require the updater signing key
-        script: |
-          if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
-            echo "Add TAURI_SIGNING_PRIVATE_KEY to the themis_signing variable group." >&2
-            exit 1
-          fi
       - name: Build Apple Silicon app, DMG, and updater bundle
         script: |
-          unset APPLE_SIGNING_IDENTITY APPLE_API_ISSUER APPLE_API_KEY
+          set -euo pipefail
           export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
           npx tauri build \
             --config src-tauri/tauri.macos.conf.json \
             --target aarch64-apple-darwin
       - name: Verify and stage macOS release artifacts
         script: |
+          set -euo pipefail
           bash scripts/verify-macos-arm64-bundle.sh
     artifacts:
       - release-assets-mac/JudgeDesk_*.dmg
