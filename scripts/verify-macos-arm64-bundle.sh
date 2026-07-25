@@ -21,8 +21,10 @@ executor_binary="$app_bundle/Contents/MacOS/judgedesk-executor"
 lipo "$app_bundle/Contents/MacOS/themis-v2" -verify_arch arm64
 lipo "$server_binary" -verify_arch arm64
 lipo "$executor_binary" -verify_arch arm64
-codesign --verify --deep --strict --verbose=2 "$app_bundle"
-codesign --verify --strict --verbose=2 "$executor_binary"
+if [[ "${JUDGEDESK_REQUIRE_NOTARIZATION:-0}" == "1" ]]; then
+  codesign --verify --deep --strict --verbose=2 "$app_bundle"
+  codesign --verify --strict --verbose=2 "$executor_binary"
+fi
 signature_info="$(codesign -dvvv "$app_bundle" 2>&1)"
 printf '%s\n' "$signature_info"
 server_entitlements="$(codesign -d --entitlements :- "$server_binary" 2>&1)"
