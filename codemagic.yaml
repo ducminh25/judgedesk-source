@@ -23,10 +23,6 @@ workflows:
           set -euo pipefail
           required=(
             TAURI_SIGNING_PRIVATE_KEY
-            MACOS_DEVELOPER_ID_P12_BASE64
-            APPLE_API_ISSUER
-            APPLE_API_KEY
-            APPLE_API_PRIVATE_KEY_BASE64
           )
           for variable in "${required[@]}"; do
             if [[ -z "${!variable:-}" ]]; then
@@ -43,33 +39,6 @@ workflows:
           rustup default stable
           rustup component add rustfmt
           echo "PATH=$HOME/.cargo/bin:$PATH" >> "$CM_ENV"
-      - name: Import Developer ID and configure notarization
-        script: |
-          set -euo pipefail
-          certificate="$CM_TEMPORARY_FOLDER/developer-id-application.p12"
-          api_key="$CM_TEMPORARY_FOLDER/AuthKey_${APPLE_API_KEY}.p8"
-          printf '%s' "$MACOS_DEVELOPER_ID_P12_BASE64" | /usr/bin/base64 -D > "$certificate"
-          printf '%s' "$APPLE_API_PRIVATE_KEY_BASE64" | /usr/bin/base64 -D > "$api_key"
-          chmod 600 "$certificate" "$api_key"
-          keychain initialize
-          keychain add-certificates \
-            --certificate "$certificate" \
-            --certificate-password "${MACOS_DEVELOPER_ID_PASSWORD:-}"
-          identity="$(
-            security find-identity -v -p codesigning \
-              | sed -n 's/.*"\(Developer ID Application:.*\)"/\1/p' \
-              | head -n 1
-          )"
-          if [[ -z "$identity" ]]; then
-            echo "A valid Developer ID Application identity was not imported." >&2
-            exit 1
-          fi
-          {
-            echo "APPLE_SIGNING_IDENTITY=$identity"
-            echo "APPLE_API_KEY_PATH=$api_key"
-            echo "JUDGEDESK_REQUIRE_NOTARIZATION=1"
-          } >> "$CM_ENV"
-          security find-identity -v -p codesigning
       - name: Record deterministic build provenance
         script: |
           set -euo pipefail
