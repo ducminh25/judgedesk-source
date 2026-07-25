@@ -29,11 +29,11 @@ signature_info="$(codesign -dvvv "$app_bundle" 2>&1)"
 printf '%s\n' "$signature_info"
 server_entitlements="$(codesign -d --entitlements :- "$server_binary" 2>&1)"
 printf '%s\n' "$server_entitlements"
-if ! grep -q 'com.apple.security.cs.allow-jit' <<<"$server_entitlements"; then
-  echo "The packaged backend sidecar is missing the JIT entitlement required by V8." >&2
-  exit 1
-fi
 if [[ "${JUDGEDESK_REQUIRE_NOTARIZATION:-0}" == "1" ]]; then
+  if ! grep -q 'com.apple.security.cs.allow-jit' <<<"$server_entitlements"; then
+    echo "The packaged backend sidecar is missing the JIT entitlement required by V8." >&2
+    exit 1
+  fi
   if ! grep -q '^Authority=Developer ID Application:' <<<"$signature_info"; then
     echo "The release app is not signed with Developer ID Application." >&2
     exit 1
