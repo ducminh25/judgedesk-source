@@ -576,6 +576,10 @@ fn build_profile(spec: &RunSpec, paths: &ValidatedRun) -> Result<String, String>
         "(literal \"/dev/random\")".into(),
         "(literal \"/dev/urandom\")".into(),
     ];
+    let mut process_exec_rules = vec![
+        format!("(literal \"{executable}\")"),
+        "(literal \"/usr/bin/sandbox-exec\")".into(),
+    ];
     if let Some(toolchain_root) = paths
         .executable
         .ancestors()
@@ -585,11 +589,11 @@ fn build_profile(spec: &RunSpec, paths: &ValidatedRun) -> Result<String, String>
             "(subpath \"{}\")",
             seatbelt_literal(&toolchain_root.to_string_lossy())
         ));
+        process_exec_rules.push(format!(
+            "(subpath \"{}\")",
+            seatbelt_literal(&toolchain_root.to_string_lossy())
+        ));
     }
-    let mut process_exec_rules = vec![
-        format!("(literal \"{executable}\")"),
-        "(literal \"/usr/bin/sandbox-exec\")".into(),
-    ];
     if matches!(spec.role, RunRole::Compiler) {
         let (toolchain_root, developer_root) = validated_compiler_roots(spec)?;
         for root in [&toolchain_root, &developer_root] {

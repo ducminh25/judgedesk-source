@@ -94,9 +94,11 @@ test("Windows native protection prefers an installed managed toolchain", () => {
     version: "16.1.0",
     ready: true,
   };
-  assert.equal(chooseNativeProtectedToolchain("win32", managed, system), managed);
-  assert.equal(chooseNativeProtectedToolchain("darwin", managed, system), system);
-  assert.equal(chooseNativeProtectedToolchain("win32", { ...managed, ready: false }, system), system);
+  assert.equal(chooseNativeProtectedToolchain("win32", "cpp", managed, system), managed);
+  assert.equal(chooseNativeProtectedToolchain("darwin", "cpp", managed, system), system);
+  assert.equal(chooseNativeProtectedToolchain("darwin", "python", managed, system), managed);
+  assert.equal(chooseNativeProtectedToolchain("win32", "cpp", { ...managed, ready: false }, system), system);
+  assert.equal(chooseNativeProtectedToolchain("darwin", "python", { ...managed, ready: false }, system), system);
 });
 
 test("toolchain environment prepends the detected executable directory", () => {
