@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Hỗ trợ cộng đồng & Hỏi đáp
+    url: https://github.com/ducminh25/judgedesk/discussions
+    about: Đặt câu hỏi, chia sẻ ý tưởng hoặc xem hướng dẫn sử dụng.
+  - name: Báo cáo lỗ hổng bảo mật
+    url: https://github.com/ducminh25/judgedesk/security/advisories/new
+    about: Gửi báo cáo riêng tư, không đăng lỗ hổng công khai.

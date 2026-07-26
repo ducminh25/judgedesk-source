@@ -105,13 +105,13 @@ Official setup references:
 
 ## Publish
 
-1. Create annotated source tag `v<version>` in the private source repo.
+1. Create annotated source tag `v<version>` in `ducminh25/judgedesk`.
 2. Collect the Authenticode-signed MSI that passed the Windows gates, the
    CodeMagic updater signature, and all artifacts from `macos-arm64-release`.
 3. Generate `latest.json` with `scripts/generate-updater-manifest.js` and create
    combined SHA-256 checksums.
 4. Upload all artifacts to a draft `v<version>` release in
-   `ducminh25/themis-v2`.
+   `ducminh25/judgedesk`.
 5. Verify every URL and signature, then publish the release. `latest.json` must
    be present before the release becomes the public `latest` release.
 6. Remove the temporary `v<version>-staging` release after the signed Windows
