@@ -2,7 +2,7 @@
 
 JudgeDesk là ứng dụng chấm bài lập trình cục bộ dành cho kỳ thi và lớp học, với bảng điểm kiểu desktop, cấu hình nhóm test, giao diện sáng/tối và tiếng Anh/tiếng Việt. Ứng dụng hỗ trợ Windows x64 và macOS Apple Silicon.
 
-Trang tải xuống, hướng dẫn cài đặt và hỗ trợ người dùng được duy trì tại repo public [`ducminh25/themis-v2`](https://github.com/ducminh25/themis-v2).
+Trang tải xuống, hướng dẫn cài đặt, hỗ trợ người dùng và mã nguồn chính thức được duy trì tại repo public [`ducminh25/judgedesk`](https://github.com/ducminh25/judgedesk).
 
 Các thay đổi theo phiên bản được ghi tại [CHANGELOG.md](CHANGELOG.md). Phiên bản
 `1.2.0` đổi tên giao diện thành JudgeDesk nhưng giữ nguyên application identifier,

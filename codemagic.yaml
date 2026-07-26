@@ -176,7 +176,7 @@ workflows:
           version="$(node -p "require('./package.json').version")"
           msi_name="JudgeDesk_${version}_x64_en-US.msi"
           staging_tag="v${version}-staging"
-          staging_url="https://github.com/ducminh25/themis-v2/releases/download/${staging_tag}/${msi_name}"
+          staging_url="https://github.com/ducminh25/judgedesk/releases/download/${staging_tag}/${msi_name}"
           mkdir -p release-assets-windows
           curl --proto '=https' --tlsv1.2 -fL "$staging_url" -o "release-assets-windows/$msi_name"
           export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"

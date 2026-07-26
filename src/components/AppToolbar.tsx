@@ -26,7 +26,7 @@ import { useTheme } from "../contexts/ThemeContext";
 import { APP_VERSION } from "../version";
 import type { AppUpdateState } from "../features/updates/useAppUpdater";
 
-const PUBLIC_REPOSITORY = "https://github.com/ducminh25/themis-v2";
+const PUBLIC_REPOSITORY = "https://github.com/ducminh25/judgedesk";
 
 interface Props {
   canDeleteSelected: boolean;

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "JudgeDesk",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "identifier": "com.themisv2.judge",
   "build": {
     "beforeDevCommand": "npm run dev:frontend",
@@ -57,7 +57,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDNEMjkxNzkwRTVBMzAxNUUKUldSZUFhUGxrQmNwUFh5ZWtaM0xTT09JVDE3Y1RQcHBNUXZPY1hqS3BZejlxNXl5QS9aV0lseGgK",
       "endpoints": [
-        "https://github.com/ducminh25/themis-v2/releases/latest/download/latest.json"
+        "https://github.com/ducminh25/judgedesk/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"

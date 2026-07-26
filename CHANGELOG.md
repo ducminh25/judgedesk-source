@@ -3,6 +3,14 @@
 Tất cả thay đổi đáng chú ý của JudgeDesk được ghi tại đây. Dự án dùng Semantic
 Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng dụng hiện có.
 
+## [1.2.6] - 2026-07-26
+
+### Hợp nhất Repository & Phát hành Công khai (Public Release)
+
+- Chuyển mã nguồn chính thức sang repository công khai `ducminh25/judgedesk`.
+- Nhập toàn bộ tài liệu người dùng (`INSTALL.md`, `SECURITY.md`, `SUPPORT.md`, `TOOLCHAINS.md`), mẫu báo cáo lỗi và workflow đóng gói toolchain từ kho cũ.
+- Cập nhật đường dẫn tra cứu bản cập nhật ứng dụng (`latest.json`), URL tải về managed toolchain (`toolchains-v1`), và các liên kết hỗ trợ về kho lưu trữ mới `ducminh25/judgedesk`.
+
 ## [1.2.4] - 2026-07-23
 
 ### Sửa lỗi macOS
@@ -147,8 +155,9 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
   thay vì cài song song.
 - macOS hỗ trợ Apple Silicon, macOS 11 trở lên. Windows hỗ trợ Windows 10/11 x64.
 
-[1.2.0]: https://github.com/ducminh25/themis-v2/releases/tag/v1.2.0
-[1.2.1]: https://github.com/ducminh25/themis-v2/releases/tag/v1.2.1
-[1.2.2]: https://github.com/ducminh25/themis-v2/releases/tag/v1.2.2
-[1.2.3]: https://github.com/ducminh25/themis-v2/releases/tag/v1.2.3
-[1.2.4]: https://github.com/ducminh25/themis-v2/releases/tag/v1.2.4
+[1.2.0]: https://github.com/ducminh25/judgedesk/releases/tag/v1.2.0
+[1.2.1]: https://github.com/ducminh25/judgedesk/releases/tag/v1.2.1
+[1.2.2]: https://github.com/ducminh25/judgedesk/releases/tag/v1.2.2
+[1.2.3]: https://github.com/ducminh25/judgedesk/releases/tag/v1.2.3
+[1.2.4]: https://github.com/ducminh25/judgedesk/releases/tag/v1.2.4
+[1.2.6]: https://github.com/ducminh25/judgedesk/releases/tag/v1.2.6

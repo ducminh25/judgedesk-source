@@ -3985,7 +3985,7 @@ dependencies = [
 
 [[package]]
 name = "themis-v2"
-version = "1.2.5"
+version = "1.2.6"
 dependencies = [
  "serde_json",
  "tauri",

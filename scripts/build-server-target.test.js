@@ -329,9 +329,9 @@ test("release publishing targets the public distribution repository", () => {
 
   assert.match(
     releaseJob,
-    /PUBLIC_RELEASE_REPOSITORY: ducminh25\/themis-v2/,
+    /PUBLIC_RELEASE_REPOSITORY: ducminh25\/judgedesk/,
   );
-  assert.match(releaseJob, /GH_TOKEN: \$\{\{ secrets\.PUBLIC_RELEASE_TOKEN \}\}/);
+  assert.match(releaseJob, /GH_TOKEN: \$\{\{ secrets\.PUBLIC_RELEASE_TOKEN \|\| github\.token \}\}/);
   assert.match(
     releaseJob,
     /gh release view[^\n]+--repo "\$PUBLIC_RELEASE_REPOSITORY"/,
