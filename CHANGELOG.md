@@ -11,6 +11,13 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 - Nhập toàn bộ tài liệu người dùng (`INSTALL.md`, `SECURITY.md`, `SUPPORT.md`, `TOOLCHAINS.md`), mẫu báo cáo lỗi và workflow đóng gói toolchain từ kho cũ.
 - Cập nhật đường dẫn tra cứu bản cập nhật ứng dụng (`latest.json`), URL tải về managed toolchain (`toolchains-v1`), và các liên kết hỗ trợ về kho lưu trữ mới `ducminh25/judgedesk`.
 
+### Sửa lỗi chấm bài Python trên macOS
+
+- Khắc phục lỗi chọn nhầm System Python gây lỗi `TOOLCHAIN_NOT_SANDBOX_COMPATIBLE` (CE toàn bộ) khi chấm bài Python bằng Managed Toolchain trong sandbox macOS.
+- Sửa lỗi xác định cache managed Python trên macOS (`bin/python3` symlink), đồng thời bổ sung kiểm tra `realpath` ngăn chặn directory traversal.
+- Bổ sung quy tắc `process-exec` cho thư mục `toolchain_root` trong cấu hình Seatbelt sandbox, cho phép thi hành trình thông dịch Python trong managed runtime mà không bị từ chối quyền.
+- Bảo toàn tuyệt đối các cơ chế bảo mật: chặn mạng, chặn giới hạn tiến trình/luồng (forkbomb), từ chối thực thi cmd/shell và cách ly tệp trong workspace.
+
 ## [1.2.4] - 2026-07-23
 
 ### Sửa lỗi macOS
