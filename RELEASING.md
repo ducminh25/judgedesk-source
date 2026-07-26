@@ -31,7 +31,8 @@ cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
 Run `npm run test:desktop` for the real Windows/WebView2 UI and complete the
-release smoke checklist before tagging.
+[v1.2.7 release checklist](docs/v1.2.7-release-test-checklist.md) before
+tagging.
 
 ## Windows package built locally
 
@@ -80,22 +81,25 @@ that passed the Windows and source gates. Do not use an intermediate commit for
 a “trial DMG”; the workflow deliberately runs all cheap/source/native gates
 before invoking Tauri packaging.
 
-The `themis_signing` Codemagic variable group must contain these secret values:
+The current public/free CodeMagic path produces updater-signed artifacts without
+requiring Apple Developer ID or notarization. The `themis_signing` Codemagic
+variable group must contain:
 
 - `TAURI_SIGNING_PRIVATE_KEY` and optional
-  `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` for updater artifacts;
-- `MACOS_DEVELOPER_ID_P12_BASE64` and
-  `MACOS_DEVELOPER_ID_PASSWORD` for a **Developer ID Application**
-  certificate;
-- `APPLE_API_ISSUER`, `APPLE_API_KEY`, and
-  `APPLE_API_PRIVATE_KEY_BASE64` for Apple notarization.
+  `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` for updater artifacts.
 
-The `.p12` and `.p8` files are stored as single-line base64. Never commit them.
-The workflow imports a temporary keychain, passes the App Store Connect key to
-Tauri, and refuses to stage artifacts unless the DMG has a stapled notarization
-ticket, the app has a Developer ID signature and hardened runtime, all binaries
-have the expected arm64 architecture, and the packaged sidecar starts and
-detects C++.
+Never replace this key: existing installations verify updates with the public
+key embedded in the app. The workflow verifies arm64 architecture, the app's
+code-signing structure and entitlements, DMG contents, updater signature, the
+packaged sidecar, Apple Clang, the native executor and Managed Python. It does
+not claim Developer ID identity, a notarization ticket or Gatekeeper reputation;
+manual DMG users may need **Open Anyway** after verifying the checksum and
+release source.
+
+If Developer ID/notarization is added later, configure the Apple credentials
+separately and run the bundle verifier with `JUDGEDESK_REQUIRE_NOTARIZATION=1`.
+Do not describe the current artifacts as notarized unless that stricter gate
+actually passes.
 
 Official setup references:
 
@@ -106,8 +110,9 @@ Official setup references:
 ## Publish
 
 1. Create annotated source tag `v<version>` in `ducminh25/judgedesk`.
-2. Collect the Authenticode-signed MSI that passed the Windows gates, the
-   CodeMagic updater signature, and all artifacts from `macos-arm64-release`.
+2. Collect the Windows MSI that passed the accepted Windows gates, its CodeMagic
+   updater signature, and all artifacts from `macos-arm64-release`. Record
+   Authenticode status separately; the updater `.sig` is not Authenticode.
 3. Generate `latest.json` with `scripts/generate-updater-manifest.js` and create
    combined SHA-256 checksums.
 4. Upload all artifacts to a draft `v<version>` release in
