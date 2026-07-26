@@ -3,7 +3,7 @@ import { BUILD_METADATA } from "../build-metadata.js";
 import { executorClient } from "../executor/client.js";
 import type { RunMetadata } from "../types.js";
 import {
-  resolveManagedToolchain,
+  isPythonSubmissionReady,
   resolveNativeProtectedToolchain,
   resolveToolchain,
 } from "../toolchains/resolver.js";
@@ -12,7 +12,6 @@ export function createRunMetadata(): RunMetadata {
   const platform = os.platform();
   const cpp = resolveNativeProtectedToolchain("cpp");
   const detectedPython = resolveToolchain("python");
-  const managedPython = resolveManagedToolchain("python");
   const executor = executorClient.health;
   return {
     startedAt: new Date().toISOString(),
@@ -33,7 +32,7 @@ export function createRunMetadata(): RunMetadata {
       python: {
         source: detectedPython.source,
         version: detectedPython.version,
-        submissionReady: managedPython.ready,
+        submissionReady: isPythonSubmissionReady(detectedPython),
         checkerReady: detectedPython.ready,
       },
     },

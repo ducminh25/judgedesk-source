@@ -9,6 +9,11 @@ import {
   resetActiveWorkspacePath,
   workspacePickerPath,
 } from "./path-memory";
+import { reconcileSelection } from "./selection-state";
+
+interface LoadOptions {
+  preserveSelection?: boolean;
+}
 
 interface ProblemsResponse {
   success: boolean;
@@ -59,13 +64,18 @@ export function useContestWorkspace() {
   const [selectedProblems, setSelectedProblems] = useState<Record<string, boolean>>({});
   const [customCheckers, setCustomCheckers] = useState<Record<string, string[]>>({});
 
-  const loadContestants = useCallback(async (pathOverride?: string) => {
+  const loadContestants = useCallback(async (
+    pathOverride?: string,
+    options: LoadOptions = {},
+  ) => {
     const targetPath = pathOverride ?? contestantsPath;
     if (!targetPath.trim()) return [];
     try {
       const data = await fetchContestants(targetPath);
       setContestants(data);
-      setSelectedContestants(Object.fromEntries(data.map((name) => [name, true])));
+      setSelectedContestants((previous) => options.preserveSelection
+        ? reconcileSelection(data, previous)
+        : Object.fromEntries(data.map((name) => [name, true])));
       return data;
     } catch (error) {
       console.error("Failed to load contestants", error);
@@ -73,14 +83,19 @@ export function useContestWorkspace() {
     }
   }, [contestantsPath]);
 
-  const loadProblems = useCallback(async (pathOverride?: string) => {
+  const loadProblems = useCallback(async (
+    pathOverride?: string,
+    options: LoadOptions = {},
+  ) => {
     const targetPath = pathOverride ?? testPath;
     if (!targetPath.trim()) return [];
     try {
       const data = await fetchProblems(targetPath);
       setProblems(data.data);
       setCustomCheckers(data.customCheckers);
-      setSelectedProblems(Object.fromEntries(data.data.map((name) => [name, true])));
+      setSelectedProblems((previous) => options.preserveSelection
+        ? reconcileSelection(data.data, previous)
+        : Object.fromEntries(data.data.map((name) => [name, true])));
       setProblemConfigs((previous) => {
         const next = { ...previous };
         for (const problemName of data.data) {

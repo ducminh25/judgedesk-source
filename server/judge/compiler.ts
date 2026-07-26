@@ -224,10 +224,7 @@ export async function resolveCompilationToolchain(
   const selected = resolveNativeProtectedToolchain(kind);
   if (kind === "python") {
     const managed = resolveManagedToolchain(kind);
-    const cached = managed.ready
-      ? await findCachedManagedToolchain(kind)
-      : null;
-    return chooseCompilationToolchain(kind, selected, managed, cached);
+    return chooseCompilationToolchain(kind, selected, managed);
   }
   return selected;
 }
@@ -236,14 +233,16 @@ export function chooseCompilationToolchain(
   kind: "cpp" | "python",
   selected: ResolvedToolchain,
   managed: ResolvedToolchain,
-  cached: ResolvedToolchain | null,
 ): ResolvedToolchain {
   if (kind !== "python") return selected;
   // A cache is only an execution copy of the installed managed package. Once
   // that package is uninstalled, the cache must not silently keep Python
   // submissions runnable while the UI correctly reports "Checker only".
-  if (!managed.ready) return selected;
-  return cached ?? managed;
+  if (!managed.ready || selected.source !== "managed") return selected;
+  // The executor cache is an implementation detail, not a different selected
+  // toolchain. Returning it here changes the compile-time path after the first
+  // testcase imports Python and makes later runs fail the identity check.
+  return managed;
 }
 
 export function buildSubmissionCompilerArgs(

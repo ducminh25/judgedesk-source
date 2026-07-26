@@ -3,6 +3,7 @@ import { TEMP_ROOT } from "../runtime.js";
 import { sandbox } from "../sandbox.js";
 import type { HostStatus } from "../types.js";
 import {
+  isPythonSubmissionReady,
   resolveManagedToolchain,
   resolveNativeProtectedToolchain,
   resolveToolchain,
@@ -15,6 +16,7 @@ export function getHostStatus(): HostStatus {
   const detectedPython = resolveToolchain("python");
   const managedCpp = resolveManagedToolchain("cpp");
   const managedPython = resolveManagedToolchain("python");
+  const pythonSubmissionReady = isPythonSubmissionReady(detectedPython);
   const resolvedCpp = resolveNativeProtectedToolchain("cpp");
   const secureRunner = executorClient.health;
   const cppRequiresManaged = os.platform() === "win32";
@@ -37,10 +39,10 @@ export function getHostStatus(): HostStatus {
       version: detectedPython.ready ? detectedPython.version : "Not found",
       source: detectedPython.source,
       managedInstalled: managedPython.ready,
-      submissionReady: managedPython.ready,
+      submissionReady: pythonSubmissionReady,
       checkerReady: detectedPython.ready,
-      diagnostic: detectedPython.ready && !managedPython.ready
-        ? "Detected for trusted checkers only; Python submissions require managed Python."
+      diagnostic: detectedPython.ready && !pythonSubmissionReady
+        ? "Detected for trusted checkers only; select or install managed Python for submissions."
         : detectedPython.diagnostic,
     },
     isolate: { installed: sandbox.mode !== "none" },

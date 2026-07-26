@@ -226,15 +226,24 @@ export function chooseNativeProtectedToolchain(
   managed: ResolvedToolchain,
   selected: ResolvedToolchain,
 ): ResolvedToolchain {
-  const requireManaged = platform === "win32" || kind === "python";
+  // Python must honor the active source. System/custom Python remains useful
+  // for trusted checkers, but submissions fail closed in compileSubmission.
+  if (kind === "python") return selected;
+  const requireManaged = platform === "win32";
   return requireManaged && managed.ready ? managed : selected;
 }
 
 export function resolveNativeProtectedToolchain(kind: ToolchainKind): ResolvedToolchain {
   const managed = resolveManagedToolchain(kind);
-  const requireManaged = os.platform() === "win32" || kind === "python";
+  const requireManaged = os.platform() === "win32" && kind === "cpp";
   if (requireManaged && managed.ready) return managed;
   return chooseNativeProtectedToolchain(os.platform(), kind, managed, resolveToolchain(kind));
+}
+
+export function isPythonSubmissionReady(toolchain: ResolvedToolchain): boolean {
+  return toolchain.kind === "python"
+    && toolchain.ready
+    && toolchain.source === "managed";
 }
 
 // Searches environment PATH for binary
