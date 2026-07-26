@@ -40,8 +40,12 @@ export async function findCachedManagedToolchain(
   const executablePath = path.join(root, descriptor.executableRelativePath);
   const expectedMarker = `${MANAGED_CACHE_SCHEMA}\n${kind}\n${descriptor.version}\n`;
   try {
-    const executable = fs.lstatSync(executablePath);
-    if (!executable.isFile() || executable.isSymbolicLink()) return null;
+    const executableStat = fs.statSync(executablePath);
+    if (!executableStat.isFile()) return null;
+    if (fs.lstatSync(executablePath).isSymbolicLink()) {
+      const targetPath = fs.realpathSync(executablePath);
+      if (!path.resolve(targetPath).startsWith(path.resolve(root))) return null;
+    }
     if (fs.readFileSync(marker, "utf8") !== expectedMarker) return null;
     return {
       kind,

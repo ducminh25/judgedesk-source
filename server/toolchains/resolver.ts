@@ -222,16 +222,19 @@ export function resolveManagedToolchain(kind: ToolchainKind): ResolvedToolchain 
 
 export function chooseNativeProtectedToolchain(
   platform: NodeJS.Platform,
+  kind: ToolchainKind,
   managed: ResolvedToolchain,
   selected: ResolvedToolchain,
 ): ResolvedToolchain {
-  return platform === "win32" && managed.ready ? managed : selected;
+  const requireManaged = platform === "win32" || kind === "python";
+  return requireManaged && managed.ready ? managed : selected;
 }
 
 export function resolveNativeProtectedToolchain(kind: ToolchainKind): ResolvedToolchain {
   const managed = resolveManagedToolchain(kind);
-  if (os.platform() === "win32" && managed.ready) return managed;
-  return chooseNativeProtectedToolchain(os.platform(), managed, resolveToolchain(kind));
+  const requireManaged = os.platform() === "win32" || kind === "python";
+  if (requireManaged && managed.ready) return managed;
+  return chooseNativeProtectedToolchain(os.platform(), kind, managed, resolveToolchain(kind));
 }
 
 // Searches environment PATH for binary
