@@ -97,13 +97,18 @@ artifacts without publishing a release. A local M-series Mac can use
 `bash scripts/build-macos-arm64-sidecar.sh` followed by the Tauri build command
 from `.github/workflows/release.yml`.
 
-`src-tauri/tauri.macos.conf.json` is a distribution configuration: it expects
-`APPLE_SIGNING_IDENTITY` plus Apple notarization credentials and is not an
-ad-hoc-signing fallback. For a public download, Apple requires Developer ID,
-hardened runtime and notarization. CodeMagic validates all three and the
-stapled ticket. Keep the source/native checks before the Tauri build so a
-compiler, executor, TypeScript, version, or fixture failure does not consume a
-DMG/notarization attempt.
+`src-tauri/tauri.macos.conf.json` is the updater-capable distribution
+configuration. The current CodeMagic workflow requires the existing Tauri
+updater private key, produces the DMG plus signed updater tarball, and validates
+architectures, code-signing structure, entitlements, sidecar startup, compiler,
+executor and Managed Python behavior. It does not require or claim Developer ID
+or Apple notarization by default; public/free DMG users may need to approve the
+app manually in Gatekeeper after verifying its checksum and source.
+
+Set `JUDGEDESK_REQUIRE_NOTARIZATION=1` only in a separately configured
+Developer ID/notarization pipeline. Keep the source/native checks before the
+Tauri build so a compiler, executor, TypeScript, version, or fixture failure
+does not consume a packaging attempt.
 
 ## Managed compiler packages
 

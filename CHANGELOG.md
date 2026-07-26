@@ -3,6 +3,38 @@
 Tất cả thay đổi đáng chú ý của JudgeDesk được ghi tại đây. Dự án dùng Semantic
 Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng dụng hiện có.
 
+## [1.2.7] - 2026-07-27
+
+### Ổn định Python được quản lý trên macOS
+
+- Tôn trọng đúng nguồn Python đang được chọn: System/Custom Python chỉ phục vụ
+  trusted checker, còn submission chỉ báo sẵn sàng khi Managed Python thực sự
+  được chọn và có thể chạy trong sandbox.
+- Đưa toàn bộ managed Python package vào executor cache tự chứa, viết lại các
+  symbolic link nội bộ sau khi copy và xử lý đúng alias đường dẫn tạm
+  `/var`/`/private/var` trên macOS.
+- Siết kiểm tra containment theo đường dẫn canonical: chấp nhận symlink hợp lệ
+  nằm trong toolchain nhưng từ chối link thoát khỏi thư mục cài đặt/cache.
+- Thêm release smoke test cài Managed Python thật, import runtime vào native
+  executor và chạy compile-and-run submission Python trên Apple Silicon.
+
+### Reload và phát hiện test
+
+- Reload giữ nguyên trạng thái đã tick/bỏ tick của thí sinh và problem hiện có;
+  mục mới phát hiện được chọn mặc định, mục đã bị xóa được loại khỏi trạng thái.
+- Chỉ nhận thư mục test có đủ file input `.inp/.in` và expected output
+  `.out/.ans`. Các thư mục phụ như `__pycache__`, thư mục rỗng hoặc thiếu một
+  phía không còn xuất hiện trên giao diện hay bị cộng nhầm vào tổng trọng số.
+- Giao diện cấu hình problem và judge engine dùng chung một quy tắc discovery,
+  giữ kết quả nhất quán trên Windows và macOS.
+
+### Kiểm thử
+
+- Bổ sung regression tests cho selection khi Reload, managed Python cache,
+  archive symlink/containment và testcase discovery đa nền tảng.
+- CI xác nhận typecheck, toàn bộ server tests, frontend/backend build và Tauri
+  shell trên Windows 2022 và macOS 15.
+
 ## [1.2.6] - 2026-07-26
 
 ### Hợp nhất Repository & Phát hành Công khai (Public Release)
@@ -168,3 +200,4 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 [1.2.3]: https://github.com/ducminh25/judgedesk/releases/tag/v1.2.3
 [1.2.4]: https://github.com/ducminh25/judgedesk/releases/tag/v1.2.4
 [1.2.6]: https://github.com/ducminh25/judgedesk/releases/tag/v1.2.6
+[1.2.7]: https://github.com/ducminh25/judgedesk/releases/tag/v1.2.7
