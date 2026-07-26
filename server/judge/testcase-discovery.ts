@@ -23,16 +23,30 @@ export function createProblemDirectoryResolver(testDirectory: string): (problemN
 }
 
 export function listTestDirectories(problemDirectory: string): string[] {
-  return fs.readdirSync(problemDirectory)
-    .filter(name => fs.statSync(path.join(problemDirectory, name)).isDirectory())
+  return fs.readdirSync(problemDirectory, { withFileTypes: true })
+    .filter(entry => entry.isDirectory())
+    .map(entry => entry.name)
+    .filter(name => resolveTestCaseFiles(problemDirectory, name) !== null)
     .sort((left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" }));
 }
 
 export function resolveTestCaseFiles(problemDirectory: string, testName: string): TestCaseFiles | null {
   const directory = path.join(problemDirectory, testName);
-  const files = fs.readdirSync(directory);
-  const inputFileName = files.find(name => name.toLowerCase().endsWith(".inp") || name.toLowerCase().endsWith(".in"));
-  const outputFileName = files.find(name => name.toLowerCase().endsWith(".out") || name.toLowerCase().endsWith(".ans"));
+  let files: fs.Dirent[];
+  try {
+    files = fs.readdirSync(directory, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  const regularFiles = files.filter(entry => entry.isFile()).map(entry => entry.name);
+  const inputFileName = regularFiles.find(name => {
+    const extension = path.extname(name).toLowerCase();
+    return extension === ".inp" || extension === ".in";
+  });
+  const outputFileName = regularFiles.find(name => {
+    const extension = path.extname(name).toLowerCase();
+    return extension === ".out" || extension === ".ans";
+  });
   if (!inputFileName || !outputFileName) return null;
   return {
     name: testName,

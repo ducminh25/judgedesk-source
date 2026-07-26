@@ -30,6 +30,46 @@ test("discovery matches problem names case-insensitively and sorts tests natural
   assert.equal(resolveTestCaseFiles(problem.path, "2")?.inputFileName, "data.inp");
 });
 
+test("test discovery ignores directories without a complete input-output pair", t => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-testcase-discovery-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  const createDirectory = (name: string): string => {
+    const directory = path.join(root, name);
+    fs.mkdirSync(directory, { recursive: true });
+    return directory;
+  };
+
+  const test01 = createDirectory("test01");
+  fs.writeFileSync(path.join(test01, "data.inp"), "");
+  fs.writeFileSync(path.join(test01, "data.out"), "");
+
+  const test02 = createDirectory("test02");
+  fs.writeFileSync(path.join(test02, "sample.IN"), "1");
+  fs.writeFileSync(path.join(test02, "sample.ANS"), "2");
+
+  const pythonCache = createDirectory("__pycache__");
+  fs.writeFileSync(path.join(pythonCache, "checker.cpython-312.pyc"), "cache");
+
+  const inputOnly = createDirectory("input-only");
+  fs.writeFileSync(path.join(inputOnly, "data.inp"), "1");
+
+  const outputOnly = createDirectory("output-only");
+  fs.writeFileSync(path.join(outputOnly, "data.out"), "2");
+
+  const fakeFiles = createDirectory("fake-files");
+  fs.mkdirSync(path.join(fakeFiles, "data.inp"));
+  fs.mkdirSync(path.join(fakeFiles, "data.out"));
+
+  createDirectory("empty");
+
+  assert.deepEqual(listTestDirectories(root), ["test01", "test02"]);
+  assert.equal(resolveTestCaseFiles(root, "__pycache__"), null);
+  assert.equal(resolveTestCaseFiles(root, "input-only"), null);
+  assert.equal(resolveTestCaseFiles(root, "output-only"), null);
+  assert.equal(resolveTestCaseFiles(root, "fake-files"), null);
+});
+
 test("discovery recognizes Python submissions independently of C++", (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "themis-python-discovery-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
