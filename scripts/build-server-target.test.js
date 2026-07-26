@@ -297,6 +297,8 @@ test("Apple Silicon release scripts verify architecture, DMG, and sidecar", () =
   assert.match(sidecarScript, /test:executor/);
   assert.match(sidecarScript, /security\.integration\.test\.ts/);
   assert.match(sidecarScript, /smoke-test-macos-compiler\.ts/);
+  assert.match(sidecarScript, /smoke-test-managed-python\.ts/);
+  assert.match(sidecarScript, /JUDGEDESK_SMOKE_INSTALL_MANAGED_PYTHON=1/);
   assert.match(sidecarScript, /set_limit\(libc::RLIMIT_NPROC/);
   assert.match(sidecarScript, /--test-process-bomb/);
   assert.match(sidecarScript, /kernel process ceiling contains a real process bomb/);

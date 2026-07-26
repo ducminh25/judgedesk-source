@@ -4,7 +4,10 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { clearToolchainDetectionCache, findSystemPython } from "../toolchains/resolver.js";
-import { managedToolchainSourceRoot } from "../executor/workspace.js";
+import {
+  managedToolchainSourceRoot,
+  rewriteManagedToolchainSymlinks,
+} from "../executor/workspace.js";
 import {
   chooseCompilationToolchain,
   compileSubmission,
@@ -114,5 +117,27 @@ test("Python compilation honors the selected source and keeps the installed path
       selectedManaged,
     ),
     selectedManaged,
+  );
+});
+
+test("managed toolchain cache rewrites package symlinks inside the cache", {
+  skip: process.platform === "win32",
+}, (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-python-symlink-"));
+  const source = path.join(root, "source");
+  const destination = path.join(root, "cache");
+  fs.mkdirSync(path.join(source, "bin"), { recursive: true });
+  fs.writeFileSync(path.join(source, "bin", "python3.12"), "python");
+  fs.symlinkSync("python3.12", path.join(source, "bin", "python3"));
+  fs.cpSync(source, destination, { recursive: true, dereference: true, force: false });
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  rewriteManagedToolchainSymlinks(source, destination);
+
+  const cachedLink = path.join(destination, "bin", "python3");
+  assert.equal(fs.lstatSync(cachedLink).isSymbolicLink(), true);
+  assert.equal(
+    fs.realpathSync(cachedLink),
+    fs.realpathSync(path.join(destination, "bin", "python3.12")),
   );
 });
