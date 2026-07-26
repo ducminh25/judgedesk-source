@@ -25,7 +25,7 @@ export interface CachedManagedToolchain extends ResolvedToolchain {
 }
 
 const artifactCache = new Map<string, { fingerprint: string; artifact: ExecutorArtifact }>();
-const MANAGED_CACHE_SCHEMA = "2-read-only-cache";
+const MANAGED_CACHE_SCHEMA = "3-internal-symlinks";
 
 export async function findCachedManagedToolchain(
   kind: ToolchainKind,
@@ -44,7 +44,7 @@ export async function findCachedManagedToolchain(
     if (!executableStat.isFile()) return null;
     if (fs.lstatSync(executablePath).isSymbolicLink()) {
       const targetPath = fs.realpathSync(executablePath);
-      if (!path.resolve(targetPath).startsWith(path.resolve(root))) return null;
+      if (!isDescendant(root, targetPath)) return null;
     }
     if (fs.readFileSync(marker, "utf8") !== expectedMarker) return null;
     return {
@@ -143,6 +143,7 @@ export async function importManagedToolchain(
     const staging = `${destinationRoot}.staging.${process.pid}`;
     fs.rmSync(staging, { recursive: true, force: true });
     fs.cpSync(sourceRoot, staging, { recursive: true, dereference: true, force: false });
+    rewriteManagedToolchainSymlinks(sourceRoot, staging);
     fs.writeFileSync(path.join(staging, ".judgedesk-import-complete"), expectedMarker, "utf8");
     fs.rmSync(destinationRoot, { recursive: true, force: true });
     fs.renameSync(staging, destinationRoot);
@@ -150,11 +151,56 @@ export async function importManagedToolchain(
   const relativeExecutable = descriptor.executableRelativePath;
   const cachedExecutable = path.join(destinationRoot, relativeExecutable);
   if (!fs.existsSync(cachedExecutable)) throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+  if (!isDescendant(destinationRoot, fs.realpathSync(cachedExecutable))) {
+    throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+  }
   return {
     executableId: path.relative(health.executorRoot, cachedExecutable).replaceAll("\\", "/"),
     executablePath: cachedExecutable,
     root: destinationRoot,
   };
+}
+
+export function rewriteManagedToolchainSymlinks(
+  sourceRoot: string,
+  destinationRoot: string,
+): void {
+  const canonicalSourceRoot = fs.realpathSync(sourceRoot);
+  const resolvedDestinationRoot = path.resolve(destinationRoot);
+  const pending = [path.resolve(sourceRoot)];
+
+  while (pending.length > 0) {
+    const sourceDirectory = pending.pop()!;
+    for (const entry of fs.readdirSync(sourceDirectory, { withFileTypes: true })) {
+      const sourcePath = path.join(sourceDirectory, entry.name);
+      if (entry.isDirectory()) {
+        pending.push(sourcePath);
+        continue;
+      }
+      if (!entry.isSymbolicLink()) continue;
+
+      const canonicalTarget = fs.realpathSync(sourcePath);
+      if (!isDescendant(canonicalSourceRoot, canonicalTarget)) {
+        throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+      }
+      const sourceRelativePath = path.relative(path.resolve(sourceRoot), sourcePath);
+      const targetRelativePath = path.relative(canonicalSourceRoot, canonicalTarget);
+      const destinationPath = path.join(resolvedDestinationRoot, sourceRelativePath);
+      const destinationTarget = path.join(resolvedDestinationRoot, targetRelativePath);
+      if (!isDescendant(resolvedDestinationRoot, destinationPath)
+        || !isDescendant(resolvedDestinationRoot, destinationTarget)) {
+        throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+      }
+
+      fs.rmSync(destinationPath, { recursive: true, force: true });
+      const internalTarget = path.relative(path.dirname(destinationPath), destinationTarget);
+      fs.symlinkSync(
+        internalTarget,
+        destinationPath,
+        fs.statSync(canonicalTarget).isDirectory() ? "dir" : "file",
+      );
+    }
+  }
 }
 
 export function managedToolchainSourceRoot(

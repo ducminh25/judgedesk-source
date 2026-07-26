@@ -33,4 +33,13 @@ npm run test:executor
 npx tsx --test server/executor-tests/security.integration.test.ts
 npx tsx scripts/smoke-test-macos-compiler.ts
 
-echo "The Apple Silicon sidecar passed smoke, executor, security, and compiler tests."
+python_smoke_data="$(mktemp -d)"
+cleanup_python_smoke() {
+  rm -rf "$python_smoke_data"
+}
+trap cleanup_python_smoke EXIT
+THEMIS_APP_DATA_DIR="$python_smoke_data" \
+  JUDGEDESK_SMOKE_INSTALL_MANAGED_PYTHON=1 \
+  npx tsx scripts/smoke-test-managed-python.ts
+
+echo "The Apple Silicon sidecar passed smoke, executor, security, compiler, and managed Python tests."
