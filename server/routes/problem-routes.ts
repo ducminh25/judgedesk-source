@@ -6,6 +6,7 @@ import {
   readStoredProblemConfig,
   writeStoredProblemConfig
 } from "../problems/problem-config-repository.js";
+import { listTestDirectories, resolveTestCaseFiles } from "../judge/testcase-discovery.js";
 
 export function registerProblemRoutes(app: Express): void {
   app.get("/api/fetch-contestants", (req, res) => {
@@ -55,8 +56,7 @@ export function registerProblemRoutes(app: Express): void {
       if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
         return res.json({ success: true, data: [] });
       }
-      const dirs = fs.readdirSync(resolved).filter((dir) => fs.statSync(path.join(resolved, dir)).isDirectory());
-      dirs.sort(naturalSort);
+      const dirs = listTestDirectories(resolved);
       return res.json({ success: true, data: dirs });
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error.message });
@@ -76,34 +76,12 @@ export function registerProblemRoutes(app: Express): void {
         return res.json({ success: true, data: [] });
       }
 
-      const dirs = fs.readdirSync(resolved).filter((dir) => fs.statSync(path.join(resolved, dir)).isDirectory());
-      dirs.sort(naturalSort);
-
-      let configuredInput = "";
-      try {
-        const storedConfig = readStoredProblemConfig(resolved);
-        if (storedConfig) {
-          if (!storedConfig.useStdIn && !storedConfig.useStdIO && storedConfig.inputFile) {
-            configuredInput = storedConfig.inputFile;
-          }
-        }
-      } catch {}
+      const dirs = listTestDirectories(resolved);
 
       const result = dirs.map((dir) => {
-        const testDirPath = path.join(resolved, dir);
-        const possibleInputs = [
-          configuredInput,
-          `${problemName}.inp`,
-          `${problemName.toLowerCase()}.inp`,
-          `${problemName.toUpperCase()}.inp`,
-          `${problemName}.in`,
-          `${problemName.toLowerCase()}.in`
-        ].filter(Boolean);
-        const inputPath = possibleInputs
-          .map((file) => path.join(testDirPath, file))
-          .find((filePath) => fs.existsSync(filePath));
-
-        if (!inputPath) return { name: dir, preview: "", size: 0 };
+        const testFiles = resolveTestCaseFiles(resolved, dir);
+        if (!testFiles) return { name: dir, preview: "", size: 0 };
+        const inputPath = testFiles.inputPath;
 
         const size = fs.statSync(inputPath).size;
         if (size === 0) return { name: dir, preview: "", size };
