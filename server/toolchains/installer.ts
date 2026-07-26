@@ -108,10 +108,12 @@ async function downloadFile(
 }
 
 function isInside(root: string, candidate: string): boolean {
-  const relative = path.relative(root, candidate);
+  const relative = path.relative(path.resolve(root), path.resolve(candidate));
   return (
     relative === "" ||
-    (!relative.startsWith("..") && !path.isAbsolute(relative))
+    (relative !== ".." &&
+      !relative.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relative))
   );
 }
 
@@ -136,7 +138,17 @@ function validateArchiveEntries(entries: string[], destination: string): void {
   }
 }
 
-function validateExtractedLinks(root: string, current = root): void {
+export function validateExtractedLinks(root: string): void {
+  const resolvedRoot = path.resolve(root);
+  const canonicalRoot = fs.realpathSync(resolvedRoot);
+  validateExtractedLinksRecursive(resolvedRoot, canonicalRoot, resolvedRoot);
+}
+
+function validateExtractedLinksRecursive(
+  displayRoot: string,
+  canonicalRoot: string,
+  current: string,
+): void {
   for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
     const entryPath = path.join(current, entry.name);
     if (entry.isSymbolicLink()) {
@@ -145,16 +157,16 @@ function validateExtractedLinks(root: string, current = root): void {
         target = fs.realpathSync(entryPath);
       } catch {
         throw new Error(
-          `Archive contains a broken symbolic link: ${path.relative(root, entryPath)}`,
+          `Archive contains a broken symbolic link: ${path.relative(displayRoot, entryPath)}`,
         );
       }
-      if (!isInside(root, target)) {
+      if (!isInside(canonicalRoot, target)) {
         throw new Error(
-          `Archive symbolic link escapes the installation directory: ${path.relative(root, entryPath)}`,
+          `Archive symbolic link escapes the installation directory: ${path.relative(displayRoot, entryPath)}`,
         );
       }
     } else if (entry.isDirectory()) {
-      validateExtractedLinks(root, entryPath);
+      validateExtractedLinksRecursive(displayRoot, canonicalRoot, entryPath);
     }
   }
 }
