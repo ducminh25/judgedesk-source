@@ -286,9 +286,29 @@ function assertSafeRelative(value: string): void {
   }
 }
 
-function isDescendant(root: string, candidate: string): boolean {
-  const relative = path.relative(path.resolve(root), path.resolve(candidate));
-  return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+export function isDescendant(root: string, candidate: string): boolean {
+  const canonicalRoot = canonicalizeForContainment(root);
+  const canonicalCandidate = canonicalizeForContainment(candidate);
+  const relative = path.relative(canonicalRoot, canonicalCandidate);
+  return relative !== ""
+    && relative !== ".."
+    && !relative.startsWith(`..${path.sep}`)
+    && !path.isAbsolute(relative);
+}
+
+function canonicalizeForContainment(value: string): string {
+  let existingPath = path.resolve(value);
+  const missingComponents: string[] = [];
+
+  while (!fs.existsSync(existingPath)) {
+    const parent = path.dirname(existingPath);
+    if (parent === existingPath) break;
+    missingComponents.unshift(path.basename(existingPath));
+    existingPath = parent;
+  }
+
+  const canonicalExistingPath = fs.realpathSync(existingPath);
+  return path.resolve(canonicalExistingPath, ...missingComponents);
 }
 
 function managedCacheId(kind: ToolchainKind, version: string): string {

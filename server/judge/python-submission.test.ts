@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { clearToolchainDetectionCache, findSystemPython } from "../toolchains/resolver.js";
 import {
+  isDescendant,
   managedToolchainSourceRoot,
   rewriteManagedToolchainSymlinks,
 } from "../executor/workspace.js";
@@ -139,5 +140,32 @@ test("managed toolchain cache rewrites package symlinks inside the cache", {
   assert.equal(
     fs.realpathSync(cachedLink),
     fs.realpathSync(path.join(destination, "bin", "python3.12")),
+  );
+});
+
+test("managed cache containment canonicalizes aliased macOS temporary roots", {
+  skip: process.platform === "win32",
+}, (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-cache-alias-"));
+  const realRoot = path.join(root, "real");
+  const aliasRoot = path.join(root, "alias");
+  const cachedExecutable = path.join(realRoot, "toolchains", "python", "bin", "python3");
+  const outsideExecutable = path.join(root, "outside-python3");
+  fs.mkdirSync(path.dirname(cachedExecutable), { recursive: true });
+  fs.writeFileSync(cachedExecutable, "python");
+  fs.writeFileSync(outsideExecutable, "outside");
+  fs.symlinkSync(realRoot, aliasRoot, "dir");
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  assert.equal(
+    isDescendant(
+      path.join(aliasRoot, "toolchains", "python"),
+      fs.realpathSync(cachedExecutable),
+    ),
+    true,
+  );
+  assert.equal(
+    isDescendant(path.join(aliasRoot, "toolchains", "python"), outsideExecutable),
+    false,
   );
 });
