@@ -26,9 +26,8 @@ export async function prepareIsolatedPythonScript(
   if (python.source !== "managed") throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
 
   const existingCache = await findCachedManagedToolchain("python");
-  const cached = existingCache && path.resolve(existingCache.executablePath) === path.resolve(python.executablePath)
-    ? existingCache
-    : await importManagedToolchain("python", python.executablePath, python.version);
+  const cached = existingCache
+    ?? await importManagedToolchain("python", python.executablePath, python.version);
   workspace.stage(sourcePath, stagedName);
   return {
     executableId: cached.executableId,

@@ -16,6 +16,7 @@ import {
   buildSelectedDarwinCppCandidates,
   buildToolchainEnvironment,
   inferDarwinDeveloperRoot,
+  isPythonSubmissionReady,
   isDarwinAppleToolchainLocation,
   isDarwinSandboxCompatibleCpp,
   MIN_GNU_CPP_VERSION,
@@ -79,7 +80,7 @@ test("macOS resolves the real compiler inside the selected Developer root", () =
   );
 });
 
-test("Windows native protection prefers an installed managed toolchain", () => {
+test("Windows native protection prefers an installed managed C++ toolchain", () => {
   const managed = {
     kind: "cpp" as const,
     source: "managed" as const,
@@ -96,9 +97,29 @@ test("Windows native protection prefers an installed managed toolchain", () => {
   };
   assert.equal(chooseNativeProtectedToolchain("win32", "cpp", managed, system), managed);
   assert.equal(chooseNativeProtectedToolchain("darwin", "cpp", managed, system), system);
-  assert.equal(chooseNativeProtectedToolchain("darwin", "python", managed, system), managed);
   assert.equal(chooseNativeProtectedToolchain("win32", "cpp", { ...managed, ready: false }, system), system);
+});
+
+test("native protection honors the active Python source", () => {
+  const managed = {
+    kind: "python" as const,
+    source: "managed" as const,
+    executablePath: "/managed/bin/python3",
+    version: "3.12.13",
+    ready: true,
+  };
+  const system = {
+    kind: "python" as const,
+    source: "system" as const,
+    executablePath: "/usr/bin/python3",
+    version: "3.9.6",
+    ready: true,
+  };
+  assert.equal(chooseNativeProtectedToolchain("darwin", "python", managed, system), system);
+  assert.equal(chooseNativeProtectedToolchain("win32", "python", managed, system), system);
   assert.equal(chooseNativeProtectedToolchain("darwin", "python", { ...managed, ready: false }, system), system);
+  assert.equal(isPythonSubmissionReady(managed), true);
+  assert.equal(isPythonSubmissionReady(system), false);
 });
 
 test("toolchain environment prepends the detected executable directory", () => {

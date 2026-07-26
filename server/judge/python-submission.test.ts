@@ -64,7 +64,7 @@ test("an unmanaged Python runtime fails closed instead of running on the host", 
   assert.equal(compiled.compileError, "TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
 });
 
-test("an executor cache cannot keep submissions ready after managed Python is uninstalled", () => {
+test("Python compilation honors the selected source and keeps the installed path stable", () => {
   const selectedSystem = {
     kind: "python" as const,
     source: "system" as const,
@@ -92,7 +92,6 @@ test("an executor cache cannot keep submissions ready after managed Python is un
       "python",
       selectedSystem,
       missingManaged,
-      staleCache,
     ),
     selectedSystem,
   );
@@ -101,8 +100,19 @@ test("an executor cache cannot keep submissions ready after managed Python is un
       "python",
       selectedSystem,
       { ...staleCache, executablePath: String.raw`C:\installed\python.exe` },
-      staleCache,
     ),
-    staleCache,
+    selectedSystem,
+  );
+  const selectedManaged = {
+    ...staleCache,
+    executablePath: String.raw`C:\installed\python.exe`,
+  };
+  assert.equal(
+    chooseCompilationToolchain(
+      "python",
+      selectedManaged,
+      selectedManaged,
+    ),
+    selectedManaged,
   );
 });

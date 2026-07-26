@@ -625,7 +625,10 @@ export default function App() {
           setModalPath(testsPickerPath);
         }}
         onReload={() => {
-          void Promise.all([handleFetchContestants(), handleFetchProblems()]).then(() => {
+          void Promise.all([
+            handleFetchContestants(undefined, { preserveSelection: true }),
+            handleFetchProblems(undefined, { preserveSelection: true }),
+          ]).then(() => {
             markContestDirty();
           });
         }}
