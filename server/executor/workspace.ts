@@ -187,8 +187,11 @@ export function rewriteManagedToolchainSymlinks(
       const targetRelativePath = path.relative(canonicalSourceRoot, canonicalTarget);
       const destinationPath = path.join(resolvedDestinationRoot, sourceRelativePath);
       const destinationTarget = path.join(resolvedDestinationRoot, targetRelativePath);
-      if (!isDescendant(resolvedDestinationRoot, destinationPath)
-        || !isDescendant(resolvedDestinationRoot, destinationTarget)) {
+      // The copied entry may still be a rebased symlink to the source package until the
+      // replacement below. Validate where we will write lexically; source targets were
+      // already canonicalized and constrained to canonicalSourceRoot above.
+      if (!isLexicalDescendant(resolvedDestinationRoot, destinationPath)
+        || !isLexicalDescendant(resolvedDestinationRoot, destinationTarget)) {
         throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
       }
 
@@ -290,6 +293,14 @@ export function isDescendant(root: string, candidate: string): boolean {
   const canonicalRoot = canonicalizeForContainment(root);
   const canonicalCandidate = canonicalizeForContainment(candidate);
   const relative = path.relative(canonicalRoot, canonicalCandidate);
+  return relative !== ""
+    && relative !== ".."
+    && !relative.startsWith(`..${path.sep}`)
+    && !path.isAbsolute(relative);
+}
+
+function isLexicalDescendant(root: string, candidate: string): boolean {
+  const relative = path.relative(path.resolve(root), path.resolve(candidate));
   return relative !== ""
     && relative !== ".."
     && !relative.startsWith(`..${path.sep}`)
