@@ -12,6 +12,29 @@ export interface PythonLaunch {
   environment: Record<string, string>;
 }
 
+interface IsolatedPythonLaunchOptions {
+  executableId: string;
+  scriptPath: string;
+  pythonHome: string;
+  pythonBinDirectory: string;
+}
+
+export function buildIsolatedPythonLaunch(
+  options: IsolatedPythonLaunchOptions,
+): PythonLaunch {
+  return {
+    executableId: options.executableId,
+    args: ["-I", "-B", options.scriptPath],
+    environment: {
+      JUDGEDESK_PYTHON_ISOLATED: "1",
+      PYTHONNOUSERSITE: "1",
+      PYTHONDONTWRITEBYTECODE: "1",
+      PYTHONHOME: options.pythonHome,
+      PATH: options.pythonBinDirectory,
+    },
+  };
+}
+
 export async function prepareIsolatedPythonScript(
   workspace: ExecutorWorkspace,
   sourcePath: string,
@@ -29,15 +52,10 @@ export async function prepareIsolatedPythonScript(
   const cached = existingCache
     ?? await importManagedToolchain("python", python.executablePath, python.version);
   workspace.stage(sourcePath, stagedName);
-  return {
+  return buildIsolatedPythonLaunch({
     executableId: cached.executableId,
-    args: ["-I", "-B", path.join(workspace.path, stagedName)],
-    environment: {
-      JUDGEDESK_PYTHON_ISOLATED: "1",
-      PYTHONNOUSERSITE: "1",
-      PYTHONDONTWRITEBYTECODE: "1",
-      PYTHONHOME: cached.root,
-      PATH: path.dirname(cached.executablePath),
-    },
-  };
+    scriptPath: path.join(workspace.path, stagedName),
+    pythonHome: cached.root,
+    pythonBinDirectory: path.dirname(cached.executablePath),
+  });
 }

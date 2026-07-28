@@ -2,7 +2,6 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { executorClient } from "../executor/client.js";
-import { DEFAULT_EXECUTOR_LIMITS } from "../executor/protocol.js";
 import {
   createExecutorWorkspace,
   importExecutorArtifact,
@@ -17,6 +16,7 @@ import type { NormalizedProblemConfig, SubmissionLanguage, TestCaseRun } from ".
 import type { CompiledChecker } from "./compiler.js";
 import { runCustomChecker } from "./custom-checker-runner.js";
 import { prepareIsolatedPythonScript } from "./python-runtime.js";
+import { buildSubmissionExecutorRunSpec } from "./execution-request.js";
 import {
   resolveConfiguredSubmissionMemoryLimitBytes,
   resolveSubmissionMemoryLimitBytes,
@@ -63,22 +63,16 @@ export async function runTestCase(options: TestCaseRunnerOptions): Promise<TestC
     }
 
     const memoryBytes = resolveSubmissionMemoryLimitBytes(options.config.memoryLimit);
-    const result = await executorClient.run({
+    const result = await executorClient.run(buildSubmissionExecutorRunSpec({
       runId,
-      role: "submission",
       workspaceId: workspace.id,
       executableId: launch.executableId,
       args: launch.args,
       stdinFile,
-      stdoutFile: "stdout.txt",
-      stderrFile: "stderr.txt",
       environment: launch.environment,
-      limits: {
-        ...DEFAULT_EXECUTOR_LIMITS.submission,
-        wallTimeMs: Math.max(1, options.timeLimitMs),
-        memoryBytes,
-      },
-    });
+      timeLimitMs: options.timeLimitMs,
+      memoryBytes,
+    }));
     const stdoutBuffer = readBounded(path.join(workspace.path, "stdout.txt"), MAX_OUTPUT_SIZE);
     const stderr = readBounded(path.join(workspace.path, "stderr.txt"), MAX_STDERR_PREVIEW).toString("utf8");
     let actualOutputBuffer = stdoutBuffer;
