@@ -276,7 +276,7 @@ Resolver dùng pipeline hai tầng:
 1. Fast discovery thụ động/bất đồng bộ: stored path, managed store, PATH và allowlist vị trí chuẩn; không recursive scan và không tự thực thi mọi candidate.
 2. Certification theo yêu cầu/certificate cũ: canonical identity, version/target/support roots, compile-run fixture, exact sandbox probe và fingerprint pinning.
 
-Version policy là dữ liệu của `LanguageProfile`, dùng exact allowlist hoặc bounded range có minimum/maximum/tested majors; không chấp nhận mọi future major chỉ vì lớn hơn minimum. Exact entry phải pin build/fingerprint. Probe có timeout/output cap, probe role và không chạy qua shell. Local toolchain mặc định được snapshot closure vào immutable cache; direct platform root chỉ dùng khi có policy riêng. Một candidate chỉ được chọn làm submission compiler khi certification record còn khớp fingerprint hiện tại.
+Version policy là dữ liệu của `LanguageProfile`, dùng exact allowlist hoặc bounded range có minimum/maximum/tested majors; không chấp nhận mọi future major chỉ vì lớn hơn minimum. Exact entry pin family/distributor/version/build và identity policy; fingerprint của installation candidate chỉ được tạo sau discovery/certification và nằm trong certificate. Probe có timeout/output cap, probe role và không chạy qua shell. Local toolchain mặc định được snapshot closure vào immutable cache; direct platform root chỉ dùng khi có policy riêng. Một candidate chỉ được chọn làm submission compiler khi certification record còn khớp fingerprint hiện tại.
 
 Storage/API chuyển từ các field `customCppPath`/`preferredSourceCpp` riêng lẻ sang:
 
@@ -798,7 +798,7 @@ Auto-detect fail-closed:
 Mỗi profile/version của JudgeDesk khai báo:
 
 - Compiler/runtime family và executable names hợp lệ.
-- Version rule tường minh: `exactAllowlist` hoặc `boundedRange { minInclusive, maxExclusive, testedMajors }`; exact entry kèm build/fingerprint và không dùng một minimum mở vô hạn cho mọi future major.
+- Version rule tường minh: `exactAllowlist` hoặc `boundedRange { minInclusive, maxExclusive, testedMajors }`; exact entry pin family/distributor/version/build + identity policy, còn candidate fingerprint thuộc certificate; không dùng một minimum mở vô hạn cho mọi future major.
 - Host OS/architecture và target triple hợp lệ.
 - Required compiler/linker/runtime/support roots.
 - Version parser, compile recipe và deterministic environment.
