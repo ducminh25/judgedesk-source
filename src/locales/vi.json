@@ -329,7 +329,10 @@
     "installMessage": "Việc cài đặt sẽ dừng lượt chấm đang chạy và đóng JudgeDesk. Hãy bảo đảm các kết quả cần thiết đã chấm xong và được lưu.",
     "installing": "Đang cài đặt...",
     "installNow": "Cài đặt ngay",
-    "installFailed": "Cài đặt bản cập nhật thất bại"
+    "installFailed": "Cài đặt bản cập nhật thất bại",
+    "restartRequired": "Dịch vụ chấm đã được dừng để chuẩn bị cập nhật, nhưng quá trình cài đặt chưa hoàn tất. Bạn cần khởi động lại JudgeDesk trước khi tiếp tục chấm bài.",
+    "restartNow": "Khởi động lại JudgeDesk",
+    "restarting": "Đang khởi động lại..."
   },
   "toolchains": {
     "idle": "Đang chờ",

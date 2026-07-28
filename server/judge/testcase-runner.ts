@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { executorClient } from "../executor/client.js";
+import type { ExecutorRunResult } from "../executor/protocol.js";
 import {
   createExecutorWorkspace,
   importExecutorArtifact,
@@ -11,7 +11,12 @@ import {
   executorDisplayTimeMs,
   executorResultToVerdict,
 } from "../executor/verdict-mapper.js";
-import { activeJobs, attachExecutorRun, detachExecutorRun } from "../jobs.js";
+import {
+  activeJobs,
+  attachExecutorRun,
+  detachExecutorRun,
+  runReservedExecutor,
+} from "../jobs.js";
 import type { NormalizedProblemConfig, SubmissionLanguage, TestCaseRun } from "../types.js";
 import type { CompiledChecker } from "./compiler.js";
 import { runCustomChecker } from "./custom-checker-runner.js";
@@ -50,8 +55,8 @@ const MAX_STDERR_PREVIEW = 256 * 1024;
 export async function runTestCase(options: TestCaseRunnerOptions): Promise<TestCaseRun> {
   const workspace = await createExecutorWorkspace();
   const runId = `submission_${crypto.randomUUID().replaceAll("-", "_")}`;
-  attachExecutorRun(options.jobId, runId);
   try {
+    attachExecutorRun(options.jobId, runId);
     const launch = await prepareSubmission(workspace, options);
     const inputFilename = safeWorkspacePath(options.config.inputFile || `${options.problemName}.inp`);
     let stdinFile: string | undefined;
@@ -63,7 +68,7 @@ export async function runTestCase(options: TestCaseRunnerOptions): Promise<TestC
     }
 
     const memoryBytes = resolveSubmissionMemoryLimitBytes(options.config.memoryLimit);
-    const result = await executorClient.run(buildSubmissionExecutorRunSpec({
+    const result = await runReservedExecutor(options.jobId, buildSubmissionExecutorRunSpec({
       runId,
       workspaceId: workspace.id,
       executableId: launch.executableId,
@@ -203,7 +208,7 @@ function createResult(
   errorDetail: string,
   actualOutput: string,
   checkerMessage?: string,
-  executorResult?: Awaited<ReturnType<typeof executorClient.run>>,
+  executorResult?: ExecutorRunResult,
 ): TestCaseRun {
   return {
     name: options.testName,

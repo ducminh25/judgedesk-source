@@ -3,9 +3,17 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use tauri::Manager;
+
 mod backend;
 mod checker_sources;
 mod contest_archive;
+mod process_supervisor;
+mod startup_guard;
+
+pub fn try_run_internal_process_supervisor() -> Option<i32> {
+    process_supervisor::try_run_internal_mode()
+}
 
 #[tauri::command]
 fn get_backend_port(port: tauri::State<'_, backend::BackendPort>) -> u16 {
@@ -14,33 +22,98 @@ fn get_backend_port(port: tauri::State<'_, backend::BackendPort>) -> u16 {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let app = tauri::Builder::default()
+    let context = tauri::generate_context!();
+
+    #[cfg(desktop)]
+    let instance_coordinator = match startup_guard::acquire(&context.config().identifier) {
+        Ok(startup_guard::AcquireOutcome::Primary(coordinator)) => coordinator,
+        Ok(startup_guard::AcquireOutcome::Secondary(
+            startup_guard::SecondaryOutcome::Activated,
+        )) => return,
+        Ok(startup_guard::AcquireOutcome::Secondary(
+            startup_guard::SecondaryOutcome::ActivationFailed(error),
+        )) => {
+            rfd::MessageDialog::new()
+                .set_title("JudgeDesk is already running")
+                .set_description(format!(
+                    "JudgeDesk found the running instance but could not bring it to the front.\n\n{error}"
+                ))
+                .set_level(rfd::MessageLevel::Warning)
+                .show();
+            return;
+        }
+        Err(error) => {
+            rfd::MessageDialog::new()
+                .set_title("JudgeDesk startup error")
+                .set_description(format!(
+                    "JudgeDesk could not establish exclusive startup ownership.\n\n{error}"
+                ))
+                .set_level(rfd::MessageLevel::Error)
+                .show();
+            std::process::exit(70);
+        }
+    };
+    let builder = tauri::Builder::default();
+    #[cfg(desktop)]
+    let builder = builder.manage(instance_coordinator);
+
+    let app = builder
         .manage(backend::BackendSidecar::default())
+        .manage(backend::UpdateHandoff::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
+            app.state::<startup_guard::InstanceCoordinator>()
+                .attach(app.handle().clone())?;
             checker_sources::cleanup_checker_previews();
             contest_archive::cleanup_contest_workspaces();
             backend::spawn(app)
         })
         .invoke_handler(tauri::generate_handler![
             get_backend_port,
+            backend::prepare_for_update,
             checker_sources::open_checker_source,
             contest_archive::open_contest_archive,
             contest_archive::save_contest_archive
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building ThemisV2");
 
     app.run(|handle, event| {
-        if matches!(
-            event,
-            tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
-        ) {
-            backend::stop(handle);
+        #[cfg(target_os = "macos")]
+        if matches!(event, tauri::RunEvent::Reopen { .. }) {
+            if let Err(error) = startup_guard::focus_primary(handle) {
+                eprintln!("Failed to focus JudgeDesk after Dock reopen: {error}");
+            }
+        }
+        if matches!(event, tauri::RunEvent::Exit) {
+            let coordinator = handle.state::<startup_guard::InstanceCoordinator>();
+            let activation_stopped = match coordinator.begin_shutdown() {
+                Ok(()) => true,
+                Err(error) => {
+                    eprintln!("Failed to quiesce JudgeDesk activation: {error}");
+                    false
+                }
+            };
+            let backend_stopped = match backend::stop(handle) {
+                Ok(()) => true,
+                Err(error) => {
+                    eprintln!("Failed to confirm JudgeDesk backend shutdown: {error}");
+                    false
+                }
+            };
+            if activation_stopped && backend_stopped {
+                if let Err(error) = coordinator.release() {
+                    eprintln!("Failed to release JudgeDesk instance ownership: {error}");
+                }
+            } else {
+                eprintln!(
+                    "JudgeDesk retained its instance lease until process exit because shutdown was not fully verified"
+                );
+            }
         }
     });
 }

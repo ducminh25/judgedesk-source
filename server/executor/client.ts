@@ -52,7 +52,10 @@ export class ExecutorClient {
     return health;
   }
 
-  async run(spec: ExecutorRunSpec): Promise<ExecutorRunResult> {
+  async run(
+    spec: ExecutorRunSpec,
+    beforeSubmit?: () => void,
+  ): Promise<ExecutorRunResult> {
     const health = await this.start();
     if (!health.ready) {
       throw new SecureRunnerError(
@@ -60,6 +63,11 @@ export class ExecutorClient {
         health.diagnostics.join("; ") || "Native secure runner is unavailable.",
       );
     }
+    // This hook and request()'s pipe write run in the same JavaScript turn.
+    // Judge jobs use it to atomically cross the reserved -> started boundary:
+    // cancellation either blocks this submit or observes a started run that it
+    // can cancel through the same ordered executor pipe.
+    beforeSubmit?.();
     const response = await this.request({ type: "run", id: crypto.randomUUID(), spec }, spec.limits.wallTimeMs + 30_000);
     if (response.type !== "run_result") {
       throw new SecureRunnerError("SECURE_RUNNER_PROTOCOL_ERROR", `Unexpected ${response.type} response to run request.`);

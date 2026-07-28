@@ -329,7 +329,10 @@
     "installMessage": "Installing will stop any active judging session and close JudgeDesk. Make sure the results you need have finished and been saved.",
     "installing": "Installing...",
     "installNow": "Install now",
-    "installFailed": "Update installation failed"
+    "installFailed": "Update installation failed",
+    "restartRequired": "The judging service was stopped to prepare the update, but installation did not complete. Restart JudgeDesk before continuing to judge submissions.",
+    "restartNow": "Restart JudgeDesk",
+    "restarting": "Restarting..."
   },
   "toolchains": {
     "idle": "Pending",

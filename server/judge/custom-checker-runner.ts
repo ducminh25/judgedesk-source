@@ -1,10 +1,13 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { executorClient } from "../executor/client.js";
 import { DEFAULT_EXECUTOR_LIMITS } from "../executor/protocol.js";
 import { createExecutorWorkspace } from "../executor/workspace.js";
-import { attachExecutorRun, detachExecutorRun } from "../jobs.js";
+import {
+  attachExecutorRun,
+  detachExecutorRun,
+  runReservedExecutor,
+} from "../jobs.js";
 import type { TestVerdict } from "../types.js";
 import type { ToolchainSource } from "../toolchains/types.js";
 import { prepareIsolatedPythonScript } from "./python-runtime.js";
@@ -56,15 +59,15 @@ export async function runCustomChecker(options: RunCustomCheckerOptions): Promis
 
   const workspace = await createExecutorWorkspace();
   const runId = `checker_${crypto.randomUUID().replaceAll("-", "_")}`;
-  attachExecutorRun(options.jobId, runId);
   try {
+    attachExecutorRun(options.jobId, runId);
     const launch = options.checkerRuntime === "python"
       ? await prepareIsolatedPythonScript(workspace, options.checkerPath, "checker.py")
       : prepareNativeChecker(workspace, options.checkerPath);
     workspace.stage(options.inputPath, "input.txt");
     workspace.stage(options.actualOutputPath, "actual.txt");
     workspace.stage(options.expectedOutputPath, "expected.txt");
-    const result = await executorClient.run({
+    const result = await runReservedExecutor(options.jobId, {
       runId,
       role: "checker",
       workspaceId: workspace.id,

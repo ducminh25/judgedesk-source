@@ -35,6 +35,7 @@ interface Props {
   canSaveContest: boolean;
   errorMessage: string;
   hostStatus: HostStatus | null;
+  interactionLocked: boolean;
   isJudging: boolean;
   isSavingContest: boolean;
   onDeleteSelected: () => void;
@@ -66,6 +67,7 @@ export default function AppToolbar({
   canSaveContest,
   errorMessage,
   hostStatus,
+  interactionLocked,
   isJudging,
   isSavingContest,
   onDeleteSelected,
@@ -89,8 +91,6 @@ export default function AppToolbar({
   const utilityMenuButtonRef = useRef<HTMLButtonElement>(null);
   const { t, i18n } = useTranslation();
   const { theme, toggleTheme } = useTheme();
-  const interactionLocked = isJudging || isSavingContest;
-
   useEffect(() => {
     if (interactionLocked) setUtilityMenuOpen(false);
   }, [interactionLocked]);
@@ -258,7 +258,10 @@ function UpdateButton({ state, disabled, onCheck, onDownload, onInstall }: {
       case "downloading": return t("updates.downloading", { percent: state.percent });
       case "downloaded": return t("updates.installQuestion");
       case "current": return t("updates.upToDate");
-      case "error": return state.phase === "download" ? t("updates.downloadFailed") : t("updates.checkFailed");
+      case "error":
+        if (state.phase === "download") return t("updates.downloadFailed");
+        if (state.phase === "check") return t("updates.checkFailed");
+        return t("updates.installFailed");
       default: return t("updates.check");
     }
   })();

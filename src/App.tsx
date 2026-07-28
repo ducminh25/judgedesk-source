@@ -107,6 +107,7 @@ export default function App() {
   const [openToolchainSetup, setOpenToolchainSetup] = useState(false);
   const [showInstallUpdate, setShowInstallUpdate] = useState(false);
   const [isInstallingUpdate, setIsInstallingUpdate] = useState(false);
+  const [updateRestartError, setUpdateRestartError] = useState("");
   const [contestFilePath, setContestFilePath] = useState<string | null>(null);
   const [contestCreatedAt, setContestCreatedAt] = useState<string | undefined>();
   const [isContestDirty, setIsContestDirty] = useState(false);
@@ -119,6 +120,12 @@ export default function App() {
   const hostStatusRequestRef = useRef<Promise<void> | null>(null);
   const saveOperationRef = useRef(false);
   const updater = useAppUpdater();
+  const updateRequiresRestart =
+    updater.state.status === "error" &&
+    (updater.state.phase === "prepare" ||
+      updater.state.phase === "install" ||
+      updater.state.phase === "relaunch");
+  const updateHandoffActive = isInstallingUpdate || updateRequiresRestart;
 
   const setContestDirty = useCallback((dirty: boolean) => {
     contestDirtyRef.current = dirty;
@@ -304,10 +311,9 @@ export default function App() {
     problemConfigs,
     dispatchResults,
   });
-
-  useEffect(() => {
-    interactionLockedRef.current = isJudging || isSavingContest;
-  }, [isJudging, isSavingContest]);
+  const interactionLocked =
+    isJudging || isSavingContest || updateHandoffActive;
+  interactionLockedRef.current = interactionLocked;
 
   useEffect(() => {
     const useBrowserBeforeUnload = shouldRegisterBrowserBeforeUnload(window);
@@ -595,6 +601,11 @@ export default function App() {
       className="h-screen bg-surface text-text-primary font-sans flex flex-col overflow-hidden"
       onContextMenu={(event) => event.preventDefault()}
     >
+      <div
+        className="flex min-h-0 flex-1 flex-col"
+        inert={updateHandoffActive ? true : undefined}
+        aria-hidden={updateHandoffActive ? true : undefined}
+      >
       <AppToolbar
         canDeleteSelected={canDeleteSelected}
         canExport={!!judgeResult?.contestants.some((contestant) => contestant.problems.length > 0)}
@@ -602,6 +613,7 @@ export default function App() {
         canSaveContest={isContestDirty && hasContestData}
         errorMessage={backendErrorMessage || errorMessage}
         hostStatus={hostStatus}
+        interactionLocked={interactionLocked}
         isJudging={isJudging}
         isSavingContest={isSavingContest}
         onDeleteSelected={() => {
@@ -654,7 +666,7 @@ export default function App() {
         result={judgeResult}
         selectedContestants={selectedContestants}
         selectedProblems={selectedProblems}
-        interactionLocked={isJudging || isSavingContest}
+        interactionLocked={interactionLocked}
         setContestantSort={setContestantSort}
         setSelectedContestants={(update) => {
           setSelectedContestants(update);
@@ -716,7 +728,7 @@ export default function App() {
       {actionMenu && (
         <EntityActionMenu
           target={actionMenu}
-          mutationsLocked={isJudging || isSavingContest}
+          mutationsLocked={interactionLocked}
           onClose={() => setActionMenu(null)}
           onConfig={() => {
             if (actionMenu.problemName) setActiveConfigProblem(actionMenu.problemName);
@@ -795,7 +807,7 @@ export default function App() {
           }}
           onClose={() => setActiveConfigProblem(null)}
           customCheckers={customCheckersMap[activeConfigProblem] || []}
-          saveDisabled={isJudging || isSavingContest}
+          saveDisabled={interactionLocked}
         />
       )}
 
@@ -857,13 +869,14 @@ export default function App() {
       {pendingScoreDeletion && (
         <ScoreDeleteConfirmDialog
           description={pendingScoreDeletionDescription}
-          disabled={isJudging || isSavingContest}
+          disabled={interactionLocked}
           onCancel={() => setPendingScoreDeletion(null)}
           onConfirm={confirmScoreDeletion}
         />
       )}
 
       {isSavingContest && <ContestSaveProgressDialog />}
+      </div>
 
       {showInstallUpdate && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
@@ -879,34 +892,76 @@ export default function App() {
               </h2>
             </div>
             <div className="px-5 py-5 text-sm leading-6 text-text-muted">
-              {t("updates.installMessage")}
+              <p>
+                {updateRequiresRestart
+                  ? t("updates.restartRequired")
+                  : t("updates.installMessage")}
+              </p>
+              {updateRequiresRestart && (
+                <p className="mt-3 rounded border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-200">
+                  {updateRestartError ||
+                    (updater.state.status === "error"
+                      ? updater.state.message
+                      : "")}
+                </p>
+              )}
             </div>
             <div className="flex justify-end gap-3 border-t border-surface-border bg-surface-elevated px-5 py-4">
-              <button
-                type="button"
-                disabled={isInstallingUpdate}
-                onClick={() => setShowInstallUpdate(false)}
-                className="rounded border border-surface-border bg-input-bg px-4 py-2 text-xs font-semibold text-text-primary hover:bg-surface-hover disabled:opacity-50"
-              >
-                {t("common.cancel")}
-              </button>
-              <button
-                type="button"
-                disabled={isInstallingUpdate}
-                onClick={async () => {
-                  setIsInstallingUpdate(true);
-                  try {
-                    if (isJudging) await handleTerminate();
-                    const installed = await updater.installUpdate();
-                    if (!installed) setShowInstallUpdate(false);
-                  } finally {
-                    setIsInstallingUpdate(false);
-                  }
-                }}
-                className="rounded bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-500 disabled:cursor-wait disabled:opacity-60"
-              >
-                {isInstallingUpdate ? t("updates.installing") : t("updates.installNow")}
-              </button>
+              {updateRequiresRestart ? (
+                <button
+                  type="button"
+                  disabled={isInstallingUpdate}
+                  onClick={async () => {
+                    setIsInstallingUpdate(true);
+                    setUpdateRestartError("");
+                    try {
+                      const { relaunch } = await import("@tauri-apps/plugin-process");
+                      await relaunch();
+                    } catch (error) {
+                      setUpdateRestartError(
+                        error instanceof Error ? error.message : String(error),
+                      );
+                    } finally {
+                      setIsInstallingUpdate(false);
+                    }
+                  }}
+                  className="rounded bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-500 disabled:cursor-wait disabled:opacity-60"
+                >
+                  {isInstallingUpdate
+                    ? t("updates.restarting")
+                    : t("updates.restartNow")}
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    disabled={isInstallingUpdate}
+                    onClick={() => setShowInstallUpdate(false)}
+                    className="rounded border border-surface-border bg-input-bg px-4 py-2 text-xs font-semibold text-text-primary hover:bg-surface-hover disabled:opacity-50"
+                  >
+                    {t("common.cancel")}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isInstallingUpdate}
+                    onClick={async () => {
+                      setIsInstallingUpdate(true);
+                      setUpdateRestartError("");
+                      try {
+                        if (isJudging) await handleTerminate();
+                        await updater.installUpdate();
+                      } finally {
+                        setIsInstallingUpdate(false);
+                      }
+                    }}
+                    className="rounded bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-500 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {isInstallingUpdate
+                      ? t("updates.installing")
+                      : t("updates.installNow")}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

@@ -2,14 +2,17 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { executorClient } from "../executor/client.js";
 import type { ExecutorRunResult } from "../executor/protocol.js";
 import {
   createExecutorWorkspace,
   findCachedManagedToolchain,
   importManagedToolchain,
 } from "../executor/workspace.js";
-import { attachExecutorRun, detachExecutorRun } from "../jobs.js";
+import {
+  attachExecutorRun,
+  detachExecutorRun,
+  runReservedExecutor,
+} from "../jobs.js";
 import type { ProblemResult } from "../types.js";
 import {
   findDarwinSdkDirectory,
@@ -303,8 +306,8 @@ export async function runCompilerWithLimits(
 ): Promise<void> {
   const workspace = await createExecutorWorkspace();
   const runId = `compile_${crypto.randomUUID().replaceAll("-", "_")}`;
-  attachExecutorRun(jobId, runId);
   try {
+    attachExecutorRun(jobId, runId);
     const compiler = await prepareCompiler(workspace, compilerPath);
     if (compiler.compatibilityHeaderPath) {
       const stagedHeader = workspace.stage(
@@ -330,7 +333,7 @@ export async function runCompilerWithLimits(
       environment.COMPILER_PATH = [programDirectory, path.dirname(compiler.executablePath)].join(path.delimiter);
       environment.LIBRARY_PATH = findGccLibraryDirectories(compiler.root).join(path.delimiter);
     }
-    const result = await executorClient.run(buildCompilerExecutorRunSpec({
+    const result = await runReservedExecutor(jobId, buildCompilerExecutorRunSpec({
       runId,
       workspaceId: workspace.id,
       executableId: compiler.executableId,
