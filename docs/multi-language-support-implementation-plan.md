@@ -25,9 +25,9 @@ Ngày duyệt: 2026-07-28
 
 - Current branch: `judgedesk/language-runtime-foundation`.
 - Base: `main` / `b1ed52f` / `v1.2.7`.
-- Hoàn tất: audit tĩnh, toolchain research, plan approval, D15 amendment, branch creation và executor-request fixtures cho compiler/native/Python hiện tại (`1a35375`).
+- Hoàn tất: audit/research/approval; executor request cùng discovery/resolver/preferences/API v1 hiện tại đã có characterization fixtures.
 - Chưa làm: chưa đổi resolver, preference schema, sandbox policy, UI hay language adapter; không tải toolchain và không chạy language spike.
-- Bước kế tiếp: hoàn tất characterization fixtures cho discovery/resolver/preferences/API C++/Python, rồi thiết kế typed contracts/preferences migration trước khi refactor.
+- Bước kế tiếp: viết và review typed contracts cùng preferences migration trước khi refactor.
 - Mac evidence: chưa có runtime evidence mới cho plan này; giữ pending cho đến checkpoint đã chuẩn bị đầy đủ.
 
 ## 1. Kết luận điều hành
@@ -896,7 +896,7 @@ Một ngôn ngữ chỉ được ghi là hỗ trợ ổn định khi:
 
 1. [x] Ghi D1–D15 và amendment D15 vào decision log.
 2. [x] Tạo branch `judgedesk/language-runtime-foundation`.
-3. [ ] Hoàn tất một phần: đã khóa executor request C++/Python; còn characterization fixtures cho discovery/resolver/preferences/API hiện tại.
+3. [x] Khóa current-behavior fixtures cho resolver/preferences/API/executor request C++/Python.
 4. [ ] Viết typed spec cho `LanguageProfile`, selection/readiness/certificate, `PreparedProgram`, manifest v2 và migration trước khi sửa adapter.
 5. [ ] Tạo corpus/gates Phase 0 và pending Mac evidence checklist.
 6. [ ] Refactor C++/Python theo Phase 1 và chứng minh giữ nguyên executor request/verdict cho corpus hợp lệ, không mơ hồ.
