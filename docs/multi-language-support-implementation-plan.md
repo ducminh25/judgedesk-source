@@ -25,9 +25,9 @@ Ngày duyệt: 2026-07-28
 
 - Current branch: `judgedesk/language-runtime-foundation`.
 - Base: `main` / `b1ed52f` / `v1.2.7`.
-- Hoàn tất: audit tĩnh, toolchain research, plan approval, D15 amendment và branch creation.
-- Chưa làm: không sửa compiler/resolver/executor/UI, không tải toolchain, không chạy language spike.
-- Bước kế tiếp: khóa current-behavior fixtures cho C++/Python và thiết kế typed contracts/preferences migration trước khi refactor.
+- Hoàn tất: audit tĩnh, toolchain research, plan approval, D15 amendment, branch creation và executor-request fixtures cho compiler/native/Python hiện tại (`1a35375`).
+- Chưa làm: chưa đổi resolver, preference schema, sandbox policy, UI hay language adapter; không tải toolchain và không chạy language spike.
+- Bước kế tiếp: hoàn tất characterization fixtures cho discovery/resolver/preferences/API C++/Python, rồi thiết kế typed contracts/preferences migration trước khi refactor.
 - Mac evidence: chưa có runtime evidence mới cho plan này; giữ pending cho đến checkpoint đã chuẩn bị đầy đủ.
 
 ## 1. Kết luận điều hành
@@ -187,7 +187,7 @@ Nguồn nền tảng chính thức đã kiểm tra để chuẩn bị spike; ver
 - **C:** GCC/Clang C driver, optimization `-O2`, standard được chốt ở mục quyết định; không sao chép `-static` từ Themis sang macOS.
 - **Pascal:** FPC, giữ khả năng source tự khai báo `{$mode ...}`; pin config và mọi support root.
 - **Go:** standard library only; `GOTOOLCHAIN=local`, `GOPROXY=off`, `GOSUMDB=off`, `GOWORK=off`, `GOENV=off`, `CGO_ENABLED=0`; cache/temp riêng.
-- **Java:** stage source thành `Main.java` nếu chọn contract `public class Main`; cấm `package` ở profile đầu; `javac -encoding UTF-8 -proc:none --release <pinned-level>`; class directory là artifact; xóa `CLASSPATH`, `JAVA_TOOL_OPTIONS` và `JDK_JAVA_OPTIONS`. Java 21 chỉ là ứng viên, chưa được chọn ở tài liệu này.
+- **Java:** stage source thành `Main.java` nếu chọn contract `public class Main`; cấm `package` ở profile đầu; `javac -encoding UTF-8 -proc:none --release <pinned-level>`; class directory là artifact; xóa `CLASSPATH`, `JAVA_TOOL_OPTIONS` và `JDK_JAVA_OPTIONS`. Phase 0 đánh giá riêng profile runtime JDK 21 và JDK 25; dùng `--release 21` trên JDK 25 chỉ khóa language/API/class-file target, không biến runtime JDK 25 thành runtime JDK 21.
 - **Rust:** `rustc` single-file với `std`, không Cargo/crates; spike Windows GNU và MSVC trước khi chọn.
 - **Node.js:** CommonJS single-file ở phiên bản đầu; không npm/addons; xóa `NODE_OPTIONS`/`NODE_PATH`; sandbox OS là lớp bảo vệ chính.
 - **C#:** JudgeDesk tạo project sạch, cố định và offline; không đọc `Directory.Build.*`, NuGet config hay source directive ngoài policy. Spike direct Roslyn so với `dotnet build --no-restore` trước khi chốt.
@@ -212,6 +212,8 @@ Hash/chữ ký chứng minh package không bị đổi; chúng không tự tạo
 | Cangjie | Apache-2.0/Runtime Library Exception theo distribution được chọn |
 
 Mỗi pack phải phân biệt ba lớp: upstream checksum/signature, chữ ký manifest/package của JudgeDesk, và yêu cầu platform signing/notarization/quarantine/SmartScreen. Repack binary upstream có thể làm thay đổi hành vi Gatekeeper/Defender dù digest nội bộ hợp lệ.
+
+Gate redistribute/license notice/SBOM áp dụng bắt buộc cho managed pack và mọi package/snapshot được export sang máy khác. Local-in-place hoặc snapshot bất biến chỉ dùng lại trên chính máy đã chứng nhận vẫn phải lưu provenance, fingerprint và certificate, nhưng không bị giả định là một distribution package của JudgeDesk.
 
 ## 7. Kiến trúc đích
 
@@ -807,17 +809,17 @@ Policy snapshot sơ bộ ngày 2026-07-28 — đây là candidate để Phase 0 
 
 | Profile | Candidate version policy ban đầu | Ghi chú bắt buộc |
 |---|---|---|
-| C/C++ Windows | Audit legacy GCC 9.2; regression-test chính xác GCC 9.2 và managed 14.2 trước khi lập range | Đúng MinGW family/`x86_64-w64-mingw32`; không dùng `>=9.2` mở vô hạn |
+| C/C++ Windows | GCC 9.2 chỉ là legacy audit fixture; regression-test chính xác legacy 9.2 và managed 14.2 trước khi chọn supported floor/range mới | Chứng nhận cả MinGW-w64 target, UCRT/MSVCRT, thread model, exception model, binutils/linker và runtime-DLL closure; không dùng `>=9.2` mở vô hạn |
 | C/C++ macOS | Không so Apple Clang như LLVM semver; allowlist compiler build + developer root + SDK identity | Native ARM64/universal ARM64 slice; platform-certified |
-| Python | Local Python 3 giữ Checker only theo legacy; submission-local candidate đầu là đúng CPython 3.12 family, đối chiếu managed 3.12.13 | Interpreter + stdlib/runtime closure; không tự nhận PyPy/Conda/pyenv chỉ từ version |
+| Python | Managed JudgeDesk build 3.12.13 là baseline; local submission candidate phải khớp exact CPython build/ABI/stdlib allowlist, không phải mọi bản 3.12 | Upstream 3.12.13 là source-only security release và 3.12.10 là bản cuối có binary installer; không tự nhận PyPy/Conda/pyenv chỉ từ version |
 | Pascal | FPC 3.2.2 exact stable | 3.3.x là development snapshot; target/units/linker/CLT phải đúng |
-| Go | Rolling supported lines; hiện 1.25 latest patch và 1.26 latest patch, ưu tiên 1.26 | `GOTOOLCHAIN=local`; Windows 10+/amd64, macOS 12+/arm64 |
-| Java | Language contract `--release 21`; allowlist vendor/build cho JDK 21 hoặc 25 sau probe | `java` và `javac` cùng JDK; native arch; không nhận mọi JDK 22–26 chỉ vì version cao |
-| Rust | Exact tested stable minors; Rust 1.97 là candidate hiện tại, không beta/nightly | Chốt edition và linker/target trước khi đặt floor |
-| Node.js | Node 24 LTS latest security patch | Windows 10+/x64; macOS 13.5+/arm64; JIT/ICU probe |
-| C#/.NET | .NET 10 LTS latest servicing patch | `net10.0`; win-x64; macOS 14+/osx-arm64 |
+| Go | Snapshot khảo sát: exact Go 1.25.12 và 1.26.5; ưu tiên spike 1.26.5, không ghi động “latest patch” vào profile | `GOTOOLCHAIN=local`; Windows 10+/amd64, macOS 12+/arm64; update profile phải qua corpus lại |
+| Java | Hai candidate riêng: exact JDK 21 runtime profile và exact JDK 25 runtime profile; cả hai có thể đánh giá recipe `--release 21` | `java` và `javac` cùng JDK/vendor/build; JDK 25 chạy class target 21 vẫn là runtime khác, phải benchmark/certify riêng |
+| Rust | Snapshot khảo sát: exact stable Rust 1.97.1; không beta/nightly và không tự roll sang stable mới | Chốt edition, host/target, linker và standard-library closure trước khi đặt floor/range |
+| Node.js | Snapshot khảo sát: exact Node 24.18.0, không dùng nhãn động “latest security patch” trong profile | Windows 10+/x64; macOS 13.5+/arm64 theo tài liệu của tag 24.18.0; JIT/ICU probe |
+| C#/.NET | Candidate .NET 10 LTS; exact SDK feature band/patch, runtime patch, targeting pack và RID chưa chốt cho đến spike Phase 0 | `net10.0`; `global.json`/SDK search root phải pin và không roll ngoài policy; win-x64, macOS 14+/osx-arm64 |
 
-Nguồn policy chính: [Go release policy](https://go.dev/doc/devel/release), [FPC stable downloads](https://docs.freepascal.org/download.html), [OpenJDK 25](https://openjdk.org/projects/jdk/25/), [Rust Forge releases](https://forge.rust-lang.org/), [Node release schedule](https://github.com/nodejs/Release), [Node platform matrix](https://github.com/nodejs/node/blob/main/BUILDING.md), [.NET lifecycle](https://learn.microsoft.com/en-us/lifecycle/products/microsoft-net-and-net-core) và [.NET macOS support](https://learn.microsoft.com/en-us/dotnet/core/install/macos).
+Nguồn policy chính: [Go release history](https://go.dev/doc/devel/release), [Python 3.12.13 release](https://www.python.org/downloads/release/python-31213/), [FPC stable downloads](https://docs.freepascal.org/download.html), [OpenJDK 25](https://openjdk.org/projects/jdk/25/), [`javac --release` JDK 21](https://docs.oracle.com/en/java/javase/21/docs/specs/man/javac.html), [Rust release announcements](https://blog.rust-lang.org/releases/), [Node 24.18.0 archive](https://nodejs.org/download/release/latest-v24.x/), [Node 24.18.0 platform matrix](https://github.com/nodejs/node/blob/v24.18.0/BUILDING.md), [.NET lifecycle](https://learn.microsoft.com/en-us/lifecycle/products/microsoft-net-and-net-core), [.NET `global.json`](https://learn.microsoft.com/en-us/dotnet/core/tools/global-json) và [.NET macOS support](https://learn.microsoft.com/en-us/dotnet/core/install/macos).
 
 Candidate chỉ là Submission ready khi:
 
@@ -877,8 +879,8 @@ Installed package state được kiểm tra từ disk/manifest; `installedToolch
 
 Một ngôn ngữ chỉ được ghi là hỗ trợ ổn định khi:
 
-- Toolchain có nguồn, version, managed digest hoặc certified platform identity, license/SBOM và minimum OS rõ.
-- Cài online và import offline pass trên máy sạch.
+- Toolchain có nguồn, exact version/build, minimum OS và managed digest, certified platform identity hoặc local certificate rõ. Managed/exported package phải có license notices/SBOM; local-in-place/same-machine snapshot phải có provenance/fingerprint nhưng không bị gán nhầm nghĩa vụ redistribution.
+- Với managed/exported package: cài online và import offline pass trên máy sạch. Với local source: detection, certification, drift và recovery pass trên installation được hỗ trợ.
 - Health probe pass sau cài.
 - Full correctness/checker/security matrix pass ở Windows x64 và macOS ARM64.
 - Exact packaged MSI/DMG candidate pass, không chỉ `npm test`/CI.
@@ -894,7 +896,7 @@ Một ngôn ngữ chỉ được ghi là hỗ trợ ổn định khi:
 
 1. [x] Ghi D1–D15 và amendment D15 vào decision log.
 2. [x] Tạo branch `judgedesk/language-runtime-foundation`.
-3. [ ] Khóa current-behavior fixtures cho resolver/preferences/API/executor request C++/Python.
+3. [ ] Hoàn tất một phần: đã khóa executor request C++/Python; còn characterization fixtures cho discovery/resolver/preferences/API hiện tại.
 4. [ ] Viết typed spec cho `LanguageProfile`, selection/readiness/certificate, `PreparedProgram`, manifest v2 và migration trước khi sửa adapter.
 5. [ ] Tạo corpus/gates Phase 0 và pending Mac evidence checklist.
 6. [ ] Refactor C++/Python theo Phase 1 và chứng minh giữ nguyên executor request/verdict cho corpus hợp lệ, không mơ hồ.
