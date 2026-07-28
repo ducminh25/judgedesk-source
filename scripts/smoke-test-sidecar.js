@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
@@ -40,6 +41,82 @@ async function stopProcess(child) {
   ]);
   if (child.exitCode === null && child.signalCode === null) {
     child.kill("SIGKILL");
+  }
+}
+
+async function waitForProcessExit(child, timeoutMs) {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return { code: child.exitCode, signal: child.signalCode };
+  }
+  return Promise.race([
+    new Promise((resolve, reject) => {
+      child.once("error", reject);
+      child.once("exit", (code, signal) => resolve({ code, signal }));
+    }),
+    delay(timeoutMs).then(() => null),
+  ]);
+}
+
+async function assertPortIsFree(port) {
+  const server = net.createServer();
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", resolve);
+  });
+  await new Promise((resolve, reject) =>
+    server.close((error) => (error ? reject(error) : resolve())),
+  );
+}
+
+export async function verifyStartupGateRejectsMissingToken(
+  executablePath,
+  { args = [], timeoutMs = 5_000 } = {},
+) {
+  const resolvedExecutable = path.resolve(executablePath);
+  const port = await allocatePort();
+  const temporaryRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "themis-sidecar-gate-"),
+  );
+  const environment = {
+    ...process.env,
+    PORT: String(port),
+    THEMIS_APP_DATA_DIR: path.join(temporaryRoot, "app-data"),
+    THEMIS_RESOURCE_DIR: temporaryRoot,
+  };
+  delete environment.JUDGEDESK_BOOTSTRAP_TOKEN;
+  const stdout = [];
+  const stderr = [];
+  const child = spawn(resolvedExecutable, args, {
+    env: environment,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  child.stdout.on("data", (chunk) => stdout.push(chunk.toString()));
+  child.stderr.on("data", (chunk) => stderr.push(chunk.toString()));
+
+  try {
+    const exit = await waitForProcessExit(child, timeoutMs);
+    if (exit === null) {
+      throw new Error("Sidecar stayed alive without an authenticated startup token.");
+    }
+    if (exit.code === 0) {
+      throw new Error("Sidecar accepted startup without an authenticated token.");
+    }
+    await assertPortIsFree(port);
+    console.log("Sidecar startup gate rejected a missing token before listening.");
+  } catch (error) {
+    throw new Error(
+      [
+        error instanceof Error ? error.message : String(error),
+        "--- sidecar stdout ---",
+        stdout.join("") || "(empty)",
+        "--- sidecar stderr ---",
+        stderr.join("") || "(empty)",
+      ].join("\n"),
+      { cause: error },
+    );
+  } finally {
+    await stopProcess(child);
+    fs.rmSync(temporaryRoot, { recursive: true, force: true });
   }
 }
 
@@ -112,6 +189,7 @@ export async function smokeTestSidecar(
   );
   const stdout = [];
   const stderr = [];
+  const startupToken = crypto.randomBytes(32).toString("hex");
   let spawnError;
   const child = spawn(resolvedExecutable, args, {
     env: {
@@ -121,13 +199,17 @@ export async function smokeTestSidecar(
       THEMIS_RESOURCE_DIR: resourceDirectory
         ? path.resolve(resourceDirectory)
         : temporaryRoot,
+      JUDGEDESK_BOOTSTRAP_TOKEN: startupToken,
     },
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ["pipe", "pipe", "pipe"],
   });
   child.stdout.on("data", (chunk) => stdout.push(chunk.toString()));
   child.stderr.on("data", (chunk) => stderr.push(chunk.toString()));
   child.on("error", (error) => {
     spawnError = error;
+  });
+  child.stdin.end(`JUDGEDESK_START/1 ${startupToken}\n`, (error) => {
+    if (error) spawnError = error;
   });
 
   const deadline = Date.now() + timeoutMs;
@@ -190,6 +272,7 @@ async function main() {
       "Usage: node scripts/smoke-test-sidecar.js <executable> [resource-directory]",
     );
   }
+  await verifyStartupGateRejectsMissingToken(executablePath);
   await smokeTestSidecar(executablePath, {
     resourceDirectory,
     requireCpp: flags.includes("--require-cpp"),

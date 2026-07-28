@@ -18,7 +18,7 @@ Ngày duyệt: 2026-07-28
 - D10: bỏ qua, không phải blocker và không tạo cam kết triển khai Ruby/Haskell/Cangjie trong roadmap hiện tại.
 - D11–D14: duyệt theo đề xuất trong tài liệu.
 - D15: duyệt với amendment: local compiler/runtime có thể trở thành Submission ready nếu version/target nằm trong policy được JudgeDesk hỗ trợ và vượt health + sandbox certification; UI/source selection theo mô hình ở D15 mới.
-- Sau D15: giữ khả năng mở nhiều JudgeDesk instance. Mỗi instance vẫn chỉ có một batch active, nhưng nhiều instance được phép chấm đồng thời; toàn bộ process, workspace, event và result phải được định danh/cách ly, có host-wide resource coordinator thay vì tranh chấp tài nguyên ngầm.
+- Sau D15: JudgeDesk là single-instance. Lần mở thứ hai không được spawn backend/executor hay chạy startup cleanup/mutation; nó phải gửi activation request có timeout cho primary, làm cửa sổ primary hiện lại, bỏ minimize và lấy focus rồi thoát sạch. Activation IPC và ownership lease phải dùng chung một authority, không ghép hai cơ chế có thể race.
 - Fast discovery lần đầu: chỉ auto-detect thụ động; không tự chạy full certification cho toolchain mới phát hiện.
 - Default source cho profile ngôn ngữ mới: đang chờ xác nhận sau khi giải thích UX; không tự suy diễn từ việc detect được compiler/runtime.
 - Branch namespace: dùng `judgedesk/…` theo lựa chọn của chủ dự án; branch nền tảng là `judgedesk/language-runtime-foundation`.
@@ -28,10 +28,14 @@ Ngày duyệt: 2026-07-28
 
 - Current branch: `judgedesk/language-runtime-foundation`.
 - Base: `main` / `b1ed52f` / `v1.2.7`.
-- Hoàn tất: audit/research/approval; executor request cùng discovery/resolver/preferences/API v1 đã có characterization fixtures; typed foundation contracts đã được commit.
-- Đang làm: preferences v2 và kernel migrate v1 → v2 được xây tách rời production, fail-closed; chưa có production caller và chưa được phép tự ghi file.
-- Chưa làm: chưa đổi resolver, storage/API live, sandbox policy, UI hay language adapter; không tải toolchain và không chạy language spike.
-- Bước kế tiếp: khóa migration kernel bằng review/test, sau đó thiết kế storage raw-byte + revision/CAS. Cross-process writer serialization phải được chốt trước khi gọi thao tác ghi là CAS an toàn.
+- Hoàn tất: audit/research/approval; characterization fixtures, typed foundation contracts và preferences v2 migration kernel fail-closed đã được commit.
+- Đang làm: source checkpoint chung + Windows đã chuyển sang một coordinator có lifetime lease, authenticated activation/focus `Starting → Ready → Draining`, backend startup gate fail-closed và internal process-tree supervisor. Judge cancellation dùng barrier `reserved → started → completed`: cancel trong lúc chuẩn bị chặn submit, cancel sau submit chỉ nhắm run đang thực sự active, và phản hồi native `false` không còn bị coi là thành công. Exact debug snapshot đã vượt unit/contract/SEA smoke và destructive single-instance/crash gate; packaged installer/updater gate vẫn chưa chạy.
+- Windows containment hiện dùng một helper headless của chính `JudgeDesk.exe` để giữ `process-tree.lock` và backend-only Job. Helper này không tạo Tauri/WebView/backend thứ hai; nó là recovery authority nhỏ và được tính riêng trong process inventory. Trên debug build đã đo khoảng 11 MiB working set; số release phải đo lại trên packaged candidate.
+- macOS: cơ chế ambient lease-FD inheritance đã bị loại vì có thể rò descriptor trong app đa luồng. Source hiện vẫn thiếu process-group supervisor/drain barrier tương đương Windows, nên D16 trên macOS là `pending-runtime-evidence` và chưa được phép coi là hoàn tất.
+- Chưa làm ở phạm vi đa ngôn ngữ: chưa đổi resolver, storage/API live, sandbox policy, language-management UI hay language adapter; không tải toolchain và không chạy language spike.
+- Windows evidence trên exact snapshot: Rust `12 pass / 3 ignored helper`; full server/frontend regression `190 pass / 4 platform skip`; lint pass; SEA thiếu token bị chặn trước listen và SEA có token vượt health/routes/executor; Tauri debug build pass. Runtime gate đạt restore + foreground, 20 secondary exit sạch trong 173–266 ms, primary-crash recovery không overlap backend/executor, supervisor-crash drain và normal shutdown drain. Working set quan sát ở debug snapshot: GUI 43.3 MiB, supervisor 11 MiB, backend 41.9 MiB, executor 7 MiB. Sau gate không còn process thuộc executable test.
+- Windows còn pending: packaged MSI/release build; active submission child/grandchild crash gate; hidden/busy window; Tauri updater install/autolaunch. Trusted system/local Python checker hiện dừng bằng poll + `taskkill /T`; shutdown vẫn đợi session handler, nhưng ordinary cancel chưa có acknowledgement riêng chứng minh toàn bộ checker tree đã dừng, nên mục này vẫn thuộc process-tree/cancel gate chứ chưa được ghi verified. Double forced-failure của cả primary và supervisor chưa có barrier proof tuyệt đối; `KILL_ON_JOB_CLOSE` giảm rủi ro nhưng không được ghi là verified. `tauri-plugin-updater` 2.10.1 vẫn là release blocker cho đến khi pin bản official đã sửa và packaged update gate đạt.
+- Bước kế tiếp: thiết kế và test macOS supervisor riêng, hoàn tất packaged Windows/macOS gate, rồi mới thiết kế storage raw-byte + revision/CAS, atomic replace và serialized mutation trong primary. Không cần per-write inter-instance lease sau khi single-instance được chứng minh trên cả hai OS; revision/CAS vẫn bắt buộc cho stale async update và external file drift.
 - Mac evidence: đã có máy Apple Silicon thật qua TeamViewer nhưng chưa chạy test cho branch này. TeamViewer chỉ dự kiến dùng cho bootstrap/GUI; command gates cần SSH hoặc một kênh log tái lập được trước khi xác nhận runtime.
 
 ## 1. Kết luận điều hành
@@ -66,7 +70,7 @@ Lộ trình cuối cùng có thể ưu tiên Pascal vì giá trị giáo dục, 
 - Không dùng hệ số thời gian ẩn theo hệ điều hành.
 - Nếu dùng hệ số hoặc phần bù thời gian/bộ nhớ theo ngôn ngữ, chúng phải có phiên bản, hiển thị được, ghi vào metadata và được hiệu chỉnh bằng benchmark.
 - Mỗi testcase tiếp tục chạy trong process mới; không dùng daemon/runtime dùng chung giữa các thí sinh.
-- Một batch trong mỗi app instance tiếp tục chạy tuần tự theo chính sách tài nguyên hiện tại. Nhiều instance có thể cùng active, nhưng từng compile/run/checker step phải đi qua host-wide resource coordinator để máy cấu hình thấp được queue an toàn thay vì overcommit.
+- Một app instance có tối đa một batch active và batch tiếp tục chạy tuần tự theo chính sách tài nguyên hiện tại, phù hợp máy giáo viên cấu hình thấp.
 
 ### 2.2. An toàn
 
@@ -728,7 +732,7 @@ D10 không còn là decision/blocker. Ruby, Haskell và Cangjie nằm ngoài roa
 
 ### D11. Baseline phần cứng
 
-**Đề xuất đã bổ sung quyết định multi-instance:** tiếp tục tối ưu cho Windows x64 8 GB và Apple Silicon 8 GB. Một instance không tự chạy nhiều batch; nhiều instance được phép tồn tại và chấm đồng thời trong sức chứa đã benchmark của máy. Khi không đủ CPU/RAM/process budget, host-wide coordinator phải queue công việc với trạng thái rõ, không để từng backend tự giả định mình sở hữu toàn bộ tài nguyên.
+**Đề xuất đã chốt single-instance:** tiếp tục tối ưu cho Windows x64 8 GB và Apple Silicon 8 GB. JudgeDesk không chạy nhiều app instance hoặc nhiều batch đồng thời; compiler/run/checker vẫn phải tuân thủ resource gate của phiên duy nhất.
 
 Nếu kỳ thi mục tiêu có baseline thấp hơn, cần cung cấp máy mẫu trước Phase 0 để benchmark đúng.
 
@@ -883,24 +887,25 @@ Phase 1 không retroactively vô hiệu custom C++ path hiện có. Preferences 
 - Python system/auto hiện tại vẫn Checker only cho đến khi một local-Python submission profile thật sự vượt sandbox certification; không được tự nâng hạng trong migration.
 - Preference malformed/không đúng kiểu → `None` kèm migration diagnostic; không đoán source.
 
-Installed package state được kiểm tra từ disk/manifest; `installedToolchains` legacy không còn là nguồn chân lý. Migration phải idempotent; reader giới hạn byte trước parse, decode UTF-8 fatal và không overwrite corrupt/future schema. Writer phải validate canonical v2, dùng revision của exact raw bytes, temp cùng directory + file sync + atomic replace, rồi xử lý durability khác nhau theo OS. JudgeDesk hiện chưa có invariant single-instance, vì vậy check-then-rename không được gọi là CAS cross-process cho đến khi có writer lease/lock thực sự hoặc chủ dự án duyệt single-instance. Vì app cũ không hiểu `None` và có thể fallback, downgrade từ schema mới cần cảnh báo/chặn rõ thay vì dual-write một semantics sai.
+Installed package state được kiểm tra từ disk/manifest; `installedToolchains` legacy không còn là nguồn chân lý. Migration phải idempotent; reader giới hạn byte trước parse, decode UTF-8 fatal và không overwrite corrupt/future schema. Writer phải validate canonical v2, dùng revision của exact raw bytes, temp cùng directory + file sync + atomic replace, rồi xử lý durability khác nhau theo OS. Per-write inter-instance lease không thuộc thiết kế đích single-instance; chỉ được loại bỏ sau khi guard đã được đăng ký trước mọi startup mutation và packaged Windows/macOS gate chứng minh secondary không đi vào setup. In-process writer queue, revision/CAS và atomic replace vẫn bắt buộc để chặn stale async update, external file drift và hỏng file khi crash. Vì app cũ không hiểu `None` và có thể fallback, downgrade từ schema mới cần cảnh báo/chặn rõ thay vì dual-write một semantics sai.
 
-### D16. Multi-instance và cách ly phiên chấm
+### D16. Single-instance và định danh phiên chấm
 
-**Đã duyệt:** JudgeDesk tiếp tục cho phép nhiều app instance. Mục tiêu là chấm đồng thời nhiều đề, hoặc cùng một đề với các nhóm thí sinh khác nhau, mà cancel/cleanup/update của phiên này không ảnh hưởng phiên kia.
+**Đã duyệt:** JudgeDesk chỉ cho phép một app instance. Mục tiêu là loại bỏ tranh chấp giữa nhiều backend/executor và giữ giới hạn tài nguyên dễ hiểu trên máy giáo viên. Lần mở thứ hai phải kích hoạt lại cửa sổ primary rồi thoát trước khi khởi tạo Tauri/UI/backend của chính nó.
 
-Audit baseline cho thấy chưa được phép công bố an toàn multi-instance: native executors hiện dùng chung root `JudgeDeskExecutor`, startup xóa shared artifact cache và dùng fixed self-test workspace; Tauri nhả free port trước khi sidecar bind; API local chưa có instance authentication; job ID do client tạo ngắn; một số startup cleanup/export/cache/config path vẫn là shared mutable state. Các UUID workspace/run hiện có và Job Object/process group riêng từng run là nền tốt nhưng chưa đủ.
+Audit baseline tại `b1ed52f` chưa enforce single-instance: native executors dùng chung root `JudgeDeskExecutor`, startup xóa artifact cache và dùng fixed self-test workspace; Tauri nhả free port trước khi sidecar bind; API local chưa có instance authentication; job ID do client tạo ngắn. Branch foundation hiện đã thêm guard, job UUID/effective-ID registry, cancel barrier `reserved → started → completed` và bounded shutdown handoff; debug Windows gate đã đạt nhưng D16 vẫn chưa được gọi là hoàn tất cho đến khi API identity/session contract cùng packaged Windows/macOS gate vượt đủ. Kiểm tra single-instance phải xảy ra trước backend spawn và trước mọi startup cleanup/mutation, không được chỉ disable nút ở UI.
 
 Contract bắt buộc:
 
-1. Tauri tạo `instanceId` ngẫu nhiên 128-bit và `instanceToken`; sidecar bind port `0`/handshake an toàn, trả đúng `{ pid, port, instanceId }`, mọi API kể cả cancel/shutdown phải xác thực token. Không được fallback kết nối vào backend khác khi port race.
-2. Backend tạo `sessionId` UUID; client `requestId` chỉ để correlation. Mỗi event có envelope `{ instanceId, sessionId, sequence, type, data }`, sequence tăng nghiêm ngặt và có đúng một terminal event; UI bỏ event sai/stale identity.
-3. `runId` liên kết instance/session/role/UUID và executor client xác nhận response trả đúng run ID. Workspace/executor root/self-test/artifact của instance được tạo exclusive trong subtree riêng; cleanup chỉ được xóa subtree có lease/ownership hợp lệ của chính instance đó.
-4. Managed toolchain blobs dùng shared immutable content-addressed store để không nhân đôi SDK lớn; install/update/uninstall/GC và preferences writer dùng cross-process lock/lease. Package đang có batch lease không được mutate hoặc purge.
-5. Batch pin snapshot đã normalize của problem config, test/submission inventory, toolchain/certificate ngay khi bắt đầu. Hai instance cùng đọc một contest được phép; thay đổi input/config giữa batch phải bị queue/chặn hoặc báo `INPUT_CHANGED_DURING_JUDGING`, không được âm thầm tạo kết quả lai.
-6. Host-wide resource coordinator cấp CPU/memory/process slots theo lease có heartbeat và stale-owner recovery. Một batch vẫn tuần tự trong một instance; nhiều instance có thể tiến song song khi đủ capacity, còn máy yếu thấy trạng thái queued thay vì TLE/MLE giả do tranh chấp.
+1. `InstanceCoordinator` phải lấy lifetime file lease fail-closed trước cả `tauri::Builder::default()`, bind activation endpoint trên loopback, tạo nonce ngẫu nhiên và publish owner metadata atomically với giới hạn kích thước. Secondary không lấy được lease thì chỉ được đọc metadata, cấp quyền foreground cần thiết trên Windows, gửi authenticated activation request trong timeout hữu hạn và thoát. Primary xử lý request bằng cách show + unminimize + focus cửa sổ chính; chỉ được ghi ACK khi focus callback thành công và coordinator vẫn ở `Ready`. `Starting`/`Draining` phải từ chối để secondary retry. Listener dùng framed I/O, timeout ngắn, hàng đợi và worker count hữu hạn; signaling hỏng không bao giờ cho secondary trở thành primary khi lease còn bị giữ.
+2. Trên Windows, Tauri/updater phải ở ngoài private Job Object. Primary lấy provisional `process-tree.lock`, tạo backend-only Job `KILL_ON_JOB_CLOSE`, rồi chạy một internal headless supervisor của cùng executable. Supervisor phải giữ tree lock + Job handle và chỉ trả `READY` trước khi primary publish metadata/start Tauri; backend bị chặn bằng startup gate, được assign vào Job rồi gate mới mở để nó spawn executor. Khi control pipe EOF hoặc có `DRAIN`, supervisor terminate/poll `ActiveProcesses == 0`, chỉ sau đó nhả tree lock và thoát. Trên macOS cấm ambient file-descriptor inheritance; phải có supervisor/process-group ownership explicit và drain barrier tương đương trước khi D16 được coi là đạt. Tauri restart/updater phải chuyển activation sang `Draining`, dừng backend, xác nhận process tree rỗng và helper đã thoát rồi mới nhả instance lease/relaunch. Frontend phải gọi `prepare_for_update` thành công trước `update.install()`; lỗi sau prepare đưa UI vào `restart-required`, không cho quay lại chấm.
+3. Primary vẫn tạo `instanceId` ngẫu nhiên 128-bit và `instanceToken`; sidecar handshake trả đúng `{ pid, port, instanceId }`, mọi API kể cả cancel/shutdown xác thực token. Đây là rào chắn chống gọi nhầm backend/local request ngoài app, không phải cơ chế cho multi-instance.
+4. Backend tạo `sessionId` UUID; client `requestId` chỉ để correlation. Mỗi event có envelope `{ instanceId, sessionId, sequence, type, data }`, sequence tăng nghiêm ngặt và có đúng một terminal event; UI bỏ event sai/stale identity.
+5. `runId` liên kết instance/session/role/UUID và executor client xác nhận response trả đúng run ID. Workspace được tạo exclusive; cleanup chỉ xóa subtree có ownership hợp lệ của instance/session hiện tại. Crash-restart scavenging không được xóa path không chứng minh được owner đã chết.
+6. Managed package đang có batch lease không được update/uninstall/purge. Preferences/storage dùng serialized mutation trong primary, revision/CAS và atomic replace; không dựa riêng vào single-instance để che stale async write hay external file drift.
+7. Batch pin snapshot đã normalize của problem config, test/submission inventory, toolchain/certificate ngay khi bắt đầu. Thay đổi input/config giữa batch phải bị queue/chặn hoặc báo `INPUT_CHANGED_DURING_JUDGING`, không được âm thầm tạo kết quả lai.
 
-Gate bắt buộc gồm: khởi động 2–3 sidecar/instance đồng thời; ép port collision; sai token/session/event; cancel/close A trong khi B tiếp tục; startup/cleanup B không làm mất artifact A; concurrent preferences/install/uninstall; export cùng timestamp; hai instance chấm hai contest và cùng một contest; edit config/test giữa batch; so kết quả concurrent với sequential baseline; đo RAM/CPU/process count trên Windows và Apple Silicon thật.
+Gate bắt buộc gồm: mở app lần hai và 20 lần liên tiếp trên Windows/macOS; primary đang bình thường, minimized, hidden và busy đều phải được restore/focus trong timeout, secondary thoát sạch và không chạy setup mutation. Sau khi hệ thống ổn định phải có đúng một GUI primary JudgeDesk, đúng một internal supervisor helper của primary trên nền tảng cần nó, không bao giờ quá một backend sidecar và một native executor; không tính WebView/system helper, và executor có thể là 0 nếu startup/health fail. Request sai nonce, quá dài, treo hoặc đến từ endpoint không hợp lệ phải bị từ chối mà listener vẫn phục vụ request sau. Crash primary rồi mở lại không được mắc stale lock; phải chứng minh sidecar/executor cũ đã dừng trước khi primary mới cleanup/spawn. Phải test riêng primary chết, supervisor chết, và double-failure; giới hạn không thể bảo đảm khi đồng thời cưỡng chế chết cả owner lẫn recovery authority phải được fail-closed hoặc công bố rõ, không được ẩn dưới nhãn “verified”. Tauri relaunch và updater install/autolaunch phải được kiểm tra riêng để containment không giết installer hoặc làm replacement mất vì lease chưa nhả. `tauri-plugin-updater` 2.10.1 hiện còn bỏ qua lỗi `ShellExecuteW` trước khi thoát app; chỉ được gỡ blocker phát hành sau khi pin bản official chứa fix và packaged update gate pass. Sai token/session/event phải bị từ chối; edit config/test giữa batch phải fail-closed; packaged app/DMG phải qua gate trên Windows và Apple Silicon thật.
 
 ## 16. Definition of Done cho một ngôn ngữ “Stable”
 
@@ -925,9 +930,10 @@ Một ngôn ngữ chỉ được ghi là hỗ trợ ổn định khi:
 2. [x] Tạo branch `judgedesk/language-runtime-foundation`.
 3. [x] Khóa current-behavior fixtures cho resolver/preferences/API/executor request C++/Python.
 4. [x] Viết typed spec nền cho `LanguageProfile`, selection/readiness/certificate và `PreparedProgram`.
-5. [ ] Hoàn tất preferences v2 migration/storage cùng manifest v2 trước khi sửa adapter; migration kernel đã có nhưng storage chưa nối live.
-6. [ ] Tạo corpus/gates Phase 0 và pending Mac evidence checklist.
-7. [ ] Refactor C++/Python theo Phase 1 và chứng minh giữ nguyên executor request/verdict cho corpus hợp lệ, không mơ hồ.
-8. [ ] Chỉ sau khi foundation/Phase 2A qua gate mới bắt đầu branch C; Pascal và Go theo gate độc lập đã mô tả.
+5. [ ] Enforce single-instance trước cleanup/backend spawn; vượt contract test và packaged Windows/macOS secondary-launch/crash-restart gate.
+6. [ ] Hoàn tất preferences v2 storage cùng manifest v2 trước khi sửa adapter; migration kernel đã hoàn tất nhưng storage chưa nối live.
+7. [ ] Tạo corpus/gates Phase 0 và pending Mac evidence checklist.
+8. [ ] Refactor C++/Python theo Phase 1 và chứng minh giữ nguyên executor request/verdict cho corpus hợp lệ, không mơ hồ.
+9. [ ] Chỉ sau khi foundation/Phase 2A qua gate mới bắt đầu branch C; Pascal và Go theo gate độc lập đã mô tả.
 
 Không tải toolchain, đổi sandbox hay bật extension mới trước khi current-behavior fixtures và typed contract được review.

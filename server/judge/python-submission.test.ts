@@ -18,7 +18,8 @@ test("production testcase runner has no raw child-process or broad macOS profile
   const source = fs.readFileSync(path.join(process.cwd(), "server", "judge", "testcase-runner.ts"), "utf8");
   assert.doesNotMatch(source, /from ["'](?:node:)?child_process["']/);
   assert.doesNotMatch(source, /tree-kill|sandbox-exec|\(allow file-read\*\)/);
-  assert.match(source, /executorClient\.run/);
+  assert.match(source, /runReservedExecutor/);
+  assert.doesNotMatch(source, /executorClient\.run/);
 });
 
 test("managed macOS Python imports the complete package root instead of only bin", () => {

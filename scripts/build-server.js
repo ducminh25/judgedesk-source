@@ -25,7 +25,7 @@ try {
     postjectCli,
     sentinel,
     targetDirectory,
-    srcFile: "server.ts",
+    srcFile: "server-bootstrap.ts",
     seaConfigJson: "sea-config.json",
     seaBlobFile: "sea-prep.blob",
   });
