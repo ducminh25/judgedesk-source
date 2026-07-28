@@ -48,24 +48,25 @@ test("compiler executor request preserves the current role, files, and limits", 
   );
 });
 
-test("native submission executor request preserves the current empty launch contract", () => {
+test("native submission wire request preserves the current empty launch contract", () => {
+  const request = buildSubmissionExecutorRunSpec({
+    runId: "submission_cpp",
+    workspaceId: "workspace_cpp",
+    executableId: "artifacts/cpp",
+    args: [],
+    environment: {},
+    timeLimitMs: 1_000,
+    memoryBytes: 256 * MiB,
+  });
+
   assert.deepEqual(
-    buildSubmissionExecutorRunSpec({
-      runId: "submission_cpp",
-      workspaceId: "workspace_cpp",
-      executableId: "artifacts/cpp",
-      args: [],
-      environment: {},
-      timeLimitMs: 1_000,
-      memoryBytes: 256 * MiB,
-    }),
+    JSON.parse(JSON.stringify(request)),
     {
       runId: "submission_cpp",
       role: "submission",
       workspaceId: "workspace_cpp",
       executableId: "artifacts/cpp",
       args: [],
-      stdinFile: undefined,
       stdoutFile: "stdout.txt",
       stderrFile: "stderr.txt",
       environment: {},

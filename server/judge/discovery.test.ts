@@ -82,6 +82,17 @@ test("discovery recognizes Python submissions independently of C++", (t) => {
   });
 });
 
+test("submission discovery ignores candidates that are not an exact supported source file", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-submission-filter-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  fs.writeFileSync(path.join(root, "SUM_backup.cpp"), "", "utf8");
+  fs.writeFileSync(path.join(root, "SUM.txt"), "", "utf8");
+  fs.mkdirSync(path.join(root, "SUM.py"));
+
+  assert.equal(findSubmission(root, "sum"), null);
+});
+
 test("contestant discovery preserves the requested scoreboard order", (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-contestant-order-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));

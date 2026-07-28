@@ -80,7 +80,9 @@ test("macOS resolves the real compiler inside the selected Developer root", () =
   );
 });
 
-test("Windows native protection prefers an installed managed C++ toolchain", () => {
+// Legacy characterization only. Selection schema v2 must replace this with
+// explicit-source/no-fallback assertions; this is not the future contract.
+test("legacy v1: Windows native protection overrides C++ selection with managed", () => {
   const managed = {
     kind: "cpp" as const,
     source: "managed" as const,
@@ -118,7 +120,26 @@ test("native protection honors the active Python source", () => {
   assert.equal(chooseNativeProtectedToolchain("darwin", "python", managed, system), system);
   assert.equal(chooseNativeProtectedToolchain("win32", "python", managed, system), system);
   assert.equal(chooseNativeProtectedToolchain("darwin", "python", { ...managed, ready: false }, system), system);
+});
+
+test("legacy v1: unmanaged Python is not submission-ready without certification", () => {
+  const managed = {
+    kind: "python" as const,
+    source: "managed" as const,
+    executablePath: "/managed/bin/python3",
+    version: "3.12.13",
+    ready: true,
+  };
+  const system = {
+    kind: "python" as const,
+    source: "system" as const,
+    executablePath: "/usr/bin/python3",
+    version: "3.9.6",
+    ready: true,
+  };
+
   assert.equal(isPythonSubmissionReady(managed), true);
+  assert.equal(isPythonSubmissionReady({ ...managed, ready: false }), false);
   assert.equal(isPythonSubmissionReady(system), false);
 });
 
@@ -184,40 +205,51 @@ test("compiler probe uses production-compatible flags on Windows and macOS", () 
   );
 });
 
-test("toolchain storage preferences are saved and loaded correctly", (t) => {
+test("legacy v1 preferences round-trip independent C++ and Python selections", (t) => {
   const tempDir = fs.mkdtempSync(
     path.join(os.tmpdir(), "themis-storage-test-"),
   );
-  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+  const previousAppDataDir = process.env.THEMIS_APP_DATA_DIR;
+  t.after(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    if (previousAppDataDir === undefined) delete process.env.THEMIS_APP_DATA_DIR;
+    else process.env.THEMIS_APP_DATA_DIR = previousAppDataDir;
+  });
   process.env.THEMIS_APP_DATA_DIR = tempDir;
 
   const initial = loadPreferences();
   assert.equal(initial.preferredSourceCpp, "system");
+  assert.equal(initial.preferredSourcePython, "system");
 
   savePreferences({
     preferredSourceCpp: "custom",
     customCppPath: "C:\\mock\\g++.exe",
+    preferredSourcePython: "managed",
+    customPythonPath: "C:\\remembered\\python.exe",
     installedToolchains: ["gcc-windows-x64"],
   });
 
   const loaded = loadPreferences();
   assert.equal(loaded.preferredSourceCpp, "custom");
   assert.equal(loaded.customCppPath, "C:\\mock\\g++.exe");
+  assert.equal(loaded.preferredSourcePython, "managed");
+  assert.equal(loaded.customPythonPath, "C:\\remembered\\python.exe");
   assert.deepEqual(loaded.installedToolchains, ["gcc-windows-x64"]);
-
-  delete process.env.THEMIS_APP_DATA_DIR;
 });
 
 test("toolchainsDir resolves and creates directories", (t) => {
   const tempDir = fs.mkdtempSync(
     path.join(os.tmpdir(), "themis-storage-test-"),
   );
-  t.after(() => fs.rmSync(tempDir, { recursive: true, force: true }));
+  const previousAppDataDir = process.env.THEMIS_APP_DATA_DIR;
+  t.after(() => {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+    if (previousAppDataDir === undefined) delete process.env.THEMIS_APP_DATA_DIR;
+    else process.env.THEMIS_APP_DATA_DIR = previousAppDataDir;
+  });
   process.env.THEMIS_APP_DATA_DIR = tempDir;
 
   const toolchainsDir = getToolchainsDir();
   assert.ok(fs.existsSync(toolchainsDir));
   assert.ok(toolchainsDir.endsWith("toolchains"));
-
-  delete process.env.THEMIS_APP_DATA_DIR;
 });
