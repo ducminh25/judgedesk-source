@@ -18,6 +18,9 @@ Ngày duyệt: 2026-07-28
 - D10: bỏ qua, không phải blocker và không tạo cam kết triển khai Ruby/Haskell/Cangjie trong roadmap hiện tại.
 - D11–D14: duyệt theo đề xuất trong tài liệu.
 - D15: duyệt với amendment: local compiler/runtime có thể trở thành Submission ready nếu version/target nằm trong policy được JudgeDesk hỗ trợ và vượt health + sandbox certification; UI/source selection theo mô hình ở D15 mới.
+- Sau D15: giữ khả năng mở nhiều JudgeDesk instance. Mỗi instance vẫn chỉ có một batch active, nhưng nhiều instance được phép chấm đồng thời; toàn bộ process, workspace, event và result phải được định danh/cách ly, có host-wide resource coordinator thay vì tranh chấp tài nguyên ngầm.
+- Fast discovery lần đầu: chỉ auto-detect thụ động; không tự chạy full certification cho toolchain mới phát hiện.
+- Default source cho profile ngôn ngữ mới: đang chờ xác nhận sau khi giải thích UX; không tự suy diễn từ việc detect được compiler/runtime.
 - Branch namespace: dùng `judgedesk/…` theo lựa chọn của chủ dự án; branch nền tảng là `judgedesk/language-runtime-foundation`.
 - Cách làm: từng bước nhỏ; không phụ thuộc việc luôn có máy Mac. Mỗi thay đổi macOS phải có test có thể chuẩn bị trước, nhưng chỉ được xác nhận runtime khi đã chạy trên Apple Silicon thật.
 
@@ -29,7 +32,7 @@ Ngày duyệt: 2026-07-28
 - Đang làm: preferences v2 và kernel migrate v1 → v2 được xây tách rời production, fail-closed; chưa có production caller và chưa được phép tự ghi file.
 - Chưa làm: chưa đổi resolver, storage/API live, sandbox policy, UI hay language adapter; không tải toolchain và không chạy language spike.
 - Bước kế tiếp: khóa migration kernel bằng review/test, sau đó thiết kế storage raw-byte + revision/CAS. Cross-process writer serialization phải được chốt trước khi gọi thao tác ghi là CAS an toàn.
-- Mac evidence: chưa có runtime evidence mới cho plan này; giữ pending cho đến checkpoint đã chuẩn bị đầy đủ.
+- Mac evidence: đã có máy Apple Silicon thật qua TeamViewer nhưng chưa chạy test cho branch này. TeamViewer chỉ dự kiến dùng cho bootstrap/GUI; command gates cần SSH hoặc một kênh log tái lập được trước khi xác nhận runtime.
 
 ## 1. Kết luận điều hành
 
@@ -63,7 +66,7 @@ Lộ trình cuối cùng có thể ưu tiên Pascal vì giá trị giáo dục, 
 - Không dùng hệ số thời gian ẩn theo hệ điều hành.
 - Nếu dùng hệ số hoặc phần bù thời gian/bộ nhớ theo ngôn ngữ, chúng phải có phiên bản, hiển thị được, ghi vào metadata và được hiệu chỉnh bằng benchmark.
 - Mỗi testcase tiếp tục chạy trong process mới; không dùng daemon/runtime dùng chung giữa các thí sinh.
-- Một batch tiếp tục chạy tuần tự theo chính sách tài nguyên hiện tại để phù hợp máy giáo viên cấu hình thấp.
+- Một batch trong mỗi app instance tiếp tục chạy tuần tự theo chính sách tài nguyên hiện tại. Nhiều instance có thể cùng active, nhưng từng compile/run/checker step phải đi qua host-wide resource coordinator để máy cấu hình thấp được queue an toàn thay vì overcommit.
 
 ### 2.2. An toàn
 
@@ -725,7 +728,7 @@ D10 không còn là decision/blocker. Ruby, Haskell và Cangjie nằm ngoài roa
 
 ### D11. Baseline phần cứng
 
-**Đề xuất:** tiếp tục tối ưu cho Windows x64 8 GB và Apple Silicon 8 GB; không cho một toolchain mới làm JudgeDesk chạy nhiều batch song song hoặc vượt resource gate hiện tại.
+**Đề xuất đã bổ sung quyết định multi-instance:** tiếp tục tối ưu cho Windows x64 8 GB và Apple Silicon 8 GB. Một instance không tự chạy nhiều batch; nhiều instance được phép tồn tại và chấm đồng thời trong sức chứa đã benchmark của máy. Khi không đủ CPU/RAM/process budget, host-wide coordinator phải queue công việc với trạng thái rõ, không để từng backend tự giả định mình sở hữu toàn bộ tài nguyên.
 
 Nếu kỳ thi mục tiêu có baseline thấp hơn, cần cung cấp máy mẫu trước Phase 0 để benchmark đúng.
 
@@ -785,6 +788,8 @@ Detection chạy bất đồng bộ để không chặn cửa sổ chính:
 5. Candidate được canonicalize/deduplicate; symlink/reparse target và architecture được kiểm tra trước khi probe.
 
 Fast discovery không tự chạy mọi binary vừa tìm thấy. UI có thể hiện `Detected — verify to use`; đây là phụ chú/transient state, còn readiness vẫn Not available cho đến khi candidate được người dùng chọn hoặc đã có certificate cũ để quick-revalidate. Identity/version probe có timeout/output cap và chạy bằng probe role; không chạy tùy ý trên host.
+
+Quyết định đã chốt: lần mở đầu chỉ chạy fast discovery nói trên. Full certification/snapshot cần thao tác rõ ràng của người dùng; certificate cũ chỉ được quick-revalidate theo identity/policy đã pin.
 
 Auto-detect fail-closed:
 
@@ -879,6 +884,23 @@ Phase 1 không retroactively vô hiệu custom C++ path hiện có. Preferences 
 - Preference malformed/không đúng kiểu → `None` kèm migration diagnostic; không đoán source.
 
 Installed package state được kiểm tra từ disk/manifest; `installedToolchains` legacy không còn là nguồn chân lý. Migration phải idempotent; reader giới hạn byte trước parse, decode UTF-8 fatal và không overwrite corrupt/future schema. Writer phải validate canonical v2, dùng revision của exact raw bytes, temp cùng directory + file sync + atomic replace, rồi xử lý durability khác nhau theo OS. JudgeDesk hiện chưa có invariant single-instance, vì vậy check-then-rename không được gọi là CAS cross-process cho đến khi có writer lease/lock thực sự hoặc chủ dự án duyệt single-instance. Vì app cũ không hiểu `None` và có thể fallback, downgrade từ schema mới cần cảnh báo/chặn rõ thay vì dual-write một semantics sai.
+
+### D16. Multi-instance và cách ly phiên chấm
+
+**Đã duyệt:** JudgeDesk tiếp tục cho phép nhiều app instance. Mục tiêu là chấm đồng thời nhiều đề, hoặc cùng một đề với các nhóm thí sinh khác nhau, mà cancel/cleanup/update của phiên này không ảnh hưởng phiên kia.
+
+Audit baseline cho thấy chưa được phép công bố an toàn multi-instance: native executors hiện dùng chung root `JudgeDeskExecutor`, startup xóa shared artifact cache và dùng fixed self-test workspace; Tauri nhả free port trước khi sidecar bind; API local chưa có instance authentication; job ID do client tạo ngắn; một số startup cleanup/export/cache/config path vẫn là shared mutable state. Các UUID workspace/run hiện có và Job Object/process group riêng từng run là nền tốt nhưng chưa đủ.
+
+Contract bắt buộc:
+
+1. Tauri tạo `instanceId` ngẫu nhiên 128-bit và `instanceToken`; sidecar bind port `0`/handshake an toàn, trả đúng `{ pid, port, instanceId }`, mọi API kể cả cancel/shutdown phải xác thực token. Không được fallback kết nối vào backend khác khi port race.
+2. Backend tạo `sessionId` UUID; client `requestId` chỉ để correlation. Mỗi event có envelope `{ instanceId, sessionId, sequence, type, data }`, sequence tăng nghiêm ngặt và có đúng một terminal event; UI bỏ event sai/stale identity.
+3. `runId` liên kết instance/session/role/UUID và executor client xác nhận response trả đúng run ID. Workspace/executor root/self-test/artifact của instance được tạo exclusive trong subtree riêng; cleanup chỉ được xóa subtree có lease/ownership hợp lệ của chính instance đó.
+4. Managed toolchain blobs dùng shared immutable content-addressed store để không nhân đôi SDK lớn; install/update/uninstall/GC và preferences writer dùng cross-process lock/lease. Package đang có batch lease không được mutate hoặc purge.
+5. Batch pin snapshot đã normalize của problem config, test/submission inventory, toolchain/certificate ngay khi bắt đầu. Hai instance cùng đọc một contest được phép; thay đổi input/config giữa batch phải bị queue/chặn hoặc báo `INPUT_CHANGED_DURING_JUDGING`, không được âm thầm tạo kết quả lai.
+6. Host-wide resource coordinator cấp CPU/memory/process slots theo lease có heartbeat và stale-owner recovery. Một batch vẫn tuần tự trong một instance; nhiều instance có thể tiến song song khi đủ capacity, còn máy yếu thấy trạng thái queued thay vì TLE/MLE giả do tranh chấp.
+
+Gate bắt buộc gồm: khởi động 2–3 sidecar/instance đồng thời; ép port collision; sai token/session/event; cancel/close A trong khi B tiếp tục; startup/cleanup B không làm mất artifact A; concurrent preferences/install/uninstall; export cùng timestamp; hai instance chấm hai contest và cùng một contest; edit config/test giữa batch; so kết quả concurrent với sequential baseline; đo RAM/CPU/process count trên Windows và Apple Silicon thật.
 
 ## 16. Definition of Done cho một ngôn ngữ “Stable”
 
