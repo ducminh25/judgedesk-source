@@ -3,6 +3,7 @@ export type NonEmptyReadonlyArray<T> = readonly [T, ...T[]];
 export type HostPlatform = "win32" | "darwin";
 export type HostArchitecture = "x64" | "arm64";
 export type LanguageStability = "stable" | "experimental";
+export const LANGUAGE_PROFILE_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/;
 export type LanguageProfileId = string;
 export type SourceExtension = `.${string}`;
 export type ArtifactKind =
@@ -11,6 +12,10 @@ export type ArtifactKind =
   | "script-source"
   | "directory-entry"
   | "managed-bundle";
+
+export function isLanguageProfileId(value: unknown): value is LanguageProfileId {
+  return typeof value === "string" && LANGUAGE_PROFILE_ID_PATTERN.test(value);
+}
 
 export interface LanguageProfileRef {
   id: LanguageProfileId;
@@ -74,11 +79,28 @@ export type ToolchainVersionPolicy =
       testedMajors: NonEmptyReadonlyArray<number>;
     };
 
+export type ToolchainSourceMode =
+  | "none"
+  | "managed"
+  | "local_path"
+  | "local_auto";
+
+/** Resolved selection used only after an active local path has been validated. */
 export type ToolchainSourceSelection =
   | { mode: "none" }
   | { mode: "managed" }
   | { mode: "local_path"; path: string }
   | { mode: "local_auto" };
+
+/**
+ * Persisted user intent. localPath remains dormant outside local_path mode and
+ * may be absent in local_path mode so migration can fail closed without losing
+ * the user's selected radio mode.
+ */
+export interface StoredProfileToolchainPreference {
+  mode: ToolchainSourceMode;
+  localPath?: string;
+}
 
 export type ToolchainRole = "submission" | "checker";
 export type ToolchainProvenance =
@@ -276,14 +298,10 @@ export interface ToolchainCertificate {
   issuedAt: string;
 }
 
-export interface ToolchainPreferencesV2 {
-  schemaVersion: 2;
-  selections: Readonly<
-    Record<LanguageProfileId, ToolchainSourceSelection | undefined>
-  >;
-  /** Advisory index only; installed state must still be verified from disk. */
-  installedPackages: readonly string[];
-  certificationCache: Readonly<
+export interface ToolchainCertificateCacheV1 {
+  schemaVersion: 1;
+  /** Keyed by certificateId; candidate fingerprints are not globally unique. */
+  certificates: Readonly<
     Record<string, ToolchainCertificate | undefined>
   >;
 }
