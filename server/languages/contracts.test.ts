@@ -2,13 +2,31 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   deriveUiReadinessStatus,
+  isLanguageProfileId,
   type LanguageProfile,
   type PreparedProgram,
   type ProfileToolchainState,
   type RoleReadiness,
+  type StoredProfileToolchainPreference,
   type ToolchainSourceSelection,
   type ToolchainVersionPolicy,
 } from "./contracts.js";
+
+test("language profile IDs use a stable lowercase storage-safe format", () => {
+  for (const profileId of ["cpp14", "cpp-gnu14", "python_3.12", "java.21"]) {
+    assert.equal(isLanguageProfileId(profileId), true);
+  }
+  for (const profileId of [
+    "",
+    "Cpp14",
+    "cpp 14",
+    "-cpp14",
+    "a".repeat(129),
+    14,
+  ]) {
+    assert.equal(isLanguageProfileId(profileId), false);
+  }
+});
 
 const cppProfileFixture = {
   ref: { id: "cpp-legacy-v1", version: 1 },
@@ -163,6 +181,22 @@ test("source selections and version policies have explicit non-fallback shapes",
   const acceptSelection = (_selection: ToolchainSourceSelection): void => {};
   // @ts-expect-error Managed selection cannot carry a local path.
   acceptSelection({ mode: "managed", path: "C:\\compiler.exe" });
+  // @ts-expect-error Resolved local_path selections require a validated path.
+  acceptSelection({ mode: "local_path" });
+});
+
+test("persisted preferences retain dormant and missing local paths without activating them", () => {
+  const stored = [
+    { mode: "managed", localPath: "C:\\remembered\\compiler.exe" },
+    { mode: "local_auto", localPath: "C:\\remembered\\python.exe" },
+    { mode: "local_path" },
+  ] satisfies readonly StoredProfileToolchainPreference[];
+
+  assert.deepEqual(stored.map((preference) => preference.mode), [
+    "managed",
+    "local_auto",
+    "local_path",
+  ]);
 });
 
 test("prepared programs distinguish artifact entrypoints from certified runtime components", () => {

@@ -25,9 +25,10 @@ Ngày duyệt: 2026-07-28
 
 - Current branch: `judgedesk/language-runtime-foundation`.
 - Base: `main` / `b1ed52f` / `v1.2.7`.
-- Hoàn tất: audit/research/approval; executor request cùng discovery/resolver/preferences/API v1 hiện tại đã có characterization fixtures.
-- Chưa làm: chưa đổi resolver, preference schema, sandbox policy, UI hay language adapter; không tải toolchain và không chạy language spike.
-- Bước kế tiếp: viết và review typed contracts cùng preferences migration trước khi refactor.
+- Hoàn tất: audit/research/approval; executor request cùng discovery/resolver/preferences/API v1 đã có characterization fixtures; typed foundation contracts đã được commit.
+- Đang làm: preferences v2 và kernel migrate v1 → v2 được xây tách rời production, fail-closed; chưa có production caller và chưa được phép tự ghi file.
+- Chưa làm: chưa đổi resolver, storage/API live, sandbox policy, UI hay language adapter; không tải toolchain và không chạy language spike.
+- Bước kế tiếp: khóa migration kernel bằng review/test, sau đó thiết kế storage raw-byte + revision/CAS. Cross-process writer serialization phải được chốt trước khi gọi thao tác ghi là CAS an toàn.
 - Mac evidence: chưa có runtime evidence mới cho plan này; giữ pending cho đến checkpoint đã chuẩn bị đầy đủ.
 
 ## 1. Kết luận điều hành
@@ -281,11 +282,11 @@ Version policy là dữ liệu của `LanguageProfile`, dùng exact allowlist ho
 Storage/API chuyển từ các field `customCppPath`/`preferredSourceCpp` riêng lẻ sang:
 
 - `schemaVersion`.
-- `selections[profileId]` với mode và optional local path/candidate ID.
-- `installedPackages[]`.
-- `certificationCache[candidateFingerprint]` với policy/probe version và thời điểm kiểm tra.
+- Preferences v2 có `profiles[profileId]` với mode và optional remembered local path; path có thể dormant khi mode khác hoặc còn thiếu khi intent là `local_path`, để fail-closed mà không đổi radio.
+- Installed-package inventory là state riêng được dựng lại từ disk + verified manifest, không copy `installedToolchains` legacy vào preferences như nguồn chân lý.
+- Certificate cache là state versioned riêng, keyed bằng `certificateId`; certificate tự pin profile/version/role/candidate fingerprint/recipe/host/policy, vì một candidate fingerprint có thể phục vụ nhiều scope khác nhau.
 
-Migration v1 được test riêng và atomic. UI contract trả danh sách profile động, candidate sources, selected source, readiness theo role, diagnostics và actions; không trả đúng hai slot C++/Python.
+Migration v1 dùng kernel thuần, được test riêng và không tự ghi. Tính atomic thuộc storage boundary kế tiếp và chỉ được công bố khi đã có test writer/CAS. UI contract trả danh sách profile động, candidate sources, selected source, readiness theo role, diagnostics và actions; không trả đúng hai slot C++/Python.
 
 Chi tiết UX/action/version/fingerprint/preflight nằm ở D15.
 
@@ -850,6 +851,7 @@ Version floor cụ thể của từng ngôn ngữ được chốt trong Phase 0 
 #### D15.5. Actions
 
 - `Download and apply for JudgeDesk`: đây là hành động kết hợp do người dùng chủ động yêu cầu; tải/import managed package, verify, chạy health probe và chỉ chọn `Managed by toolchain` sau khi thành công. Không đổi radio nếu install/probe thất bại.
+- Download/apply phải pin preference revision và intent lúc bắt đầu. Nếu người dùng đổi radio trong khi đang tải, package có thể hoàn tất cài đặt nhưng không được ghi đè lựa chọn mới; UI báo `Installed, not applied`.
 - `Uninstall`: chỉ hiện với managed package. Không bao giờ xóa local compiler/runtime.
 - Managed package đang được batch/contest pin không được uninstall. Với package không còn active, uninstall cần confirm; nếu radio đang là Managed thì giữ nguyên radio nhưng status chuyển thành Not available và hiện nút Download, tuyệt đối không fallback sang local.
 - `Browse… / Verify & use` chỉ áp dụng cho `Local (path)` và cập nhật path + selection atomically sau khi identity validation tối thiểu pass.
@@ -869,11 +871,14 @@ Phase 1 không retroactively vô hiệu custom C++ path hiện có. Preferences 
 
 - `preferredSource*=managed` → `Managed by toolchain`.
 - `preferredSource*=custom` + path → `Local (path)`.
+- `preferredSource*=custom` nhưng path thiếu/rỗng → vẫn giữ intent `Local (path)`, status Not available với `LOCAL_PATH_REQUIRED`; không fallback.
 - `preferredSource*=system` → `Local (auto-detect)`.
+- Custom path cũ luôn được giữ như remembered path khi mode active là Managed/System; dormant path không được probe hoặc dùng cho đến khi người dùng chọn lại và verify.
+- Profile mới không có preference → `None`; unknown profile ID được bảo toàn nhưng registry hiện tại bỏ qua. Unknown future schema/corrupt JSON phải dừng ở recovery, không tự ghi đè bằng default.
 - Python system/auto hiện tại vẫn Checker only cho đến khi một local-Python submission profile thật sự vượt sandbox certification; không được tự nâng hạng trong migration.
 - Preference malformed/không đúng kiểu → `None` kèm migration diagnostic; không đoán source.
 
-Installed package state được kiểm tra từ disk/manifest; `installedToolchains` legacy không còn là nguồn chân lý. Migration phải idempotent, validate JSON và ghi atomically. Vì app cũ không hiểu `None` và có thể fallback, downgrade từ schema mới cần cảnh báo/chặn rõ thay vì dual-write một semantics sai.
+Installed package state được kiểm tra từ disk/manifest; `installedToolchains` legacy không còn là nguồn chân lý. Migration phải idempotent; reader giới hạn byte trước parse, decode UTF-8 fatal và không overwrite corrupt/future schema. Writer phải validate canonical v2, dùng revision của exact raw bytes, temp cùng directory + file sync + atomic replace, rồi xử lý durability khác nhau theo OS. JudgeDesk hiện chưa có invariant single-instance, vì vậy check-then-rename không được gọi là CAS cross-process cho đến khi có writer lease/lock thực sự hoặc chủ dự án duyệt single-instance. Vì app cũ không hiểu `None` và có thể fallback, downgrade từ schema mới cần cảnh báo/chặn rõ thay vì dual-write một semantics sai.
 
 ## 16. Definition of Done cho một ngôn ngữ “Stable”
 
@@ -897,9 +902,10 @@ Một ngôn ngữ chỉ được ghi là hỗ trợ ổn định khi:
 1. [x] Ghi D1–D15 và amendment D15 vào decision log.
 2. [x] Tạo branch `judgedesk/language-runtime-foundation`.
 3. [x] Khóa current-behavior fixtures cho resolver/preferences/API/executor request C++/Python.
-4. [ ] Viết typed spec cho `LanguageProfile`, selection/readiness/certificate, `PreparedProgram`, manifest v2 và migration trước khi sửa adapter.
-5. [ ] Tạo corpus/gates Phase 0 và pending Mac evidence checklist.
-6. [ ] Refactor C++/Python theo Phase 1 và chứng minh giữ nguyên executor request/verdict cho corpus hợp lệ, không mơ hồ.
-7. [ ] Chỉ sau khi foundation/Phase 2A qua gate mới bắt đầu branch C; Pascal và Go theo gate độc lập đã mô tả.
+4. [x] Viết typed spec nền cho `LanguageProfile`, selection/readiness/certificate và `PreparedProgram`.
+5. [ ] Hoàn tất preferences v2 migration/storage cùng manifest v2 trước khi sửa adapter; migration kernel đã có nhưng storage chưa nối live.
+6. [ ] Tạo corpus/gates Phase 0 và pending Mac evidence checklist.
+7. [ ] Refactor C++/Python theo Phase 1 và chứng minh giữ nguyên executor request/verdict cho corpus hợp lệ, không mơ hồ.
+8. [ ] Chỉ sau khi foundation/Phase 2A qua gate mới bắt đầu branch C; Pascal và Go theo gate độc lập đã mô tả.
 
 Không tải toolchain, đổi sandbox hay bật extension mới trước khi current-behavior fixtures và typed contract được review.
