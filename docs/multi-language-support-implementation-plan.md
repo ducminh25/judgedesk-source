@@ -276,7 +276,7 @@ Resolver dùng pipeline hai tầng:
 1. Fast discovery thụ động/bất đồng bộ: stored path, managed store, PATH và allowlist vị trí chuẩn; không recursive scan và không tự thực thi mọi candidate.
 2. Certification theo yêu cầu/certificate cũ: canonical identity, version/target/support roots, compile-run fixture, exact sandbox probe và fingerprint pinning.
 
-Version policy là dữ liệu của `LanguageProfile`, gồm minimum và tested major/range; không chấp nhận mọi future major chỉ vì lớn hơn minimum. Probe phải có timeout/output cap, probe role và không chạy qua shell. Local toolchain mặc định được snapshot closure vào immutable cache; direct platform root chỉ dùng khi có policy riêng. Một candidate chỉ được chọn làm submission compiler khi certification record còn khớp fingerprint hiện tại.
+Version policy là dữ liệu của `LanguageProfile`, dùng exact allowlist hoặc bounded range có minimum/maximum/tested majors; không chấp nhận mọi future major chỉ vì lớn hơn minimum. Exact entry phải pin build/fingerprint. Probe có timeout/output cap, probe role và không chạy qua shell. Local toolchain mặc định được snapshot closure vào immutable cache; direct platform root chỉ dùng khi có policy riêng. Một candidate chỉ được chọn làm submission compiler khi certification record còn khớp fingerprint hiện tại.
 
 Storage/API chuyển từ các field `customCppPath`/`preferredSourceCpp` riêng lẻ sang:
 
@@ -798,7 +798,7 @@ Auto-detect fail-closed:
 Mỗi profile/version của JudgeDesk khai báo:
 
 - Compiler/runtime family và executable names hợp lệ.
-- `minInclusive` cùng tested major/range policy; không dùng một minimum mở vô hạn cho mọi future major.
+- Version rule tường minh: `exactAllowlist` hoặc `boundedRange { minInclusive, maxExclusive, testedMajors }`; exact entry kèm build/fingerprint và không dùng một minimum mở vô hạn cho mọi future major.
 - Host OS/architecture và target triple hợp lệ.
 - Required compiler/linker/runtime/support roots.
 - Version parser, compile recipe và deterministic environment.
@@ -809,7 +809,7 @@ Policy snapshot sơ bộ ngày 2026-07-28 — đây là candidate để Phase 0 
 
 | Profile | Candidate version policy ban đầu | Ghi chú bắt buộc |
 |---|---|---|
-| C/C++ Windows | GCC 9.2 chỉ là legacy audit fixture; regression-test chính xác legacy 9.2 và managed 14.2 trước khi chọn supported floor/range mới | Chứng nhận cả MinGW-w64 target, UCRT/MSVCRT, thread model, exception model, binutils/linker và runtime-DLL closure; không dùng `>=9.2` mở vô hạn |
+| C/C++ Windows | GCC 9.2 chỉ là legacy audit fixture; regression-test chính xác legacy 9.2 và managed 14.2 trước khi chọn supported floor/range mới | Chứng nhận distributor/build, exact `x86_64-w64-mingw32` target, UCRT/MSVCRT, thread model, exception model, binutils/linker và runtime-DLL closure; không dùng `>=9.2` mở vô hạn |
 | C/C++ macOS | Không so Apple Clang như LLVM semver; allowlist compiler build + developer root + SDK identity | Native ARM64/universal ARM64 slice; platform-certified |
 | Python | Managed JudgeDesk build 3.12.13 là baseline; local submission candidate phải khớp exact CPython build/ABI/stdlib allowlist, không phải mọi bản 3.12 | Upstream 3.12.13 là source-only security release và 3.12.10 là bản cuối có binary installer; không tự nhận PyPy/Conda/pyenv chỉ từ version |
 | Pascal | FPC 3.2.2 exact stable | 3.3.x là development snapshot; target/units/linker/CLT phải đúng |
@@ -819,7 +819,7 @@ Policy snapshot sơ bộ ngày 2026-07-28 — đây là candidate để Phase 0 
 | Node.js | Snapshot khảo sát: exact Node 24.18.0, không dùng nhãn động “latest security patch” trong profile | Windows 10+/x64; macOS 13.5+/arm64 theo tài liệu của tag 24.18.0; JIT/ICU probe |
 | C#/.NET | Candidate .NET 10 LTS; exact SDK feature band/patch, runtime patch, targeting pack và RID chưa chốt cho đến spike Phase 0 | `net10.0`; `global.json`/SDK search root phải pin và không roll ngoài policy; win-x64, macOS 14+/osx-arm64 |
 
-Nguồn policy chính: [Go release history](https://go.dev/doc/devel/release), [Python 3.12.13 release](https://www.python.org/downloads/release/python-31213/), [FPC stable downloads](https://docs.freepascal.org/download.html), [OpenJDK 25](https://openjdk.org/projects/jdk/25/), [`javac --release` JDK 21](https://docs.oracle.com/en/java/javase/21/docs/specs/man/javac.html), [Rust release announcements](https://blog.rust-lang.org/releases/), [Node 24.18.0 archive](https://nodejs.org/download/release/latest-v24.x/), [Node 24.18.0 platform matrix](https://github.com/nodejs/node/blob/v24.18.0/BUILDING.md), [.NET lifecycle](https://learn.microsoft.com/en-us/lifecycle/products/microsoft-net-and-net-core), [.NET `global.json`](https://learn.microsoft.com/en-us/dotnet/core/tools/global-json) và [.NET macOS support](https://learn.microsoft.com/en-us/dotnet/core/install/macos).
+Nguồn policy chính: [Go release history](https://go.dev/doc/devel/release), [Python 3.12.13 release](https://www.python.org/downloads/release/python-31213/), [FPC stable downloads](https://docs.freepascal.org/download.html), [OpenJDK 25](https://openjdk.org/projects/jdk/25/), [`javac --release` JDK 21](https://docs.oracle.com/en/java/javase/21/docs/specs/man/javac.html), [Rust release announcements](https://blog.rust-lang.org/releases/), [Node 24.18.0 archive](https://nodejs.org/download/release/v24.18.0/), [Node 24.18.0 platform matrix](https://github.com/nodejs/node/blob/v24.18.0/BUILDING.md), [MSYS2 environments](https://www.msys2.org/docs/environments/), [.NET lifecycle](https://learn.microsoft.com/en-us/lifecycle/products/microsoft-net-and-net-core), [.NET `global.json`](https://learn.microsoft.com/en-us/dotnet/core/tools/global-json) và [.NET macOS support](https://learn.microsoft.com/en-us/dotnet/core/install/macos).
 
 Candidate chỉ là Submission ready khi:
 
