@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { executorClient } from "../executor/client.js";
-import { DEFAULT_EXECUTOR_LIMITS, type ExecutorRunResult } from "../executor/protocol.js";
+import type { ExecutorRunResult } from "../executor/protocol.js";
 import {
   createExecutorWorkspace,
   findCachedManagedToolchain,
@@ -22,6 +22,7 @@ import { getToolchainsDir } from "../toolchains/storage.js";
 import type { ResolvedToolchain } from "../toolchains/types.js";
 import { RESOURCE_ROOT } from "../runtime.js";
 import { resolveCompilerMemoryLimitBytes } from "./resource-policy.js";
+import { buildCompilerExecutorRunSpec } from "./execution-request.js";
 import { isBuiltInChecker } from "./standard-checkers.js";
 import { validatePythonCheckerSource } from "./trusted-python-checker.js";
 
@@ -329,22 +330,16 @@ export async function runCompilerWithLimits(
       environment.COMPILER_PATH = [programDirectory, path.dirname(compiler.executablePath)].join(path.delimiter);
       environment.LIBRARY_PATH = findGccLibraryDirectories(compiler.root).join(path.delimiter);
     }
-    const result = await executorClient.run({
+    const result = await executorClient.run(buildCompilerExecutorRunSpec({
       runId,
-      role: "compiler",
       workspaceId: workspace.id,
       executableId: compiler.executableId,
       args: stagedArgs,
-      stdoutFile: "compiler.stdout",
-      stderrFile: "compiler.stderr",
       environment,
-      limits: {
-        ...DEFAULT_EXECUTOR_LIMITS.compiler,
-        wallTimeMs: limits.timeoutMs,
-        memoryBytes: resolveCompilerMemoryLimitBytes(),
-        totalWriteBytes: limits.maxGeneratedFileBytes + 4 * 1024 * 1024,
-      },
-    });
+      timeoutMs: limits.timeoutMs,
+      memoryBytes: resolveCompilerMemoryLimitBytes(),
+      maxGeneratedFileBytes: limits.maxGeneratedFileBytes,
+    }));
     const stderr = readPreview(path.join(workspace.path, "compiler.stderr"), MAX_COMPILER_DIAGNOSTIC_BYTES);
     assertCompilerSucceeded(result, stderr);
     if (!fs.existsSync(stagedOutput)) throw new Error(stderr.trim() || "Compilation did not produce an output file.");
