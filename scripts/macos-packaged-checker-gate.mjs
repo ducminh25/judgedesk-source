@@ -84,6 +84,17 @@ try {
   assert.equal(status.build?.gitCommit, await currentCommit());
 
   const initialToolchains = await requestJson("GET", "/api/toolchains");
+  assert.equal(initialToolchains.registryRevision, 1);
+  assert.deepEqual(
+    initialToolchains.profiles?.map((profile) => profile.id),
+    ["cpp-legacy-v1", "python-cpython312"],
+  );
+  for (const profile of initialToolchains.profiles || []) {
+    assert.deepEqual(
+      Object.keys(profile.sources || {}).sort(),
+      ["local_auto", "local_path", "managed", "none"],
+    );
+  }
   assert.equal(initialToolchains.capabilities?.python?.managed, false);
   const installResponse = await requestJson(
     "POST",
@@ -100,9 +111,11 @@ try {
   await requestJson("POST", "/api/toolchains/rescan");
   await waitFor(async () => {
     const toolchains = await requestJson("GET", "/api/toolchains");
-    return toolchains.active?.python?.source === "managed"
+    return toolchains.discovery?.status === "complete"
+      && toolchains.capabilities?.cpp?.submissionReady === true
+      && toolchains.active?.python?.source === "managed"
       && toolchains.capabilities?.python?.checkerReady === true;
-  }, 20_000, "managed Python never became checker-ready");
+  }, 20_000, "registry sources never became ready after rescan");
 
   const normalEvents = await runJudge("packaged_checker_normal", ["A", "B"]);
   assertNoJudgeError(normalEvents);
@@ -118,6 +131,14 @@ try {
       && row.command.includes("/checker.py")
     );
   }, 45_000, "sleeping packaged Python checker never became active");
+  const lockedToolchains = await requestJson("GET", "/api/toolchains");
+  assert.equal(lockedToolchains.mutationsBlocked, true);
+  const blockedRescan = await fetch(`${baseUrl}/api/toolchains/rescan`, {
+    method: "POST",
+    signal: AbortSignal.timeout(30_000),
+  });
+  assert.equal(blockedRescan.status, 409);
+  assert.match(await blockedRescan.text(), /while judging is in progress/i);
   const cancelStartedAt = Date.now();
   const cancellation = await requestJson("POST", "/api/batch-judge/cancel", {
     jobId: cancelJobId,
