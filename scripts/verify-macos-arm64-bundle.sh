@@ -5,12 +5,33 @@ target_root="src-tauri/target/aarch64-apple-darwin/release/bundle"
 dmg_file="$(find "$target_root/dmg" -maxdepth 1 -name 'JudgeDesk_*.dmg' -print -quit)"
 test -n "$dmg_file"
 
+case "${JUDGEDESK_LOCAL_BUNDLE:-0}" in
+  0 | 1) ;;
+  *)
+    echo "JUDGEDESK_LOCAL_BUNDLE must be 0 or 1." >&2
+    exit 1
+    ;;
+esac
+
 mount_dir="$(mktemp -d)"
+verification_data="$(mktemp -d "${TMPDIR:-/tmp}/judgedesk-macos-bundle-verify.XXXXXX")"
+tree_guard="$verification_data/process-tree.generation"
 cleanup_dmg_mount() {
   hdiutil detach "$mount_dir" >/dev/null 2>&1 || true
   rmdir "$mount_dir" >/dev/null 2>&1 || true
+  rm -f -- "$tree_guard"
+  rmdir "$verification_data" >/dev/null 2>&1 || true
 }
 trap cleanup_dmg_mount EXIT
+
+chmod 700 "$verification_data"
+tree_generation="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+umask 077
+printf 'JUDGEDESK_PROCESS_TREE/1\ngeneration=%s\n' "$tree_generation" >"$tree_guard"
+chmod 600 "$tree_guard"
+export JUDGEDESK_TREE_GUARD_REQUIRED=1
+export JUDGEDESK_TREE_GUARD_PATH="$tree_guard"
+export JUDGEDESK_TREE_GUARD_GENERATION="$tree_generation"
 
 hdiutil attach "$dmg_file" -readonly -nobrowse -mountpoint "$mount_dir" >/dev/null
 app_bundle="$(find "$mount_dir" -maxdepth 1 -name '*.app' -print -quit)"
@@ -21,19 +42,17 @@ executor_binary="$app_bundle/Contents/MacOS/judgedesk-executor"
 lipo "$app_bundle/Contents/MacOS/themis-v2" -verify_arch arm64
 lipo "$server_binary" -verify_arch arm64
 lipo "$executor_binary" -verify_arch arm64
-if [[ "${JUDGEDESK_REQUIRE_NOTARIZATION:-0}" == "1" ]]; then
-  codesign --verify --deep --strict --verbose=2 "$app_bundle"
-  codesign --verify --strict --verbose=2 "$executor_binary"
-fi
+codesign --verify --deep --strict --verbose=2 "$app_bundle"
+codesign --verify --strict --verbose=2 "$executor_binary"
 signature_info="$(codesign -dvvv "$app_bundle" 2>&1)"
 printf '%s\n' "$signature_info"
-server_entitlements="$(codesign -d --entitlements :- "$server_binary" 2>&1)"
+server_entitlements="$(codesign -d --entitlements - "$server_binary" 2>&1)"
 printf '%s\n' "$server_entitlements"
+if ! grep -q 'com.apple.security.cs.allow-jit' <<<"$server_entitlements"; then
+  echo "The packaged backend sidecar is missing the JIT entitlement required by V8." >&2
+  exit 1
+fi
 if [[ "${JUDGEDESK_REQUIRE_NOTARIZATION:-0}" == "1" ]]; then
-  if ! grep -q 'com.apple.security.cs.allow-jit' <<<"$server_entitlements"; then
-    echo "The packaged backend sidecar is missing the JIT entitlement required by V8." >&2
-    exit 1
-  fi
   if ! grep -q '^Authority=Developer ID Application:' <<<"$signature_info"; then
     echo "The release app is not signed with Developer ID Application." >&2
     exit 1
@@ -49,6 +68,12 @@ node scripts/smoke-test-sidecar.js \
   "$server_binary" \
   "$app_bundle/Contents/Resources" \
   --require-cpp
+
+if [[ "${JUDGEDESK_LOCAL_BUNDLE:-0}" == "1" ]]; then
+  shasum --algorithm 256 "$dmg_file"
+  echo "Apple Silicon local DMG passed architecture, signature, entitlement, and packaged sidecar smoke tests."
+  exit 0
+fi
 
 rm -rf release-assets-mac
 mkdir -p release-assets-mac

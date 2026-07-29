@@ -260,6 +260,9 @@ test("GitHub release workflow builds Apple Silicon only", () => {
     packageJson.scripts["build:macos:local"],
     /tauri\.macos\.local\.conf\.json.*aarch64-apple-darwin/,
   );
+  assert.match(packageJson.scripts["build:macos:local:headless"], /CI=true/);
+  assert.match(packageJson.scripts["build:macos:local:headless"], /verify:macos:local/);
+  assert.match(packageJson.scripts["verify:macos:local"], /JUDGEDESK_LOCAL_BUNDLE=1/);
   const rootConfig = JSON.parse(
     fs.readFileSync(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8"),
   );
@@ -347,9 +350,11 @@ test("Apple Silicon release scripts verify architecture, DMG, and sidecar", () =
   );
   assert.match(bundleScript, /hdiutil attach "\$dmg_file" -readonly -nobrowse/);
   assert.match(bundleScript, /trap cleanup_dmg_mount EXIT/);
+  assert.match(bundleScript, /JUDGEDESK_TREE_GUARD_GENERATION/);
+  assert.match(bundleScript, /JUDGEDESK_LOCAL_BUNDLE/);
   assert.match(bundleScript, /Contents\/MacOS\/themis-v2" -verify_arch arm64/);
   assert.match(bundleScript, /lipo "\$server_binary" -verify_arch arm64/);
-  assert.match(bundleScript, /codesign -d --entitlements :- "\$server_binary"/);
+  assert.match(bundleScript, /codesign -d --entitlements - "\$server_binary"/);
   assert.match(bundleScript, /com\.apple\.security\.cs\.allow-jit/);
   assert.match(bundleScript, /smoke-test-sidecar\.js/);
   assert.match(bundleScript, /--require-cpp/);
