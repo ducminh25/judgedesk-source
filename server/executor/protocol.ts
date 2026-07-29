@@ -1,4 +1,9 @@
-export type ExecutorRole = "submission" | "compiler" | "checker" | "security-probe";
+export type ExecutorRole =
+  | "submission"
+  | "compiler"
+  | "checker"
+  | "checker-runtime"
+  | "security-probe";
 
 export interface ExecutorLimits {
   wallTimeMs: number;

@@ -226,8 +226,8 @@ export function chooseNativeProtectedToolchain(
   managed: ResolvedToolchain,
   selected: ResolvedToolchain,
 ): ResolvedToolchain {
-  // Python must honor the active source. System/custom Python remains useful
-  // for trusted checkers, but submissions fail closed in compileSubmission.
+  // Detection and preferences must preserve the active Python source. Execution paths
+  // separately require either managed bits or a future certified immutable snapshot.
   if (kind === "python") return selected;
   const requireManaged = platform === "win32";
   return requireManaged && managed.ready ? managed : selected;
@@ -241,6 +241,15 @@ export function resolveNativeProtectedToolchain(kind: ToolchainKind): ResolvedTo
 }
 
 export function isPythonSubmissionReady(toolchain: ResolvedToolchain): boolean {
+  return toolchain.kind === "python"
+    && toolchain.ready
+    && toolchain.source === "managed";
+}
+
+export function isPythonCheckerReady(toolchain: ResolvedToolchain): boolean {
+  // Local/system runtimes may become eligible after the D15 certification-and-snapshot
+  // workflow exists. Until then, reporting them ready would contradict resolveChecker's
+  // fail-closed admission rule.
   return toolchain.kind === "python"
     && toolchain.ready
     && toolchain.source === "managed";

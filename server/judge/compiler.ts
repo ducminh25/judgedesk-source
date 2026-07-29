@@ -27,12 +27,14 @@ import { RESOURCE_ROOT } from "../runtime.js";
 import { resolveCompilerMemoryLimitBytes } from "./resource-policy.js";
 import { buildCompilerExecutorRunSpec } from "./execution-request.js";
 import { isBuiltInChecker } from "./standard-checkers.js";
-import { validatePythonCheckerSource } from "./trusted-python-checker.js";
+import { validatePythonCheckerSource } from "./python-checker.js";
 
 declare const __JUDGEDESK_TESTLIB__: string;
 
 export const COMPILE_TIMEOUT_MS = 15_000;
 export const MAX_GENERATED_FILE_BYTES = 32 * 1024 * 1024;
+export const CHECKER_COMPILE_TIMEOUT_MS = 30_000;
+export const CHECKER_COMPILE_MEMORY_LIMIT_BYTES = 768 * 1024 * 1024;
 const MAX_COMPILER_DIAGNOSTIC_BYTES = 256 * 1024;
 const gccProgramDirectoryCache = new Map<string, string>();
 const gccLibraryDirectoryCache = new Map<string, string[]>();
@@ -41,6 +43,7 @@ const gccIncludeDirectoryCache = new Map<string, string[]>();
 export interface CompileLimits {
   timeoutMs: number;
   maxGeneratedFileBytes: number;
+  memoryBytes?: number;
 }
 
 const DEFAULT_COMPILE_LIMITS: CompileLimits = {
@@ -48,11 +51,16 @@ const DEFAULT_COMPILE_LIMITS: CompileLimits = {
   maxGeneratedFileBytes: MAX_GENERATED_FILE_BYTES,
 };
 
+const CHECKER_COMPILE_LIMITS: CompileLimits = {
+  timeoutMs: CHECKER_COMPILE_TIMEOUT_MS,
+  maxGeneratedFileBytes: MAX_GENERATED_FILE_BYTES,
+  memoryBytes: CHECKER_COMPILE_MEMORY_LIMIT_BYTES,
+};
+
 export interface CompiledChecker {
   path: string | null;
   runtime?: "native" | "python";
   pythonExecutablePath?: string;
-  pythonSource?: ResolvedToolchain["source"];
   error?: string;
 }
 
@@ -116,13 +124,19 @@ export async function resolveChecker(options: ResolveCheckerOptions): Promise<Co
         error: "CHECKER_TOOLCHAIN_UNAVAILABLE: cannot compile Python checker; Python is missing",
       };
     }
+    if (python.source !== "managed") {
+      return {
+        path: null,
+        error:
+          "CHECKER_TOOLCHAIN_CERTIFICATION_REQUIRED: local/system Python must be certified and snapshotted before it can run a checker",
+      };
+    }
     try {
-      validatePythonCheckerSource(python.executablePath, checkerPath);
+      await validatePythonCheckerSource(python.executablePath, checkerPath, jobId);
       return {
         path: checkerPath,
         runtime: "python",
         pythonExecutablePath: python.executablePath,
-        pythonSource: python.source,
       };
     } catch (error) {
       return {
@@ -213,6 +227,7 @@ async function compileCustomChecker(
       tempDirectory,
       checkerBinaryPath,
       jobId,
+      CHECKER_COMPILE_LIMITS,
     );
     return { path: checkerBinaryPath, runtime: "native" };
   } catch (error) {
@@ -340,7 +355,7 @@ export async function runCompilerWithLimits(
       args: stagedArgs,
       environment,
       timeoutMs: limits.timeoutMs,
-      memoryBytes: resolveCompilerMemoryLimitBytes(),
+      memoryBytes: limits.memoryBytes ?? resolveCompilerMemoryLimitBytes(),
       maxGeneratedFileBytes: limits.maxGeneratedFileBytes,
     }));
     const stderr = readPreview(path.join(workspace.path, "compiler.stderr"), MAX_COMPILER_DIAGNOSTIC_BYTES);

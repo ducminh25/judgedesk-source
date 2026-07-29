@@ -1,7 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { DEFAULT_EXECUTOR_LIMITS } from "../executor/protocol.js";
 import { createExecutorWorkspace } from "../executor/workspace.js";
 import {
   attachExecutorRun,
@@ -9,10 +8,8 @@ import {
   runReservedExecutor,
 } from "../jobs.js";
 import type { TestVerdict } from "../types.js";
-import type { ToolchainSource } from "../toolchains/types.js";
+import { buildCheckerExecutorRunSpec } from "./execution-request.js";
 import { prepareIsolatedPythonScript } from "./python-runtime.js";
-import { runTrustedHostPythonChecker } from "./trusted-python-checker.js";
-export { trustedCheckerEnvironment } from "./trusted-python-checker.js";
 
 export interface CustomCheckerResult {
   status: TestVerdict;
@@ -24,18 +21,15 @@ export interface RunCustomCheckerOptions {
   checkerPath: string;
   checkerRuntime: "native" | "python";
   pythonExecutablePath?: string;
-  pythonSource?: ToolchainSource;
   inputPath: string;
   actualOutputPath: string;
   expectedOutputPath: string;
-  testDirectory: string;
-  tempDirectory: string;
   maxScore: number;
   jobId?: string;
 }
 
 const CHECKER_TIMEOUT_MS = 5_000;
-const CHECKER_OUTPUT_LIMIT_BYTES = 256 * 1024;
+const CHECKER_MEMORY_BYTES = 256 * 1024 * 1024;
 
 export function parsePartialScore(message: string, stdout: string, maxScore: number): number | null {
   const match = message.match(/result\s*=\s*([0-9.]+)/i)
@@ -53,23 +47,23 @@ export function parsePartialScore(message: string, stdout: string, maxScore: num
 }
 
 export async function runCustomChecker(options: RunCustomCheckerOptions): Promise<CustomCheckerResult> {
-  if (options.checkerRuntime === "python" && options.pythonSource !== "managed") {
-    return runTrustedHostPythonChecker(options, checkerResultFromExit);
-  }
-
   const workspace = await createExecutorWorkspace();
   const runId = `checker_${crypto.randomUUID().replaceAll("-", "_")}`;
   try {
     attachExecutorRun(options.jobId, runId);
     const launch = options.checkerRuntime === "python"
-      ? await prepareIsolatedPythonScript(workspace, options.checkerPath, "checker.py")
+      ? await prepareIsolatedPythonScript(
+          workspace,
+          options.checkerPath,
+          "checker.py",
+          options.pythonExecutablePath,
+        )
       : prepareNativeChecker(workspace, options.checkerPath);
     workspace.stage(options.inputPath, "input.txt");
     workspace.stage(options.actualOutputPath, "actual.txt");
     workspace.stage(options.expectedOutputPath, "expected.txt");
-    const result = await runReservedExecutor(options.jobId, {
+    const result = await runReservedExecutor(options.jobId, buildCheckerExecutorRunSpec({
       runId,
-      role: "checker",
       workspaceId: workspace.id,
       executableId: launch.executableId,
       args: [...launch.args,
@@ -77,15 +71,11 @@ export async function runCustomChecker(options: RunCustomCheckerOptions): Promis
         path.join(workspace.path, "actual.txt"),
         path.join(workspace.path, "expected.txt"),
       ],
-      stdoutFile: "checker.stdout",
-      stderrFile: "checker.stderr",
       environment: launch.environment,
-      limits: {
-        ...DEFAULT_EXECUTOR_LIMITS.checker,
-        wallTimeMs: CHECKER_TIMEOUT_MS,
-        memoryBytes: 256 * 1024 * 1024,
-      },
-    });
+      runtimeBacked: options.checkerRuntime === "python",
+      timeoutMs: CHECKER_TIMEOUT_MS,
+      memoryBytes: CHECKER_MEMORY_BYTES,
+    }));
     const stdout = readBounded(path.join(workspace.path, "checker.stdout"));
     const stderr = readBounded(path.join(workspace.path, "checker.stderr"));
     const message = (stdout + stderr).trim();
@@ -96,20 +86,12 @@ export async function runCustomChecker(options: RunCustomCheckerOptions): Promis
         message: [result.reason, result.diagnostic, message].filter(Boolean).join(": "),
       };
     }
-    if (result.exitCode === 0) return { status: "AC", score: options.maxScore, message };
-    if (result.exitCode === 1) return { status: "WA", score: 0, message };
-    if (result.exitCode === 2) return { status: "PE", score: 0, message };
-    if (result.exitCode !== 7) return { status: "JE", score: 0, message };
-    const multiplier = parsePartialScore(message, stdout, options.maxScore);
-    if (multiplier === null || multiplier < 0 || multiplier > 1) {
-      return { status: "JE", score: 0, message: message || "Checker returned an invalid partial score." };
-    }
-    const status = multiplier === 1 ? "AC" : multiplier === 0 ? "WA" : "PARTIAL";
-    return {
-      status,
-      score: Math.round(multiplier * options.maxScore * 10_000) / 10_000,
+    return checkerResultFromExit(
+      result.exitCode ?? -1,
       message,
-    };
+      stdout,
+      options.maxScore,
+    );
   } finally {
     detachExecutorRun(options.jobId, runId);
     workspace.dispose();

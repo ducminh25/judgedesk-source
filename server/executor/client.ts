@@ -14,6 +14,7 @@ import type {
 
 const MAX_FRAME_BYTES = 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 20_000;
+const CANCEL_REQUEST_TIMEOUT_MS = 30_000;
 const STARTUP_SELF_TEST_ATTEMPTS = 3;
 const SHUTDOWN_REQUEST_TIMEOUT_MS = 10_000;
 const SHUTDOWN_EXIT_TIMEOUT_MS = 1_000;
@@ -108,13 +109,30 @@ export class ExecutorClient {
     if (response.type !== "run_result") {
       throw new SecureRunnerError("SECURE_RUNNER_PROTOCOL_ERROR", `Unexpected ${response.type} response to run request.`);
     }
+    if (response.result.runId !== spec.runId) {
+      throw new SecureRunnerError(
+        "SECURE_RUNNER_PROTOCOL_ERROR",
+        `Executor result runId mismatch: expected ${spec.runId}, received ${response.result.runId}.`,
+      );
+    }
     return response.result;
   }
 
   async cancel(runId: string): Promise<boolean> {
     if (!this.child) return false;
-    const response = await this.request({ type: "cancel", id: crypto.randomUUID(), runId }, 10_000);
+    // The native response is a process-container drain acknowledgement. Its timeout must exceed
+    // the guardian's bounded preferred/forced cleanup windows rather than merely a signal send.
+    const response = await this.request(
+      { type: "cancel", id: crypto.randomUUID(), runId },
+      CANCEL_REQUEST_TIMEOUT_MS,
+    );
     if (response.type !== "cancel_result") return false;
+    if (response.runId !== runId) {
+      throw new SecureRunnerError(
+        "SECURE_RUNNER_PROTOCOL_ERROR",
+        `Executor cancellation runId mismatch: expected ${runId}, received ${response.runId}.`,
+      );
+    }
     return response.cancelled;
   }
 

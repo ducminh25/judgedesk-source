@@ -24,7 +24,7 @@ test("score export creates summary and detail worksheets", async () => {
           source: "system",
           version: "3.12.8",
           submissionReady: false,
-          checkerReady: true,
+          checkerReady: false,
         },
       },
     },

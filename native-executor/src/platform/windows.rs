@@ -264,18 +264,22 @@ impl WindowsPlatform {
         let mut lpac_policy = PROCESS_CREATION_ALL_APPLICATION_PACKAGES_OPT_OUT;
         let mut handles = inherited;
         let compiler_may_spawn = matches!(spec.role, RunRole::Compiler);
-        // The embeddable Python runtime depends on system DLLs and registry/file
-        // resources granted to regular AppContainers through ALL APPLICATION
-        // PACKAGES. LPAC opts out of those grants and Python terminates during
-        // startup with STATUS_ACCESS_DENIED. A regular AppContainer still has no
-        // capabilities, so network and user-file access remain default-deny; the
-        // Job Object continues to enforce process and resource limits.
-        let managed_python = spec
-            .environment
-            .get("JUDGEDESK_PYTHON_ISOLATED")
-            .map(String::as_str)
-            == Some("1");
-        let use_lpac = !compiler_may_spawn && !managed_python;
+        // Certified interpreted runtimes depend on system DLLs and registry/file resources
+        // granted to regular AppContainers through ALL APPLICATION PACKAGES. LPAC opts out of
+        // those grants and the managed CPython baseline terminates during startup with
+        // STATUS_ACCESS_DENIED. The typed roles below, rather than an environment variable by
+        // itself, select this compatibility boundary. A regular AppContainer still has no
+        // capabilities, so network and private user-file access remain default-deny; the Job
+        // Object continues to enforce process and resource limits.
+        let isolated_submission_runtime = matches!(spec.role, RunRole::Submission)
+            && spec
+                .environment
+                .get("JUDGEDESK_PYTHON_ISOLATED")
+                .map(String::as_str)
+                == Some("1");
+        let certified_checker_runtime = matches!(spec.role, RunRole::CheckerRuntime);
+        let use_lpac =
+            !compiler_may_spawn && !isolated_submission_runtime && !certified_checker_runtime;
         let mut attributes = AttributeList::new(if use_lpac { 4 } else { 3 })?;
         attributes.update(
             PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES as usize,

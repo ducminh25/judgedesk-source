@@ -149,12 +149,9 @@ export async function runTestCase(options: TestCaseRunnerOptions): Promise<TestC
         checkerPath: options.checker.path,
         checkerRuntime: options.checker.runtime || "native",
         pythonExecutablePath: options.checker.pythonExecutablePath,
-        pythonSource: options.checker.pythonSource,
         inputPath: options.inputPath,
         actualOutputPath,
         expectedOutputPath: options.expectedOutputPath,
-        testDirectory: options.testRoot,
-        tempDirectory: options.tempDirectory,
         maxScore: options.score,
         jobId: options.jobId,
       });

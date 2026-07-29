@@ -9,6 +9,14 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 type AcceptedRuns = Arc<Mutex<HashSet<String>>>;
+const CANCEL_DRAIN_TIMEOUT: Duration = Duration::from_secs(20);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CancelOutcome {
+    NotFound,
+    Drained,
+    TimedOut,
+}
 
 fn main() {
     #[cfg(target_os = "macos")]
@@ -143,6 +151,10 @@ fn main() {
             std::fs::write(path, vec![0_u8; bytes]).expect("write test output");
             return;
         }
+        Some("--test-file-network-probe") => {
+            test_file_network_probe();
+            return;
+        }
         _ => {}
     }
     if let Err(error) = run() {
@@ -156,6 +168,33 @@ fn numeric_argument(index: usize) -> u64 {
         .nth(index)
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or_else(|| panic!("missing or invalid numeric argument at index {index}"))
+}
+
+fn test_file_network_probe() {
+    use std::net::{SocketAddr, TcpStream};
+
+    let sentinel = std::env::args_os()
+        .nth(2)
+        .expect("missing private sentinel path");
+    let read_blocked = std::fs::read(&sentinel).is_err();
+    let write_blocked = std::fs::write(&sentinel, b"OVERWRITTEN").is_err();
+    let address: SocketAddr = "127.0.0.1:9".parse().unwrap();
+    let network_blocked = std::panic::catch_unwind(|| {
+        let network_error = TcpStream::connect_timeout(&address, Duration::from_millis(500)).err();
+        network_error.as_ref().is_some_and(|error| {
+            error.kind() == std::io::ErrorKind::PermissionDenied
+                || matches!(error.raw_os_error(), Some(13 | 10013 | 10107))
+        })
+    })
+    .unwrap_or(true);
+    println!(
+        "{}",
+        serde_json::json!({
+            "readBlocked": read_blocked,
+            "writeBlocked": write_blocked,
+            "networkBlocked": network_blocked,
+        })
+    );
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -669,29 +708,30 @@ fn serve_requests(
                 }
             }
             ExecutorRequest::Cancel { id, run_id } => {
-                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-                let mut cancelled = false;
-                loop {
-                    if let Some(handle) = active.lock().unwrap().get(&run_id).cloned() {
-                        handle.cancel();
-                        cancelled = true;
-                        break;
-                    }
-                    if !accepted_runs.lock().unwrap().contains(&run_id)
-                        || std::time::Instant::now() >= deadline
-                    {
-                        break;
-                    }
-                    std::thread::sleep(std::time::Duration::from_millis(1));
-                }
+                // A successful cancellation response is a drain acknowledgement, not merely
+                // proof that a signal was requested. The worker attempts its terminal RunResult
+                // before releasing accepted_runs, while each platform removes its active handle
+                // only after the Job/guardian has proved the process container empty.
+                let outcome =
+                    cancel_and_wait_for_run(active, accepted_runs, &run_id, CANCEL_DRAIN_TIMEOUT);
                 send(
                     writer,
                     ExecutorResponse::CancelResult {
                         id,
-                        run_id,
-                        cancelled,
+                        run_id: run_id.clone(),
+                        cancelled: outcome == CancelOutcome::Drained,
                     },
                 )?;
+                if outcome == CancelOutcome::TimedOut {
+                    // Stop admission permanently. Continuing the request loop after a timed-out
+                    // cancellation would allow a new run beside a container that has not proved
+                    // empty. Keep retrying teardown; if it eventually drains, exit this executor
+                    // so the client must establish a fresh startup self-test before more work.
+                    drain_runs(active, accepted_runs);
+                    return Err(format!(
+                        "cancellation drain timed out for run {run_id}; executor entered terminal drain"
+                    ));
+                }
             }
             ExecutorRequest::Shutdown { id } => {
                 drain_runs(active, accepted_runs);
@@ -701,6 +741,53 @@ fn serve_requests(
         }
     }
     Ok(())
+}
+
+fn cancel_and_wait_for_run(
+    active: &ActiveRuns,
+    accepted_runs: &AcceptedRuns,
+    run_id: &str,
+    timeout: Duration,
+) -> CancelOutcome {
+    let initially_active = active
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .contains_key(run_id);
+    let initially_accepted = accepted_runs
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .contains(run_id);
+    if !initially_active && !initially_accepted {
+        return CancelOutcome::NotFound;
+    }
+
+    let deadline = Instant::now() + timeout;
+    loop {
+        let cancellation = active
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .get(run_id)
+            .cloned();
+        if let Some(cancellation) = cancellation {
+            cancellation.cancel();
+        }
+
+        let active_now = active
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .contains_key(run_id);
+        let accepted_now = accepted_runs
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .contains(run_id);
+        if !active_now && !accepted_now {
+            return CancelOutcome::Drained;
+        }
+        if Instant::now() >= deadline {
+            return CancelOutcome::TimedOut;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
 }
 
 fn drain_runs(active: &ActiveRuns, accepted_runs: &AcceptedRuns) {
@@ -804,5 +891,61 @@ mod tests {
             .recv_timeout(Duration::from_secs(1))
             .expect("drain did not finish after both barriers became empty");
         drain_thread.join().unwrap();
+    }
+
+    #[test]
+    fn cancel_ack_waits_until_the_run_is_no_longer_active_or_accepted() {
+        let active: ActiveRuns = Arc::new(Mutex::new(HashMap::new()));
+        let accepted: AcceptedRuns = Arc::new(Mutex::new(HashSet::from(["run".into()])));
+        let (cancelled_tx, cancelled_rx) = mpsc::channel();
+        active.lock().unwrap().insert(
+            "run".into(),
+            Arc::new(TestCancellation {
+                cancelled: AtomicBool::new(false),
+                observed: cancelled_tx,
+            }),
+        );
+
+        let cancel_active = Arc::clone(&active);
+        let cancel_accepted = Arc::clone(&accepted);
+        let (finished_tx, finished_rx) = mpsc::channel();
+        let cancel_thread = std::thread::spawn(move || {
+            let acknowledged = cancel_and_wait_for_run(
+                &cancel_active,
+                &cancel_accepted,
+                "run",
+                Duration::from_secs(1),
+            );
+            finished_tx.send(acknowledged).unwrap();
+        });
+
+        cancelled_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("cancellation was not requested");
+        assert!(finished_rx.recv_timeout(Duration::from_millis(25)).is_err());
+
+        active.lock().unwrap().remove("run");
+        assert!(finished_rx.recv_timeout(Duration::from_millis(25)).is_err());
+        accepted.lock().unwrap().remove("run");
+        assert_eq!(
+            finished_rx.recv_timeout(Duration::from_secs(1)).unwrap(),
+            CancelOutcome::Drained,
+        );
+        cancel_thread.join().unwrap();
+    }
+
+    #[test]
+    fn cancel_timeout_is_distinct_from_not_found_and_never_claims_drain() {
+        let active: ActiveRuns = Arc::new(Mutex::new(HashMap::new()));
+        let accepted: AcceptedRuns = Arc::new(Mutex::new(HashSet::from(["stuck".into()])));
+
+        assert_eq!(
+            cancel_and_wait_for_run(&active, &accepted, "missing", Duration::ZERO),
+            CancelOutcome::NotFound,
+        );
+        assert_eq!(
+            cancel_and_wait_for_run(&active, &accepted, "stuck", Duration::ZERO),
+            CancelOutcome::TimedOut,
+        );
     }
 }

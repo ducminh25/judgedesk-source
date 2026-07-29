@@ -1,13 +1,52 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import test from "node:test";
-import {
+import test, { after } from "node:test";
+
+interface OwnedMacosTreeGuard {
+  directory: string;
+}
+
+function provisionMacosTreeGuard(): OwnedMacosTreeGuard | null {
+  if (process.platform !== "darwin") return null;
+  const keys = [
+    "JUDGEDESK_TREE_GUARD_REQUIRED",
+    "JUDGEDESK_TREE_GUARD_PATH",
+    "JUDGEDESK_TREE_GUARD_GENERATION",
+  ] as const;
+  const present = keys.filter((key) => process.env[key] !== undefined);
+  if (present.length === keys.length) {
+    assert.equal(process.env.JUDGEDESK_TREE_GUARD_REQUIRED, "1");
+    return null;
+  }
+  assert.equal(present.length, 0, `partial macOS process-tree guard environment: ${present.join(", ")}`);
+
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-compiler-tree-guard-"));
+  fs.chmodSync(directory, 0o700);
+  const generation = crypto.randomBytes(32).toString("hex");
+  const guardPath = path.join(directory, "process-tree.generation");
+  fs.writeFileSync(
+    guardPath,
+    `JUDGEDESK_PROCESS_TREE/1\ngeneration=${generation}\n`,
+    { encoding: "utf8", flag: "wx", mode: 0o600 },
+  );
+  fs.chmodSync(guardPath, 0o600);
+  process.env.JUDGEDESK_TREE_GUARD_REQUIRED = "1";
+  process.env.JUDGEDESK_TREE_GUARD_PATH = guardPath;
+  process.env.JUDGEDESK_TREE_GUARD_GENERATION = generation;
+  return { directory };
+}
+
+const ownedMacosTreeGuard = provisionMacosTreeGuard();
+const [{ executorClient }, {
   buildCompilerEnvironment,
   buildCustomCheckerCompilerArgs,
   buildDarwinCompilerPhases,
   buildSubmissionCompilerArgs,
+  CHECKER_COMPILE_MEMORY_LIMIT_BYTES,
+  CHECKER_COMPILE_TIMEOUT_MS,
   COMPILE_TIMEOUT_MS,
   findGccIncludeDirectories,
   MAX_GENERATED_FILE_BYTES,
@@ -15,7 +54,18 @@ import {
   resolveDarwinCompatibilityHeader,
   runCompilerWithLimits,
   stagedCompilerName,
-} from "./compiler";
+}, { runCustomChecker }] = await Promise.all([
+  import("../executor/client.js"),
+  import("./compiler.js"),
+  import("./custom-checker-runner.js"),
+]);
+
+after(async () => {
+  await executorClient.shutdown();
+  if (ownedMacosTreeGuard) {
+    fs.rmSync(ownedMacosTreeGuard.directory, { recursive: true });
+  }
+});
 
 test("compiler request uses a minimal environment independent of the parent shell", () => {
   assert.deepEqual(
@@ -120,9 +170,11 @@ const fakeCompilerHarnessSkip = process.platform === "win32"
   ? false
   : "the fake compiler is intentionally rejected by macOS; release tests cover Seatbelt limits and real Apple Clang separately";
 
-test("production compiler limits are 15 seconds and 32 MiB", () => {
+test("submission and custom-checker compiler limits are explicit", () => {
   assert.equal(COMPILE_TIMEOUT_MS, 15_000);
   assert.equal(MAX_GENERATED_FILE_BYTES, 32 * 1024 * 1024);
+  assert.equal(CHECKER_COMPILE_TIMEOUT_MS, 30_000);
+  assert.equal(CHECKER_COMPILE_MEMORY_LIMIT_BYTES, 768 * 1024 * 1024);
 });
 
 test("compiler watchdog terminates a stuck compiler", { skip: fakeCompilerHarnessSkip }, async (t) => {
@@ -234,7 +286,42 @@ test("Windows custom C++ checkers use a self-contained linker policy", () => {
 test("custom checker resolution accepts source files and rejects executables", async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-checker-sources-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.copyFileSync(
+    path.join(process.cwd(), "server/security-fixtures/cpp/checker_smoke.cpp"),
+    path.join(root, "checker.cpp"),
+  );
   fs.writeFileSync(path.join(root, "checker.py"), "raise SystemExit(0)\n", "utf8");
+
+  if (process.platform === "win32" || process.platform === "darwin") {
+    const cppChecker = await resolveChecker({
+      checkerType: "checker.cpp",
+      problemName: "sample",
+      problemDirectory: root,
+      tempDirectory: root,
+    });
+    if (cppChecker.error) {
+      assert.equal(cppChecker.error, "TOOLCHAIN_CPP_MISSING");
+    } else {
+      assert.equal(cppChecker.runtime, "native");
+      assert.ok(cppChecker.path && fs.existsSync(cppChecker.path));
+      const inputPath = path.join(root, "input.txt");
+      const actualOutputPath = path.join(root, "actual.txt");
+      const expectedOutputPath = path.join(root, "expected.txt");
+      fs.writeFileSync(inputPath, "1\n", "utf8");
+      fs.writeFileSync(actualOutputPath, "1\n", "utf8");
+      fs.writeFileSync(expectedOutputPath, "1\n", "utf8");
+      const result = await runCustomChecker({
+        checkerPath: cppChecker.path,
+        checkerRuntime: "native",
+        inputPath,
+        actualOutputPath,
+        expectedOutputPath,
+        maxScore: 10,
+      });
+      assert.equal(result.status, "AC", result.message);
+      assert.equal(result.score, 10);
+    }
+  }
 
   const pythonChecker = await resolveChecker({
     checkerType: "checker.py",
@@ -243,15 +330,16 @@ test("custom checker resolution accepts source files and rejects executables", a
     tempDirectory: root,
   });
   if (pythonChecker.error) {
-    assert.equal(
+    assert.ok(
+      pythonChecker.error ===
+        "CHECKER_TOOLCHAIN_UNAVAILABLE: cannot compile Python checker; Python is missing"
+        || pythonChecker.error.startsWith("CHECKER_TOOLCHAIN_CERTIFICATION_REQUIRED:"),
       pythonChecker.error,
-      "CHECKER_TOOLCHAIN_UNAVAILABLE: cannot compile Python checker; Python is missing",
     );
   } else {
     assert.equal(pythonChecker.path, path.join(root, "checker.py"));
     assert.equal(pythonChecker.runtime, "python");
     assert.ok(pythonChecker.pythonExecutablePath);
-    assert.ok(pythonChecker.pythonSource);
   }
   assert.match(
     (await resolveChecker({

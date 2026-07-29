@@ -12,6 +12,12 @@ export interface PythonLaunch {
   environment: Record<string, string>;
 }
 
+export interface IsolatedPythonRuntime {
+  executableId: string;
+  executablePath: string;
+  environment: Record<string, string>;
+}
+
 interface IsolatedPythonLaunchOptions {
   executableId: string;
   scriptPath: string;
@@ -25,13 +31,23 @@ export function buildIsolatedPythonLaunch(
   return {
     executableId: options.executableId,
     args: ["-I", "-B", options.scriptPath],
-    environment: {
-      JUDGEDESK_PYTHON_ISOLATED: "1",
-      PYTHONNOUSERSITE: "1",
-      PYTHONDONTWRITEBYTECODE: "1",
-      PYTHONHOME: options.pythonHome,
-      PATH: options.pythonBinDirectory,
-    },
+    environment: buildIsolatedPythonEnvironment(
+      options.pythonHome,
+      options.pythonBinDirectory,
+    ),
+  };
+}
+
+function buildIsolatedPythonEnvironment(
+  pythonHome: string,
+  pythonBinDirectory: string,
+): Record<string, string> {
+  return {
+    JUDGEDESK_PYTHON_ISOLATED: "1",
+    PYTHONNOUSERSITE: "1",
+    PYTHONDONTWRITEBYTECODE: "1",
+    PYTHONHOME: pythonHome,
+    PATH: pythonBinDirectory,
   };
 }
 
@@ -41,6 +57,18 @@ export async function prepareIsolatedPythonScript(
   stagedName: string,
   expectedExecutablePath?: string,
 ): Promise<PythonLaunch> {
+  const runtime = await prepareIsolatedPythonRuntime(expectedExecutablePath);
+  workspace.stage(sourcePath, stagedName);
+  return {
+    executableId: runtime.executableId,
+    args: ["-I", "-B", path.join(workspace.path, stagedName)],
+    environment: runtime.environment,
+  };
+}
+
+export async function prepareIsolatedPythonRuntime(
+  expectedExecutablePath?: string,
+): Promise<IsolatedPythonRuntime> {
   const python = await resolveCompilationToolchain("python");
   if (!python.ready) throw new Error("TOOLCHAIN_PYTHON_MISSING");
   if (expectedExecutablePath && path.resolve(python.executablePath) !== path.resolve(expectedExecutablePath)) {
@@ -51,11 +79,12 @@ export async function prepareIsolatedPythonScript(
   const existingCache = await findCachedManagedToolchain("python");
   const cached = existingCache
     ?? await importManagedToolchain("python", python.executablePath, python.version);
-  workspace.stage(sourcePath, stagedName);
-  return buildIsolatedPythonLaunch({
+  return {
     executableId: cached.executableId,
-    scriptPath: path.join(workspace.path, stagedName),
-    pythonHome: cached.root,
-    pythonBinDirectory: path.dirname(cached.executablePath),
-  });
+    executablePath: cached.executablePath,
+    environment: buildIsolatedPythonEnvironment(
+      cached.root,
+      path.dirname(cached.executablePath),
+    ),
+  };
 }

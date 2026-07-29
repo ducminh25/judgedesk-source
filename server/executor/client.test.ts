@@ -96,6 +96,42 @@ test("the pre-submit barrier can stop a run after executor startup but before IP
   assert.deepEqual(events, ["barrier"]);
 });
 
+test("run and cancel responses reject mismatched run identities", async () => {
+  const client = new ExecutorClient();
+  const internals = client as unknown as ExecutorClientInternals & {
+    start(): Promise<ExecutorHealth>;
+  };
+  internals.start = async () => readyHealth();
+  internals.child = fakeChild();
+  internals.request = async (request) => {
+    if (request.type === "run") {
+      return {
+        type: "run_result",
+        id: request.id,
+        result: runResult("different-run"),
+      };
+    }
+    if (request.type === "cancel") {
+      return {
+        type: "cancel_result",
+        id: request.id,
+        runId: "different-run",
+        cancelled: true,
+      };
+    }
+    throw new Error(`unexpected request ${request.type}`);
+  };
+
+  await assert.rejects(
+    client.run(runSpec()),
+    /result runId mismatch: expected reserved-run, received different-run/,
+  );
+  await assert.rejects(
+    client.cancel("reserved-run"),
+    /cancellation runId mismatch: expected reserved-run, received different-run/,
+  );
+});
+
 test("guarded macOS shutdown timeout retains the executor and prevents restart", async () => {
   const client = new ExecutorClient({
     platform: "darwin",
@@ -349,6 +385,19 @@ function runSpec(): ExecutorRunSpec {
       openFiles: 8,
       createdFiles: 8,
     },
+  };
+}
+
+function runResult(runId: string) {
+  return {
+    runId,
+    reason: "exited" as const,
+    exitCode: 0,
+    securitySetupTimeUs: 0,
+    wallTimeUs: 0,
+    resultCollectionTimeUs: 0,
+    stdoutBytes: 0,
+    stderrBytes: 0,
   };
 }
 

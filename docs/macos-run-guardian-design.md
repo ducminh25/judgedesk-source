@@ -23,10 +23,9 @@ Phạm vi thiết kế:
 
 Checkpoint hiện tại đã nối protocol, trusted supervisor, fault-trace contract và
 các primitive identity/drain vào đường chạy production của native executor. Bằng
-chứng hiện có gồm source/native ARM64 gate và local ad-hoc `.app`/DMG smoke trên
-Apple M1 thật. Nó chưa thay thế packaged GUI/helper fault gate, notarized
-release/updater gate và chưa đưa trusted system/local Python checker vào generation
-barrier.
+chứng hiện có gồm source/native ARM64 gate, checker native/runtime và local ad-hoc
+`.app`/DMG smoke trên Apple M1 thật. Nó chưa thay thế packaged GUI/helper fault
+gate, notarized release/updater gate hoặc clean-checkout gate của checkpoint checker.
 
 ## 2. Trạng thái bằng chứng hiện tại
 
@@ -161,7 +160,7 @@ gọi là performance-release-ready; số đo end-to-end và throughput phải t
 - Packaged GUI/helper double-failure gate với guardian đang giữ shared lock;
   local DMG smoke hiện đã verified nhưng chưa bao phủ fault/relaunch này.
 - Compiler-specific containment certification.
-- Đưa trusted system/local Python checker vào generation barrier tương đương.
+- Hoàn thiện workflow snapshot/certification trước khi mở lại local/system runtime; source gate managed `checker-runtime`, exact-exec và cancel-drain trên Apple Silicon đã đạt.
 - Minimum/current macOS matrix; một máy M1 không đại diện mọi OS được hỗ trợ.
 
 ## 3. Threat model
@@ -181,7 +180,7 @@ gọi là performance-release-ready; số đo end-to-end và throughput phải t
 - mọi descendant do submission tạo;
 - input/output và file trong contest;
 - source code đưa vào compiler;
-- custom checker, trừ exception trusted Python checker được mô tả riêng.
+- mọi custom checker, gồm binary native và source chạy qua certified runtime.
 
 ### 3.3. Faults phải chịu được
 
@@ -572,7 +571,7 @@ và có thể được verified riêng.
 
 ## 11. Những nội dung không được suy rộng từ gate
 
-- Trusted system/local Python checker chưa nằm trong barrier.
+- Managed Python checker đã dùng typed `checker-runtime`; source snapshot trên Apple M1 đã chứng minh private-file/network/child-process block, exact-exec chỉ cho runtime đã chọn và cancel ACK sau terminal drain. Local/system Python vẫn fail-closed cho đến khi có snapshot/certificate; clean-checkout đúng Git SHA được theo dõi riêng, không suy từ folder thử nghiệm đã sync file.
 - Compiler certificate không áp dụng cho compiler khác version hoặc local path
   đã drift.
 - Một macOS version không đại diện toàn bộ minimum/current supported OS matrix.
@@ -592,4 +591,4 @@ Chỉ đổi trạng thái tài liệu khi:
 4. exact packaged ARM64 app vượt GUI/helper/relaunch gate;
 5. compiler có certificate riêng;
 6. log từ Apple Silicon thật được lưu và đối chiếu với exact commit;
-7. các giới hạn double-failure và trusted checker vẫn được công bố chính xác.
+7. các giới hạn double-failure và biên tin cậy của custom checker/runtime vẫn được công bố chính xác.

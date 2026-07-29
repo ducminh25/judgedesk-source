@@ -520,18 +520,14 @@ fn build_profile(spec: &RunSpec, paths: &ValidatedRun) -> Result<String, String>
         format!("(literal \"{executable}\")"),
         "(literal \"/usr/bin/sandbox-exec\")".into(),
     ];
-    if let Some(toolchain_root) = paths
-        .executable
-        .ancestors()
-        .find(|path| path.file_name().is_some_and(|name| name == "toolchains"))
-    {
+    if let Some(toolchain_package_root) = paths.executable.ancestors().find(|path| {
+        path.parent()
+            .and_then(Path::file_name)
+            .is_some_and(|name| name == "toolchains")
+    }) {
         read_rules.push(format!(
             "(subpath \"{}\")",
-            seatbelt_literal(&toolchain_root.to_string_lossy())
-        ));
-        process_exec_rules.push(format!(
-            "(subpath \"{}\")",
-            seatbelt_literal(&toolchain_root.to_string_lossy())
+            seatbelt_literal(&toolchain_package_root.to_string_lossy())
         ));
     }
     if matches!(spec.role, RunRole::Compiler) {
@@ -556,7 +552,10 @@ fn build_profile(spec: &RunSpec, paths: &ValidatedRun) -> Result<String, String>
         RunRole::Compiler => "(deny syscall-unix (syscall-number SYS_setpgid SYS_setsid))",
         // Submission/checker code is not trusted. posix_spawn can apply SETPGROUP/SETSID inside
         // the kernel and bypass separate setpgid/setsid syscall denials, so deny all three.
-        RunRole::Submission | RunRole::Checker | RunRole::SecurityProbe => {
+        RunRole::Submission
+        | RunRole::Checker
+        | RunRole::CheckerRuntime
+        | RunRole::SecurityProbe => {
             "(deny syscall-unix (syscall-number SYS_setpgid SYS_setsid SYS_posix_spawn))"
         }
     };

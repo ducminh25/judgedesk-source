@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildCheckerExecutorRunSpec,
   buildCompilerExecutorRunSpec,
   buildSubmissionExecutorRunSpec,
+  CHECKER_OUTPUT_LIMIT_BYTES,
 } from "./execution-request.js";
 
 const MiB = 1024 * 1024;
@@ -130,4 +132,34 @@ test("Python submission request preserves isolated launch markers and clamps wal
       },
     },
   );
+});
+
+test("native and runtime-backed checkers use distinct typed roles with the same strict limits", () => {
+  const base = {
+    runId: "checker_fixed",
+    workspaceId: "workspace_fixed",
+    executableId: "artifacts/checker",
+    args: ["input.txt", "actual.txt", "expected.txt"],
+    environment: {},
+    timeoutMs: 5_000,
+    memoryBytes: 256 * MiB,
+  };
+  const native = buildCheckerExecutorRunSpec({
+    ...base,
+    runtimeBacked: false,
+  });
+  const runtime = buildCheckerExecutorRunSpec({
+    ...base,
+    executableId: "toolchains/python/python.exe",
+    runtimeBacked: true,
+  });
+
+  assert.equal(native.role, "checker");
+  assert.equal(runtime.role, "checker-runtime");
+  for (const request of [native, runtime]) {
+    assert.equal(request.limits.processCount, 1);
+    assert.equal(request.limits.outputBytes, CHECKER_OUTPUT_LIMIT_BYTES);
+    assert.equal(request.limits.wallTimeMs, 5_000);
+    assert.equal(request.limits.memoryBytes, 256 * MiB);
+  }
 });
