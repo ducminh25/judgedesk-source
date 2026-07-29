@@ -11,6 +11,19 @@ use std::time::{Duration, Instant};
 type AcceptedRuns = Arc<Mutex<HashSet<String>>>;
 
 fn main() {
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(exit_code) =
+            judgedesk_native_executor::macos_run_guardian::try_run_internal_mode()
+        {
+            std::process::exit(exit_code);
+        }
+        if let Some(exit_code) = judgedesk_native_executor::macos_launcher::try_run_internal_mode()
+        {
+            std::process::exit(exit_code);
+        }
+    }
+
     match std::env::args().nth(1).as_deref() {
         Some("--security-probe-child") => {
             security_probe_child();
@@ -18,6 +31,20 @@ fn main() {
         }
         #[cfg(target_os = "macos")]
         Some("--security-pgroup-spawn-child") => {
+            return;
+        }
+        #[cfg(target_os = "macos")]
+        Some("--test-process-identity") => {
+            let pid = numeric_argument(2)
+                .try_into()
+                .expect("process identity PID is outside i32");
+            match judgedesk_native_executor::macos_process::read_process_identity(pid) {
+                Ok(identity) => println!("{}", serde_json::to_string(&identity).unwrap()),
+                Err(error) => {
+                    let _ = writeln!(io::stderr(), "process identity lookup failed: {error}");
+                    std::process::exit(2);
+                }
+            }
             return;
         }
         Some("--test-sleep") => {

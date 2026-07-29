@@ -1,7 +1,7 @@
-# macOS per-run guardian — design và verification checkpoint
+# macOS per-run guardian — design và foundation checkpoint
 
 Ngày chốt thiết kế: 2026-07-29
-Trạng thái: **design checkpoint; chưa triển khai, chưa được xem là verified**
+Trạng thái: **production native path đã tích hợp và vượt targeted Apple-Silicon security/fault gates; full matrix, performance và packaged D16 vẫn pending**
 
 ## 1. Mục tiêu và phạm vi
 
@@ -11,9 +11,9 @@ không trở thành tiến trình mồ côi nếu native executor bị dừng c�
 thời không cho app generation kế tiếp bắt đầu trước khi process tree cũ đã được
 chứng minh là rỗng.
 
-Phạm vi của checkpoint:
+Phạm vi thiết kế:
 
-- kiến trúc `executor → guardian → blocked trusted launcher → sandbox-exec`;
+- kiến trúc `executor → per-run guardian → persistent trusted supervisor → sandbox-exec`;
 - authority và lifetime của generation guard;
 - protocol, token, framing và state transition;
 - containment khi một trusted component gặp lỗi;
@@ -21,8 +21,11 @@ Phạm vi của checkpoint:
 - thứ tự kill, kiểm kê, reap và nhả generation guard;
 - gate bắt buộc trước khi gọi thiết kế là verified.
 
-Checkpoint này không triển khai mã, không thay thế gate DMG/updater và không đưa
-trusted system/local Python checker vào containment.
+Checkpoint hiện tại đã nối protocol, trusted supervisor, fault-trace contract và
+các primitive identity/drain vào đường chạy production của native executor. Bằng
+chứng hiện có chỉ là source/native ARM64 gate trên Apple M1 thật; nó không thay
+thế gate `.app`/DMG/updater và chưa đưa trusted system/local Python checker vào
+generation barrier.
 
 ## 2. Trạng thái bằng chứng hiện tại
 
@@ -49,29 +52,107 @@ Các nhãn trong tài liệu:
 Các bằng chứng trên chỉ bao phủ process group do executor còn sống hoặc outer
 supervisor còn đủ authority. Chúng chưa bao phủ executor `SIGKILL` giữa run.
 
-### 2.2. Characterized nhưng chưa sửa
+### 2.2. Bằng chứng đã verified trong quá trình dựng foundation
+
+- Production Seatbelt profile đã deny `setpgid` và `setsid`; với submission,
+  checker và security probe còn deny `posix_spawn`. Startup probe kiểm tra cả
+  bốn primitive (`setpgid`, `setsid`, `posix_spawn` set-group và raw `execve`).
+- Primitive macOS dùng kqueue `NOTE_EXIT`, `waitid(WNOWAIT)`, bounded
+  `PROC_PGRP_ONLY` inventory và `wait4`. Test thực tế trên Apple Silicon đã qua
+  leader-exit-before-grandchild, stale identity không signal nhầm và guardian
+  drain sau executor death.
+- Foundation cũ quan sát macOS trả `EPERM` khi gửi group `SIGSTOP` sau khi group
+  leader đã thành zombie; kết quả này loại thiết kế deferred-leader cũ. Redesign
+  giữ persistent supervisor anchor sống tới sau `PREPARED` và chỉ dùng
+  whole-group `STOP/KILL`; per-PID signal không bao giờ được coi là containment
+  proof.
+- Request validation từ chối biến dynamic-loader và biến control nội bộ trước
+  khi chúng có thể tới `sandbox-exec`.
+
+Foundation test run ngày 2026-07-29: macOS 29/29 Rust lib tests + 1/1 binary test,
+strict Clippy và format check đều đạt; Windows 22/22 + 1/1 tương ứng đều đạt.
+Audit sau test phát hiện fallback vẫn có khe PID/PGID reuse và fault gate có thể
+xanh giả, nên kết quả này chỉ xác nhận các unit test đã chạy, không chứng nhận
+foundation cũ là an toàn và không phải bằng chứng E2E cho production.
+
+Redesign sau audit đã có thêm bằng chứng trên Apple M1 ngày 2026-07-29:
+
+- Rust đạt 62/62 library tests + 1/1 binary test; Clippy `-D warnings` đạt.
+- Native security integration đạt 10/10 bài áp dụng, một bài Windows-only skip:
+  TLE và MLE boundary lặp 20 lần, OLE/write/thread/process bomb và cancel đều đạt.
+- Fault-injection guardian đạt 5/5 TAP tests: launch ordering, executor
+  `SIGKILL`, guardian `SIGKILL` fail-closed không numeric fallback và hai run
+  đồng thời cancel độc lập.
+- Hai lượt benchmark cuối đều hoàn thành 900/900 no-op, không để lại
+  executor/guardian/supervisor/submission. Race `Prepared` hiếm được tái hiện ở
+  stress trước đó và đã sửa bằng contract bắt buộc gửi trọn terminal frame cho
+  direct executor trước khi guardian kill authority nhận `Prepared`.
+- `PROC_PIDTBSDINFO` trả `ESRCH` khi descendant biến mất giữa identity/status
+  sampling nay buộc recheck identity: missing thì inventory lại, còn live thì
+  retry có giới hạn, mismatch thì fail-closed.
+- Trusted child spawn dùng `POSIX_SPAWN_CLOEXEC_DEFAULT`; regression test chứng
+  minh ambient descriptor bị đóng và chỉ hai mapping control được giữ.
+
+Benchmark evidence sau full security gate, 3 × 100 no-op mỗi lượt trên M1 8 GB
+qua phiên remote đang hoạt động:
+
+- adjacent base: end-to-end p50 14,916 ms, p95 18,103 ms;
+- candidate checkpoint trước final safety audit: end-to-end p50 28,314 ms, p95
+  33,479 ms; dispatch residual
+  p50 14,516 ms, p95 17,249 ms;
+- candidate lượt trước chịu tải nền cao hơn: end-to-end p50 31,814 ms, p95
+  35,567 ms;
+- exact source sau final safety patch và benchmark-harness guard: end-to-end p50
+  24,618 ms, p95 27,208 ms; dispatch residual p50 13,209 ms, p95 14,133 ms;
+  sandbox setup p50 0,407 ms, p95 0,594 ms; backend RSS tăng 8,91 MiB.
+
+Benchmark độc lập trên macOS nay tự provision một generation guard tạm nếu môi
+trường chưa có guard, dùng lại guard đầy đủ do app/gate cấp, và từ chối partial
+guard environment. Sau phép đo, guard tạm được thu hồi và process inventory rỗng.
+
+Vòng implementation đầu từng đạt khoảng 300 ms/no-op vì quét hơn một triệu file
+descriptor trong mỗi trusted child; phương án đó đã bị loại bỏ. Candidate hiện
+vẫn không đạt absolute dispatch gate cũ 5/10 ms. Vì vậy checkpoint này chưa được
+gọi là performance-release-ready; số đo end-to-end và throughput phải tiếp tục
+được giữ như regression evidence, không đổi tên metric để che overhead.
+
+### 2.3. Characterized và đã xử lý trong native path
 
 - Nếu native executor bị `SIGKILL`, shared generation lock do chính executor giữ
-  bị kernel nhả, trong khi sandbox process group có thể còn sống.
-- Production Seatbelt profile hiện cho phép descendant gọi `setsid()` trong
-  primitive thực tế. Vì vậy, containment chỉ dựa vào PGID hiện chưa đủ chặt.
-- Explicit Seatbelt deny cho `SYS_setsid` đã được kiểm tra thực tế và làm syscall
-  trả `EPERM`.
+  bị kernel nhả, trong khi sandbox process group có thể còn sống. Per-run
+  guardian nay giữ một shared guard độc lập tới sau group proof.
+- Fallback cũ xác thực process identity rồi mới signal numeric PID/PGID. macOS
+  không có `pidfd`, nên vẫn tồn tại khe reuse giữa hai thao tác; đường này bị
+  loại khỏi thiết kế mới.
+- Launcher cũ `exec` thành target, làm guardian mất direct-parent anchor khi
+  executor chết. Thiết kế mới dùng trusted supervisor sống dai, không `exec`;
+  chiều guardian chết sau supervisor registration vẫn fail closed vì executor
+  không sở hữu direct-child reap pin.
 - Header SDK trên máy Mac ghi rõ `NOTE_TRACK`, `NOTE_TRACKERR` và `NOTE_CHILD`
   không còn được hỗ trợ từ macOS 10.5. Không được dùng các flag này làm nền tảng
   descendant tracking.
 - Gate hiện tại tìm active child bằng direct PPID của executor. Cách đó không
   còn đúng sau khi thêm guardian.
 
-### 2.3. Pending
+### 2.4. Pending
 
-- Per-run guardian và trusted launcher handshake.
-- Deny `setpgid`/`setsid`/`posix_spawn` theo run role.
-- Guardian-owned reap và proof rằng PGID đã rỗng.
-- Executor/guardian fault-injection gate.
-- Concurrent-run guardian gate.
+- Đạt hoặc duyệt lại bằng evidence một performance budget riêng cho per-run
+  guardian, rồi nối budget đó thành blocker trong release workflow. Absolute
+  dispatch gate cũ hiện còn đỏ và `build-macos-arm64-sidecar.sh` mới chỉ là
+  correctness/security gate; branch này không được dùng để phát hành.
+- Instrument riêng pre-target containment setup và post-target drain. Trước khi
+  có metric đó, chỉ end-to-end/throughput và target wall time có nghĩa ổn định;
+  residual hiện tại không được diễn giải là IPC thuần.
+- Thay linear ambient-FD close trong forked target bằng primitive có bound được
+  chứng minh trên macOS, kèm regression với soft `RLIMIT_NOFILE` cao.
+- Thêm integration regression cố ý kéo dài cleanup để chứng minh target
+  `wall_time_us` không tăng theo containment drain.
+- Mở rộng fault matrix tới mọi cut-point pre-registration, guardian hang/STOP,
+  tám run đồng thời và release soak ở mục 9.7.
 - Packaged GUI/helper double-failure gate với guardian đang giữ shared lock.
 - Compiler-specific containment certification.
+- Đưa trusted system/local Python checker vào generation barrier tương đương.
+- Minimum/current macOS matrix; một máy M1 không đại diện mọi OS được hỗ trợ.
 
 ## 3. Threat model
 
@@ -81,7 +162,7 @@ supervisor còn đủ authority. Chúng chưa bao phủ executor `SIGKILL` giữ
 - Node backend;
 - native executor;
 - per-run guardian;
-- trusted launcher stub trước khi `exec`;
+- persistent trusted supervisor và target child stub trước khi `exec`;
 - exact compiler binary đã được JudgeDesk chứng nhận.
 
 ### 3.2. Untrusted
@@ -95,7 +176,9 @@ supervisor còn đủ authority. Chúng chưa bao phủ executor `SIGKILL` giữ
 ### 3.3. Faults phải chịu được
 
 - executor mất control channel, crash hoặc `SIGKILL`;
-- guardian crash hoặc `SIGKILL` trong khi executor còn sống;
+- guardian crash hoặc `SIGKILL`: trước khi có supervisor phải kết thúc sạch; sau
+  supervisor registration phải fail closed, giữ generation và tuyệt đối không
+  signal numeric PID/PGID khi chưa có owned reap pin;
 - backend mất parent channel;
 - GUI hoặc outer helper chết riêng lẻ;
 - cancellation/shutdown đua với launch;
@@ -115,9 +198,9 @@ Tauri primary
         └── per accepted run
             └── per-run guardian
                 ├── shared generation guard độc lập
-                └── blocked trusted launcher
-                    └── sandbox-exec
-                        └── untrusted process group
+                └── persistent trusted supervisor (direct child, PGID anchor)
+                    └── fork + exec sandbox-exec
+                        └── untrusted target và descendants trong cùng PGID
 ```
 
 Một guardian chỉ tồn tại cho một run. Không có guardian nhàn rỗi khi app không
@@ -130,43 +213,55 @@ chấm. Guardian không nằm trong untrusted process group.
   khi gửi `READY`.
 - Outer supervisor chỉ lấy exclusive generation lock khi backend/executor đang
   drain hoặc generation mới chuẩn bị bắt đầu.
-- Guardian chỉ nhả shared guard sau khi launcher đã được reap và PGID inventory
-  đã được chứng minh là rỗng.
+- Guardian chỉ nhả shared guard sau khi exact persistent supervisor direct child
+  đã được reap và hai PGID inventory độc lập đã được chứng minh là rỗng.
 - Nếu kiểm kê process thất bại hoặc không chắc chắn, guardian tiếp tục giữ lock
   và fail closed; timeout không được biến thành “tree đã rỗng”.
 
-### 4.2. Không có launch-before-ownership
+### 4.2. Không có target-before-dual-ownership
 
-Untrusted code không được chạy ngay sau `fork`/spawn. Trusted launcher phải:
+Untrusted code không được chạy ngay sau khi guardian tạo trusted child. Trình tự
+production hiện tại là:
 
-1. thiết lập PID/PGID dự kiến;
-2. tự đăng ký identity với executor qua registration pipe riêng;
-3. đóng registration FD để FD không lọt qua `exec`;
-4. chờ `GO`;
-5. chỉ sau `GO` mới `exec` vào `sandbox-exec`.
+1. Guardian dùng `posix_spawn` tạo persistent supervisor với
+   `POSIX_SPAWN_CLOEXEC_DEFAULT`; chỉ hai control FD đã map được giữ lại.
+2. Supervisor tự trở thành PGID anchor, gửi exact PID/PGID/start identity trên
+   cả channel guardian và channel direct tới executor.
+3. Guardian gửi bounded launcher spec; supervisor xác thực spec rồi gửi
+   `READY`, nhưng chưa fork target.
+4. Executor chỉ ghi active cancellation record sau khi identity từ hai
+   authority khớp nhau; nó gửi `COMMIT` trực tiếp cho supervisor rồi gửi
+   `COMMIT` cho guardian.
+5. Guardian chỉ sau đó mới gửi `GO`. Supervisor mới fork target, đưa target vào
+   PGID của supervisor, thiết lập rlimit/stdio/signal policy và `exec`
+   `/usr/bin/sandbox-exec`.
 
-Guardian là parent của launcher và biết PID ngay khi tạo child. Executor nhận
-PID/PGID trực tiếp từ trusted launcher, không chỉ qua guardian. Điều này đóng
-khoảng trống khi guardian chết sau khi tạo child nhưng trước khi kịp gửi một
-frame thông thường.
+Guardian là direct parent chưa reap của supervisor. Executor nhận cùng supervisor
+identity trực tiếp từ supervisor, không chỉ qua guardian. Hai đường độc lập này
+đóng khoảng trống khi guardian chết sau khi tạo supervisor nhưng trước một frame
+forward thông thường.
 
-Trước `GO`, executor phải ghi một active cancellation record chứa tối thiểu:
+Trước `GO`, executor ghi một active cancellation record chứa tối thiểu:
 
 - run identity;
 - guardian identity;
-- launcher PID/PGID và process start identity;
+- supervisor PID/PGID và process start identity;
 - generation;
 - control-channel state.
 
-Nếu executor chết trước `GO`, guardian thấy EOF và reap blocked launcher. Nếu
-guardian chết trước `GO`, launcher thấy GO-channel EOF và tự thoát; executor vẫn
-có registration identity để kiểm tra và cleanup.
+Nếu executor chết trước `GO`, guardian thấy EOF và drain/reap supervisor khi
+target chưa được fork. Nếu guardian chết trước khi supervisor tồn tại, executor
+reap exact guardian direct child và chỉ trả `launch_error` sau direct EOF. Một
+khi supervisor identity đã được đăng ký, executor không có kernel-backed
+direct-child reap pin cho supervisor; guardian loss vì vậy giữ active record và
+generation guard vô hạn thay vì signal numeric PID/PGID. Automatic recovery cho
+chiều lỗi này vẫn pending.
 
 ## 5. Protocol và state machine
 
 ### 5.1. Framing và authentication
 
-- Protocol có magic/version cố định, ví dụ `JUDGEDESK_RUN_GUARDIAN/1`.
+- Protocol có magic/version cố định `JUDGEDESK_RUN_GUARDIAN/2`.
 - Dùng length-prefixed frame, `u32` little-endian, cùng hard maximum với native
   executor protocol; zero-length và frame vượt giới hạn bị từ chối.
 - Mỗi guardian có token ngẫu nhiên riêng, tối thiểu 256 bit.
@@ -187,25 +282,32 @@ Executor reserves run
 Guardian validates generation + acquires SH guard
   -> READY
 Executor
-  -> LAUNCH(validated bounded spec)
-Guardian creates trusted launcher
-Launcher
-  -> REGISTERED(pid, pgid, start identity) trực tiếp tới executor
+  -> START(validated bounded spec)
+Guardian creates persistent trusted supervisor
+Supervisor becomes PGID anchor
+  -> REGISTERED(pid, pgid, start identity) trực tiếp tới executor và guardian
 Guardian
-  -> STARTED(same identity)
+  -> CONFIGURE(bounded launcher spec)
+Supervisor
+  -> READY
+Guardian
+  -> STARTED(same anchor identity)
 Executor commits active cancellation record
+  -> direct COMMIT; guardian COMMIT
+Guardian
   -> GO
-Guardian releases launcher
-Launcher closes trusted FDs
-  -> exec sandbox-exec -> untrusted program
-Guardian observes exit, drains group, reaps leader
-  -> TERMINAL/CLEANED
+Supervisor forks target, closes ambient FD in child
+  -> exec sandbox-exec -> untrusted target
+Supervisor observes terminal cause
+  -> CLEANUP_REQUESTED
+Guardian freezes group, authorizes supervisor cleanup, then drains/reaps anchor
+  -> PREPARED/CLEANED
 Executor emits exactly one RunResult and removes accepted reservation
 ```
 
 ### 5.3. Cancellation và shutdown
 
-- Cancel trước `GO`: launcher không được exec; guardian reap blocked launcher.
+- Cancel trước `GO`: target chưa được fork; guardian drain/reap supervisor.
 - Cancel sau `GO`: guardian dừng khả năng fork trước, kill toàn group và drain.
 - Shutdown lặp cancellation cho cả accepted và active run để bao phủ handoff
   race.
@@ -274,28 +376,36 @@ Compiler chỉ được chạy khi:
 Kết quả trên chỉ chứng nhận exact compiler đã test. Nó không chứng nhận arbitrary
 local compiler và không tự động áp dụng cho compiler/runtime của ngôn ngữ mới.
 
-## 7. Deferred leader reap và proof rằng tree đã rỗng
+## 7. Deferred anchor reap và proof rằng tree đã rỗng
 
-Guardian là parent trực tiếp của sandbox launcher và là process duy nhất được
-phép sở hữu reap của leader.
+Guardian là parent trực tiếp của persistent supervisor/PGID anchor. Supervisor
+là parent trực tiếp và là process duy nhất được phép `wait4` target để lấy
+verdict/rusage; guardian sở hữu reap của exact supervisor child.
 
 Trình tự terminal:
 
-1. Quan sát leader exit bằng `EVFILT_PROC/NOTE_EXIT` hoặc wait primitive không
-   làm mất ownership proof.
-2. Không reap leader quá sớm khi descendant còn sống. Giữ leader PID chưa được
-   reap giúp ngăn PID/PGID bị tái sử dụng trong lúc cleanup.
-3. Gửi `SIGSTOP` tới process group để chặn fork race.
-4. Gửi `SIGKILL` tới group.
-5. Kiểm kê `PROC_PGRP_ONLY`; phân biệt exited leader với live descendants.
-6. Khi không còn live descendant, `wait4` leader để reap và lấy rusage.
-7. Kiểm kê lại cho tới khi PGID bằng 0.
-8. Chỉ sau đó gửi `CLEANED` và nhả shared generation guard.
+1. Supervisor quan sát target terminal/limit, chốt mốc wall time và yêu cầu
+   cleanup trên cả hai authenticated channel.
+2. Guardian xác thực live anchor rồi gửi `SIGSTOP` tới toàn PGID để chặn fork
+   race.
+3. Guardian gửi authenticated cleanup cho supervisor đang dừng, sau đó
+   `SIGCONT` riêng exact supervisor anchor.
+4. Supervisor chứng minh mọi descendant còn lại đang stop/zombie, `wait4` exact
+   target, dựng một `RunResult`, rồi gửi trọn `PREPARED` cho direct executor
+   trước khi gửi cho guardian.
+5. Guardian nhận `PREPARED`, gửi `SIGKILL` tới PGID, chờ/reap exact supervisor
+   direct child và kiểm kê `PROC_PGRP_ONLY`.
+6. Chỉ sau hai inventory độc lập cùng rỗng, guardian mới chuyển kết quả cho
+   executor, đóng channel và nhả shared generation guard.
+7. Executor chỉ chấp nhận preferred result sau authenticated guardian
+   `PREPARED` cộng exact guardian-child exit. Nếu guardian chết trước proof này
+   và supervisor đã tồn tại, executor không trả kết quả, không signal numeric
+   identity và fail closed giữ generation.
 
 Không dùng các điều kiện sau làm proof duy nhất:
 
 - đã gọi `kill`;
-- leader đã exit;
+- target hoặc supervisor đã exit;
 - `kill(pid, 0)` trả `ESRCH`;
 - không còn direct child theo PPID;
 - `lsof` chỉ cho thấy lock descriptor đang mở.
@@ -309,16 +419,16 @@ generation guard, lặp cleanup và phát diagnostic; không được release th
 | Fault | Authority còn sống | Kết quả bắt buộc | Trạng thái |
 | --- | --- | --- | --- |
 | Executor chết trước guardian `READY` | Guardian | Không có child; guardian nhả sau khi xác nhận rỗng | Pending |
-| Executor chết sau guardian `READY`, trước launcher | Guardian | Không launch; drain sạch | Pending |
-| Executor chết sau launcher registration, trước `GO` | Guardian | Reap blocked launcher, không exec | Pending |
-| Executor chết sau `GO` | Guardian | EOF → stop/kill/reap group; giữ SH guard tới PGID=0 | Pending |
-| Guardian chết trước launcher | Executor | Run `launch_error`, không có child | Pending |
-| Guardian chết sau fork, trước normal `STARTED` | Launcher + executor | Launcher self-register rồi block; executor cleanup | Pending |
-| Guardian chết sau `GO` | Executor | Kill/drain bằng registered identity; active run `internal_error` | Pending |
-| Launcher chết trước `GO` | Guardian + executor | Reap; đúng một `launch_error` | Pending |
-| Backend mất GUI parent channel | Executor + guardians + outer helper | Executor drain; guardians giữ generation barrier | Một phần verified; guardian pending |
-| GUI chết | Outer helper + backend/executor/guardians | Backend tree drain trước relaunch | Supervisor path verified; guardian pending |
-| Outer helper chết | GUI recovery + backend/executor/guardians | Backend dừng; recovery barrier được giữ | Supervisor path verified; guardian pending |
+| Executor chết sau guardian `READY`, trước supervisor spawn | Guardian | Không target; guardian thoát sạch | Pending |
+| Executor chết sau supervisor registration, trước `GO` | Guardian | Drain/reap supervisor, target không được fork | Pending |
+| Executor chết sau `GO` | Guardian | EOF → stop/kill/reap group; giữ SH guard tới PGID=0 | Verified trong native fault gate |
+| Guardian chết trước supervisor spawn | Executor | Reap exact guardian; run `launch_error`, không có anchor | Pending |
+| Guardian chết sau supervisor spawn, trước normal `STARTED` | Executor | Không numeric signal; giữ generation fail closed nếu direct channel chứng minh supervisor đã tồn tại | Boundary verified; automatic recovery pending |
+| Guardian chết sau `GO` | Executor | Không trả unproven result, không numeric signal; giữ active record + generation fail closed | Boundary verified trong native fault gate; automatic recovery pending |
+| Supervisor chết trước `GO` | Guardian + executor | Reap exact child; đúng một `launch_error` | Pending |
+| Backend mất GUI parent channel | Executor + guardians + outer helper | Executor drain; guardians giữ generation barrier | Native barrier verified; packaged composition pending |
+| GUI chết | Outer helper + backend/executor/guardians | Backend tree drain trước relaunch | Supervisor path verified; active-guardian packaged gate pending |
+| Outer helper chết | GUI recovery + backend/executor/guardians | Backend dừng; recovery barrier được giữ | Supervisor path verified; active-guardian packaged gate pending |
 | GUI và outer helper cùng bị kill | Backend liveness + executor/guardians | Guardian SH locks chặn generation mới tới khi tree rỗng | Pending packaged gate |
 
 Mọi single fault chỉ được coi là handled khi test chứng minh process identity cũ
@@ -390,8 +500,8 @@ Với native run đang active, kiểm tra:
 - final shutdown không còn GUI/helper/backend/executor/guardian/submission.
 
 Gate cũ không được dùng `pgrep -P executor | head -1` để suy ra sandbox PGID.
-Fixture/trusted launcher phải cung cấp PID, PGID và start identity có thể kiểm
-chứng.
+Supervisor/fault-trace fixture phải cung cấp PID, PGID và start identity có thể
+kiểm chứng.
 
 ### 9.6. Compiler certification gate
 
@@ -416,12 +526,18 @@ Lưu artifact có commit SHA, app hash/signature, `sw_vers`, architecture, exact
 toolchain identity, PID/PGID/start identities, event order, duration và verdict.
 Không ghi token vào log.
 
-## 10. Giới hạn double-failure còn lại
+## 10. Giới hạn guardian-loss và double-failure còn lại
 
-Thiết kế hai authority chịu được:
+Topology hiện tại có một authority sở hữu kernel-backed direct-child reap pin
+cho supervisor: guardian. Vì vậy thiết kế tự động drain được executor chết khi
+guardian còn sống.
 
-- executor chết khi guardian còn sống;
-- guardian chết khi executor còn sống.
+Executor có authenticated direct channel tới supervisor nhưng channel này không
+phải `pidfd` và không ngăn launchd reap/reuse PID. Khi guardian chết sau
+supervisor registration, executor chỉ được fail closed: giữ active record và
+generation guard, không signal numeric PID/PGID và không trả unproven result.
+Automatic guardian-death recovery là **Not claimed** cho tới khi có authority
+khác sở hữu một direct-child/unreaped group pin thật.
 
 Nếu executor và per-run guardian của cùng run đều bị `SIGKILL` trước khi một
 authority hoàn thành cleanup, cả hai shared generation locks đều có thể bị kernel
@@ -461,7 +577,7 @@ và có thể được verified riêng.
 Chỉ đổi trạng thái tài liệu khi:
 
 1. production Seatbelt profile vượt escape gate;
-2. guardian/launcher protocol vượt unit và native fault-injection gates;
+2. guardian/supervisor protocol vượt unit và native fault-injection gates;
 3. concurrent cancellation/shutdown ordering vượt gate;
 4. exact packaged ARM64 app vượt GUI/helper/relaunch gate;
 5. compiler có certificate riêng;

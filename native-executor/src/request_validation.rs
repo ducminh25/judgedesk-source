@@ -1,4 +1,5 @@
 use crate::protocol::{RunRole, RunSpec};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
@@ -23,17 +24,7 @@ pub fn validate_run(root: &Path, spec: &RunSpec) -> Result<ValidatedRun, String>
     {
         return Err("arguments exceed protocol limits".into());
     }
-    if spec.environment.len() > 128
-        || spec.environment.iter().any(|(key, value)| {
-            key.is_empty()
-                || key.len() > 256
-                || value.len() > 32 * 1024
-                || key.contains(['\0', '='])
-                || value.contains('\0')
-        })
-    {
-        return Err("environment exceeds protocol limits".into());
-    }
+    validate_environment(&spec.environment)?;
     validate_limits(spec)?;
 
     let canonical_root =
@@ -98,6 +89,50 @@ pub fn validate_run(root: &Path, spec: &RunSpec) -> Result<ValidatedRun, String>
         stdout,
         stderr,
     })
+}
+
+pub(crate) fn validate_environment(environment: &BTreeMap<String, String>) -> Result<(), String> {
+    if environment.len() > 128
+        || environment.iter().any(|(key, value)| {
+            key.is_empty()
+                || key.len() > 256
+                || value.len() > 32 * 1024
+                || key.contains(['\0', '='])
+                || value.contains('\0')
+                || !key.bytes().enumerate().all(|(index, byte)| {
+                    byte == b'_'
+                        || byte.is_ascii_alphabetic()
+                        || (index > 0 && byte.is_ascii_digit())
+                })
+        })
+    {
+        return Err("environment exceeds protocol limits".into());
+    }
+
+    for key in environment.keys() {
+        let normalized = key.to_ascii_uppercase();
+        let loader_control = normalized.starts_with("DYLD_")
+            || normalized.starts_with("__XPC_DYLD_")
+            || normalized.starts_with("LD_")
+            || normalized.starts_with("MALLOC")
+            || matches!(
+                normalized.as_str(),
+                "LIBGMALLOC" | "_RLD_ROOT" | "LIBPATH" | "SHLIB_PATH"
+            );
+        let executor_control = normalized.starts_with("JUDGEDESK_TREE_GUARD_")
+            || normalized.starts_with("JUDGEDESK_RUN_GUARDIAN_")
+            || normalized.starts_with("JUDGEDESK_RUN_SUPERVISOR_")
+            || normalized.starts_with("JUDGEDESK_RUN_LAUNCHER_")
+            || normalized.starts_with("JUDGEDESK_EXECUTOR_")
+            || normalized.starts_with("JUDGEDESK_BOOTSTRAP_")
+            || normalized.starts_with("JUDGEDESK_PROBE_")
+            || normalized == "JUDGEDESK_SENTINEL"
+            || normalized == "JUDGEDESK_START";
+        if loader_control || executor_control {
+            return Err("environment contains a variable reserved by the secure executor".into());
+        }
+    }
+    Ok(())
 }
 
 fn validate_limits(spec: &RunSpec) -> Result<(), String> {
@@ -249,5 +284,72 @@ mod tests {
         assert!(resolve_relative(&root, "../outside", false).is_err());
         assert!(resolve_relative(&root, "/outside", false).is_err());
         assert!(resolve_relative(&root, "file", false).is_ok());
+    }
+
+    #[test]
+    fn environment_rejects_loader_injection_and_executor_control_keys() {
+        for key in [
+            "DYLD_INSERT_LIBRARIES",
+            "dyld_print_to_file",
+            "__XPC_DYLD_LIBRARY_PATH",
+            "LD_PRELOAD",
+            "MallocStackLogging",
+            "LIBGMALLOC",
+            "JUDGEDESK_TREE_GUARD_PATH",
+            "judgedesk_run_guardian_token",
+            "JUDGEDESK_RUN_SUPERVISOR_DIRECT_FD",
+            "JUDGEDESK_RUN_LAUNCHER_REGISTRATION_FD",
+            "JUDGEDESK_EXECUTOR_PATH",
+            "JUDGEDESK_BOOTSTRAP_TOKEN",
+            "JUDGEDESK_PROBE_SENTINEL",
+        ] {
+            let environment = BTreeMap::from([(key.to_string(), "attacker-controlled".into())]);
+            assert!(
+                validate_environment(&environment).is_err(),
+                "accepted reserved environment key {key:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn environment_keys_use_a_portable_non_logging_name_alphabet() {
+        for key in ["1PATH", "BAD-NAME", "BAD\nNAME", "N\u{00d6}N_ASCII"] {
+            let environment = BTreeMap::from([(key.to_string(), "value".into())]);
+            assert!(
+                validate_environment(&environment).is_err(),
+                "accepted non-portable environment key {key:?}"
+            );
+        }
+        assert!(validate_environment(&BTreeMap::from([
+            ("_PRIVATE".into(), "1".into()),
+            ("Path".into(), "/managed/bin".into()),
+        ]))
+        .is_ok());
+    }
+
+    #[test]
+    fn environment_allows_current_compiler_and_managed_python_contracts() {
+        let environment = BTreeMap::from([
+            ("JUDGEDESK_PYTHON_ISOLATED".into(), "1".into()),
+            ("PYTHONNOUSERSITE".into(), "1".into()),
+            ("PYTHONDONTWRITEBYTECODE".into(), "1".into()),
+            ("PYTHONHOME".into(), "/managed/python".into()),
+            ("PATH".into(), "/managed/python/bin".into()),
+            (
+                "JUDGEDESK_COMPILER_TOOLCHAIN_ROOT".into(),
+                "/Library/Developer/CommandLineTools".into(),
+            ),
+            (
+                "JUDGEDESK_COMPILER_DEVELOPER_ROOT".into(),
+                "/Library/Developer/CommandLineTools".into(),
+            ),
+            (
+                "JUDGEDESK_COMPILER_EXECUTABLE".into(),
+                "/Library/Developer/CommandLineTools/usr/bin/clang".into(),
+            ),
+            ("COMPILER_PATH".into(), "/managed/gcc/libexec".into()),
+            ("LIBRARY_PATH".into(), "/managed/gcc/lib".into()),
+        ]);
+        assert!(validate_environment(&environment).is_ok());
     }
 }

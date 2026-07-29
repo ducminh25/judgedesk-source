@@ -4,11 +4,62 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test, { after } from "node:test";
-import { executorClient } from "../executor/client.js";
-import { DEFAULT_EXECUTOR_LIMITS, type ExecutorLimits, type ExecutorRunResult } from "../executor/protocol.js";
-import { createExecutorWorkspace, importExecutorArtifact } from "../executor/workspace.js";
-import { prepareIsolatedPythonScript } from "../judge/python-runtime.js";
-import { resolveManagedToolchain } from "../toolchains/resolver.js";
+import type { ExecutorLimits, ExecutorRunResult } from "../executor/protocol.js";
+
+interface OwnedMacosTreeGuard {
+  directory: string;
+}
+
+function provisionMacosTreeGuard(): OwnedMacosTreeGuard | null {
+  if (process.platform !== "darwin") return null;
+  const keys = [
+    "JUDGEDESK_TREE_GUARD_REQUIRED",
+    "JUDGEDESK_TREE_GUARD_PATH",
+    "JUDGEDESK_TREE_GUARD_GENERATION",
+  ] as const;
+  const present = keys.filter((key) => process.env[key] !== undefined);
+  if (present.length === keys.length) {
+    assert.equal(process.env.JUDGEDESK_TREE_GUARD_REQUIRED, "1");
+    return null;
+  }
+  assert.equal(
+    present.length,
+    0,
+    `partial macOS process-tree guard environment: ${present.join(", ")}`,
+  );
+
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "judgedesk-security-tree-guard-"),
+  );
+  fs.chmodSync(directory, 0o700);
+  const generation = crypto.randomBytes(32).toString("hex");
+  const guardPath = path.join(directory, "process-tree.generation");
+  fs.writeFileSync(
+    guardPath,
+    `JUDGEDESK_PROCESS_TREE/1\ngeneration=${generation}\n`,
+    { encoding: "utf8", flag: "wx", mode: 0o600 },
+  );
+  fs.chmodSync(guardPath, 0o600);
+  process.env.JUDGEDESK_TREE_GUARD_REQUIRED = "1";
+  process.env.JUDGEDESK_TREE_GUARD_PATH = guardPath;
+  process.env.JUDGEDESK_TREE_GUARD_GENERATION = generation;
+  return { directory };
+}
+
+const ownedMacosTreeGuard = provisionMacosTreeGuard();
+const [
+  { executorClient },
+  { DEFAULT_EXECUTOR_LIMITS },
+  { createExecutorWorkspace, importExecutorArtifact },
+  { prepareIsolatedPythonScript },
+  { resolveManagedToolchain },
+] = await Promise.all([
+  import("../executor/client.js"),
+  import("../executor/protocol.js"),
+  import("../executor/workspace.js"),
+  import("../judge/python-runtime.js"),
+  import("../toolchains/resolver.js"),
+]);
 
 const MiB = 1024 * 1024;
 const helperBinary = path.join(
@@ -21,6 +72,9 @@ const helperBinary = path.join(
 );
 after(async () => {
   await executorClient.shutdown();
+  if (ownedMacosTreeGuard) {
+    fs.rmSync(ownedMacosTreeGuard.directory, { recursive: true });
+  }
 });
 
 test("security fixtures can only reach the native executor harness", () => {

@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 #[cfg(target_os = "macos")]
-mod macos;
+pub(crate) mod macos;
 #[cfg(windows)]
 mod windows;
 
@@ -94,7 +94,7 @@ impl Platform {
             #[cfg(windows)]
             PlatformInner::Windows(inner) => inner.run(spec, validated, active),
             #[cfg(target_os = "macos")]
-            PlatformInner::Macos(inner) => inner.run(spec, validated, active),
+            PlatformInner::Macos(inner) => inner.run(&self.root, spec, validated, active),
             PlatformInner::Unsupported(error) => {
                 failure(spec, RunReason::SandboxDenied, error.clone())
             }

@@ -3,10 +3,6 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import crypto from "node:crypto";
-import { executorClient } from "../server/executor/client.js";
-import { DEFAULT_EXECUTOR_LIMITS } from "../server/executor/protocol.js";
-import { createExecutorWorkspace, importExecutorArtifact } from "../server/executor/workspace.js";
-import { compileSubmission, resolveCompilationToolchain } from "../server/judge/compiler.js";
 
 interface Sample {
   stagingMs: number;
@@ -25,7 +21,28 @@ const suites = integerOption("--suites", 5);
 const warmups = integerOption("--warmups", 20);
 const enforce = process.argv.includes("--enforce");
 const outputDirectory = path.resolve(option("--output", "docs/benchmarks"));
-const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-executor-benchmark-"));
+const ownedMacosTreeGuard = provisionMacosTreeGuard();
+const [
+  { executorClient },
+  { DEFAULT_EXECUTOR_LIMITS },
+  { createExecutorWorkspace, importExecutorArtifact },
+  { compileSubmission, resolveCompilationToolchain },
+] = await Promise.all([
+  import("../server/executor/client.js"),
+  import("../server/executor/protocol.js"),
+  import("../server/executor/workspace.js"),
+  import("../server/judge/compiler.js"),
+] as const).catch((error) => {
+  releaseMacosTreeGuard(ownedMacosTreeGuard);
+  throw error;
+});
+let temporaryDirectory: string;
+try {
+  temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-executor-benchmark-"));
+} catch (error) {
+  releaseMacosTreeGuard(ownedMacosTreeGuard);
+  throw error;
+}
 
 try {
   const health = await executorClient.start();
@@ -141,8 +158,63 @@ try {
   console.log(JSON.stringify(gates, null, 2));
   if (enforce && Object.values(gates).some((gate) => !gate.pass)) process.exitCode = 1;
 } finally {
-  await executorClient.shutdown();
-  fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+  try {
+    await executorClient.shutdown();
+  } finally {
+    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
+    releaseMacosTreeGuard(ownedMacosTreeGuard);
+  }
+}
+
+interface OwnedMacosTreeGuard {
+  directory: string;
+}
+
+function provisionMacosTreeGuard(): OwnedMacosTreeGuard | null {
+  if (process.platform !== "darwin") return null;
+  const keys = [
+    "JUDGEDESK_TREE_GUARD_REQUIRED",
+    "JUDGEDESK_TREE_GUARD_PATH",
+    "JUDGEDESK_TREE_GUARD_GENERATION",
+  ] as const;
+  const present = keys.filter((key) => process.env[key] !== undefined);
+  if (present.length === keys.length) {
+    if (process.env.JUDGEDESK_TREE_GUARD_REQUIRED !== "1") {
+      throw new Error("invalid macOS process-tree guard requirement");
+    }
+    return null;
+  }
+  if (present.length !== 0) {
+    throw new Error(`partial macOS process-tree guard environment: ${present.join(", ")}`);
+  }
+
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-benchmark-tree-guard-"));
+  try {
+    fs.chmodSync(directory, 0o700);
+    const generation = crypto.randomBytes(32).toString("hex");
+    const guardPath = path.join(directory, "process-tree.generation");
+    fs.writeFileSync(
+      guardPath,
+      `JUDGEDESK_PROCESS_TREE/1\ngeneration=${generation}\n`,
+      { encoding: "utf8", flag: "wx", mode: 0o600 },
+    );
+    fs.chmodSync(guardPath, 0o600);
+    process.env.JUDGEDESK_TREE_GUARD_REQUIRED = "1";
+    process.env.JUDGEDESK_TREE_GUARD_PATH = guardPath;
+    process.env.JUDGEDESK_TREE_GUARD_GENERATION = generation;
+    return { directory };
+  } catch (error) {
+    fs.rmSync(directory, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+function releaseMacosTreeGuard(owned: OwnedMacosTreeGuard | null): void {
+  if (!owned) return;
+  delete process.env.JUDGEDESK_TREE_GUARD_REQUIRED;
+  delete process.env.JUDGEDESK_TREE_GUARD_PATH;
+  delete process.env.JUDGEDESK_TREE_GUARD_GENERATION;
+  fs.rmSync(owned.directory, { recursive: true, force: true });
 }
 
 async function measure(executableId: string): Promise<Sample> {
