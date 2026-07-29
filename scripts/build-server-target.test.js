@@ -192,13 +192,16 @@ test("sidecar smoke test verifies a real child process over HTTP", async () => {
       [
         'const http = require("node:http");',
         "const port = Number(process.env.PORT);",
-        "http.createServer((request, response) => {",
+        "const server = http.createServer((request, response) => {",
         '  response.writeHead(200, { "content-type": "application/json" });',
         '  if (request.url === "/api/status") { response.end(JSON.stringify({ healthy: true })); return; }',
         '  if (request.url.startsWith("/api/fetch-contestants")) { response.end(JSON.stringify({ success: true, data: ["Contestant 2", "Contestant 10"] })); return; }',
         '  if (request.url.startsWith("/api/fetch-problems")) { response.end(JSON.stringify({ success: true, data: ["Problem A", "Problem B"] })); return; }',
         "  response.writeHead(404).end();",
-        '}).listen(port, "127.0.0.1");',
+        "});",
+        'server.listen(port, "127.0.0.1");',
+        "process.stdin.resume();",
+        'process.stdin.once("end", () => server.close(() => process.exit(70)));',
       ].join("\n"),
     );
 

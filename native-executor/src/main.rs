@@ -6,6 +6,9 @@ use judgedesk_native_executor::request_validation::validate_run;
 use std::collections::{HashMap, HashSet};
 use std::io::{self, Write};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+type AcceptedRuns = Arc<Mutex<HashSet<String>>>;
 
 fn main() {
     match std::env::args().nth(1).as_deref() {
@@ -194,18 +197,34 @@ fn security_probe_child() {
 }
 
 fn run() -> Result<(), String> {
+    let _tree_guard = judgedesk_native_executor::tree_guard::acquire_from_environment()?;
     let platform = Arc::new(Platform::initialize());
     let active: ActiveRuns = Arc::new(Mutex::new(HashMap::new()));
-    let accepted_runs = Arc::new(Mutex::new(HashSet::<String>::new()));
+    let accepted_runs: AcceptedRuns = Arc::new(Mutex::new(HashSet::new()));
     let writer = Arc::new(Mutex::new(io::stdout()));
     let mut reader = io::stdin();
 
-    while let Some(frame) = read_frame(&mut reader).map_err(|error| error.to_string())? {
+    let protocol_result = serve_requests(&platform, &active, &accepted_runs, &writer, &mut reader);
+    // Every exit path, including malformed/truncated input and a broken stdout pipe, must wait
+    // for the last accepted worker to prove its process group empty before the macOS generation
+    // guard can be dropped.
+    drain_runs(&active, &accepted_runs);
+    protocol_result
+}
+
+fn serve_requests(
+    platform: &Arc<Platform>,
+    active: &ActiveRuns,
+    accepted_runs: &AcceptedRuns,
+    writer: &Arc<Mutex<io::Stdout>>,
+    reader: &mut io::Stdin,
+) -> Result<(), String> {
+    while let Some(frame) = read_frame(reader).map_err(|error| error.to_string())? {
         let request: ExecutorRequest = match serde_json::from_slice(&frame) {
             Ok(request) => request,
             Err(error) => {
                 send(
-                    &writer,
+                    writer,
                     ExecutorResponse::Error {
                         id: String::new(),
                         code: "SECURE_RUNNER_PROTOCOL_ERROR".into(),
@@ -218,7 +237,7 @@ fn run() -> Result<(), String> {
         match request {
             ExecutorRequest::Health { id } => {
                 send(
-                    &writer,
+                    writer,
                     ExecutorResponse::Health {
                         id,
                         health: platform.health(),
@@ -228,7 +247,7 @@ fn run() -> Result<(), String> {
             ExecutorRequest::Run { id, spec } => {
                 if !platform.health().ready {
                     send(
-                        &writer,
+                        writer,
                         ExecutorResponse::Error {
                             id,
                             code: "SECURE_RUNNER_UNAVAILABLE".into(),
@@ -241,7 +260,7 @@ fn run() -> Result<(), String> {
                     Ok(value) => value,
                     Err(message) => {
                         send(
-                            &writer,
+                            writer,
                             ExecutorResponse::Error {
                                 id,
                                 code: "SECURE_RUNNER_INVALID_REQUEST".into(),
@@ -253,7 +272,7 @@ fn run() -> Result<(), String> {
                 };
                 if !accepted_runs.lock().unwrap().insert(spec.run_id.clone()) {
                     send(
-                        &writer,
+                        writer,
                         ExecutorResponse::Error {
                             id,
                             code: "SECURE_RUNNER_INVALID_REQUEST".into(),
@@ -262,15 +281,45 @@ fn run() -> Result<(), String> {
                     )?;
                     continue;
                 }
-                let platform = Arc::clone(&platform);
-                let active = Arc::clone(&active);
-                let accepted_runs = Arc::clone(&accepted_runs);
-                let writer = Arc::clone(&writer);
-                std::thread::spawn(move || {
-                    let result = platform.run(&spec, &validated, &active);
-                    accepted_runs.lock().unwrap().remove(&spec.run_id);
-                    let _ = send(&writer, ExecutorResponse::RunResult { id, result });
-                });
+                let worker_platform = Arc::clone(platform);
+                let worker_active = Arc::clone(active);
+                let worker_accepted_runs = Arc::clone(accepted_runs);
+                let worker_writer = Arc::clone(writer);
+                let run_id = spec.run_id.clone();
+                let worker_run_id = run_id.clone();
+                let worker_id = id.clone();
+                if let Err(error) = std::thread::Builder::new()
+                    .name(format!("judgedesk-run-{worker_run_id}"))
+                    .spawn(move || {
+                        let result = worker_platform.run(&spec, &validated, &worker_active);
+                        // Keep the reservation until after the terminal frame has been attempted.
+                        // ShutdownResult must never overtake a RunResult from an accepted run.
+                        let _ = send(
+                            &worker_writer,
+                            ExecutorResponse::RunResult {
+                                id: worker_id,
+                                result,
+                            },
+                        );
+                        worker_accepted_runs
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner())
+                            .remove(&worker_run_id);
+                    })
+                {
+                    accepted_runs
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .remove(&run_id);
+                    send(
+                        writer,
+                        ExecutorResponse::Error {
+                            id,
+                            code: "SECURE_RUNNER_UNAVAILABLE".into(),
+                            message: format!("cannot start secure-run worker: {error}"),
+                        },
+                    )?;
+                }
             }
             ExecutorRequest::Cancel { id, run_id } => {
                 let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
@@ -289,7 +338,7 @@ fn run() -> Result<(), String> {
                     std::thread::sleep(std::time::Duration::from_millis(1));
                 }
                 send(
-                    &writer,
+                    writer,
                     ExecutorResponse::CancelResult {
                         id,
                         run_id,
@@ -298,16 +347,115 @@ fn run() -> Result<(), String> {
                 )?;
             }
             ExecutorRequest::Shutdown { id } => {
-                platform.shutdown(&active);
-                send(&writer, ExecutorResponse::ShutdownResult { id })?;
+                drain_runs(active, accepted_runs);
+                send(writer, ExecutorResponse::ShutdownResult { id })?;
                 return Ok(());
             }
         }
     }
-    platform.shutdown(&active);
     Ok(())
 }
 
+fn drain_runs(active: &ActiveRuns, accepted_runs: &AcceptedRuns) {
+    let mut next_diagnostic = Instant::now() + Duration::from_secs(10);
+    loop {
+        // Repeat cancellation to cover the accepted -> active handoff: a worker may have been
+        // reserved before shutdown but not registered its process-group cancellation handle yet.
+        let runs: Vec<_> = active
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .values()
+            .cloned()
+            .collect();
+        for run in runs {
+            run.cancel();
+        }
+
+        let active_count = active
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .len();
+        let accepted_count = accepted_runs
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .len();
+        if active_count == 0 && accepted_count == 0 {
+            return;
+        }
+
+        if Instant::now() >= next_diagnostic {
+            let _ = writeln!(
+                io::stderr(),
+                "EXECUTOR_DRAIN_STALLED active={active_count} accepted={accepted_count}"
+            );
+            next_diagnostic = Instant::now() + Duration::from_secs(10);
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
 fn send(writer: &Arc<Mutex<io::Stdout>>, response: ExecutorResponse) -> Result<(), String> {
-    write_frame(&mut *writer.lock().unwrap(), &response).map_err(|error| error.to_string())
+    write_frame(
+        &mut *writer
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()),
+        &response,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use judgedesk_native_executor::platform::Cancellation;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::mpsc;
+
+    struct TestCancellation {
+        cancelled: AtomicBool,
+        observed: mpsc::Sender<()>,
+    }
+
+    impl Cancellation for TestCancellation {
+        fn cancel(&self) {
+            if !self.cancelled.swap(true, Ordering::AcqRel) {
+                let _ = self.observed.send(());
+            }
+        }
+    }
+
+    #[test]
+    fn drain_waits_for_reserved_run_and_cancels_after_late_registration() {
+        let active: ActiveRuns = Arc::new(Mutex::new(HashMap::new()));
+        let accepted: AcceptedRuns = Arc::new(Mutex::new(HashSet::from(["late".into()])));
+        let drain_active = Arc::clone(&active);
+        let drain_accepted = Arc::clone(&accepted);
+        let (finished_tx, finished_rx) = mpsc::channel();
+        let drain_thread = std::thread::spawn(move || {
+            drain_runs(&drain_active, &drain_accepted);
+            finished_tx.send(()).unwrap();
+        });
+
+        assert!(finished_rx.recv_timeout(Duration::from_millis(25)).is_err());
+
+        let (cancelled_tx, cancelled_rx) = mpsc::channel();
+        active.lock().unwrap().insert(
+            "late".into(),
+            Arc::new(TestCancellation {
+                cancelled: AtomicBool::new(false),
+                observed: cancelled_tx,
+            }),
+        );
+        cancelled_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("late active run was not cancelled");
+        assert!(finished_rx.recv_timeout(Duration::from_millis(25)).is_err());
+
+        active.lock().unwrap().remove("late");
+        accepted.lock().unwrap().remove("late");
+        finished_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("drain did not finish after both barriers became empty");
+        drain_thread.join().unwrap();
+    }
 }

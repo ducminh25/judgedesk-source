@@ -15,6 +15,17 @@ import type {
 const MAX_FRAME_BYTES = 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 20_000;
 const STARTUP_SELF_TEST_ATTEMPTS = 3;
+const SHUTDOWN_REQUEST_TIMEOUT_MS = 10_000;
+const SHUTDOWN_EXIT_TIMEOUT_MS = 1_000;
+
+type ExecutorLifecycleState = "idle" | "starting" | "running" | "draining" | "terminal";
+
+export interface ExecutorClientOptions {
+  platform?: NodeJS.Platform;
+  environment?: NodeJS.ProcessEnv;
+  shutdownRequestTimeoutMs?: number;
+  shutdownExitTimeoutMs?: number;
+}
 
 interface PendingRequest {
   resolve(response: ExecutorResponse): void;
@@ -36,16 +47,41 @@ export class ExecutorClient {
   private cachedHealth: ExecutorHealth = unavailableHealth("Executor has not started.");
   private startPromise: Promise<ExecutorHealth> | null = null;
   private stderrPreview = "";
+  private lifecycleState: ExecutorLifecycleState = "idle";
+  private readonly platform: NodeJS.Platform;
+  private readonly environment: NodeJS.ProcessEnv;
+  private readonly shutdownRequestTimeoutMs: number;
+  private readonly shutdownExitTimeoutMs: number;
+  private readonly startupRetryChildren = new WeakSet<ChildProcessWithoutNullStreams>();
+
+  constructor(options: ExecutorClientOptions = {}) {
+    this.platform = options.platform ?? process.platform;
+    this.environment = { ...(options.environment ?? process.env) };
+    this.shutdownRequestTimeoutMs = options.shutdownRequestTimeoutMs ?? SHUTDOWN_REQUEST_TIMEOUT_MS;
+    this.shutdownExitTimeoutMs = options.shutdownExitTimeoutMs ?? SHUTDOWN_EXIT_TIMEOUT_MS;
+  }
 
   get health(): ExecutorHealth {
     return this.cachedHealth;
   }
 
   async start(): Promise<ExecutorHealth> {
+    if (this.cannotStart()) {
+      return this.cachedHealth;
+    }
     if (this.startPromise) return this.startPromise;
+    this.lifecycleState = "starting";
     const startup = this.startWithTransientRetry();
     this.startPromise = startup;
     const health = await startup;
+    // executorExited deliberately clears this exact startup slot for an unguarded child so the
+    // next call can retry. Do not let this older continuation cache its failed result again.
+    if (this.startPromise !== startup) return this.cachedHealth;
+    if (this.cannotStart()) {
+      this.startPromise = Promise.resolve(this.cachedHealth);
+      return this.cachedHealth;
+    }
+    this.lifecycleState = this.child ? "running" : "idle";
     // executorExited clears this value. Otherwise retain the settled result so
     // repeated /api/status requests never launch duplicate executor processes.
     this.startPromise = Promise.resolve(health);
@@ -84,17 +120,76 @@ export class ExecutorClient {
 
   async shutdown(): Promise<void> {
     const child = this.child;
-    if (!child) return;
-    try {
-      await this.request({ type: "shutdown", id: crypto.randomUUID() }, 10_000);
-    } catch {
-      child.kill();
+    if (!child) {
+      this.lifecycleState = "terminal";
+      if (this.cachedHealth.ready) {
+        this.cachedHealth = unavailableHealth("Native executor is no longer running.");
+      }
+      this.startPromise = Promise.resolve(this.cachedHealth);
+      return;
     }
-    this.child = null;
-    this.startPromise = null;
+    this.lifecycleState = "draining";
+    this.cachedHealth = unavailableHealth("Native executor shutdown is in progress.");
+    this.startPromise = Promise.resolve(this.cachedHealth);
+    try {
+      const response = await this.request(
+        { type: "shutdown", id: crypto.randomUUID() },
+        this.shutdownRequestTimeoutMs,
+      );
+      if (response.type !== "shutdown_result") {
+        throw new SecureRunnerError(
+          "SECURE_RUNNER_PROTOCOL_ERROR",
+          `Unexpected ${response.type} response to shutdown request.`,
+        );
+      }
+    } catch (error) {
+      if (this.requiresGuardedMacosDrain()) {
+        if (this.child === child && !childHasExited(child)) {
+          this.lifecycleState = "draining";
+          this.cachedHealth = unavailableHealth(
+            "Native executor drain is still in progress; the macOS process-tree guard remains held.",
+          );
+        } else {
+          this.lifecycleState = "terminal";
+          this.cachedHealth = unavailableHealth(error instanceof Error ? error.message : String(error));
+        }
+        this.startPromise = Promise.resolve(this.cachedHealth);
+        // Killing the executor here would release the generation barrier before its active
+        // process groups have proved empty. The backend/supervisor recovery path owns any
+        // subsequent force-drain decision.
+        throw error;
+      }
+      child.kill();
+      await waitForChildExit(child, this.shutdownExitTimeoutMs);
+      if (!childHasExited(child)) {
+        const detail = error instanceof Error ? error.message : String(error);
+        const message =
+          `Native executor did not exit after its shutdown request failed: ${detail}`;
+        this.finishShutdown(child, message);
+        throw new SecureRunnerError("SECURE_RUNNER_UNAVAILABLE", message);
+      }
+      this.finishShutdown(child, "Native executor was stopped after its shutdown request failed.");
+      return;
+    }
+
+    // A valid acknowledgement is emitted only after every accepted run has produced its terminal
+    // frame and every native process container is empty. Give the executor time to exit naturally;
+    // after that barrier it is safe to terminate an executor that is itself stuck during teardown.
+    await waitForChildExit(child, this.shutdownExitTimeoutMs);
+    if (!childHasExited(child)) {
+      child.kill();
+      await waitForChildExit(child, this.shutdownExitTimeoutMs);
+    }
+    if (!childHasExited(child)) {
+      const message = "Native executor acknowledged shutdown but did not exit.";
+      this.finishShutdown(child, message);
+      throw new SecureRunnerError("SECURE_RUNNER_UNAVAILABLE", message);
+    }
+    this.finishShutdown(child, "Native executor shut down.");
   }
 
   private async startInternal(): Promise<ExecutorHealth> {
+    if (this.cannotStart()) return this.cachedHealth;
     this.receiveBuffer = Buffer.alloc(0);
     this.stderrPreview = "";
     const executable = resolveExecutorPath();
@@ -106,17 +201,21 @@ export class ExecutorClient {
       const child = spawn(executable, [], {
         stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
-        env: minimalExecutorEnvironment(),
+        env: minimalExecutorEnvironment(this.environment),
       });
       this.child = child;
-      child.stdout.on("data", (chunk: Buffer) => this.receive(chunk));
+      child.stdout.on("data", (chunk: Buffer) => this.receive(child, chunk));
       child.stderr.on("data", (chunk: Buffer) => {
+        if (this.child !== child) return;
         const remaining = 16 * 1024 - Buffer.byteLength(this.stderrPreview);
         if (remaining > 0) this.stderrPreview += chunk.subarray(0, remaining).toString("utf8");
       });
-      child.once("error", (error) => this.executorExited(error));
-      child.once("exit", (code, signal) => {
-        this.executorExited(new Error(`Native executor exited (code=${code}, signal=${signal}). ${this.stderrPreview}`));
+      child.once("error", (error) => this.executorExited(child, error));
+      child.once("close", (code, signal) => {
+        this.executorExited(
+          child,
+          new Error(`Native executor exited (code=${code}, signal=${signal}). ${this.stderrPreview}`),
+        );
       });
       // IPC must not keep one-shot unit-test/CLI processes alive. Long-running server
       // processes remain alive through their HTTP listener; when they exit, pipe EOF makes
@@ -139,7 +238,9 @@ export class ExecutorClient {
   private async startWithTransientRetry(): Promise<ExecutorHealth> {
     let health = unavailableHealth("Native executor startup did not run.");
     for (let attempt = 1; attempt <= STARTUP_SELF_TEST_ATTEMPTS; attempt += 1) {
+      if (this.cannotStart()) return this.cachedHealth;
       health = await this.startInternal();
+      if (this.cannotStart()) return this.cachedHealth;
       if (!isTransientExecutorStartupFailure(health) || attempt === STARTUP_SELF_TEST_ATTEMPTS) {
         return health;
       }
@@ -152,17 +253,35 @@ export class ExecutorClient {
   private async stopChildForStartupRetry(): Promise<void> {
     const child = this.child;
     if (!child) return;
+    this.startupRetryChildren.add(child);
     try {
-      await this.request({ type: "shutdown", id: crypto.randomUUID() }, 2_000);
-    } catch {
-      child.kill();
+      try {
+        await this.request(
+          { type: "shutdown", id: crypto.randomUUID() },
+          Math.min(this.shutdownRequestTimeoutMs, 2_000),
+        );
+      } catch {
+        child.kill();
+      }
+      await waitForChildExit(child, this.shutdownExitTimeoutMs);
+      if (!childHasExited(child)) {
+        child.kill();
+        await waitForChildExit(child, this.shutdownExitTimeoutMs);
+      }
+      if (!childHasExited(child)) {
+        if (this.child === child) {
+          this.cachedHealth = unavailableHealth(
+            "Native executor did not exit before a startup retry; restart JudgeDesk before retrying.",
+          );
+          this.lifecycleState = "terminal";
+          this.startPromise = Promise.resolve(this.cachedHealth);
+        }
+        return;
+      }
+      if (this.child === child) this.child = null;
+    } finally {
+      this.startupRetryChildren.delete(child);
     }
-    await waitForChildExit(child, 1_000);
-    if (child.exitCode === null && child.signalCode === null) {
-      child.kill();
-      await waitForChildExit(child, 1_000);
-    }
-    if (this.child === child) this.child = null;
   }
 
   private request(request: ExecutorRequest, timeoutMs = REQUEST_TIMEOUT_MS): Promise<ExecutorResponse> {
@@ -196,12 +315,16 @@ export class ExecutorClient {
     });
   }
 
-  private receive(chunk: Buffer): void {
+  private receive(child: ChildProcessWithoutNullStreams, chunk: Buffer): void {
+    if (this.child !== child) return;
     this.receiveBuffer = Buffer.concat([this.receiveBuffer, chunk]);
     while (this.receiveBuffer.length >= 4) {
       const length = this.receiveBuffer.readUInt32LE(0);
       if (length === 0 || length > MAX_FRAME_BYTES) {
-        this.executorExited(new SecureRunnerError("SECURE_RUNNER_PROTOCOL_ERROR", "Executor sent an invalid frame length."));
+        this.executorExited(
+          child,
+          new SecureRunnerError("SECURE_RUNNER_PROTOCOL_ERROR", "Executor sent an invalid frame length."),
+        );
         return;
       }
       if (this.receiveBuffer.length < length + 4) return;
@@ -211,7 +334,10 @@ export class ExecutorClient {
       try {
         response = JSON.parse(payload.toString("utf8")) as ExecutorResponse;
       } catch (error) {
-        this.executorExited(new SecureRunnerError("SECURE_RUNNER_PROTOCOL_ERROR", String(error)));
+        this.executorExited(
+          child,
+          new SecureRunnerError("SECURE_RUNNER_PROTOCOL_ERROR", String(error)),
+        );
         return;
       }
       const pending = this.pending.get(response.id);
@@ -222,15 +348,51 @@ export class ExecutorClient {
     }
   }
 
-  private executorExited(error: Error): void {
+  private executorExited(child: ChildProcessWithoutNullStreams, error: Error): void {
+    // An earlier executor may finish after a replacement has already started. Its delayed close
+    // event must never clear the replacement or reject the replacement's requests.
+    if (this.child !== child) return;
+    const startupRetry = this.startupRetryChildren.has(child);
     this.cachedHealth = unavailableHealth(error.message);
-    this.startPromise = null;
     this.child = null;
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer);
       pending.reject(error);
     }
     this.pending.clear();
+    if (startupRetry) {
+      this.lifecycleState = "starting";
+      return;
+    }
+    if (
+      this.requiresGuardedMacosDrain()
+      || this.lifecycleState === "draining"
+      || this.lifecycleState === "terminal"
+    ) {
+      this.lifecycleState = "terminal";
+      this.startPromise = Promise.resolve(this.cachedHealth);
+    } else {
+      this.lifecycleState = "idle";
+      this.startPromise = null;
+    }
+  }
+
+  private finishShutdown(
+    child: ChildProcessWithoutNullStreams,
+    diagnostic: string,
+  ): void {
+    if (this.child === child && childHasExited(child)) this.child = null;
+    this.cachedHealth = unavailableHealth(diagnostic);
+    this.lifecycleState = "terminal";
+    this.startPromise = Promise.resolve(this.cachedHealth);
+  }
+
+  private requiresGuardedMacosDrain(): boolean {
+    return this.platform === "darwin" && this.environment.JUDGEDESK_TREE_GUARD_REQUIRED === "1";
+  }
+
+  private cannotStart(): boolean {
+    return this.lifecycleState === "draining" || this.lifecycleState === "terminal";
   }
 }
 
@@ -281,11 +443,11 @@ function targetTriple(platform: NodeJS.Platform, arch: string): string {
   return `${arch}-${platform}`;
 }
 
-function minimalExecutorEnvironment(): NodeJS.ProcessEnv {
+function minimalExecutorEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   // The executor is trusted and needs the user's AppContainer/profile variables during its
   // startup self-test. It constructs a separate allowlisted environment for every untrusted
   // child, so credentials and proxy variables are never forwarded to submissions.
-  return { ...process.env };
+  return { ...environment };
 }
 
 export function isTransientExecutorStartupFailure(health: ExecutorHealth): boolean {
@@ -299,7 +461,7 @@ function delay(milliseconds: number): Promise<void> {
 }
 
 function waitForChildExit(child: ChildProcessWithoutNullStreams, timeoutMs: number): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
+  if (childHasExited(child)) return Promise.resolve();
   return new Promise((resolve) => {
     const done = () => {
       clearTimeout(timer);
@@ -309,6 +471,10 @@ function waitForChildExit(child: ChildProcessWithoutNullStreams, timeoutMs: numb
     const timer = setTimeout(done, timeoutMs);
     child.once("exit", done);
   });
+}
+
+function childHasExited(child: ChildProcessWithoutNullStreams): boolean {
+  return child.exitCode !== null || child.signalCode !== null;
 }
 
 function unavailableHealth(diagnostic: string): ExecutorHealth {

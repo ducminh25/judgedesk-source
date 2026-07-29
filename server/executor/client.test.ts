@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import path from "node:path";
+import { EventEmitter } from "node:events";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import {
   ExecutorClient,
   executorPathCandidates,
@@ -12,6 +14,25 @@ import type {
   ExecutorResponse,
   ExecutorRunSpec,
 } from "./protocol.js";
+
+type ExecutorLifecycleState = "idle" | "starting" | "running" | "draining" | "terminal";
+
+interface ExecutorClientInternals {
+  child: ChildProcessWithoutNullStreams | null;
+  cachedHealth: ExecutorHealth;
+  lifecycleState: ExecutorLifecycleState;
+  startPromise: Promise<ExecutorHealth> | null;
+  request(request: ExecutorRequest, timeoutMs?: number): Promise<ExecutorResponse>;
+  startWithTransientRetry(): Promise<ExecutorHealth>;
+  stopChildForStartupRetry(): Promise<void>;
+  executorExited(child: ChildProcessWithoutNullStreams, error: Error): void;
+  receive(child: ChildProcessWithoutNullStreams, chunk: Buffer): void;
+}
+
+type FakeChild = ChildProcessWithoutNullStreams & {
+  killCalls: number;
+  emitExit(code: number | null, signal: NodeJS.Signals | null): void;
+};
 
 test("executor resolver includes Tauri's suffix-free Windows runtime name", () => {
   const execPath = String.raw`D:\JudgeDesk\server.exe`;
@@ -75,6 +96,225 @@ test("the pre-submit barrier can stop a run after executor startup but before IP
   assert.deepEqual(events, ["barrier"]);
 });
 
+test("guarded macOS shutdown timeout retains the executor and prevents restart", async () => {
+  const client = new ExecutorClient({
+    platform: "darwin",
+    environment: { JUDGEDESK_TREE_GUARD_REQUIRED: "1" },
+    shutdownRequestTimeoutMs: 5,
+    shutdownExitTimeoutMs: 5,
+  });
+  const child = fakeChild();
+  const internals = client as unknown as ExecutorClientInternals;
+  internals.child = child;
+  internals.cachedHealth = readyHealth();
+  internals.lifecycleState = "running";
+  internals.startPromise = Promise.resolve(internals.cachedHealth);
+  internals.request = async () => {
+    throw new Error("simulated shutdown timeout");
+  };
+  let restartAttempts = 0;
+  internals.startWithTransientRetry = async () => {
+    restartAttempts += 1;
+    return readyHealth();
+  };
+
+  await assert.rejects(client.shutdown(), /simulated shutdown timeout/);
+
+  assert.equal(internals.child, child);
+  assert.equal(child.killCalls, 0);
+  assert.equal(internals.lifecycleState, "draining");
+  const health = await client.start();
+  assert.equal(health.ready, false);
+  assert.match(health.diagnostics.join("; "), /drain is still in progress/);
+  assert.equal(restartAttempts, 0);
+});
+
+test("guarded macOS treats an unexpected current-executor exit as terminal", async () => {
+  const client = new ExecutorClient({
+    platform: "darwin",
+    environment: { JUDGEDESK_TREE_GUARD_REQUIRED: "1" },
+  });
+  const child = fakeChild();
+  const internals = client as unknown as ExecutorClientInternals;
+  internals.child = child;
+  internals.cachedHealth = readyHealth();
+  internals.lifecycleState = "running";
+  internals.startPromise = Promise.resolve(internals.cachedHealth);
+  let restartAttempts = 0;
+  internals.startWithTransientRetry = async () => {
+    restartAttempts += 1;
+    return readyHealth();
+  };
+
+  internals.executorExited(child, new Error("simulated executor crash"));
+
+  assert.equal(internals.child, null);
+  assert.equal(internals.lifecycleState, "terminal");
+  const health = await client.start();
+  assert.equal(health.ready, false);
+  assert.match(health.diagnostics.join("; "), /simulated executor crash/);
+  assert.equal(restartAttempts, 0);
+});
+
+test("startup retry retains a non-exiting executor and prevents replacement", async () => {
+  const client = new ExecutorClient({
+    platform: "darwin",
+    environment: { JUDGEDESK_TREE_GUARD_REQUIRED: "1" },
+    shutdownRequestTimeoutMs: 5,
+    shutdownExitTimeoutMs: 5,
+  });
+  const child = fakeChild({ exitOnKill: false });
+  const internals = client as unknown as ExecutorClientInternals;
+  internals.child = child;
+  internals.cachedHealth = readyHealth();
+  internals.lifecycleState = "starting";
+  internals.request = async () => {
+    throw new Error("simulated startup-retry shutdown failure");
+  };
+
+  await internals.stopChildForStartupRetry();
+
+  assert.equal(child.killCalls, 2);
+  assert.equal(internals.child, child);
+  assert.equal(internals.lifecycleState, "terminal");
+  const health = await client.start();
+  assert.equal(health.ready, false);
+  assert.match(health.diagnostics.join("; "), /did not exit before a startup retry/);
+});
+
+test("unguarded shutdown rejects and retains a non-exiting executor", async () => {
+  const client = new ExecutorClient({
+    platform: "win32",
+    environment: {},
+    shutdownRequestTimeoutMs: 5,
+    shutdownExitTimeoutMs: 5,
+  });
+  const child = fakeChild({ exitOnKill: false });
+  const internals = client as unknown as ExecutorClientInternals;
+  internals.child = child;
+  internals.cachedHealth = readyHealth();
+  internals.lifecycleState = "running";
+  internals.startPromise = Promise.resolve(internals.cachedHealth);
+  internals.request = async () => {
+    throw new Error("simulated shutdown request failure");
+  };
+
+  await assert.rejects(client.shutdown(), /did not exit after its shutdown request failed/);
+
+  assert.equal(child.killCalls, 1);
+  assert.equal(internals.child, child);
+  assert.equal(internals.lifecycleState, "terminal");
+  const health = await client.start();
+  assert.equal(health.ready, false);
+  assert.match(health.diagnostics.join("; "), /simulated shutdown request failure/);
+});
+
+test("a delayed old-executor callback cannot clear or corrupt its replacement", () => {
+  const client = new ExecutorClient({ platform: "win32", environment: {} });
+  const oldChild = fakeChild();
+  const newChild = fakeChild();
+  const health = readyHealth();
+  const startPromise = Promise.resolve(health);
+  const internals = client as unknown as ExecutorClientInternals;
+  internals.child = newChild;
+  internals.cachedHealth = health;
+  internals.lifecycleState = "running";
+  internals.startPromise = startPromise;
+
+  // A stale malformed frame and close callback both belong to the old process.
+  internals.receive(oldChild, Buffer.alloc(4));
+  internals.executorExited(oldChild, new Error("old executor exited late"));
+
+  assert.equal(internals.child, newChild);
+  assert.equal(internals.cachedHealth, health);
+  assert.equal(internals.lifecycleState, "running");
+  assert.equal(internals.startPromise, startPromise);
+});
+
+test("shutdown waits for the acknowledged executor to exit before completing", async () => {
+  const client = new ExecutorClient({
+    platform: "win32",
+    environment: {},
+    shutdownExitTimeoutMs: 100,
+  });
+  const child = fakeChild();
+  const internals = client as unknown as ExecutorClientInternals;
+  internals.child = child;
+  internals.cachedHealth = readyHealth();
+  internals.lifecycleState = "running";
+  internals.startPromise = Promise.resolve(internals.cachedHealth);
+  const events: string[] = [];
+  internals.request = async (request) => {
+    events.push("ack");
+    setTimeout(() => {
+      events.push("exit");
+      child.emitExit(0, null);
+    }, 10);
+    return { type: "shutdown_result", id: request.id };
+  };
+
+  await client.shutdown();
+  events.push("done");
+
+  assert.deepEqual(events, ["ack", "exit", "done"]);
+  assert.equal(child.killCalls, 0);
+  assert.equal(internals.child, null);
+  assert.equal(internals.lifecycleState, "terminal");
+});
+
+test("unguarded executor crashes retain the existing restart behavior", async () => {
+  const client = new ExecutorClient({ platform: "win32", environment: {} });
+  const child = fakeChild();
+  const internals = client as unknown as ExecutorClientInternals;
+  internals.child = child;
+  internals.cachedHealth = readyHealth();
+  internals.lifecycleState = "running";
+  internals.startPromise = Promise.resolve(internals.cachedHealth);
+  let restartAttempts = 0;
+  internals.startWithTransientRetry = async () => {
+    restartAttempts += 1;
+    return readyHealth();
+  };
+
+  internals.executorExited(child, new Error("simulated Windows executor crash"));
+  const health = await client.start();
+
+  assert.equal(health.ready, true);
+  assert.equal(restartAttempts, 1);
+});
+
+test("an unguarded crash during startup cannot recache the failed startup promise", async () => {
+  const client = new ExecutorClient({ platform: "win32", environment: {} });
+  const child = fakeChild();
+  const internals = client as unknown as ExecutorClientInternals;
+  internals.child = child;
+  let releaseStartup!: () => void;
+  internals.startWithTransientRetry = async () => {
+    await new Promise<void>((resolve) => {
+      releaseStartup = resolve;
+    });
+    return client.health;
+  };
+
+  const firstStartup = client.start();
+  internals.executorExited(child, new Error("simulated crash during startup"));
+  releaseStartup();
+  const failedHealth = await firstStartup;
+
+  assert.equal(failedHealth.ready, false);
+  assert.equal(internals.startPromise, null);
+
+  let restartAttempts = 0;
+  internals.startWithTransientRetry = async () => {
+    restartAttempts += 1;
+    return readyHealth();
+  };
+  const restartedHealth = await client.start();
+
+  assert.equal(restartedHealth.ready, true);
+  assert.equal(restartAttempts, 1);
+});
+
 function readyHealth(): ExecutorHealth {
   return {
     ready: true,
@@ -110,4 +350,35 @@ function runSpec(): ExecutorRunSpec {
       createdFiles: 8,
     },
   };
+}
+
+function fakeChild({ exitOnKill = true }: { exitOnKill?: boolean } = {}): FakeChild {
+  const child = new EventEmitter() as unknown as FakeChild;
+  let exitCode: number | null = null;
+  let signalCode: NodeJS.Signals | null = null;
+  Object.defineProperties(child, {
+    exitCode: {
+      configurable: true,
+      get: () => exitCode,
+    },
+    signalCode: {
+      configurable: true,
+      get: () => signalCode,
+    },
+  });
+  child.killCalls = 0;
+  child.emitExit = (code, signal) => {
+    exitCode = code;
+    signalCode = signal;
+    child.emit("exit", code, signal);
+    child.emit("close", code, signal);
+  };
+  child.kill = ((signal: NodeJS.Signals | number = "SIGTERM") => {
+    child.killCalls += 1;
+    if (exitOnKill) {
+      child.emitExit(null, typeof signal === "string" ? signal : "SIGTERM");
+    }
+    return true;
+  }) as FakeChild["kill"];
+  return child;
 }

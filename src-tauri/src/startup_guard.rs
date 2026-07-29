@@ -602,6 +602,10 @@ impl InstanceCoordinator {
         self.backend_tree.assign_backend(process_id)
     }
 
+    pub(crate) fn backend_tree_environment(&self) -> Option<(PathBuf, String)> {
+        self.backend_tree.runtime_environment()
+    }
+
     pub(crate) fn wait_for_backend_tree(&self, timeout: Duration) -> io::Result<()> {
         self.backend_tree.wait_for_empty(timeout)
     }
@@ -1041,6 +1045,7 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         let _ = descendant.kill();
+        let _ = descendant.wait();
         panic!("job owner helper timed out");
     }
 

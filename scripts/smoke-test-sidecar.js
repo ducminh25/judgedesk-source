@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 
 const STARTUP_TIMEOUT_MS = 30_000;
 const POLL_INTERVAL_MS = 250;
+const HTTP_REQUEST_TIMEOUT_MS = 5_000;
 const EXPECTED_CONTESTANTS = ["Contestant 2", "Contestant 10"];
 const EXPECTED_PROBLEMS = ["Problem A", "Problem B"];
 
@@ -35,12 +36,13 @@ async function allocatePort() {
 async function stopProcess(child) {
   if (child.exitCode !== null || child.signalCode !== null) return;
   child.kill("SIGTERM");
-  await Promise.race([
-    new Promise((resolve) => child.once("exit", resolve)),
-    delay(2_000),
-  ]);
-  if (child.exitCode === null && child.signalCode === null) {
+  let exit = await waitForProcessExit(child, 2_000);
+  if (exit === null) {
     child.kill("SIGKILL");
+    exit = await waitForProcessExit(child, 2_000);
+  }
+  if (exit === null) {
+    throw new Error(`Sidecar process ${child.pid ?? "(unknown PID)"} did not exit after SIGKILL.`);
   }
 }
 
@@ -66,6 +68,25 @@ async function assertPortIsFree(port) {
   await new Promise((resolve, reject) =>
     server.close((error) => (error ? reject(error) : resolve())),
   );
+}
+
+async function fetchJsonWithinDeadline(url, deadline) {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0) {
+    throw new Error(`HTTP smoke-test deadline expired before requesting ${url}.`);
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(),
+    Math.min(remaining, HTTP_REQUEST_TIMEOUT_MS),
+  );
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    const body = await response.json();
+    return { response, body };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export async function verifyStartupGateRejectsMissingToken(
@@ -120,7 +141,7 @@ export async function verifyStartupGateRejectsMissingToken(
   }
 }
 
-async function verifyWorkspaceRoutes(baseUrl, temporaryRoot) {
+async function verifyWorkspaceRoutes(baseUrl, temporaryRoot, deadline) {
   const contestantsDirectory = path.join(temporaryRoot, "Contestants Folder");
   const problemsDirectory = path.join(temporaryRoot, "Tests Folder");
   for (const name of EXPECTED_CONTESTANTS) {
@@ -130,10 +151,10 @@ async function verifyWorkspaceRoutes(baseUrl, temporaryRoot) {
     fs.mkdirSync(path.join(problemsDirectory, name), { recursive: true });
   }
 
-  const contestantsResponse = await fetch(
+  const { response: contestantsResponse, body: contestants } = await fetchJsonWithinDeadline(
     `${baseUrl}/api/fetch-contestants?path=${encodeURIComponent(contestantsDirectory)}`,
+    deadline,
   );
-  const contestants = await contestantsResponse.json();
   if (
     !contestantsResponse.ok ||
     JSON.stringify(contestants.data) !== JSON.stringify(EXPECTED_CONTESTANTS)
@@ -143,10 +164,10 @@ async function verifyWorkspaceRoutes(baseUrl, temporaryRoot) {
     );
   }
 
-  const problemsResponse = await fetch(
+  const { response: problemsResponse, body: problems } = await fetchJsonWithinDeadline(
     `${baseUrl}/api/fetch-problems?path=${encodeURIComponent(problemsDirectory)}`,
+    deadline,
   );
-  const problems = await problemsResponse.json();
   if (
     !problemsResponse.ok ||
     JSON.stringify(problems.data) !== JSON.stringify(EXPECTED_PROBLEMS)
@@ -208,7 +229,7 @@ export async function smokeTestSidecar(
   child.on("error", (error) => {
     spawnError = error;
   });
-  child.stdin.end(`JUDGEDESK_START/1 ${startupToken}\n`, (error) => {
+  child.stdin.write(`JUDGEDESK_START/1 ${startupToken}\n`, (error) => {
     if (error) spawnError = error;
   });
 
@@ -224,25 +245,46 @@ export async function smokeTestSidecar(
           `Sidecar exited before it became healthy (code=${child.exitCode}, signal=${child.signalCode}).`,
         );
       }
+      let healthy;
       try {
         const baseUrl = `http://127.0.0.1:${port}`;
-        const response = await fetch(`${baseUrl}/api/status`);
+        const { response, body: status } = await fetchJsonWithinDeadline(
+          `${baseUrl}/api/status`,
+          deadline,
+        );
         if (response.ok) {
-          const status = await response.json();
-          if (requireCpp && !status.gpp?.installed) {
-            throw new Error(
-              `Packaged sidecar did not detect Apple Clang: ${JSON.stringify(status.gpp)}`,
-            );
-          }
-          await verifyWorkspaceRoutes(baseUrl, temporaryRoot);
-          console.log(`Sidecar smoke test passed on port ${port}.`);
-          console.log("Contestant and problem discovery routes passed.");
-          console.log(JSON.stringify(status, null, 2));
-          return status;
+          healthy = { baseUrl, status };
         }
       } catch (error) {
         // The server has not started listening yet.
         lastHealthError = error;
+      }
+      if (healthy) {
+        const { baseUrl, status } = healthy;
+        if (requireCpp && !status.gpp?.installed) {
+          throw new Error(
+            `Packaged sidecar did not detect Apple Clang: ${JSON.stringify(status.gpp)}`,
+          );
+        }
+        await verifyWorkspaceRoutes(baseUrl, temporaryRoot, deadline);
+        await new Promise((resolve, reject) => {
+          child.stdin.end((error) => (error ? reject(error) : resolve()));
+        });
+        const parentLossExit = await waitForProcessExit(child, 5_000);
+        if (parentLossExit === null) {
+          throw new Error("Sidecar stayed alive after its authenticated parent channel closed.");
+        }
+        if (parentLossExit.code !== 70 || parentLossExit.signal !== null) {
+          throw new Error(
+            `Sidecar parent-loss exit was not fail-closed (code=${parentLossExit.code}, signal=${parentLossExit.signal}).`,
+          );
+        }
+        await assertPortIsFree(port);
+        console.log(`Sidecar smoke test passed on port ${port}.`);
+        console.log("Contestant and problem discovery routes passed.");
+        console.log("Authenticated parent-channel EOF stopped the sidecar and released its port.");
+        console.log(JSON.stringify(status, null, 2));
+        return status;
       }
       await delay(POLL_INTERVAL_MS);
     }
