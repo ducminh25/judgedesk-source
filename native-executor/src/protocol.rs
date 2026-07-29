@@ -41,6 +41,7 @@ pub enum RunRole {
     Submission,
     Compiler,
     Checker,
+    CheckerRuntime,
     SecurityProbe,
 }
 

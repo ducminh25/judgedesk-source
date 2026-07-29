@@ -3,6 +3,7 @@ import { BUILD_METADATA } from "../build-metadata.js";
 import { executorClient } from "../executor/client.js";
 import type { RunMetadata } from "../types.js";
 import {
+  isPythonCheckerReady,
   isPythonSubmissionReady,
   resolveNativeProtectedToolchain,
   resolveToolchain,
@@ -33,7 +34,7 @@ export function createRunMetadata(): RunMetadata {
         source: detectedPython.source,
         version: detectedPython.version,
         submissionReady: isPythonSubmissionReady(detectedPython),
-        checkerReady: detectedPython.ready,
+        checkerReady: isPythonCheckerReady(detectedPython),
       },
     },
   };

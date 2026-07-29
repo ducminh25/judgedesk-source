@@ -4,6 +4,7 @@ import os from "os";
 import path from "path";
 import {
   clearToolchainDetectionCache,
+  isPythonCheckerReady,
   isPythonSubmissionReady,
   resolveManagedToolchain,
   resolveToolchain,
@@ -92,7 +93,7 @@ export function registerToolchainRoutes(app: Express): void {
           detected: resolvedPython.ready,
           managed: managedPython.ready,
           submissionReady: isPythonSubmissionReady(resolvedPython),
-          checkerReady: resolvedPython.ready,
+          checkerReady: isPythonCheckerReady(resolvedPython),
           installable: TOOLCHAIN_CATALOG.some(
             (entry) => entry.kind === "python" && entry.platform === platform && entry.arch === arch,
           ),

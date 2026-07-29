@@ -64,14 +64,14 @@ lipo "$executor" -verify_arch arm64
 node scripts/smoke-test-sidecar.js "$sidecar"
 
 npm run test:executor
-npx tsx --test server/executor-tests/security.integration.test.ts
-JUDGEDESK_RUN_GUARDIAN_FAULT_GATE=1 \
-  npx tsx --test server/executor-tests/macos-run-guardian.integration.test.ts
-npx tsx scripts/smoke-test-macos-compiler.ts
-
 python_smoke_data="$(mktemp -d)"
 THEMIS_APP_DATA_DIR="$python_smoke_data" \
   JUDGEDESK_SMOKE_INSTALL_MANAGED_PYTHON=1 \
   npx tsx scripts/smoke-test-managed-python.ts
+THEMIS_APP_DATA_DIR="$python_smoke_data" \
+  npx tsx --test server/executor-tests/security.integration.test.ts
+JUDGEDESK_RUN_GUARDIAN_FAULT_GATE=1 \
+  npx tsx --test server/executor-tests/macos-run-guardian.integration.test.ts
+npx tsx scripts/smoke-test-macos-compiler.ts
 
 echo "The Apple Silicon sidecar passed smoke, executor, guardian fault, security, compiler, and managed Python tests."

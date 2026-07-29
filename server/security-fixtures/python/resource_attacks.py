@@ -1,4 +1,5 @@
 import sys
+import os
 import threading
 import time
 import pathlib
@@ -66,6 +67,12 @@ elif mode == "subprocess":
             raise SystemExit(0)
         raise SystemExit(13)
     except (OSError, subprocess.SubprocessError):
+        raise SystemExit(13)
+elif mode == "exec":
+    try:
+        os.execve(sys.argv[2], [sys.argv[2]], {})
+    except OSError as error:
+        print(f"EXEC_ERRNO={error.errno}")
         raise SystemExit(13)
 else:
     raise SystemExit(65)

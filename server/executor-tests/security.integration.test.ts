@@ -51,7 +51,7 @@ const [
   { executorClient },
   { DEFAULT_EXECUTOR_LIMITS },
   { createExecutorWorkspace, importExecutorArtifact },
-  { prepareIsolatedPythonScript },
+  { prepareIsolatedPythonRuntime, prepareIsolatedPythonScript },
   { resolveManagedToolchain },
 ] = await Promise.all([
   import("../executor/client.js"),
@@ -85,6 +85,7 @@ test("security fixtures can only reach the native executor harness", () => {
     "server/judge/compiler.ts",
     "server/judge/testcase-runner.ts",
     "server/judge/custom-checker-runner.ts",
+    "server/judge/python-checker.ts",
     "server/jobs.ts",
   ]) {
     const source = fs.readFileSync(path.join(process.cwd(), relative), "utf8");
@@ -106,7 +107,7 @@ test("macOS Seatbelt contract rejects every process-group escape path by role", 
   );
   assert.match(
     macosPlatform,
-    /RunRole::Submission \| RunRole::Checker \| RunRole::SecurityProbe[\s\S]*?SYS_setpgid SYS_setsid SYS_posix_spawn/,
+    /RunRole::Submission[\s\S]*?RunRole::Checker[\s\S]*?RunRole::CheckerRuntime[\s\S]*?RunRole::SecurityProbe[\s\S]*?SYS_setpgid SYS_setsid SYS_posix_spawn/,
   );
   assert.match(
     macosPlatform,
@@ -199,13 +200,103 @@ test(
   },
 );
 
-test("wall-clock boundary matrix is stable across 20 repetitions", { timeout: 90_000 }, async () => {
+test(
+  "managed Python checker-runtime blocks private files, network, and child processes",
+  {
+    timeout: 30_000,
+    skip: !resolveManagedToolchain("python").ready,
+  },
+  async () => {
+    const hostDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-checker-boundary-"));
+    const secretPath = path.join(hostDirectory, "secret.txt");
+    fs.writeFileSync(secretPath, "PRIVATE", "utf8");
+    try {
+      const read = await runManagedPython(["read", secretPath], "checker-runtime");
+      assert.equal(read.result.reason, "exited", JSON.stringify(read.result));
+      assert.notEqual(read.result.exitCode, 0, read.stdout);
+      assert.doesNotMatch(read.stdout, /SECURITY_ESCAPE/);
+
+      const network = await runManagedPython(["network"], "checker-runtime");
+      assert.equal(network.result.reason, "exited", JSON.stringify(network.result));
+      assert.notEqual(network.result.exitCode, 0, network.stdout);
+
+      const child = await runManagedPython(["subprocess"], "checker-runtime");
+      assert.ok(
+        child.result.reason === "process_limit"
+          || (child.result.reason === "exited" && child.result.exitCode !== 0),
+        JSON.stringify(child.result),
+      );
+      assert.doesNotMatch(child.stdout, /SECURITY_ESCAPE/);
+    } finally {
+      fs.rmSync(hostDirectory, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  "macOS checker-runtime denies exec of a sibling file in the certified package",
+  {
+    timeout: 10_000,
+    skip: process.platform !== "darwin" || !resolveManagedToolchain("python").ready,
+  },
+  async () => {
+    const runtime = await prepareIsolatedPythonRuntime();
+    const packageRoot = path.dirname(path.dirname(runtime.executablePath));
+    const libraryDirectory = path.join(packageRoot, "lib");
+    const siblingName = fs.readdirSync(libraryDirectory)
+      .find((name) => /^libpython.+\.dylib$/.test(name));
+    assert.ok(siblingName, `No sibling Mach-O library found in ${libraryDirectory}`);
+    const siblingPath = path.join(libraryDirectory, siblingName);
+    assert.notEqual(fs.realpathSync(siblingPath), fs.realpathSync(runtime.executablePath));
+
+    const attempt = await runManagedPython(["exec", siblingPath], "checker-runtime");
+    assert.equal(attempt.result.reason, "exited", JSON.stringify(attempt.result));
+    assert.equal(attempt.result.exitCode, 13, attempt.stdout);
+    assert.match(attempt.stdout, /^EXEC_ERRNO=1$/m);
+  },
+);
+
+test(
+  "native checker role blocks private files and network without spawning children",
+  { timeout: 10_000 },
+  async () => {
+    const hostDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-native-checker-boundary-"));
+    const secretPath = path.join(hostDirectory, "secret.txt");
+    fs.writeFileSync(secretPath, "PRIVATE", "utf8");
+    try {
+      const { result, stdout, stderr } = await runNativeChecker([
+        "--test-file-network-probe",
+        secretPath,
+      ]);
+      const diagnostic = JSON.stringify({ result, stdout, stderr });
+      assert.equal(result.reason, "exited", diagnostic);
+      assert.equal(result.exitCode, 0, diagnostic);
+      const probe = JSON.parse(stdout) as Record<string, unknown>;
+      assert.equal(probe.readBlocked, true, stdout);
+      assert.equal(probe.writeBlocked, true, stdout);
+      assert.equal(probe.networkBlocked, true, stdout);
+      assert.equal(fs.readFileSync(secretPath, "utf8"), "PRIVATE");
+    } finally {
+      fs.rmSync(hostDirectory, { recursive: true, force: true });
+    }
+  },
+);
+
+test("native checker role contains child process attempts", { timeout: 10_000 }, async () => {
+  const { result } = await runNativeChecker(
+    ["--test-process-bomb", "128", "500"],
+    { wallTimeMs: 2_000 },
+  );
+  assert.equal(result.reason, "process_limit", JSON.stringify(result));
+});
+
+test("wall-clock boundary matrix is stable across 20 repetitions", { timeout: 120_000 }, async () => {
   // LPAC/Seatbelt loader time is part of wall time, so calibrate it once and choose payloads whose
   // total observed workload targets 80/120% of the configured boundary.
-  // Keep the same 80/120% boundary but use a one-second window so an occasional
-  // Windows scheduler/Defender pause cannot consume the entire 20% safety margin.
-  const limitMs = 1_000;
-  const baseline = await runHelper(["--test-sleep-ms", "0"], { wallTimeMs: 2000 });
+  // A two-second window preserves the same ratios while keeping a transient 200 ms scheduler,
+  // Defender, or remote-desktop pause from consuming the complete under-limit margin.
+  const limitMs = 2_000;
+  const baseline = await runHelper(["--test-sleep-ms", "0"], { wallTimeMs: 4_000 });
   assert.equal(baseline.reason, "exited");
   const loaderMs = baseline.wallTimeUs / 1000;
   const underPayloadMs = Math.max(1, Math.floor(limitMs * 0.8 - loaderMs));
@@ -300,13 +391,63 @@ test("explicit cancellation kills the whole active run", { timeout: 10_000 }, as
       environment: {},
       limits: limits({ wallTimeMs: 6000 }),
     });
+    let terminalResultReceived = false;
+    void pending.then(() => {
+      terminalResultReceived = true;
+    });
     await new Promise((resolve) => setTimeout(resolve, 50));
     assert.equal(await executorClient.cancel(runId), true);
+    assert.equal(
+      terminalResultReceived,
+      true,
+      "cancel acknowledged before the terminal run result/drain barrier",
+    );
     assert.equal((await pending).reason, "cancelled");
   } finally {
     workspace.dispose();
   }
 });
+
+test(
+  "checker-runtime cancellation acknowledges only after its terminal drain",
+  {
+    timeout: 10_000,
+    skip: !resolveManagedToolchain("python").ready,
+  },
+  async () => {
+    const workspace = await createExecutorWorkspace();
+    try {
+      const launch = await prepareIsolatedPythonScript(
+        workspace,
+        path.join(process.cwd(), "server/security-fixtures/python/resource_attacks.py"),
+        "checker_cancel.py",
+      );
+      const runId = `checker_cancel_${crypto.randomUUID().replaceAll("-", "_")}`;
+      const pending = executorClient.run({
+        runId,
+        role: "checker-runtime",
+        workspaceId: workspace.id,
+        executableId: launch.executableId,
+        args: [...launch.args, "sleep-ms", "5000"],
+        stdoutFile: "stdout.txt",
+        stderrFile: "stderr.txt",
+        environment: launch.environment,
+        limits: limits({ wallTimeMs: 6_000, processCount: 1 }),
+      });
+      let terminalResultReceived = false;
+      void pending.then(() => {
+        terminalResultReceived = true;
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      assert.equal(await executorClient.cancel(runId), true);
+      assert.equal(terminalResultReceived, true);
+      assert.equal((await pending).reason, "cancelled");
+    } finally {
+      workspace.dispose();
+    }
+  },
+);
 
 async function runHelper(
   args: string[],
@@ -317,6 +458,7 @@ async function runHelper(
 
 async function runManagedPython(
   args: string[],
+  role: "submission" | "checker-runtime" = "submission",
 ): Promise<{ result: ExecutorRunResult; stdout: string }> {
   const workspace = await createExecutorWorkspace();
   try {
@@ -327,7 +469,7 @@ async function runManagedPython(
     );
     const result = await executorClient.run({
       runId: `python_security_${crypto.randomUUID().replaceAll("-", "_")}`,
-      role: "submission",
+      role,
       workspaceId: workspace.id,
       executableId: launch.executableId,
       args: [...launch.args, ...args],
@@ -345,6 +487,43 @@ async function runManagedPython(
       stdout: fs.existsSync(path.join(workspace.path, "stdout.txt"))
         ? fs.readFileSync(path.join(workspace.path, "stdout.txt"), "utf8")
         : "",
+    };
+  } finally {
+    workspace.dispose();
+  }
+}
+
+async function runNativeChecker(
+  args: string[],
+  overrides: Partial<ExecutorLimits> = {},
+): Promise<{ result: ExecutorRunResult; stdout: string; stderr: string }> {
+  const workspace = await createExecutorWorkspace();
+  try {
+    const executableName = process.platform === "win32" ? "checker.exe" : "checker";
+    workspace.stage(helperBinary, executableName, true);
+    const result = await executorClient.run({
+      runId: `native_checker_security_${crypto.randomUUID().replaceAll("-", "_")}`,
+      role: "checker",
+      workspaceId: workspace.id,
+      executableId: workspace.relative(executableName),
+      args,
+      stdoutFile: "stdout.txt",
+      stderrFile: "stderr.txt",
+      environment: {},
+      limits: {
+        ...DEFAULT_EXECUTOR_LIMITS.checker,
+        wallTimeMs: 2_000,
+        memoryBytes: 128 * MiB,
+        processCount: 1,
+        ...overrides,
+      },
+    });
+    const stdoutPath = path.join(workspace.path, "stdout.txt");
+    const stderrPath = path.join(workspace.path, "stderr.txt");
+    return {
+      result,
+      stdout: fs.existsSync(stdoutPath) ? fs.readFileSync(stdoutPath, "utf8").trim() : "",
+      stderr: fs.existsSync(stderrPath) ? fs.readFileSync(stderrPath, "utf8").trim() : "",
     };
   } finally {
     workspace.dispose();

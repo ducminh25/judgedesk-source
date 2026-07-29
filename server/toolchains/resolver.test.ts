@@ -16,6 +16,7 @@ import {
   buildSelectedDarwinCppCandidates,
   buildToolchainEnvironment,
   inferDarwinDeveloperRoot,
+  isPythonCheckerReady,
   isPythonSubmissionReady,
   isDarwinAppleToolchainLocation,
   isDarwinSandboxCompatibleCpp,
@@ -122,7 +123,7 @@ test("native protection honors the active Python source", () => {
   assert.equal(chooseNativeProtectedToolchain("darwin", "python", { ...managed, ready: false }, system), system);
 });
 
-test("legacy v1: unmanaged Python is not submission-ready without certification", () => {
+test("unmanaged Python is neither submission- nor checker-ready without certification", () => {
   const managed = {
     kind: "python" as const,
     source: "managed" as const,
@@ -141,6 +142,9 @@ test("legacy v1: unmanaged Python is not submission-ready without certification"
   assert.equal(isPythonSubmissionReady(managed), true);
   assert.equal(isPythonSubmissionReady({ ...managed, ready: false }), false);
   assert.equal(isPythonSubmissionReady(system), false);
+  assert.equal(isPythonCheckerReady(managed), true);
+  assert.equal(isPythonCheckerReady({ ...managed, ready: false }), false);
+  assert.equal(isPythonCheckerReady(system), false);
 });
 
 test("toolchain environment prepends the detected executable directory", () => {

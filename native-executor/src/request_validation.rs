@@ -5,6 +5,7 @@ use std::path::{Component, Path, PathBuf};
 
 const MAX_ID_BYTES: usize = 96;
 
+#[derive(Debug)]
 pub struct ValidatedRun {
     pub executable: PathBuf,
     pub workspace: PathBuf,
@@ -53,22 +54,36 @@ pub fn validate_run(root: &Path, spec: &RunSpec) -> Result<ValidatedRun, String>
                 .into(),
         );
     }
-    if in_toolchains
-        && matches!(
-            spec.role,
-            RunRole::Submission | RunRole::Checker | RunRole::SecurityProbe
-        )
+    let isolated_python = spec
+        .environment
+        .get("JUDGEDESK_PYTHON_ISOLATED")
+        .map(String::as_str)
+        == Some("1");
+    if isolated_python && !matches!(spec.role, RunRole::Submission | RunRole::CheckerRuntime) {
+        return Err(
+            "the isolated Python marker is valid only for submissions and checker runtimes".into(),
+        );
+    }
+    if matches!(spec.role, RunRole::Checker | RunRole::CheckerRuntime)
+        && spec.limits.process_count != 1
     {
-        // Python submissions are allowed to reference an isolated interpreter cache. Node marks
-        // those runs with JUDGEDESK_PYTHON_ISOLATED after verifying a managed runtime.
-        if spec
-            .environment
-            .get("JUDGEDESK_PYTHON_ISOLATED")
-            .map(String::as_str)
-            != Some("1")
-        {
+        return Err("checker roles require processCount=1".into());
+    }
+    if matches!(spec.role, RunRole::CheckerRuntime) {
+        if !in_toolchains {
             return Err(
-                "only a verified isolated Python runtime may execute from toolchain cache".into(),
+                "checker-runtime executableId must resolve inside the protected toolchain cache"
+                    .into(),
+            );
+        }
+    } else if in_toolchains && !matches!(spec.role, RunRole::Compiler) {
+        // Submission runtimes retain their legacy typed marker until the language-profile
+        // adapter migration lands. Checker runtimes use an explicit role, so an environment
+        // variable can no longer downgrade an arbitrary native checker out of LPAC.
+        if !matches!(spec.role, RunRole::Submission) || !isolated_python {
+            return Err(
+                "only compilers, checker runtimes, and verified isolated submission runtimes may execute from toolchain cache"
+                    .into(),
             );
         }
     }
@@ -269,6 +284,8 @@ fn reject_links_between(root: &Path, target: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::RunLimits;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn ids_reject_traversal_and_separators() {
@@ -351,5 +368,83 @@ mod tests {
             ("LIBRARY_PATH".into(), "/managed/gcc/lib".into()),
         ]);
         assert!(validate_environment(&environment).is_ok());
+    }
+
+    #[test]
+    fn checker_runtime_is_typed_and_confined_to_the_toolchain_cache() {
+        let root = test_root();
+        let workspace = root.join("workspaces").join("workspace");
+        let runtime = root.join("toolchains").join("python").join("python");
+        fs::create_dir_all(&workspace).unwrap();
+        fs::create_dir_all(runtime.parent().unwrap()).unwrap();
+        fs::create_dir_all(root.join("artifacts")).unwrap();
+        fs::write(&runtime, b"runtime").unwrap();
+        fs::write(workspace.join("checker"), b"checker").unwrap();
+
+        let mut spec = sample_spec(RunRole::CheckerRuntime, "toolchains/python/python");
+        assert!(validate_run(&root, &spec).is_ok());
+
+        spec.executable_id = "workspaces/workspace/checker".into();
+        assert!(validate_run(&root, &spec)
+            .unwrap_err()
+            .contains("protected toolchain cache"));
+
+        spec.executable_id = "toolchains/python/python".into();
+        spec.limits.process_count = 2;
+        assert!(validate_run(&root, &spec)
+            .unwrap_err()
+            .contains("checker roles require processCount=1"));
+
+        spec.role = RunRole::Checker;
+        spec.limits.process_count = 1;
+        spec.environment
+            .insert("JUDGEDESK_PYTHON_ISOLATED".into(), "1".into());
+        assert!(validate_run(&root, &spec)
+            .unwrap_err()
+            .contains("marker is valid only"));
+
+        spec.environment.clear();
+        spec.executable_id = "workspaces/workspace/checker".into();
+        spec.limits.process_count = 2;
+        assert!(validate_run(&root, &spec)
+            .unwrap_err()
+            .contains("checker roles require processCount=1"));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    fn sample_spec(role: RunRole, executable_id: &str) -> RunSpec {
+        RunSpec {
+            run_id: "run".into(),
+            role,
+            workspace_id: "workspace".into(),
+            executable_id: executable_id.into(),
+            args: Vec::new(),
+            stdin_file: None,
+            stdout_file: "stdout.txt".into(),
+            stderr_file: "stderr.txt".into(),
+            environment: BTreeMap::new(),
+            limits: RunLimits {
+                wall_time_ms: 1_000,
+                memory_bytes: 64 * 1024 * 1024,
+                process_count: 1,
+                thread_count: 16,
+                output_bytes: 1_024,
+                total_write_bytes: 2_048,
+                open_files: 16,
+                created_files: 16,
+            },
+        }
+    }
+
+    fn test_root() -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "judgedesk-request-validation-{}-{nonce}",
+            std::process::id()
+        ))
     }
 }

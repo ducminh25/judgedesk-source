@@ -325,6 +325,18 @@ test("Apple Silicon release scripts verify architecture, DMG, and sidecar", () =
   assert.match(sidecarScript, /smoke-test-macos-compiler\.ts/);
   assert.match(sidecarScript, /smoke-test-managed-python\.ts/);
   assert.match(sidecarScript, /JUDGEDESK_SMOKE_INSTALL_MANAGED_PYTHON=1/);
+  const managedPythonSmokeIndex = sidecarScript.indexOf(
+    "npx tsx scripts/smoke-test-managed-python.ts",
+  );
+  const securityGateIndex = sidecarScript.indexOf(
+    "npx tsx --test server/executor-tests/security.integration.test.ts",
+  );
+  assert.ok(managedPythonSmokeIndex >= 0);
+  assert.ok(securityGateIndex > managedPythonSmokeIndex);
+  assert.match(
+    sidecarScript.slice(Math.max(0, securityGateIndex - 100), securityGateIndex),
+    /THEMIS_APP_DATA_DIR="\$python_smoke_data"/,
+  );
   assert.match(sidecarScript, /set_limit\(libc::RLIMIT_NPROC/);
   assert.match(sidecarScript, /JUDGEDESK_TREE_GUARD_GENERATION/);
   assert.match(sidecarScript, /JUDGEDESK_RUN_GUARDIAN_FAULT_GATE=1/);
