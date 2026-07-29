@@ -334,6 +334,10 @@
     "restartNow": "Restart JudgeDesk",
     "restarting": "Restarting..."
   },
+  "languages": {
+    "cpp": "C++",
+    "python": "Python"
+  },
   "toolchains": {
     "idle": "Pending",
     "downloading": "Downloading",
@@ -349,7 +353,7 @@
     "install": "Install",
     "loadError": "Failed to load toolchains",
     "loadingState": "Loading compiler configurations...",
-    "loadingHint": "You can enter and save custom executable paths while automatic detection continues.",
+    "loadingHint": "The registry and saved source choices are being loaded.",
     "cppCompiler": "C/C++ Compiler",
     "pythonRuntime": "Python Runtime",
     "windows": "Windows",
@@ -378,7 +382,60 @@
     "diagnostics": {
       "systemMissing": "No compatible compiler/runtime was found on the system.",
       "managedMissing": "The managed compiler/runtime is not installed.",
-      "customInvalid": "The custom executable path does not exist or is invalid."
+      "customInvalid": "The custom executable path does not exist or is invalid.",
+      "DISABLED_BY_USER": "This language is disabled on this computer.",
+      "PROFILE_UNSUPPORTED_ON_HOST": "This language profile is not supported on this operating system or architecture.",
+      "MANAGED_PACKAGE_UNSUPPORTED": "JudgeDesk does not publish a managed package for this profile and computer.",
+      "MANAGED_PACKAGE_NOT_INSTALLED": "The managed compiler/runtime is not installed.",
+      "MANAGED_PACKAGE_CORRUPT": "The managed package failed integrity validation.",
+      "HEALTH_CHECK_FAILED": "The selected compiler/runtime did not pass its health check.",
+      "LOCAL_PATH_REQUIRED": "Choose the local compiler/runtime executable to continue.",
+      "LOCAL_PATH_MISSING": "The selected local executable no longer exists.",
+      "LOCAL_EXECUTABLE_INVALID": "The selected file is not a supported compiler/runtime executable.",
+      "LOCAL_VERSION_UNSUPPORTED": "This local compiler/runtime version is outside JudgeDesk's tested policy.",
+      "LOCAL_NOT_SANDBOX_COMPATIBLE": "This local compiler/runtime cannot run under the current secure-runner policy.",
+      "AUTO_DETECT_NOT_FOUND": "No local candidate was found. Choose a path or install a managed package.",
+      "AUTO_DETECT_AMBIGUOUS": "Several local candidates were found. Choose the intended path explicitly.",
+      "DETECTION_IN_PROGRESS": "Fast local detection is still running.",
+      "CERTIFICATION_REQUIRED": "Detected, but not yet certified for secure judging. Choose a managed package or complete certification when that workflow is available.",
+      "CERTIFICATE_STALE": "The previous certification is stale and must be renewed.",
+      "TOOLCHAIN_DRIFTED": "The compiler/runtime changed after certification and was blocked."
+    },
+    "registry": {
+      "firstRunHint": "Review each supported language, choose one source, then finish setup.",
+      "managerHint": "Source choices are fixed: an unavailable source never falls back silently.",
+      "preferencesRecovery": "The saved toolchain settings are invalid or from a newer schema. JudgeDesk has disabled every profile and preserved the file for recovery.",
+      "language": "Language",
+      "sourceSelection": "Compiler/runtime source",
+      "actions": "Actions",
+      "experimental": "Experimental",
+      "sources": {
+        "none": "None",
+        "managed": "Managed by toolchain",
+        "local_path": "Local (path)",
+        "local_auto": "Local (auto-detect)"
+      },
+      "statuses": {
+        "not_available": "Not available",
+        "checker_only": "Checker only",
+        "submission_ready": "Submission ready"
+      },
+      "discovery": {
+        "not_started": "Fast local detection has not started yet.",
+        "running": "Fast local detection is running in the background...",
+        "complete": "Fast local detection is complete.",
+        "failed": "Fast local detection failed. Use Scan again to retry explicitly."
+      },
+      "registryRevision": "Language registry revision {{revision}}",
+      "browseTitle": "Choose the {{language}} executable",
+      "verifyAndUse": "Verify & use",
+      "downloadAndApply": "Download and apply for JudgeDesk",
+      "applyManaged": "Apply managed package",
+      "uninstallConfirm": "Uninstall this managed package? Local compilers and runtimes are never removed.",
+      "mutationsBlocked": "Compiler and runtime choices are locked while judging is in progress. Cancel or finish the current judging session before changing them.",
+      "managedUnavailable": "No managed package is available for this computer.",
+      "noCandidates": "No candidate was found in PATH or the bounded standard locations.",
+      "detectedCandidates": "Detected candidates: {{count}}"
     },
     "setup": {
       "title": "Compiler Setup Wizard",

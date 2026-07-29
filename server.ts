@@ -9,6 +9,7 @@ import { registerProblemRoutes } from "./server/routes/problem-routes.js";
 import { registerSystemRoutes } from "./server/routes/system-routes.js";
 import { registerToolchainRoutes } from "./server/routes/toolchain-routes.js";
 import { startParentWatchdog } from "./server/platform/parent-watchdog.js";
+import { startInitialToolchainDiscovery } from "./server/toolchains/discovery.js";
 
 startParentWatchdog(process.env.JUDGEDESK_PARENT_PID, async () => {
   console.error("[Tauri Shell] Parent process ended; shutting down backend sidecars.");
@@ -59,6 +60,9 @@ async function startServer() {
   registerProblemRoutes(app);
   registerExportRoutes(app);
   registerToolchainRoutes(app);
+  // D15 fast discovery is passive and asynchronous. It runs only when no
+  // persisted first-run snapshot exists, so it never delays the main window.
+  startInitialToolchainDiscovery();
 
   registerBatchJudgeRoute(app);
 

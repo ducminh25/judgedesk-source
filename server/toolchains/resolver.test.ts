@@ -81,9 +81,7 @@ test("macOS resolves the real compiler inside the selected Developer root", () =
   );
 });
 
-// Legacy characterization only. Selection schema v2 must replace this with
-// explicit-source/no-fallback assertions; this is not the future contract.
-test("legacy v1: Windows native protection overrides C++ selection with managed", () => {
+test("native protection preserves explicit C++ source intent without fallback", () => {
   const managed = {
     kind: "cpp" as const,
     source: "managed" as const,
@@ -98,9 +96,31 @@ test("legacy v1: Windows native protection overrides C++ selection with managed"
     version: "16.1.0",
     ready: true,
   };
-  assert.equal(chooseNativeProtectedToolchain("win32", "cpp", managed, system), managed);
+  assert.deepEqual(
+    chooseNativeProtectedToolchain("win32", "cpp", managed, system),
+    {
+      ...system,
+      ready: false,
+      diagnostic:
+        "The selected local C++ compiler has not been certified for the Windows secure runner.",
+      diagnosticCode: "CERTIFICATION_REQUIRED",
+    },
+  );
   assert.equal(chooseNativeProtectedToolchain("darwin", "cpp", managed, system), system);
-  assert.equal(chooseNativeProtectedToolchain("win32", "cpp", { ...managed, ready: false }, system), system);
+  assert.equal(
+    chooseNativeProtectedToolchain("win32", "cpp", managed, managed),
+    managed,
+  );
+  assert.deepEqual(
+    chooseNativeProtectedToolchain("win32", "cpp", { ...managed, ready: false }, system),
+    {
+      ...system,
+      ready: false,
+      diagnostic:
+        "The selected local C++ compiler has not been certified for the Windows secure runner.",
+      diagnosticCode: "CERTIFICATION_REQUIRED",
+    },
+  );
 });
 
 test("native protection honors the active Python source", () => {
@@ -238,7 +258,7 @@ test("legacy v1 preferences round-trip independent C++ and Python selections", (
   assert.equal(loaded.customCppPath, "C:\\mock\\g++.exe");
   assert.equal(loaded.preferredSourcePython, "managed");
   assert.equal(loaded.customPythonPath, "C:\\remembered\\python.exe");
-  assert.deepEqual(loaded.installedToolchains, ["gcc-windows-x64"]);
+  assert.deepEqual(loaded.installedToolchains, []);
 });
 
 test("toolchainsDir resolves and creates directories", (t) => {

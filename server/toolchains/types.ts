@@ -1,5 +1,12 @@
 export type ToolchainKind = "cpp" | "python";
-export type ToolchainSource = "managed" | "custom" | "system" | "sandbox";
+import type { ReadinessReasonCode } from "../languages/contracts.js";
+
+export type ToolchainSource =
+  | "none"
+  | "managed"
+  | "custom"
+  | "system"
+  | "sandbox";
 
 export interface ToolchainCatalogEntry {
   id: string;
@@ -31,6 +38,8 @@ export interface ResolvedToolchain {
   version: string;
   ready: boolean;
   diagnostic?: string;
+  diagnosticCode?: ReadinessReasonCode;
+  candidateId?: string;
 }
 
 export interface InstallProgress {
