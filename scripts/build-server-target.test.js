@@ -282,8 +282,24 @@ test("Apple Silicon release scripts verify architecture, DMG, and sidecar", () =
     new URL("./verify-macos-arm64-bundle.sh", import.meta.url),
     "utf8",
   );
-  const macExecutor = fs.readFileSync(
+  const macPlatform = fs.readFileSync(
     new URL("../native-executor/src/platform/macos.rs", import.meta.url),
+    "utf8",
+  );
+  const macLauncher = fs.readFileSync(
+    new URL("../native-executor/src/macos_launcher.rs", import.meta.url),
+    "utf8",
+  );
+  const macProcess = fs.readFileSync(
+    new URL("../native-executor/src/macos_process.rs", import.meta.url),
+    "utf8",
+  );
+  const macController = fs.readFileSync(
+    new URL("../native-executor/src/macos_run_controller.rs", import.meta.url),
+    "utf8",
+  );
+  const macGuardian = fs.readFileSync(
+    new URL("../native-executor/src/macos_run_guardian.rs", import.meta.url),
     "utf8",
   );
   const executorMain = fs.readFileSync(
@@ -292,6 +308,10 @@ test("Apple Silicon release scripts verify architecture, DMG, and sidecar", () =
   );
   const securityHarness = fs.readFileSync(
     new URL("../server/executor-tests/security.integration.test.ts", import.meta.url),
+    "utf8",
+  );
+  const guardianHarness = fs.readFileSync(
+    new URL("../server/executor-tests/macos-run-guardian.integration.test.ts", import.meta.url),
     "utf8",
   );
 
@@ -303,18 +323,28 @@ test("Apple Silicon release scripts verify architecture, DMG, and sidecar", () =
   assert.match(sidecarScript, /smoke-test-managed-python\.ts/);
   assert.match(sidecarScript, /JUDGEDESK_SMOKE_INSTALL_MANAGED_PYTHON=1/);
   assert.match(sidecarScript, /set_limit\(libc::RLIMIT_NPROC/);
+  assert.match(sidecarScript, /JUDGEDESK_TREE_GUARD_GENERATION/);
+  assert.match(sidecarScript, /JUDGEDESK_RUN_GUARDIAN_FAULT_GATE=1/);
   assert.match(sidecarScript, /--test-process-bomb/);
   assert.match(sidecarScript, /kernel process ceiling contains a real process bomb/);
   assert.doesNotMatch(sidecarScript, /macOS diagnostics/);
-  assert.match(macExecutor, /libc::wait4/);
-  assert.match(macExecutor, /ru_maxrss/);
-  assert.match(macExecutor, /set_limit\(libc::RLIMIT_NPROC, nproc_ceiling\)/);
-  assert.match(macExecutor, /startup_process_limit_probe/);
-  assert.match(macExecutor, /wait_for_process_group_empty/);
+  assert.match(macLauncher, /libc::wait4/);
+  assert.match(macLauncher, /ru_maxrss/);
+  assert.match(macLauncher, /set_limit\(libc::RLIMIT_NPROC, limits\.nproc_ceiling\)/);
+  assert.match(macLauncher, /PREPARED_BROADCAST_ORDER/);
+  assert.match(macProcess, /stop_kill_anchor_group_and_reap/);
+  assert.match(macController, /no owned unreaped anchor pin/);
+  assert.doesNotMatch(macController, /signal_live_anchor_group/);
+  assert.match(macGuardian, /POSIX_SPAWN_CLOEXEC_DEFAULT/);
+  assert.match(macPlatform, /startup_process_limit_probe/);
   assert.match(executorMain, /Some\("--test-process-bomb"\)/);
   assert.match(securityHarness, /kernel process ceiling contains a real process bomb/);
   assert.match(securityHarness, /processCount:\s*1/);
   assert.match(securityHarness, /"process_limit"/);
+  assert.match(
+    guardianHarness,
+    /macOS per-run guardian enforces destructive single-fault boundaries/,
+  );
   assert.match(bundleScript, /hdiutil attach "\$dmg_file" -readonly -nobrowse/);
   assert.match(bundleScript, /trap cleanup_dmg_mount EXIT/);
   assert.match(bundleScript, /Contents\/MacOS\/themis-v2" -verify_arch arm64/);
@@ -323,6 +353,25 @@ test("Apple Silicon release scripts verify architecture, DMG, and sidecar", () =
   assert.match(bundleScript, /com\.apple\.security\.cs\.allow-jit/);
   assert.match(bundleScript, /smoke-test-sidecar\.js/);
   assert.match(bundleScript, /--require-cpp/);
+});
+
+test("macOS executor benchmark establishes its guard before loading the client", () => {
+  const benchmark = fs.readFileSync(
+    new URL("./executor-benchmark.ts", import.meta.url),
+    "utf8",
+  );
+  const provisionIndex = benchmark.indexOf(
+    "const ownedMacosTreeGuard = provisionMacosTreeGuard();",
+  );
+  const clientImportIndex = benchmark.indexOf(
+    'import("../server/executor/client.js")',
+  );
+
+  assert.ok(provisionIndex >= 0);
+  assert.ok(clientImportIndex > provisionIndex);
+  assert.doesNotMatch(benchmark, /import \{ executorClient \} from/);
+  assert.match(benchmark, /partial macOS process-tree guard environment/);
+  assert.match(benchmark, /releaseMacosTreeGuard\(ownedMacosTreeGuard\)/);
 });
 
 test("release publishing targets the public distribution repository", () => {

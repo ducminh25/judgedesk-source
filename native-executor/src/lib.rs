@@ -1,3 +1,9 @@
+pub mod fault_trace;
+pub mod guardian_protocol;
+pub mod macos_launcher;
+pub mod macos_process;
+pub mod macos_run_controller;
+pub mod macos_run_guardian;
 pub mod platform;
 pub mod protocol;
 pub mod request_validation;

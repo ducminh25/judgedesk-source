@@ -298,7 +298,14 @@ export class ExecutorClient {
     return new Promise<ExecutorResponse>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(request.id);
-        reject(new SecureRunnerError("SECURE_RUNNER_PROTOCOL_ERROR", `Executor request ${request.id} timed out.`));
+        const stderr = this.stderrPreview.trim();
+        reject(
+          new SecureRunnerError(
+            "SECURE_RUNNER_PROTOCOL_ERROR",
+            `Executor request ${request.id} timed out.` +
+              (stderr ? ` Executor stderr: ${stderr}` : ""),
+          ),
+        );
       }, timeoutMs);
       this.pending.set(request.id, { resolve, reject, timer });
       child.stdin.write(Buffer.concat([header, payload]), (error) => {

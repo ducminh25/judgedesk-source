@@ -1,14 +1,16 @@
+pub const REQUIRED_ENV: &str = "JUDGEDESK_TREE_GUARD_REQUIRED";
+pub const PATH_ENV: &str = "JUDGEDESK_TREE_GUARD_PATH";
+pub const GENERATION_ENV: &str = "JUDGEDESK_TREE_GUARD_GENERATION";
+
 #[cfg(target_os = "macos")]
 mod macos {
+    use super::{GENERATION_ENV, PATH_ENV, REQUIRED_ENV};
     use std::fs::{File, OpenOptions};
     use std::io::{Read, Seek, SeekFrom};
     use std::os::fd::AsRawFd;
     use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
     use std::path::{Path, PathBuf};
 
-    const REQUIRED_ENV: &str = "JUDGEDESK_TREE_GUARD_REQUIRED";
-    const PATH_ENV: &str = "JUDGEDESK_TREE_GUARD_PATH";
-    const GENERATION_ENV: &str = "JUDGEDESK_TREE_GUARD_GENERATION";
     const HEADER: &str = "JUDGEDESK_PROCESS_TREE/1";
     const MAX_METADATA_BYTES: u64 = 160;
 
@@ -48,7 +50,8 @@ mod macos {
             .map_err(|error| format!("PROCESS_TREE_GUARD_METADATA_FAILED: {error}"))?;
         if !metadata.file_type().is_file()
             || metadata.uid() != unsafe { libc::geteuid() }
-            || metadata.permissions().mode() & 0o077 != 0
+            || metadata.permissions().mode() & 0o777 != 0o600
+            || metadata.nlink() != 1
             || metadata.len() > MAX_METADATA_BYTES
         {
             return Err("PROCESS_TREE_GUARD_UNTRUSTED_FILE".into());
@@ -151,6 +154,25 @@ mod macos {
             .expect_err("wrong generation must fail")
             .contains("GENERATION_MISMATCH"));
             drop(guard);
+        }
+
+        #[test]
+        fn shared_guard_requires_exact_private_mode_and_single_link() {
+            let directory = TestDirectory::new();
+            let (path, _owner) = create_guard_file(&directory);
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o640))
+                .expect("make guard permissions too broad");
+            assert!(acquire(&path, GENERATION)
+                .expect_err("group-readable guard must fail")
+                .contains("UNTRUSTED_FILE"));
+
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o600))
+                .expect("restore private guard permissions");
+            fs::hard_link(&path, directory.0.join("process-tree.alias"))
+                .expect("create second guard hard link");
+            assert!(acquire(&path, GENERATION)
+                .expect_err("multiply-linked guard must fail")
+                .contains("UNTRUSTED_FILE"));
         }
 
         #[test]

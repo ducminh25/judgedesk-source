@@ -6,18 +6,29 @@ pub fn initialize_root(platform_root: PathBuf) -> Result<PathBuf, String> {
     fs::create_dir_all(root.join("workspaces"))
         .and_then(|_| fs::create_dir_all(root.join("toolchains")))
         .map_err(|error| format!("cannot initialize executor root: {error}"))?;
-    let artifacts = root.join("artifacts");
-    if artifacts.exists() {
-        fs::remove_dir_all(&artifacts)
-            .map_err(|error| format!("cannot clear executor artifact cache: {error}"))?;
+    for (name, description) in [
+        ("artifacts", "executor artifact cache"),
+        ("profiles", "Seatbelt profile cache"),
+    ] {
+        let directory = root.join(name);
+        if directory.exists() {
+            fs::remove_dir_all(&directory)
+                .map_err(|error| format!("cannot clear {description}: {error}"))?;
+        }
+        fs::create_dir_all(&directory)
+            .map_err(|error| format!("cannot initialize {description}: {error}"))?;
     }
-    fs::create_dir_all(&artifacts)
-        .map_err(|error| format!("cannot initialize executor artifact cache: {error}"))?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(&root, fs::Permissions::from_mode(0o700))
-            .map_err(|error| format!("cannot protect executor root: {error}"))?;
+        let profiles = root.join("profiles");
+        for (directory, description) in [
+            (root.as_path(), "executor root"),
+            (profiles.as_path(), "Seatbelt profile cache"),
+        ] {
+            fs::set_permissions(directory, fs::Permissions::from_mode(0o700))
+                .map_err(|error| format!("cannot protect {description}: {error}"))?;
+        }
     }
     Ok(root)
 }

@@ -1,14 +1,21 @@
-use super::{failure, reported_peak_memory_bytes, root_display, ActiveRuns, Cancellation};
+use super::{failure, root_display, ActiveRuns};
+use crate::fault_trace::{FaultTrace, FaultTraceEvent, FAULT_EVENT_LOG_ENV, FAULT_GATE_ENV};
+use crate::guardian_protocol::{
+    generate_nonce, FrameIdentity, LauncherMonitorLimits, LauncherRlimits, LauncherSpec,
+};
 use crate::protocol::{ExecutorHealth, RunLimits, RunReason, RunResult, RunRole, RunSpec};
 use crate::request_validation::{validate_run, ValidatedRun};
-use crate::workspace::{file_size, initialize_root, inspect_workspace};
-use std::fs::{self, File, OpenOptions};
-use std::os::unix::process::{CommandExt, ExitStatusExt};
+use crate::workspace::initialize_root;
+use std::collections::BTreeMap;
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+
+const TRUSTED_SUPERVISOR_NPROC_OVERHEAD: u64 = 1;
+const OBSERVABLE_PROCESS_LIMIT_OVERFLOW: u64 = 1;
+const REAL_USER_PROCESS_DRIFT_ALLOWANCE: u64 = 4;
 
 pub struct MacosPlatform {
     self_test: SelfTest,
@@ -28,6 +35,7 @@ impl MacosPlatform {
             return Err("SECURE_RUNNER_UNAVAILABLE: /usr/bin/sandbox-exec was not found".into());
         }
         let root = initialize_root(std::env::temp_dir())?;
+        emit_fault_gate_ready()?;
         let mut platform = Self {
             self_test: SelfTest {
                 ready: false,
@@ -110,12 +118,16 @@ impl MacosPlatform {
                     created_files: 16,
                 },
             };
-            let validated = validate_run(root, &spec)?;
             let active: ActiveRuns =
                 Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
-            let run = self.run_inner(&spec, &validated, &active)?;
+            let run = self.run_inner(root, &spec, &active)?;
             let output = fs::read_to_string(workspace.join("probe.stdout"))
-                .map_err(|error| format!("cannot read security probe: {error}"))?;
+                .map_err(|error| {
+                    format!(
+                        "cannot read security probe: {error}; runReason={:?}; runExit={:?}; runSignal={:?}; runDiagnostic={:?}",
+                        run.reason, run.exit_code, run.signal_or_status, run.diagnostic
+                    )
+                })?;
             let probe: serde_json::Value = serde_json::from_str(output.trim()).map_err(|error| {
                 let stderr = fs::read_to_string(workspace.join("probe.stderr"))
                     .unwrap_or_default()
@@ -123,8 +135,8 @@ impl MacosPlatform {
                     .take(1024)
                     .collect::<String>();
                 format!(
-                    "security probe returned invalid JSON: {error}; reason={:?}; exitCode={:?}; signal={:?}; stderr={stderr:?}",
-                    run.reason, run.exit_code, run.signal_or_status
+                    "security probe returned invalid JSON: {error}; reason={:?}; exitCode={:?}; signal={:?}; diagnostic={:?}; stderr={stderr:?}",
+                    run.reason, run.exit_code, run.signal_or_status, run.diagnostic
                 )
             })?;
             let mut process_limit_spec = spec.clone();
@@ -133,9 +145,7 @@ impl MacosPlatform {
                 vec!["--test-process-bomb".into(), "128".into(), "500".into()];
             process_limit_spec.stdout_file = "process-limit.stdout".into();
             process_limit_spec.stderr_file = "process-limit.stderr".into();
-            let process_limit_paths = validate_run(root, &process_limit_spec)?;
-            let process_limit_run =
-                self.run_inner(&process_limit_spec, &process_limit_paths, &active)?;
+            let process_limit_run = self.run_inner(root, &process_limit_spec, &active)?;
             let sentinel_intact = fs::read(&sentinel)
                 .map(|value| value == b"JUDGEDESK_SENTINEL")
                 .unwrap_or(false);
@@ -196,8 +206,14 @@ impl MacosPlatform {
         })
     }
 
-    pub fn run(&self, spec: &RunSpec, paths: &ValidatedRun, active: &ActiveRuns) -> RunResult {
-        match self.run_inner(spec, paths, active) {
+    pub fn run(
+        &self,
+        root: &Path,
+        spec: &RunSpec,
+        _paths: &ValidatedRun,
+        active: &ActiveRuns,
+    ) -> RunResult {
+        match self.run_inner(root, spec, active) {
             Ok(result) => result,
             Err(error) => failure(spec, RunReason::LaunchError, error),
         }
@@ -205,384 +221,30 @@ impl MacosPlatform {
 
     fn run_inner(
         &self,
+        root: &Path,
         spec: &RunSpec,
-        paths: &ValidatedRun,
         active: &ActiveRuns,
     ) -> Result<RunResult, String> {
-        let setup_started = Instant::now();
-        let profile = build_profile(spec, paths)?;
-        let profile_path = paths.workspace.join(".judgedesk-seatbelt.sb");
-        fs::write(&profile_path, profile)
-            .map_err(|error| format!("write Seatbelt profile: {error}"))?;
-        let stdin = match &paths.stdin {
-            Some(path) => File::open(path).map_err(|error| format!("open stdin: {error}"))?,
-            None => File::open("/dev/null").map_err(|error| format!("open /dev/null: {error}"))?,
-        };
-        let stdout = OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .write(true)
-            .open(&paths.stdout)
-            .map_err(|error| format!("open stdout: {error}"))?;
-        let stderr = OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .write(true)
-            .open(&paths.stderr)
-            .map_err(|error| format!("open stderr: {error}"))?;
-
-        let launch_executable = if matches!(spec.role, RunRole::Compiler) {
-            validated_compiler_executable(spec)?
-        } else {
-            paths.executable.clone()
-        };
-
-        let mut command = Command::new("/usr/bin/sandbox-exec");
-        command
-            .arg("-f")
-            .arg(&profile_path)
-            .arg(&launch_executable)
-            .args(&spec.args)
-            .current_dir(&paths.workspace)
-            .stdin(Stdio::from(stdin))
-            .stdout(Stdio::from(stdout))
-            .stderr(Stdio::from(stderr))
-            .env_clear()
-            .envs(minimal_environment(spec, &paths.workspace));
-        // RLIMIT_FSIZE applies to every regular file, not just redirected stdout/stderr. Use
-        // the aggregate write ceiling here and distinguish output from workspace writes after
-        // wait4; otherwise a workspace bomb is incorrectly reported as OLE.
-        let fsize = spec.limits.total_write_bytes;
-        let nofile = spec.limits.open_files as u64;
-        let address_space_slack = spec
-            .limits
-            .memory_bytes
-            .saturating_mul(8)
-            .max(512 * 1024 * 1024);
-        // Darwin processes can begin with a very large reserved virtual address space
-        // (dyld/shared-cache and allocator reservations). A fixed RLIMIT_AS can therefore be
-        // below the launcher's existing VM size and setrlimit returns EINVAL before exec. Keep
-        // an emergency ceiling, but calibrate it from the trusted launcher's actual baseline.
-        // A fresh dyld/malloc launch can reserve substantially more VM than the already-running
-        // executor, so retain at least one additional baseline of headroom.
-        let executor_virtual_size = process_usage(std::process::id() as i32).virtual_memory_bytes;
-        let address_space = (executor_virtual_size > 0).then(|| {
-            executor_virtual_size
-                .saturating_mul(2)
-                .max(executor_virtual_size.saturating_add(address_space_slack))
-        });
-        // Seatbelt must allow fork because sandbox-exec itself forks before exec. A polling
-        // process-group monitor is therefore not a sufficient security boundary: a fork bomb can
-        // exhaust the user's process table between samples. Calibrate RLIMIT_NPROC against the
-        // current real-user process count and permit only one observable overflow process beyond
-        // this run's configured allowance. The monitor can then classify process_limit while the
-        // kernel prevents an unbounded burst.
-        let user_process_baseline = real_user_process_count()?;
-        let inherited_nproc_max = hard_resource_limit(libc::RLIMIT_NPROC)?;
-        let nproc_ceiling = user_process_baseline
-            .saturating_add(spec.limits.process_count as u64)
-            .saturating_add(1)
-            .min(inherited_nproc_max);
-        if nproc_ceiling <= user_process_baseline {
-            return Err(format!(
-                "RLIMIT_NPROC has no safe launch headroom: baseline={user_process_baseline}, hardMax={inherited_nproc_max}"
-            ));
-        }
-        unsafe {
-            command.pre_exec(move || {
-                if libc::setpgid(0, 0) != 0 {
-                    return Err(std::io::Error::last_os_error());
-                }
-                set_limit(libc::RLIMIT_CORE, 0)?;
-                set_limit(libc::RLIMIT_FSIZE, fsize)?;
-                set_limit(libc::RLIMIT_NOFILE, nofile)?;
-                set_limit(libc::RLIMIT_NPROC, nproc_ceiling)?;
-                if let Some(address_space) = address_space {
-                    set_limit(libc::RLIMIT_AS, address_space)?;
-                }
-                Ok(())
-            });
-        }
-        let (baseline_bytes, baseline_files) = inspect_workspace(&paths.workspace);
-        let child = command
-            .spawn()
-            .map_err(|error| format!("launch Seatbelt process: {error}"))?;
-        let security_setup_time_us =
-            setup_started.elapsed().as_micros().min(u64::MAX as u128) as u64;
-        let started = Instant::now();
-        let pgid = child.id() as i32;
-        // wait4 below owns reaping and returns the kernel high-water metrics that Child::wait
-        // does not expose.
-        drop(child);
-        let cancelled = Arc::new(AtomicBool::new(false));
-        let cancellation: Arc<dyn Cancellation> = Arc::new(ProcessGroupCancellation {
-            pgid,
-            cancelled: Arc::clone(&cancelled),
-        });
-        {
-            let mut runs = active
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner());
-            if runs.insert(spec.run_id.clone(), cancellation).is_some() {
-                kill_group(pgid);
-                let _ = wait4_process(pgid, 0);
-                return Err("duplicate active runId".into());
-            }
-        }
-
-        let mut reason = RunReason::Exited;
-        let mut diagnostic = None;
-        let mut peak_memory = 0_u64;
-        let (exit_status, final_rusage) = loop {
-            let observed = match wait4_process(pgid, libc::WNOHANG) {
-                Ok(observed) => observed,
-                Err(error) => {
-                    return fail_closed_monitor_error(active, &spec.run_id, pgid, error);
-                }
-            };
-            if let Some((status, rusage)) = observed {
-                break (status, rusage);
-            }
-            let usage = process_group_usage(pgid);
-            peak_memory = peak_memory.max(usage.memory_bytes);
-            if cancelled.load(Ordering::Acquire) {
-                reason = RunReason::Cancelled;
-            } else if usage.inventory_failed {
-                reason = RunReason::InternalError;
-                diagnostic = Some("cannot inventory sandbox process group".into());
-            } else if started.elapsed() >= Duration::from_millis(spec.limits.wall_time_ms) {
-                reason = RunReason::WallTimeLimit;
-            } else if usage.memory_bytes > spec.limits.memory_bytes {
-                reason = RunReason::MemoryLimit;
-            } else if usage.processes > spec.limits.process_count {
-                reason = RunReason::ProcessLimit;
-            } else if usage.threads > spec.limits.thread_count {
-                reason = RunReason::ThreadLimit;
-            } else if file_size(&paths.stdout).saturating_add(file_size(&paths.stderr))
-                > spec.limits.output_bytes
-            {
-                reason = RunReason::OutputLimit;
-            } else {
-                let (bytes, files) = inspect_workspace(&paths.workspace);
-                if bytes.saturating_sub(baseline_bytes) > spec.limits.total_write_bytes {
-                    reason = RunReason::WriteLimit;
-                } else if files.saturating_sub(baseline_files) > spec.limits.created_files {
-                    reason = RunReason::WriteLimit;
-                    diagnostic = Some("created-file limit exceeded".into());
-                }
-            }
-            if !matches!(reason, RunReason::Exited) {
-                kill_group(pgid);
-                let (status, rusage) = match wait4_process(pgid, 0) {
-                    Ok(Some(result)) => result,
-                    Ok(None) => {
-                        return fail_closed_monitor_error(
-                            active,
-                            &spec.run_id,
-                            pgid,
-                            "wait4 returned no child after group kill".into(),
-                        );
-                    }
-                    Err(error) => {
-                        return fail_closed_monitor_error(active, &spec.run_id, pgid, error);
-                    }
-                };
-                break (status, rusage);
-            }
-            std::thread::sleep(Duration::from_millis(2));
-        };
-        let wall_time_us = started.elapsed().as_micros().min(u64::MAX as u128) as u64;
-        let collection_started = Instant::now();
-        let usage = process_group_usage(pgid);
-        peak_memory = peak_memory.max(usage.memory_bytes);
-        if matches!(reason, RunReason::Exited)
-            && usage.processes.saturating_add(1) > spec.limits.process_count
-        {
-            // The leader can exit between monitor samples while descendants remain. Include the
-            // reaped leader when classifying that race, then terminate the surviving group.
-            reason = RunReason::ProcessLimit;
-        }
-        if usage.inventory_failed || usage.processes > 0 {
-            kill_group(pgid);
-            while !wait_for_process_group_empty(pgid, Duration::from_secs(2)) {
-                reason = RunReason::InternalError;
-                diagnostic = Some(
-                    "sandbox process group teardown is stalled; the executor is retaining its generation guard"
-                        .into(),
-                );
-                eprintln!(
-                    "EXECUTOR_PROCESS_GROUP_DRAIN_STALLED pgid={pgid}; retaining generation guard"
-                );
-            }
-        }
-        active
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .remove(&spec.run_id);
-        // Darwin reports ru_maxrss in bytes (Linux uses KiB). This survives process exit and
-        // catches short resident-memory spikes that the 2 ms live sampler can miss.
-        peak_memory = peak_memory.max(final_rusage.ru_maxrss.max(0) as u64);
-        let (workspace_bytes, files) = inspect_workspace(&paths.workspace);
-        let exit_signal = exit_status.signal();
-        let stdout_bytes = file_size(&paths.stdout);
-        let stderr_bytes = file_size(&paths.stderr);
-        if matches!(reason, RunReason::Exited) && cancelled.load(Ordering::Acquire) {
-            // cancel() can kill the group immediately before wait4 reaps it. Preserve the
-            // user's cancellation intent even when reap wins that small race.
-            reason = RunReason::Cancelled;
-        }
-        if matches!(reason, RunReason::Exited) {
-            // RLIMIT_FSIZE can terminate a fast writer before the polling loop observes a file
-            // larger than the limit. Attribute SIGXFSZ to output only when redirected output
-            // reached its own cap; otherwise it is a workspace write-limit violation.
-            if peak_memory > spec.limits.memory_bytes {
-                reason = RunReason::MemoryLimit;
-            } else if stdout_bytes.saturating_add(stderr_bytes) > spec.limits.output_bytes
-                || (exit_signal == Some(libc::SIGXFSZ)
-                    && stdout_bytes.saturating_add(stderr_bytes) >= spec.limits.output_bytes)
-            {
-                reason = RunReason::OutputLimit;
-            } else if exit_signal == Some(libc::SIGXFSZ)
-                || workspace_bytes.saturating_sub(baseline_bytes) > spec.limits.total_write_bytes
-            {
-                reason = RunReason::WriteLimit;
-            } else if files.saturating_sub(baseline_files) > spec.limits.created_files {
-                reason = RunReason::WriteLimit;
-                diagnostic = Some("created-file limit exceeded".into());
-            }
-        }
-        let result_collection_time_us = collection_started
-            .elapsed()
-            .as_micros()
-            .min(u64::MAX as u128) as u64;
-        let final_user_cpu_time_us = timeval_us(final_rusage.ru_utime);
-        let final_kernel_cpu_time_us = timeval_us(final_rusage.ru_stime);
-        let peak_memory_bytes = reported_peak_memory_bytes(
-            &reason,
-            (peak_memory > 0).then_some(peak_memory),
-            spec.limits.memory_bytes,
-        );
-        Ok(RunResult {
-            run_id: spec.run_id.clone(),
-            reason,
-            exit_code: exit_status.code(),
-            signal_or_status: exit_signal.map(|signal| format!("signal {signal}")),
-            security_setup_time_us,
-            wall_time_us,
-            result_collection_time_us,
-            user_cpu_time_us: (final_user_cpu_time_us > 0)
-                .then_some(final_user_cpu_time_us)
-                .or_else(|| (usage.user_time_ns > 0).then_some(usage.user_time_ns / 1000)),
-            kernel_cpu_time_us: (final_kernel_cpu_time_us > 0)
-                .then_some(final_kernel_cpu_time_us)
-                .or_else(|| (usage.system_time_ns > 0).then_some(usage.system_time_ns / 1000)),
-            peak_memory_bytes,
-            stdout_bytes,
-            stderr_bytes,
-            created_files: Some(files),
-            diagnostic,
-        })
+        crate::macos_run_controller::run_with_guardian(root, spec, active)
     }
 }
 
-fn fail_closed_monitor_error(
-    active: &ActiveRuns,
-    run_id: &str,
-    pgid: i32,
-    error: String,
-) -> Result<RunResult, String> {
-    kill_group(pgid);
-    // Retry a blocking reap once after the kill. If the original wait4 failure was
-    // transient this prevents a zombie leader from keeping the PGID inventory non-empty.
-    let _ = wait4_process(pgid, 0);
-    while !wait_for_process_group_empty(pgid, Duration::from_secs(2)) {
-        eprintln!(
-            "EXECUTOR_PROCESS_GROUP_MONITOR_FAILED pgid={pgid}; retaining active run and generation guard: {error}"
-        );
+fn emit_fault_gate_ready() -> Result<(), String> {
+    if std::env::var_os(FAULT_GATE_ENV).is_none() && std::env::var_os(FAULT_EVENT_LOG_ENV).is_none()
+    {
+        return Ok(());
     }
-    active
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .remove(run_id);
-    Err(error)
-}
-
-fn wait4_process(
-    pid: i32,
-    options: i32,
-) -> Result<Option<(std::process::ExitStatus, libc::rusage)>, String> {
-    loop {
-        let mut status = 0_i32;
-        let mut usage: libc::rusage = unsafe { std::mem::zeroed() };
-        let waited = unsafe { libc::wait4(pid, &mut status, options, &mut usage) };
-        if waited == pid {
-            return Ok(Some((std::process::ExitStatus::from_raw(status), usage)));
-        }
-        if waited == 0 {
-            return Ok(None);
-        }
-        let error = std::io::Error::last_os_error();
-        if error.kind() == std::io::ErrorKind::Interrupted {
-            continue;
-        }
-        return Err(format!("wait4 process {pid}: {error}"));
-    }
-}
-
-fn timeval_us(value: libc::timeval) -> u64 {
-    (value.tv_sec.max(0) as u64)
-        .saturating_mul(1_000_000)
-        .saturating_add(value.tv_usec.max(0) as u64)
-}
-
-struct ProcessGroupCancellation {
-    pgid: i32,
-    cancelled: Arc<AtomicBool>,
-}
-
-impl Cancellation for ProcessGroupCancellation {
-    fn cancel(&self) {
-        self.cancelled.store(true, Ordering::Release);
-        kill_group(self.pgid);
-    }
-}
-
-fn kill_group(pgid: i32) {
-    unsafe {
-        libc::kill(-pgid, libc::SIGSTOP);
-        libc::kill(-pgid, libc::SIGKILL);
-    }
-}
-
-fn wait_for_process_group_empty(pgid: i32, timeout: Duration) -> bool {
-    let deadline = Instant::now() + timeout;
-    loop {
-        let usage = process_group_usage(pgid);
-        if !usage.inventory_failed && usage.processes == 0 {
-            return true;
-        }
-        kill_group(pgid);
-        if Instant::now() >= deadline {
-            return false;
-        }
-        std::thread::sleep(Duration::from_millis(2));
-    }
-}
-
-unsafe fn set_limit(resource: libc::c_int, value: u64) -> std::io::Result<()> {
-    let limit = libc::rlimit {
-        rlim_cur: value,
-        rlim_max: value,
-    };
-    if libc::setrlimit(resource, &limit) != 0 {
-        let error = std::io::Error::last_os_error();
-        Err(std::io::Error::new(
-            error.kind(),
-            format!("setrlimit resource={resource} value={value}: {error}"),
-        ))
-    } else {
-        Ok(())
-    }
+    let generation = std::env::var(crate::tree_guard::GENERATION_ENV)
+        .map_err(|_| "RUN_GUARDIAN_FAULT_TRACE_TREE_GENERATION_MISSING".to_string())?;
+    let trace = FaultTrace::from_environment(&generation)?
+        .ok_or_else(|| "RUN_GUARDIAN_FAULT_TRACE_NOT_INITIALIZED".to_string())?;
+    trace.emit(
+        FaultTraceEvent::FaultGateReady,
+        "executor",
+        None,
+        None,
+        None,
+    )
 }
 
 fn hard_resource_limit(resource: libc::c_int) -> Result<u64, String> {
@@ -596,18 +258,231 @@ fn hard_resource_limit(resource: libc::c_int) -> Result<u64, String> {
     Ok(limit.rlim_max)
 }
 
-fn minimal_environment(spec: &RunSpec, workspace: &Path) -> Vec<(String, String)> {
-    let mut values = vec![
-        ("HOME".into(), workspace.to_string_lossy().into_owned()),
-        ("TMPDIR".into(), workspace.to_string_lossy().into_owned()),
-        ("PATH".into(), "/usr/bin:/bin".into()),
-    ];
-    values.extend(
-        spec.environment
-            .iter()
-            .map(|(key, value)| (key.clone(), value.clone())),
-    );
+fn launcher_nproc_ceiling(
+    user_process_baseline: u64,
+    inherited_nproc_max: u64,
+    process_count: u32,
+) -> Result<u64, String> {
+    let required = user_process_baseline
+        .saturating_add(TRUSTED_SUPERVISOR_NPROC_OVERHEAD)
+        .saturating_add(process_count as u64)
+        .saturating_add(OBSERVABLE_PROCESS_LIMIT_OVERFLOW)
+        .saturating_add(REAL_USER_PROCESS_DRIFT_ALLOWANCE);
+    if required > inherited_nproc_max {
+        return Err(format!(
+            "RLIMIT_NPROC cannot provide safe launch headroom: baseline={user_process_baseline}, required={required}, hardMax={inherited_nproc_max}"
+        ));
+    }
+    Ok(required)
+}
+
+fn minimal_environment(spec: &RunSpec, workspace: &Path) -> BTreeMap<String, String> {
+    let mut values = spec.environment.clone();
+    // HOME and TMPDIR are containment controls, not contestant-configurable values. PATH may
+    // still be supplied by a certified managed toolchain, so only default it when absent.
+    values.insert("HOME".into(), workspace.to_string_lossy().into_owned());
+    values.insert("TMPDIR".into(), workspace.to_string_lossy().into_owned());
     values
+        .entry("PATH".into())
+        .or_insert_with(|| "/usr/bin:/bin".into());
+    values
+}
+
+pub(crate) fn prepare_launcher_spec(
+    root: &Path,
+    spec: &RunSpec,
+    identity: &FrameIdentity,
+) -> Result<LauncherSpec, String> {
+    identity
+        .validate()
+        .map_err(|error| format!("invalid run guardian identity: {error}"))?;
+    if identity.run_id != spec.run_id {
+        return Err("run guardian identity does not match the requested run".into());
+    }
+    let paths = validate_run(root, spec)?;
+    let profile = build_profile(spec, &paths)?;
+    let profile_path = write_private_profile(root, &spec.run_id, &profile)?;
+
+    let result = (|| {
+        let launch_executable = if matches!(spec.role, RunRole::Compiler) {
+            validated_compiler_executable(spec)?
+        } else {
+            paths.executable.clone()
+        };
+
+        let address_space_slack = spec
+            .limits
+            .memory_bytes
+            .saturating_mul(8)
+            .max(512 * 1024 * 1024);
+        let guardian_virtual_size = process_virtual_memory_bytes(std::process::id() as i32);
+        let address_space_bytes = (guardian_virtual_size > 0).then(|| {
+            guardian_virtual_size
+                .saturating_mul(2)
+                .max(guardian_virtual_size.saturating_add(address_space_slack))
+        });
+
+        // Seatbelt must allow fork because sandbox-exec itself forks before exec. The guardian
+        // takes this real-user snapshot before spawning the trusted supervisor, so reserve that
+        // supervisor separately from the untrusted process budget. One observable overflow lets
+        // the group monitor classify process_limit before RLIMIT_NPROC clamps the burst. A small,
+        // fixed drift allowance absorbs unrelated same-user daemon churn between this snapshot
+        // and target forks. RLIMIT_NPROC is per real user rather than per process group: this
+        // therefore caps the net increase in that user's process population, while the guardian
+        // monitor enforces the exact per-run process limit.
+        let user_process_baseline = real_user_process_count()?;
+        let inherited_nproc_max = hard_resource_limit(libc::RLIMIT_NPROC)?;
+        let nproc_ceiling = launcher_nproc_ceiling(
+            user_process_baseline,
+            inherited_nproc_max,
+            spec.limits.process_count,
+        )?;
+
+        Ok(LauncherSpec {
+            sandbox_executable: PathBuf::from("/usr/bin/sandbox-exec"),
+            sandbox_profile: profile_path.clone(),
+            target_executable: launch_executable,
+            arguments: spec.args.clone(),
+            cwd: paths.workspace.clone(),
+            stdin: paths.stdin.unwrap_or_else(|| PathBuf::from("/dev/null")),
+            stdout: paths.stdout,
+            stderr: paths.stderr,
+            environment: minimal_environment(spec, &paths.workspace),
+            limits: LauncherRlimits {
+                core_bytes: 0,
+                file_size_bytes: spec.limits.total_write_bytes,
+                open_files: spec.limits.open_files as u64,
+                nproc_ceiling,
+                address_space_bytes,
+            },
+            monitor_limits: LauncherMonitorLimits {
+                wall_time_ms: spec.limits.wall_time_ms,
+                memory_bytes: spec.limits.memory_bytes,
+                process_count: spec.limits.process_count,
+                thread_count: spec.limits.thread_count,
+                output_bytes: spec.limits.output_bytes,
+                total_write_bytes: spec.limits.total_write_bytes,
+                created_files: spec.limits.created_files,
+            },
+        })
+    })();
+
+    if result.is_err() {
+        let _ = fs::remove_file(&profile_path);
+    }
+    result
+}
+
+fn write_private_profile(root: &Path, run_id: &str, contents: &str) -> Result<PathBuf, String> {
+    let profile_directory = trusted_profile_directory(root)?;
+
+    let nonce =
+        generate_nonce().map_err(|error| format!("cannot generate profile nonce: {error}"))?;
+    let profile_path = profile_directory.join(format!("{run_id}-{nonce}.sb"));
+    let mut file = OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .mode(0o600)
+        .custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW)
+        .open(&profile_path)
+        .map_err(|error| format!("cannot create Seatbelt profile: {error}"))?;
+    if let Err(error) = file
+        .write_all(contents.as_bytes())
+        .and_then(|_| file.sync_all())
+    {
+        drop(file);
+        let _ = fs::remove_file(&profile_path);
+        return Err(format!("cannot persist Seatbelt profile: {error}"));
+    }
+    if let Err(error) = fs::set_permissions(&profile_path, fs::Permissions::from_mode(0o600)) {
+        drop(file);
+        let _ = fs::remove_file(&profile_path);
+        return Err(format!("cannot protect Seatbelt profile: {error}"));
+    }
+    let metadata = match file.metadata() {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            drop(file);
+            let _ = fs::remove_file(&profile_path);
+            return Err(format!("cannot inspect Seatbelt profile: {error}"));
+        }
+    };
+    if !metadata.file_type().is_file()
+        || metadata.uid() != unsafe { libc::geteuid() }
+        || metadata.permissions().mode() & 0o777 != 0o600
+        || metadata.nlink() != 1
+    {
+        let _ = fs::remove_file(&profile_path);
+        return Err("Seatbelt profile file is not trusted".into());
+    }
+    Ok(profile_path)
+}
+
+pub(crate) fn cleanup_run_profiles(root: &Path, run_id: &str) -> Result<(), String> {
+    if run_id.is_empty()
+        || !run_id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return Err("cannot clean profiles for an invalid run ID".into());
+    }
+    let directory = trusted_profile_directory(root)?;
+    let prefix = format!("{run_id}-");
+    for entry in fs::read_dir(&directory)
+        .map_err(|error| format!("cannot enumerate Seatbelt profile cache: {error}"))?
+    {
+        let entry =
+            entry.map_err(|error| format!("cannot enumerate Seatbelt profile entry: {error}"))?;
+        let name = entry
+            .file_name()
+            .into_string()
+            .map_err(|_| "Seatbelt profile cache contains a non-Unicode entry".to_string())?;
+        let Some(nonce) = name
+            .strip_prefix(&prefix)
+            .and_then(|value| value.strip_suffix(".sb"))
+        else {
+            continue;
+        };
+        if nonce.len() != 64
+            || !nonce
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err("Seatbelt profile cache contains a malformed run artifact".into());
+        }
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path)
+            .map_err(|error| format!("cannot inspect Seatbelt profile artifact: {error}"))?;
+        if !metadata.file_type().is_file()
+            || metadata.uid() != unsafe { libc::geteuid() }
+            || metadata.permissions().mode() & 0o777 != 0o600
+            || metadata.nlink() != 1
+        {
+            return Err("Seatbelt profile artifact is not trusted".into());
+        }
+        fs::remove_file(&path)
+            .map_err(|error| format!("cannot remove Seatbelt profile artifact: {error}"))?;
+    }
+    Ok(())
+}
+
+fn trusted_profile_directory(root: &Path) -> Result<PathBuf, String> {
+    let canonical_root =
+        fs::canonicalize(root).map_err(|error| format!("executor root unavailable: {error}"))?;
+    let profile_directory = fs::canonicalize(canonical_root.join("profiles"))
+        .map_err(|error| format!("Seatbelt profile cache unavailable: {error}"))?;
+    if profile_directory.parent() != Some(canonical_root.as_path()) {
+        return Err("Seatbelt profile cache escaped the executor root".into());
+    }
+    let directory_metadata = fs::metadata(&profile_directory)
+        .map_err(|error| format!("cannot inspect Seatbelt profile cache: {error}"))?;
+    if !directory_metadata.is_dir()
+        || directory_metadata.uid() != unsafe { libc::geteuid() }
+        || directory_metadata.permissions().mode() & 0o777 != 0o700
+    {
+        return Err("Seatbelt profile cache is not owner-private".into());
+    }
+    Ok(profile_directory)
 }
 
 fn build_profile(spec: &RunSpec, paths: &ValidatedRun) -> Result<String, String> {
@@ -795,39 +670,6 @@ fn seatbelt_literal(value: &str) -> String {
 
 #[repr(C)]
 #[derive(Default)]
-struct RusageInfoV2 {
-    uuid: [u8; 16],
-    user_time: u64,
-    system_time: u64,
-    pkg_idle_wkups: u64,
-    interrupt_wkups: u64,
-    pageins: u64,
-    wired_size: u64,
-    resident_size: u64,
-    phys_footprint: u64,
-    proc_start_abstime: u64,
-    proc_exit_abstime: u64,
-    child_user_time: u64,
-    child_system_time: u64,
-    child_pkg_idle_wkups: u64,
-    child_interrupt_wkups: u64,
-    child_pageins: u64,
-    child_elapsed_abstime: u64,
-}
-
-#[derive(Default)]
-struct ProcessUsage {
-    memory_bytes: u64,
-    virtual_memory_bytes: u64,
-    processes: u32,
-    threads: u32,
-    user_time_ns: u64,
-    system_time_ns: u64,
-    inventory_failed: bool,
-}
-
-#[repr(C)]
-#[derive(Default)]
 struct ProcTaskInfo {
     virtual_size: u64,
     resident_size: u64,
@@ -857,7 +699,6 @@ extern "C" {
         buffer: *mut libc::c_void,
         buffer_size: i32,
     ) -> i32;
-    fn proc_pid_rusage(pid: i32, flavor: i32, buffer: *mut RusageInfoV2) -> i32;
     fn proc_pidinfo(pid: i32, flavor: i32, arg: u64, buffer: *mut libc::c_void, size: i32) -> i32;
 }
 
@@ -892,66 +733,11 @@ fn real_user_process_count() -> Result<u64, String> {
     Ok(live)
 }
 
-fn process_group_usage(pgid: i32) -> ProcessUsage {
-    const PROC_PGRP_ONLY: u32 = 2;
-    // RunSpec rejects process_count above 32. Keep ample room for observing a hostile burst
-    // before the monitor kills the group, without allocating inside the polling loop repeatedly.
-    let mut pids = [0_i32; 256];
-    let buffer_size = std::mem::size_of_val(&pids) as i32;
-    let bytes = unsafe {
-        proc_listpids(
-            PROC_PGRP_ONLY,
-            pgid.max(0) as u32,
-            pids.as_mut_ptr().cast(),
-            buffer_size,
-        )
-    };
-    if bytes < 0 {
-        return ProcessUsage {
-            processes: u32::MAX,
-            inventory_failed: true,
-            ..ProcessUsage::default()
-        };
-    }
-    if bytes == 0 {
-        return ProcessUsage::default();
-    }
-    if bytes as usize >= buffer_size as usize {
-        return ProcessUsage {
-            processes: u32::MAX,
-            inventory_failed: true,
-            ..ProcessUsage::default()
-        };
-    }
-
-    let count = (bytes as usize / std::mem::size_of::<i32>()).min(pids.len());
-    pids[..count]
-        .iter()
-        .copied()
-        .filter(|pid| *pid > 0)
-        .map(process_usage)
-        .fold(ProcessUsage::default(), |mut group, process| {
-            group.memory_bytes = group.memory_bytes.saturating_add(process.memory_bytes);
-            group.virtual_memory_bytes = group
-                .virtual_memory_bytes
-                .saturating_add(process.virtual_memory_bytes);
-            group.processes = group.processes.saturating_add(process.processes);
-            group.threads = group.threads.saturating_add(process.threads);
-            group.user_time_ns = group.user_time_ns.saturating_add(process.user_time_ns);
-            group.system_time_ns = group.system_time_ns.saturating_add(process.system_time_ns);
-            group.inventory_failed |= process.inventory_failed;
-            group
-        })
-}
-
-fn process_usage(pid: i32) -> ProcessUsage {
-    const RUSAGE_INFO_V2: i32 = 2;
-    let mut info = RusageInfoV2::default();
-    let success = unsafe { proc_pid_rusage(pid, RUSAGE_INFO_V2, &mut info) } == 0;
+fn process_virtual_memory_bytes(pid: i32) -> u64 {
     const PROC_PIDTASKINFO: i32 = 4;
     let mut task = ProcTaskInfo::default();
     let task_size = std::mem::size_of::<ProcTaskInfo>() as i32;
-    let task_success = unsafe {
+    if unsafe {
         proc_pidinfo(
             pid,
             PROC_PIDTASKINFO,
@@ -959,38 +745,124 @@ fn process_usage(pid: i32) -> ProcessUsage {
             (&mut task as *mut ProcTaskInfo).cast(),
             task_size,
         )
-    } == task_size;
-    // `proc_listpids(PROC_PGRP_ONLY, ...)` already observed this positive PID.
-    // Count it even when the telemetry calls race with exit or fail: treating an
-    // unmeasurable live process as an empty group could release the generation
-    // guard while untrusted work is still running.
-    let pid_still_exists = if success {
-        true
+    } == task_size
+    {
+        task.virtual_size
     } else {
-        let probe = unsafe { libc::kill(pid, 0) };
-        probe == 0 || std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+        0
+    }
+}
+
+#[cfg(test)]
+mod launcher_spec_tests {
+    use super::{
+        cleanup_run_profiles, launcher_nproc_ceiling, minimal_environment, write_private_profile,
+        RunLimits, RunRole, RunSpec,
     };
-    ProcessUsage {
-        memory_bytes: if success {
-            info.phys_footprint
-                .max(info.resident_size)
-                .max(if task_success { task.resident_size } else { 0 })
-        } else {
-            0
-        },
-        virtual_memory_bytes: if success && task_success {
-            task.virtual_size
-        } else {
-            0
-        },
-        processes: 1,
-        threads: if task_success {
-            task.thread_count.max(1) as u32
-        } else {
-            1
-        },
-        user_time_ns: if success { info.user_time } else { 0 },
-        system_time_ns: if success { info.system_time } else { 0 },
-        inventory_failed: !success && pid_still_exists,
+    use crate::workspace::initialize_root;
+    use std::collections::BTreeMap;
+    use std::fs;
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
+
+    struct TestDirectory(PathBuf);
+
+    impl TestDirectory {
+        fn new() -> Self {
+            let suffix = NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!(
+                "judgedesk-launcher-spec-test-{}-{suffix}",
+                std::process::id()
+            ));
+            fs::create_dir(&path).expect("create launcher-spec test directory");
+            Self(path)
+        }
+    }
+
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn nproc_ceiling_reserves_supervisor_overflow_and_bounded_drift() {
+        assert_eq!(
+            launcher_nproc_ceiling(100, 1_000, 1).expect("minimum process budget"),
+            107
+        );
+        assert_eq!(
+            launcher_nproc_ceiling(100, 1_000, 32).expect("maximum process budget"),
+            138
+        );
+        let error = launcher_nproc_ceiling(100, 137, 32)
+            .expect_err("insufficient inherited hard limit must fail closed");
+        assert!(error.contains("required=138"), "{error}");
+        assert!(error.contains("hardMax=137"), "{error}");
+    }
+
+    #[test]
+    fn target_environment_forces_private_home_and_tmp_but_preserves_certified_path() {
+        let mut spec = sample_spec("environment");
+        spec.environment = BTreeMap::from([
+            ("HOME".into(), "/attacker/home".into()),
+            ("TMPDIR".into(), "/attacker/tmp".into()),
+            ("PATH".into(), "/managed/python/bin:/usr/bin:/bin".into()),
+            ("PYTHONNOUSERSITE".into(), "1".into()),
+        ]);
+        let workspace = PathBuf::from("/private/workspace");
+        let environment = minimal_environment(&spec, &workspace);
+        assert_eq!(environment["HOME"], "/private/workspace");
+        assert_eq!(environment["TMPDIR"], "/private/workspace");
+        assert_eq!(environment["PATH"], "/managed/python/bin:/usr/bin:/bin");
+        assert_eq!(environment["PYTHONNOUSERSITE"], "1");
+    }
+
+    #[test]
+    fn profiles_are_private_unique_and_removed_only_for_the_exact_run() {
+        let directory = TestDirectory::new();
+        let root = initialize_root(directory.0.clone()).expect("initialize executor root");
+        let first = write_private_profile(&root, "run_one", "(version 1)").expect("first profile");
+        let second =
+            write_private_profile(&root, "run_one", "(version 1)").expect("second profile");
+        let other = write_private_profile(&root, "run_two", "(version 1)").expect("other profile");
+        assert_ne!(first, second);
+        for profile in [&first, &second, &other] {
+            let metadata = fs::metadata(profile).expect("profile metadata");
+            assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
+            assert_eq!(metadata.nlink(), 1);
+        }
+
+        cleanup_run_profiles(&root, "run_one").expect("cleanup exact run");
+        assert!(!first.exists());
+        assert!(!second.exists());
+        assert!(other.exists());
+    }
+
+    fn sample_spec(run_id: &str) -> RunSpec {
+        RunSpec {
+            run_id: run_id.into(),
+            role: RunRole::Submission,
+            workspace_id: "workspace".into(),
+            executable_id: "workspaces/workspace/program".into(),
+            args: Vec::new(),
+            stdin_file: None,
+            stdout_file: "stdout.txt".into(),
+            stderr_file: "stderr.txt".into(),
+            environment: BTreeMap::new(),
+            limits: RunLimits {
+                wall_time_ms: 1_000,
+                memory_bytes: 64 * 1024 * 1024,
+                process_count: 1,
+                thread_count: 16,
+                output_bytes: 1024,
+                total_write_bytes: 2048,
+                open_files: 32,
+                created_files: 16,
+            },
+        }
     }
 }
