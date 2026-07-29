@@ -1,7 +1,7 @@
 # macOS per-run guardian — design và foundation checkpoint
 
 Ngày chốt thiết kế: 2026-07-29
-Trạng thái: **production native path đã tích hợp và vượt targeted Apple-Silicon security/fault gates; full matrix, performance và packaged D16 vẫn pending**
+Trạng thái: **production native path đã vượt targeted Apple-Silicon security/fault gates; local packaged smoke đã verified, còn full fault matrix, performance và signed updater D16 pending**
 
 ## 1. Mục tiêu và phạm vi
 
@@ -23,9 +23,10 @@ Phạm vi thiết kế:
 
 Checkpoint hiện tại đã nối protocol, trusted supervisor, fault-trace contract và
 các primitive identity/drain vào đường chạy production của native executor. Bằng
-chứng hiện có chỉ là source/native ARM64 gate trên Apple M1 thật; nó không thay
-thế gate `.app`/DMG/updater và chưa đưa trusted system/local Python checker vào
-generation barrier.
+chứng hiện có gồm source/native ARM64 gate và local ad-hoc `.app`/DMG smoke trên
+Apple M1 thật. Nó chưa thay thế packaged GUI/helper fault gate, notarized
+release/updater gate và chưa đưa trusted system/local Python checker vào generation
+barrier.
 
 ## 2. Trạng thái bằng chứng hiện tại
 
@@ -92,6 +93,14 @@ Redesign sau audit đã có thêm bằng chứng trên Apple M1 ngày 2026-07-29
   retry có giới hạn, mismatch thì fail-closed.
 - Trusted child spawn dùng `POSIX_SPAWN_CLOEXEC_DEFAULT`; regression test chứng
   minh ambient descriptor bị đóng và chỉ hai mapping control được giữ.
+- Checkout sạch detached đúng GitHub commit `323db233ee0b32f8d42688b80744ed3951a1afb0`
+  đã vượt full `build-macos-arm64-sidecar.sh`; sidecar metadata cũng ghi đúng SHA
+  này. Local ad-hoc DMG 43,8 MB được tạo bằng CI-safe bundling, mount read-only,
+  xác minh ba Mach-O ARM64, deep/strict codesign, V8 JIT entitlement, bundle
+  identifier/version và packaged sidecar/secure-runner smoke. SHA-256 của artifact
+  đã test là `8c341548a4d3e1d60ddf3bd5b77f9e99f86496cd0778eb30aeb71df5bf177a8b`.
+  Finder aesthetics qua phiên SSH riêng lẻ timeout `-1712`; đây không phải gate
+  phát hành và CI path cố ý dùng `--skip-jenkins`.
 
 Benchmark evidence sau full security gate, 3 × 100 no-op mỗi lượt trên M1 8 GB
 qua phiên remote đang hoạt động:
@@ -149,7 +158,8 @@ gọi là performance-release-ready; số đo end-to-end và throughput phải t
   `wall_time_us` không tăng theo containment drain.
 - Mở rộng fault matrix tới mọi cut-point pre-registration, guardian hang/STOP,
   tám run đồng thời và release soak ở mục 9.7.
-- Packaged GUI/helper double-failure gate với guardian đang giữ shared lock.
+- Packaged GUI/helper double-failure gate với guardian đang giữ shared lock;
+  local DMG smoke hiện đã verified nhưng chưa bao phủ fault/relaunch này.
 - Compiler-specific containment certification.
 - Đưa trusted system/local Python checker vào generation barrier tương đương.
 - Minimum/current macOS matrix; một máy M1 không đại diện mọi OS được hỗ trợ.
