@@ -305,7 +305,9 @@ impl MacosPlatform {
             cancelled: Arc::clone(&cancelled),
         });
         {
-            let mut runs = active.lock().unwrap();
+            let mut runs = active
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
             if runs.insert(spec.run_id.clone(), cancellation).is_some() {
                 kill_group(pgid);
                 let _ = wait4_process(pgid, 0);
@@ -317,7 +319,13 @@ impl MacosPlatform {
         let mut diagnostic = None;
         let mut peak_memory = 0_u64;
         let (exit_status, final_rusage) = loop {
-            if let Some((status, rusage)) = wait4_process(pgid, libc::WNOHANG)? {
+            let observed = match wait4_process(pgid, libc::WNOHANG) {
+                Ok(observed) => observed,
+                Err(error) => {
+                    return fail_closed_monitor_error(active, &spec.run_id, pgid, error);
+                }
+            };
+            if let Some((status, rusage)) = observed {
                 break (status, rusage);
             }
             let usage = process_group_usage(pgid);
@@ -350,8 +358,20 @@ impl MacosPlatform {
             }
             if !matches!(reason, RunReason::Exited) {
                 kill_group(pgid);
-                let (status, rusage) = wait4_process(pgid, 0)?
-                    .ok_or_else(|| "wait4 returned no child after group kill".to_string())?;
+                let (status, rusage) = match wait4_process(pgid, 0) {
+                    Ok(Some(result)) => result,
+                    Ok(None) => {
+                        return fail_closed_monitor_error(
+                            active,
+                            &spec.run_id,
+                            pgid,
+                            "wait4 returned no child after group kill".into(),
+                        );
+                    }
+                    Err(error) => {
+                        return fail_closed_monitor_error(active, &spec.run_id, pgid, error);
+                    }
+                };
                 break (status, rusage);
             }
             std::thread::sleep(Duration::from_millis(2));
@@ -369,13 +389,21 @@ impl MacosPlatform {
         }
         if usage.inventory_failed || usage.processes > 0 {
             kill_group(pgid);
-            if !wait_for_process_group_empty(pgid, Duration::from_secs(2)) {
+            while !wait_for_process_group_empty(pgid, Duration::from_secs(2)) {
                 reason = RunReason::InternalError;
-                diagnostic =
-                    Some("sandbox process group did not become empty during teardown".into());
+                diagnostic = Some(
+                    "sandbox process group teardown is stalled; the executor is retaining its generation guard"
+                        .into(),
+                );
+                eprintln!(
+                    "EXECUTOR_PROCESS_GROUP_DRAIN_STALLED pgid={pgid}; retaining generation guard"
+                );
             }
         }
-        active.lock().unwrap().remove(&spec.run_id);
+        active
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove(&spec.run_id);
         // Darwin reports ru_maxrss in bytes (Linux uses KiB). This survives process exit and
         // catches short resident-memory spikes that the 2 ms live sampler can miss.
         peak_memory = peak_memory.max(final_rusage.ru_maxrss.max(0) as u64);
@@ -440,6 +468,28 @@ impl MacosPlatform {
             diagnostic,
         })
     }
+}
+
+fn fail_closed_monitor_error(
+    active: &ActiveRuns,
+    run_id: &str,
+    pgid: i32,
+    error: String,
+) -> Result<RunResult, String> {
+    kill_group(pgid);
+    // Retry a blocking reap once after the kill. If the original wait4 failure was
+    // transient this prevents a zombie leader from keeping the PGID inventory non-empty.
+    let _ = wait4_process(pgid, 0);
+    while !wait_for_process_group_empty(pgid, Duration::from_secs(2)) {
+        eprintln!(
+            "EXECUTOR_PROCESS_GROUP_MONITOR_FAILED pgid={pgid}; retaining active run and generation guard: {error}"
+        );
+    }
+    active
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(run_id);
+    Err(error)
 }
 
 fn wait4_process(
@@ -862,6 +912,7 @@ fn process_group_usage(pgid: i32) -> ProcessUsage {
             group.threads = group.threads.saturating_add(process.threads);
             group.user_time_ns = group.user_time_ns.saturating_add(process.user_time_ns);
             group.system_time_ns = group.system_time_ns.saturating_add(process.system_time_ns);
+            group.inventory_failed |= process.inventory_failed;
             group
         })
 }
@@ -882,24 +933,37 @@ fn process_usage(pid: i32) -> ProcessUsage {
             task_size,
         )
     } == task_size;
-    if success {
-        ProcessUsage {
-            memory_bytes: info
-                .phys_footprint
-                .max(info.resident_size)
-                .max(if task_success { task.resident_size } else { 0 }),
-            virtual_memory_bytes: if task_success { task.virtual_size } else { 0 },
-            processes: 1,
-            threads: if task_success {
-                task.thread_count.max(0) as u32
-            } else {
-                1
-            },
-            user_time_ns: info.user_time,
-            system_time_ns: info.system_time,
-            inventory_failed: false,
-        }
+    // `proc_listpids(PROC_PGRP_ONLY, ...)` already observed this positive PID.
+    // Count it even when the telemetry calls race with exit or fail: treating an
+    // unmeasurable live process as an empty group could release the generation
+    // guard while untrusted work is still running.
+    let pid_still_exists = if success {
+        true
     } else {
-        ProcessUsage::default()
+        let probe = unsafe { libc::kill(pid, 0) };
+        probe == 0 || std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
+    };
+    ProcessUsage {
+        memory_bytes: if success {
+            info.phys_footprint
+                .max(info.resident_size)
+                .max(if task_success { task.resident_size } else { 0 })
+        } else {
+            0
+        },
+        virtual_memory_bytes: if success && task_success {
+            task.virtual_size
+        } else {
+            0
+        },
+        processes: 1,
+        threads: if task_success {
+            task.thread_count.max(1) as u32
+        } else {
+            1
+        },
+        user_time_ns: if success { info.user_time } else { 0 },
+        system_time_ns: if success { info.system_time } else { 0 },
+        inventory_failed: !success && pid_still_exists,
     }
 }

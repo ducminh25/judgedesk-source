@@ -1,5 +1,5 @@
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 const INTERNAL_SUPERVISOR_ARGUMENT: &str = "--judgedesk-internal-job-supervisor-v1";
@@ -294,6 +294,10 @@ mod windows {
                 supervisor: Mutex::new(None),
                 failed: Arc::new(AtomicBool::new(false)),
             })
+        }
+
+        pub(super) fn runtime_environment(&self) -> Option<(PathBuf, String)> {
+            None
         }
 
         pub(super) fn assign_backend(&self, process_id: u32) -> io::Result<()> {
@@ -742,10 +746,14 @@ mod windows {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+#[path = "process_supervisor_macos.rs"]
+mod macos;
+
+#[cfg(not(any(windows, target_os = "macos")))]
 mod portable {
     use std::io;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
     use std::time::Duration;
 
     #[derive(Debug)]
@@ -763,6 +771,10 @@ mod portable {
         #[cfg(test)]
         pub(super) fn for_tests(_job_nonce: &str) -> io::Result<Self> {
             Ok(Self)
+        }
+
+        pub(super) fn runtime_environment(&self) -> Option<(PathBuf, String)> {
+            None
         }
 
         pub(super) fn assign_backend(&self, _process_id: u32) -> io::Result<()> {
@@ -789,7 +801,9 @@ mod portable {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+use macos as platform;
+#[cfg(not(any(windows, target_os = "macos")))]
 use portable as platform;
 #[cfg(windows)]
 use windows as platform;
@@ -817,6 +831,10 @@ impl BackendTreeGuard {
 
     pub(crate) fn assign_backend(&self, process_id: u32) -> io::Result<()> {
         self.0.assign_backend(process_id)
+    }
+
+    pub(crate) fn runtime_environment(&self) -> Option<(PathBuf, String)> {
+        self.0.runtime_environment()
     }
 
     pub(crate) fn wait_for_empty(&self, timeout: Duration) -> io::Result<()> {

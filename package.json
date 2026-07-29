@@ -34,6 +34,7 @@
     "test:performance": "npm run benchmark:executor -- --enforce",
     "test:windows-resources": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-resource-gate.ps1",
     "test:windows-single-instance": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-single-instance-gate.ps1",
+    "test:macos-process-supervisor": "bash scripts/macos-process-supervisor-gate.sh",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

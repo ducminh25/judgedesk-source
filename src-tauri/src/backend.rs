@@ -10,6 +10,10 @@ use tauri_plugin_shell::ShellExt;
 
 use crate::startup_guard::InstanceCoordinator;
 
+const TREE_GUARD_REQUIRED_ENV: &str = "JUDGEDESK_TREE_GUARD_REQUIRED";
+const TREE_GUARD_PATH_ENV: &str = "JUDGEDESK_TREE_GUARD_PATH";
+const TREE_GUARD_GENERATION_ENV: &str = "JUDGEDESK_TREE_GUARD_GENERATION";
+
 #[derive(Default)]
 struct BackendProcessState {
     child: Option<CommandChild>,
@@ -231,6 +235,17 @@ pub fn spawn(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         .env("PORT", port.to_string())
         .env("JUDGEDESK_PARENT_PID", std::process::id().to_string())
         .env("THEMIS_RESOURCE_DIR", resource_dir);
+    let sidecar = if let Some((guard_path, generation)) = app
+        .state::<InstanceCoordinator>()
+        .backend_tree_environment()
+    {
+        sidecar
+            .env(TREE_GUARD_REQUIRED_ENV, "1")
+            .env(TREE_GUARD_PATH_ENV, guard_path)
+            .env(TREE_GUARD_GENERATION_ENV, generation)
+    } else {
+        sidecar
+    };
     let startup_token = crate::startup_guard::create_backend_startup_token()?;
     let sidecar = sidecar.env("JUDGEDESK_BOOTSTRAP_TOKEN", &startup_token);
     let spawn_result = sidecar.spawn();
@@ -246,13 +261,10 @@ pub fn spawn(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    #[cfg(windows)]
-    {
-        let coordinator = app.state::<InstanceCoordinator>();
-        if let Err(error) = coordinator.assign_backend(child.pid()) {
-            let _ = child.kill();
-            return Err(Box::new(error));
-        }
+    let coordinator = app.state::<InstanceCoordinator>();
+    if let Err(error) = coordinator.assign_backend(child.pid()) {
+        let _ = child.kill();
+        return Err(Box::new(error));
     }
     let gate_frame = format!("JUDGEDESK_START/1 {startup_token}\n");
     if let Err(error) = child.write(gate_frame.as_bytes()) {
@@ -350,12 +362,12 @@ pub fn stop(app: &AppHandle) -> std::io::Result<()> {
     };
     let graceful_requested = graceful_outcome == GracefulShutdownOutcome::Completed;
     if !graceful_requested || !wait_for_termination(&backend, Duration::from_secs(2)) {
-        #[cfg(windows)]
+        #[cfg(any(windows, target_os = "macos"))]
         {
             app.state::<InstanceCoordinator>()
                 .terminate_backend_tree(Duration::from_secs(5))?;
         }
-        #[cfg(not(windows))]
+        #[cfg(not(any(windows, target_os = "macos")))]
         {
             let child = backend.state.lock().unwrap().child.take();
             if let Some(child) = child {
@@ -365,7 +377,7 @@ pub fn stop(app: &AppHandle) -> std::io::Result<()> {
             }
         }
     }
-    #[cfg(windows)]
+    #[cfg(any(windows, target_os = "macos"))]
     app.state::<InstanceCoordinator>()
         .wait_for_backend_tree(Duration::from_secs(2))?;
     if !wait_for_termination(&backend, Duration::from_secs(5)) {
