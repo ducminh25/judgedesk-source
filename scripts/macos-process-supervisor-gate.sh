@@ -13,17 +13,33 @@ gui_command="$bin/themis-v2"
 helper_command="$gui_command --judgedesk-internal-job-supervisor-v1"
 server_command="$bin/server"
 executor_command="$bin/judgedesk-executor"
+run_guardian_command="$executor_command --judgedesk-macos-run-guardian"
+run_supervisor_command="$executor_command --judgedesk-macos-run-supervisor"
 fixture=""
 curl_pid=""
 secondary_monitor_pid=""
 gate_started_app=0
 active_pgid=""
+active_executor=""
+active_guardian=""
+active_anchor=""
 gate_shell_pgid="$(ps -o pgid= -p $$ | tr -d ' ')"
+executor_root="${TMPDIR:-/tmp}"
+executor_root="${executor_root%/}/JudgeDeskExecutor"
 
 fail() {
   echo "macOS process-supervisor gate failed: $*" >&2
   exit 1
 }
+
+report_unexpected_error() {
+  local status="$1"
+  local line="$2"
+  local command="$3"
+  echo "macOS process-supervisor gate aborted at line $line: $command (status $status)" >&2
+  return "$status"
+}
+trap 'report_unexpected_error "$?" "$LINENO" "$BASH_COMMAND"' ERR
 
 exact_pids() {
   local wanted="$1"
@@ -73,6 +89,15 @@ process_count() {
   echo "$total"
 }
 
+directory_entry_count() {
+  local directory="$1"
+  if [[ ! -d "$directory" ]]; then
+    echo 0
+    return 0
+  fi
+  find "$directory" -mindepth 1 -maxdepth 1 -print | wc -l | tr -d ' '
+}
+
 inventory() {
   ps -axo pid=,ppid=,pgid=,state=,command= |
     grep -F "$bin/" |
@@ -96,6 +121,26 @@ wait_for_inventory() {
   done
   inventory >&2
   fail "timed out waiting for $expected JudgeDesk processes"
+}
+
+wait_for_listening_port() {
+  local pid="$1"
+  local attempts="${2:-500}"
+  local candidate
+  local index
+  for ((index = 0; index < attempts; index++)); do
+    candidate="$(
+      lsof -Pan -p "$pid" -iTCP -sTCP:LISTEN -Fn 2>/dev/null |
+        sed -n 's/^n127\.0\.0\.1://p' |
+        head -n 1 || true
+    )"
+    if [[ "$candidate" =~ ^[0-9]+$ ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+    sleep 0.02
+  done
+  return 1
 }
 
 assert_full_generation() {
@@ -131,14 +176,37 @@ cleanup_submission_group() {
   ((active_pgid > 1)) || return 0
   [[ "$active_pgid" != "$gate_shell_pgid" ]] || return 0
   local members
+  local invalid_members
   members="$(
     ps -axo pid=,pgid=,command= |
       awk -v pgid="$active_pgid" '$2 == pgid { print }'
   )"
   [[ -n "$members" ]] || return 0
-  if printf '%s\n' "$members" | grep -qv 'JudgeDeskExecutor'; then
+  if [[ "$active_anchor" != "$active_pgid" ]] ||
+    ! pid_matches "$active_anchor" "$run_supervisor_command" ||
+    ! pid_matches "$active_guardian" "$run_guardian_command" ||
+    [[ "$(parent_pid "$active_anchor")" != "$active_guardian" ]] ||
+    [[ "$(parent_pid "$active_guardian")" != "$active_executor" ]]; then
+    echo "Refusing to clean a submission group without the exact executor -> guardian -> supervisor identity chain." >&2
+    return 0
+  fi
+  invalid_members="$(
+    printf '%s\n' "$members" |
+      awk -v anchor="$active_anchor" -v supervisor="$run_supervisor_command" '
+        {
+          pid = $1
+          $1 = ""
+          $2 = ""
+          sub(/^[[:space:]]+/, "")
+          if (pid == anchor && $0 == supervisor) next
+          if (index($0, "/JudgeDeskExecutor/workspaces/") > 0) next
+          print
+        }
+      '
+  )"
+  if [[ -n "$invalid_members" ]]; then
     echo "Refusing to clean unverified process group $active_pgid:" >&2
-    printf '%s\n' "$members" >&2
+    printf '%s\n' "$invalid_members" >&2
     return 0
   fi
   # Freeze the test-owned group before killing it so a hostile descendant cannot
@@ -156,7 +224,7 @@ cleanup_submission_group() {
 
 cleanup() {
   local status=$?
-  trap - EXIT INT TERM
+  trap - ERR EXIT INT TERM
   set +e
   if [[ -n "$secondary_monitor_pid" ]]; then
     kill "$secondary_monitor_pid" >/dev/null 2>&1 || true
@@ -206,6 +274,10 @@ trap 'exit 143' TERM
 if [[ -n "$(all_judgedesk_runtime_inventory)" ]]; then
   fail "refusing to run while another JudgeDesk bundle is active"
 fi
+[[ "$(directory_entry_count "$executor_root/workspaces")" == "0" ]] ||
+  fail "executor workspace cache is not empty before the packaged gate"
+[[ "$(directory_entry_count "$executor_root/profiles")" == "0" ]] ||
+  fail "Seatbelt profile cache is not empty before the packaged gate"
 fixture="$(mktemp -d /tmp/judgedesk-supervisor-gate.XXXXXX)"
 
 open -n "$app"
@@ -312,11 +384,8 @@ active_gui="$(only_pid GUI "$gui_command")"
 active_helper="$(only_pid helper "$helper_command")"
 active_executor="$(only_pid executor "$executor_command")"
 active_server="$(only_pid backend "$server_command")"
-port="$(
-  lsof -Pan -p "$active_server" -iTCP -sTCP:LISTEN -Fn 2>/dev/null |
-    sed -n 's/^n127\.0\.0\.1://p' |
-    head -n 1
-)"
+port="$(wait_for_listening_port "$active_server")" ||
+  fail "packaged backend did not open a listening port"
 [[ "$port" =~ ^[0-9]+$ ]] || fail "could not discover the packaged backend port"
 
 mkdir -p "$fixture/contestants/alice" "$fixture/tests/A/01"
@@ -344,20 +413,37 @@ curl -sS -N \
   2>"$fixture/curl.err" &
 curl_pid=$!
 
-active_child=""
 for ((index = 0; index < 1000; index++)); do
   if grep -q 'Judging test' "$fixture/events.txt" 2>/dev/null; then
-    active_child="$(pgrep -P "$active_executor" | head -n 1 || true)"
-    [[ -n "$active_child" ]] && break
+    if [[ "$(exact_count "$run_guardian_command")" == "1" &&
+      "$(exact_count "$run_supervisor_command")" == "1" ]]; then
+      candidate_guardian="$(exact_pids "$run_guardian_command")"
+      candidate_anchor="$(exact_pids "$run_supervisor_command")"
+      candidate_pgid="$(ps -o pgid= -p "$candidate_anchor" 2>/dev/null | tr -d ' ' || true)"
+      group_members="$(
+        ps -axo pgid= |
+          awk -v pgid="$candidate_pgid" '$1 == pgid { count++ } END { print count + 0 }'
+      )"
+      if [[ "$(parent_pid "$candidate_guardian")" == "$active_executor" &&
+        "$(parent_pid "$candidate_anchor")" == "$candidate_guardian" &&
+        "$candidate_pgid" == "$candidate_anchor" &&
+        "$group_members" -ge 2 ]]; then
+        active_guardian="$candidate_guardian"
+        active_anchor="$candidate_anchor"
+        active_pgid="$candidate_pgid"
+        break
+      fi
+    fi
   fi
   sleep 0.01
 done
-[[ "$active_child" =~ ^[0-9]+$ ]] || {
+[[ "$active_guardian" =~ ^[0-9]+$ && "$active_anchor" =~ ^[0-9]+$ ]] || {
   tail -n 30 "$fixture/events.txt" >&2 || true
-  fail "no active submission child was observed"
+  inventory >&2
+  fail "no verified executor -> guardian -> run-supervisor submission group was observed"
 }
-active_pgid="$(ps -o pgid= -p "$active_child" | tr -d ' ')"
 [[ "$active_pgid" =~ ^[0-9]+$ ]] || fail "active submission process group was not readable"
+[[ "$active_pgid" == "$active_anchor" ]] || fail "run supervisor is not its process-group anchor"
 [[ "$active_pgid" != "$(ps -o pgid= -p "$active_gui" | tr -d ' ')" ]] ||
   fail "submission did not receive its own process group"
 
@@ -442,11 +528,8 @@ assert_full_generation
 if ps -axo pgid= | awk -v pgid="$active_pgid" '$1 == pgid { found = 1 } END { exit found ? 0 : 1 }'; then
   fail "submission process group $active_pgid survived GUI crash recovery"
 fi
-replacement_port="$(
-  lsof -Pan -p "$replacement_server" -iTCP -sTCP:LISTEN -Fn 2>/dev/null |
-    sed -n 's/^n127\.0\.0\.1://p' |
-    head -n 1
-)"
+replacement_port="$(wait_for_listening_port "$replacement_server")" ||
+  fail "replacement backend did not open a listening port"
 [[ "$replacement_port" =~ ^[0-9]+$ ]] || fail "replacement backend has no listening port"
 replacement_status="$(curl -fsS --max-time 5 "http://127.0.0.1:$replacement_port/api/status")" ||
   fail "replacement backend health request failed"
@@ -487,5 +570,9 @@ assert_full_generation
 quit_app
 [[ -z "$(all_judgedesk_runtime_inventory)" ]] ||
   fail "a JudgeDesk runtime process remained after the final shutdown"
+[[ "$(directory_entry_count "$executor_root/workspaces")" == "0" ]] ||
+  fail "an executor workspace remained after crash recovery and final shutdown"
+[[ "$(directory_entry_count "$executor_root/profiles")" == "0" ]] ||
+  fail "a Seatbelt profile remained after crash recovery and final shutdown"
 
 echo "macOS packaged process-supervisor gate passed."
