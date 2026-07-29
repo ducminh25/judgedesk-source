@@ -100,7 +100,9 @@ impl MacosPlatform {
                 limits: RunLimits {
                     wall_time_ms: 5_000,
                     memory_bytes: 128 * 1024 * 1024,
-                    process_count: 1,
+                    // The probe forks short-lived children so each prohibited process-group
+                    // operation is tested in isolation without changing the probe parent's PGID.
+                    process_count: 4,
                     thread_count: 16,
                     output_bytes: 1024 * 1024,
                     total_write_bytes: 4 * 1024 * 1024,
@@ -144,17 +146,25 @@ impl MacosPlatform {
                 && probe["writeBlocked"].as_bool() == Some(true)
                 && sentinel_intact;
             let network = probe["networkBlocked"].as_bool() == Some(true);
-            // sandbox-exec needs process-fork to launch the target. Seatbelt still denies exec of
-            // every non-approved binary, while the group monitor enforces the process-count cap.
-            // The child flushes this marker before the attempt and exits with reserved code 97
-            // only if the forbidden shell actually ran.
+            // The security profile denies posix_spawn for group containment, so a Command-based
+            // probe would pass even if the process-exec allowlist disappeared. The probe uses
+            // fork+execve and requires execve itself to return EPERM.
             let exec_boundary = probe["processAttemptStarted"].as_bool() == Some(true)
-                && (matches!(run.reason, RunReason::ProcessLimit)
-                    || (matches!(run.reason, RunReason::Exited)
-                        && (run.exit_code == Some(0)
-                            || (run.exit_code.is_none() && run.signal_or_status.is_some()))));
+                && probe["forbiddenExecBlockedWithEperm"].as_bool() == Some(true)
+                && matches!(run.reason, RunReason::Exited)
+                && run.exit_code == Some(0);
             let process_limit = matches!(process_limit_run.reason, RunReason::ProcessLimit);
-            let process = exec_boundary && process_limit;
+            // A generic launch failure is not proof of containment. Every escape primitive must
+            // fail specifically with EPERM, and the forked direct-syscall probes also verify that
+            // their inherited process group did not change.
+            let group_escape = &probe["processGroupEscape"];
+            let setpgid_blocked = group_escape["setpgidBlockedWithEperm"].as_bool() == Some(true);
+            let setsid_blocked = group_escape["setsidBlockedWithEperm"].as_bool() == Some(true);
+            let posix_spawn_group_blocked =
+                group_escape["posixSpawnGroupBlockedWithEperm"].as_bool() == Some(true);
+            let group_escape_blocked =
+                setpgid_blocked && setsid_blocked && posix_spawn_group_blocked;
+            let process = exec_boundary && process_limit && group_escape_blocked;
             let ready = filesystem && network && process;
             Ok(SelfTest {
                 ready,
@@ -162,8 +172,13 @@ impl MacosPlatform {
                     Vec::new()
                 } else {
                     vec![format!(
-                        "SECURE_RUNNER_SELF_TEST_FAILED: filesystem={filesystem}, network={network}, execBoundary={exec_boundary}, processLimit={process_limit}, probeReason={:?}, processLimitReason={:?}",
-                        run.reason, process_limit_run.reason
+                        "SECURE_RUNNER_SELF_TEST_FAILED: filesystem={filesystem}, network={network}, execBoundary={exec_boundary}, execDetail={}, processLimit={process_limit}, groupEscape={group_escape_blocked}, setpgid={}, setsid={}, posixSpawnGroup={}, probeReason={:?}, processLimitReason={:?}",
+                        probe["forbiddenExecDetail"],
+                        group_escape["setpgidDetail"],
+                        group_escape["setsidDetail"],
+                        group_escape["posixSpawnGroupDetail"],
+                        run.reason,
+                        process_limit_run.reason
                     )]
                 },
                 network_blocked: network,
@@ -659,9 +674,21 @@ fn build_profile(spec: &RunSpec, paths: &ValidatedRun) -> Result<String, String>
         process_exec_rules.push("(literal \"/usr/bin/ld\")".into());
         process_exec_rules.push("(literal \"/usr/bin/as\")".into());
     }
+    let process_group_escape_denials = match spec.role {
+        // Apple Clang is a trusted launcher and requires posix_spawn for cc1, as, and ld.
+        // Its children inherit the compiler process group; direct attempts to move the compiler
+        // or one of those children to another group/session remain prohibited.
+        RunRole::Compiler => "(deny syscall-unix (syscall-number SYS_setpgid SYS_setsid))",
+        // Submission/checker code is not trusted. posix_spawn can apply SETPGROUP/SETSID inside
+        // the kernel and bypass separate setpgid/setsid syscall denials, so deny all three.
+        RunRole::Submission | RunRole::Checker | RunRole::SecurityProbe => {
+            "(deny syscall-unix (syscall-number SYS_setpgid SYS_setsid SYS_posix_spawn))"
+        }
+    };
     Ok(format!(
         r#"(version 1)
 (deny default)
+{process_group_escape_denials}
 (allow process-exec {})
 (allow process-fork)
 (allow signal (target same-sandbox))

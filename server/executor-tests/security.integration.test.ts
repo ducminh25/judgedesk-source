@@ -41,6 +41,33 @@ test("security fixtures can only reach the native executor harness", () => {
   assert.ok(fs.existsSync(path.join(process.cwd(), "server/security-fixtures/python/resource_attacks.py")));
 });
 
+test("macOS Seatbelt contract rejects every process-group escape path by role", () => {
+  const macosPlatform = fs.readFileSync(
+    path.join(process.cwd(), "native-executor/src/platform/macos.rs"),
+    "utf8",
+  );
+  const executorMain = fs.readFileSync(
+    path.join(process.cwd(), "native-executor/src/main.rs"),
+    "utf8",
+  );
+  assert.match(
+    macosPlatform,
+    /RunRole::Submission \| RunRole::Checker \| RunRole::SecurityProbe[\s\S]*?SYS_setpgid SYS_setsid SYS_posix_spawn/,
+  );
+  assert.match(
+    macosPlatform,
+    /RunRole::Compiler[\s\S]*?SYS_setpgid SYS_setsid(?! SYS_posix_spawn)/,
+  );
+  assert.match(macosPlatform, /setpgidBlockedWithEperm/);
+  assert.match(macosPlatform, /setsidBlockedWithEperm/);
+  assert.match(macosPlatform, /posixSpawnGroupBlockedWithEperm/);
+  assert.match(macosPlatform, /forbiddenExecBlockedWithEperm/);
+  assert.match(executorMain, /libc::POSIX_SPAWN_SETPGROUP/);
+  assert.match(executorMain, /spawn_result == libc::EPERM/);
+  assert.match(executorMain, /result < 0 && error == libc::EPERM && group_unchanged/);
+  assert.match(executorMain, /libc::execve/);
+});
+
 test("startup self-test proves the platform boundaries before hostile fixtures run", async () => {
   assert.ok(fs.existsSync(helperBinary), `Build the native executor first: ${helperBinary}`);
   const health = await executorClient.start();
