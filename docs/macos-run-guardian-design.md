@@ -1,7 +1,7 @@
 # macOS per-run guardian — design và foundation checkpoint
 
 Ngày chốt thiết kế: 2026-07-29
-Trạng thái: **production native path đã vượt targeted Apple-Silicon security/fault gates; local packaged smoke đã verified, còn full fault matrix, performance và signed updater D16 pending**
+Trạng thái: **production native path và exact-SHA packaged supervisor/checker gates đã verified trên Apple Silicon; full fault matrix, performance và signed updater D16 vẫn pending**
 
 ## 1. Mục tiêu và phạm vi
 
@@ -24,8 +24,8 @@ Phạm vi thiết kế:
 Checkpoint hiện tại đã nối protocol, trusted supervisor, fault-trace contract và
 các primitive identity/drain vào đường chạy production của native executor. Bằng
 chứng hiện có gồm source/native ARM64 gate, checker native/runtime và local ad-hoc
-`.app`/DMG smoke trên Apple M1 thật. Nó chưa thay thế packaged GUI/helper fault
-gate hoặc notarized release/updater gate.
+`.app`/DMG supervisor/checker gates trên Apple M1 thật. Nó chưa thay thế toàn bộ
+double-failure/soak matrix hoặc notarized release/updater gate.
 
 ## 2. Trạng thái bằng chứng hiện tại
 
@@ -124,7 +124,27 @@ vẫn không đạt absolute dispatch gate cũ 5/10 ms. Vì vậy checkpoint nà
 gọi là performance-release-ready; số đo end-to-end và throughput phải tiếp tục
 được giữ như regression evidence, không đổi tên metric để che overhead.
 
-### 2.3. Characterized và đã xử lý trong native path
+### 2.3. Exact-SHA packaged checkpoint
+
+- Commit `d4448fd40b79c87d2fc5869abf362f313a56c467` được fetch từ GitHub vào clean
+  detached worktree và build local ARM64 `.app`/DMG. DMG đã test có SHA-256
+  `0400b1ee9ca4db3c8d9a0aa8f3c9dee804ff6a5f6fb73b8751da6f647de98686`.
+- Hai lượt packaged process-supervisor gate liên tiếp xác minh 20 secondary
+  launch không đổi backend/executor generation, exact
+  `executor → guardian → persistent supervisor` parent chain, GUI crash giữa
+  submission dài, old PGID drain trước replacement, helper crash boundary,
+  replacement secure-runner health và final shutdown sạch.
+- Packaged checker gate dùng app-data cô lập, compile-run C++ submission,
+  checker C++ `testlib.h`, managed Python checker và cancel checker đang chạy;
+  toolchain tạm được uninstall và preferences thật của người dùng không bị đổi.
+- Crash testing phát hiện năm UUID workspace cũ. Executor startup nay reset chỉ
+  `workspaces/artifacts/profiles` sau generation guard, giữ nguyên managed
+  `toolchains` và fail closed với symlink. Gate cũng chờ final startup self-test
+  hoàn tất trước khi đánh giá cleanup để không nhầm probe đang chạy là leak.
+- Kiểm kê độc lập sau gate: 0 bundle process, 0 workspace, 0 Seatbelt profile và
+  0 fixture. Đây là local ad-hoc evidence, chưa phải notarized/updater evidence.
+
+### 2.4. Characterized và đã xử lý trong native path
 
 - Nếu native executor bị `SIGKILL`, shared generation lock do chính executor giữ
   bị kernel nhả, trong khi sandbox process group có thể còn sống. Per-run
@@ -142,7 +162,7 @@ gọi là performance-release-ready; số đo end-to-end và throughput phải t
 - Gate hiện tại tìm active child bằng direct PPID của executor. Cách đó không
   còn đúng sau khi thêm guardian.
 
-### 2.4. Pending
+### 2.5. Pending
 
 - Đạt hoặc duyệt lại bằng evidence một performance budget riêng cho per-run
   guardian, rồi nối budget đó thành blocker trong release workflow. Absolute
@@ -157,8 +177,9 @@ gọi là performance-release-ready; số đo end-to-end và throughput phải t
   `wall_time_us` không tăng theo containment drain.
 - Mở rộng fault matrix tới mọi cut-point pre-registration, guardian hang/STOP,
   tám run đồng thời và release soak ở mục 9.7.
-- Packaged GUI/helper double-failure gate với guardian đang giữ shared lock;
-  local DMG smoke hiện đã verified nhưng chưa bao phủ fault/relaunch này.
+- Packaged simultaneous GUI/helper double-failure gate với guardian đang giữ
+  shared lock; các single-fault/relaunch checkpoint đã verified nhưng chưa bao
+  phủ mọi thứ tự double-failure.
 - Compiler-specific containment certification.
 - Hoàn thiện workflow snapshot/certification trước khi mở lại local/system runtime; source gate managed `checker-runtime`, exact-exec và cancel-drain trên Apple Silicon đã đạt.
 - Minimum/current macOS matrix; một máy M1 không đại diện mọi OS được hỗ trợ.
