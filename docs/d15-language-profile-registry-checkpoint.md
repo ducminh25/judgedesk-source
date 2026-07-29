@@ -51,8 +51,8 @@ multi-language foundation is complete, and it does not enable a new language.
 Evidence is split deliberately: `779c81e` is the main registry/UI
 implementation, `22f9343` is the macOS discovery-only identity correction, and
 `a26beb5` changes only the packaged test harness before rebuilding the exact
-bundle. Gates below state which boundary they exercise rather than implying
-that an unrelated test was rerun after a test-only commit.
+bundle. The complete macOS regression and security suites were rerun on
+`a26beb5`; Windows security/build evidence predates only macOS/test-only code.
 
 ### Windows x64
 
@@ -79,9 +79,9 @@ and retained 224 pass / 4 platform skips.
 - Machine: real Apple Silicon (`arm64`), macOS 26.5.2, reached through the
   existing Tailscale/SSH test channel.
 - TypeScript lint: pass.
-- Full server/frontend regression on the main D15 implementation: 228 tests, 226
+- Full server/frontend regression on exact `a26beb5`: 228 tests, 226
   pass, 2 Windows-only skips.
-- Security integration on the main D15 implementation: 16 tests, 15 pass, 1
+- Security integration on exact `a26beb5`: 16 tests, 15 pass, 1
   Windows-only skip, including the
   20-run TLE/MLE boundaries, Seatbelt checker roles, process bomb and
   cancel-drain.
