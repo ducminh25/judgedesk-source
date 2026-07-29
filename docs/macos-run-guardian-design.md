@@ -25,7 +25,7 @@ Checkpoint hiện tại đã nối protocol, trusted supervisor, fault-trace con
 các primitive identity/drain vào đường chạy production của native executor. Bằng
 chứng hiện có gồm source/native ARM64 gate, checker native/runtime và local ad-hoc
 `.app`/DMG smoke trên Apple M1 thật. Nó chưa thay thế packaged GUI/helper fault
-gate, notarized release/updater gate hoặc clean-checkout gate của checkpoint checker.
+gate hoặc notarized release/updater gate.
 
 ## 2. Trạng thái bằng chứng hiện tại
 
@@ -571,7 +571,7 @@ và có thể được verified riêng.
 
 ## 11. Những nội dung không được suy rộng từ gate
 
-- Managed Python checker đã dùng typed `checker-runtime`; source snapshot trên Apple M1 đã chứng minh private-file/network/child-process block, exact-exec chỉ cho runtime đã chọn và cancel ACK sau terminal drain. Local/system Python vẫn fail-closed cho đến khi có snapshot/certificate; clean-checkout đúng Git SHA được theo dõi riêng, không suy từ folder thử nghiệm đã sync file.
+- Managed Python checker đã dùng typed `checker-runtime`; clean worktree tại exact implementation commit `0e32793c1aa48cfb822208345f165fb80a1d5359` trên Apple M1 đã chứng minh private-file/network/child-process block, exact-exec chỉ cho runtime đã chọn và cancel ACK sau terminal drain. Local/system Python vẫn fail-closed cho đến khi có snapshot/certificate.
 - Compiler certificate không áp dụng cho compiler khác version hoặc local path
   đã drift.
 - Một macOS version không đại diện toàn bộ minimum/current supported OS matrix.
