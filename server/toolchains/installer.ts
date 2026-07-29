@@ -7,11 +7,7 @@ import { once } from "events";
 import { purgeCachedManagedToolchain } from "../executor/workspace.js";
 import { TOOLCHAIN_CATALOG } from "./manifest.js";
 import { InstallProgress, ToolchainDescriptor } from "./types.js";
-import {
-  getToolchainsDir,
-  loadPreferences,
-  savePreferences,
-} from "./storage.js";
+import { getToolchainsDir } from "./storage.js";
 
 export const installProgressMap = new Map<string, InstallProgress>();
 const abortControllers = new Map<string, AbortController>();
@@ -276,8 +272,18 @@ function verifyExecutable(executablePath: string): void {
   }
 }
 
+export interface InstallToolchainOptions {
+  /**
+   * Runs synchronously after extraction/verification but before the existing
+   * installation is touched. Callers use this as the final admission check
+   * for operations that must not overlap a judging session.
+   */
+  beforeCommit?: () => void;
+}
+
 export async function installToolchain(
   descriptor: ToolchainDescriptor,
+  options: InstallToolchainOptions = {},
 ): Promise<void> {
   if (!/^[a-f0-9]{64}$/i.test(descriptor.sha256))
     throw new Error("Toolchain package has no valid SHA-256 digest.");
@@ -340,6 +346,7 @@ export async function installToolchain(
     verifyExecutable(
       path.join(tempExtractDir, descriptor.executableRelativePath),
     );
+    options.beforeCommit?.();
 
     if (fs.existsSync(finalInstallDir)) {
       fs.renameSync(finalInstallDir, backupInstallDir);
@@ -347,14 +354,6 @@ export async function installToolchain(
     }
     fs.renameSync(tempExtractDir, finalInstallDir);
     newInstallCommitted = true;
-
-    const prefs = loadPreferences();
-    prefs.installedToolchains ||= [];
-    if (!prefs.installedToolchains.includes(descriptor.id))
-      prefs.installedToolchains.push(descriptor.id);
-    if (descriptor.kind === "cpp") prefs.preferredSourceCpp = "managed";
-    else prefs.preferredSourcePython = "managed";
-    savePreferences(prefs);
 
     if (previousInstallBackedUp) {
       fs.rmSync(backupInstallDir, { recursive: true, force: true });
@@ -398,11 +397,6 @@ export async function uninstallToolchain(id: string): Promise<void> {
   const installDir = path.join(getToolchainsDir(), id);
   try {
     fs.rmSync(installDir, { recursive: true, force: true });
-    const prefs = loadPreferences();
-    prefs.installedToolchains = (prefs.installedToolchains || []).filter(
-      (item) => item !== id,
-    );
-    savePreferences(prefs);
     installProgressMap.delete(id);
     try {
       await purgeCachedManagedToolchain(descriptor.kind);

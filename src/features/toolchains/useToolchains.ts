@@ -1,10 +1,21 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "../../api.js";
+
+export type ToolchainSourceMode =
+  | "none"
+  | "managed"
+  | "local_path"
+  | "local_auto";
 
 export interface ToolchainProgress {
   id: string;
   status:
-    "idle" | "downloading" | "extracting" | "verifying" | "success" | "failed";
+    | "idle"
+    | "downloading"
+    | "extracting"
+    | "verifying"
+    | "success"
+    | "failed";
   percent: number;
   bytesReceived: number;
   totalBytes: number;
@@ -29,17 +40,70 @@ export interface ToolchainDescriptor {
 
 export interface ResolvedToolchain {
   kind: "cpp" | "python";
-  source: "managed" | "custom" | "system" | "sandbox";
+  source: "none" | "managed" | "custom" | "system" | "sandbox";
   executablePath: string;
   version: string;
   ready: boolean;
   diagnostic?: string;
+  diagnosticCode?: string;
+  candidateId?: string;
+}
+
+export interface DiscoveredToolchainCandidate {
+  candidateId: string;
+  profileId: string;
+  kind: "cpp" | "python";
+  canonicalPath: string;
+  displayPath: string;
+  origin: "path" | "standard-location";
+}
+
+export interface LanguageProfileView {
+  id: string;
+  version: number;
+  displayNameKey: string;
+  stability: "stable" | "experimental";
+  extensions: string[];
+  kind: "cpp" | "python";
+  supportedOnHost: boolean;
+  selection: { mode: ToolchainSourceMode; localPath?: string };
+  status: "not_available" | "checker_only" | "submission_ready";
+  roles: { submissionReady: boolean; checkerReady: boolean };
+  diagnostic?: { code: string; messageKey: string; message?: string };
+  active: ResolvedToolchain;
+  provenance?: "managed-package" | "platform-certified" | "unverified-local";
+  candidates: DiscoveredToolchainCandidate[];
+  sources: Record<
+    ToolchainSourceMode,
+    { available: boolean; reasonCode?: string }
+  >;
+  managedPackage?: {
+    id: string;
+    version: string;
+    installed: boolean;
+    downloadAvailable: boolean;
+    progress: ToolchainProgress;
+  };
 }
 
 export interface ToolchainState {
   platform: string;
   arch: string;
+  mutationsBlocked: boolean;
+  manifestStatus: "not_started" | "loading" | "ready" | "failed";
   manifestError?: string;
+  preferenceDocument: {
+    status: "ready" | "initialized" | "migrated" | "recovery";
+    revision: string;
+    recoveryDiagnostics: Array<{ code: string }>;
+  };
+  registryRevision: number;
+  discovery: {
+    status: "not_started" | "running" | "complete" | "failed";
+    completedAt?: string;
+    errorCode?: string;
+  };
+  profiles: LanguageProfileView[];
   preferences: {
     customCppPath?: string;
     customPythonPath?: string;
@@ -66,6 +130,19 @@ export interface ToolchainCapabilities {
   installable: boolean;
 }
 
+function hasRunningOperation(state: ToolchainState): boolean {
+  return state.discovery.status === "running"
+    || state.manifestStatus === "loading"
+    || state.toolchains.some((toolchain) =>
+      ["downloading", "extracting", "verifying"].includes(
+        toolchain.progress.status,
+      ))
+    || state.profiles.some((profile) => profile.managedPackage
+      && ["downloading", "extracting", "verifying"].includes(
+        profile.managedPackage.progress.status,
+      ));
+}
+
 export function useToolchains() {
   const [state, setState] = useState<ToolchainState | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -74,13 +151,13 @@ export function useToolchains() {
 
   const fetchState = useCallback(async () => {
     try {
-      const res = await apiFetch("/api/toolchains");
-      const data = await res.json();
+      const response = await apiFetch("/api/toolchains");
+      const data = (await response.json()) as ToolchainState;
       setState(data);
       setError(null);
-      return data as ToolchainState;
-    } catch (err: any) {
-      setError(err.message || "Failed to load toolchains state.");
+      return data;
+    } catch (caught: any) {
+      setError(caught.message || "Failed to load toolchains state.");
       return null;
     }
   }, []);
@@ -90,14 +167,7 @@ export function useToolchains() {
     pollingRef.current = window.setInterval(async () => {
       const data = await fetchState();
       if (!data) return;
-
-      const isAnyRunning = data.toolchains.some(
-        (t) =>
-          t.progress.status === "downloading" ||
-          t.progress.status === "extracting" ||
-          t.progress.status === "verifying",
-      );
-      if (!isAnyRunning && pollingRef.current) {
+      if (!hasRunningOperation(data) && pollingRef.current) {
         clearInterval(pollingRef.current);
         pollingRef.current = null;
       }
@@ -110,13 +180,7 @@ export function useToolchains() {
       const data = await fetchState();
       if (disposed) return;
       if (data) {
-        const isAnyRunning = data.toolchains.some(
-          (t) =>
-            t.progress.status === "downloading" ||
-            t.progress.status === "extracting" ||
-            t.progress.status === "verifying",
-        );
-        if (isAnyRunning) startPolling();
+        if (hasRunningOperation(data)) startPolling();
       } else if (retriesRemaining > 0) {
         initialRetryRef.current = window.setTimeout(
           () => void loadInitialState(retriesRemaining - 1),
@@ -124,19 +188,13 @@ export function useToolchains() {
         );
       }
     };
-
     void loadInitialState(10);
-
     return () => {
       disposed = true;
-      if (initialRetryRef.current) {
-        clearTimeout(initialRetryRef.current);
-        initialRetryRef.current = null;
-      }
-      if (pollingRef.current) {
-        clearInterval(pollingRef.current);
-        pollingRef.current = null;
-      }
+      if (initialRetryRef.current) clearTimeout(initialRetryRef.current);
+      if (pollingRef.current) clearInterval(pollingRef.current);
+      initialRetryRef.current = null;
+      pollingRef.current = null;
     };
   }, [fetchState, startPolling]);
 
@@ -146,8 +204,8 @@ export function useToolchains() {
       await apiFetch(`/api/toolchains/${id}/install`, { method: "POST" });
       startPolling();
       return true;
-    } catch (err: any) {
-      setError(err.message);
+    } catch (caught: any) {
+      setError(caught.message);
       return false;
     }
   };
@@ -156,46 +214,43 @@ export function useToolchains() {
     try {
       await apiFetch(`/api/toolchains/${id}/cancel`, { method: "POST" });
       await fetchState();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (caught: any) {
+      setError(caught.message);
     }
   };
 
   const uninstall = async (id: string) => {
     try {
+      setError(null);
       await apiFetch(`/api/toolchains/${id}`, { method: "DELETE" });
       await fetchState();
-    } catch (err: any) {
-      setError(err.message);
+      return true;
+    } catch (caught: any) {
+      setError(caught.message);
+      return false;
     }
   };
 
-  const saveCustomPath = async (kind: "cpp" | "python", customPath: string) => {
-    try {
-      await apiFetch("/api/toolchains/custom-path", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind, path: customPath }),
-      });
-      await fetchState();
-    } catch (err: any) {
-      setError(err.message);
-    }
-  };
-
-  const savePreferredSource = async (
-    kind: "cpp" | "python",
-    source: "managed" | "custom" | "system",
+  const setProfilePreference = async (
+    profileId: string,
+    mode: ToolchainSourceMode,
+    localPath?: string,
   ) => {
     try {
-      await apiFetch("/api/toolchains/custom-path", {
-        method: "POST",
+      setError(null);
+      await apiFetch(`/api/toolchains/profiles/${encodeURIComponent(profileId)}/preference`, {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind, preferredSource: source }),
+        body: JSON.stringify({
+          mode,
+          ...(localPath === undefined ? {} : { localPath }),
+        }),
       });
       await fetchState();
-    } catch (err: any) {
-      setError(err.message);
+      return true;
+    } catch (caught: any) {
+      setError(caught.message);
+      return false;
     }
   };
 
@@ -204,8 +259,9 @@ export function useToolchains() {
       setError(null);
       await apiFetch("/api/toolchains/rescan", { method: "POST" });
       await fetchState();
-    } catch (err: any) {
-      setError(err.message);
+      startPolling();
+    } catch (caught: any) {
+      setError(caught.message);
     }
   };
 
@@ -216,8 +272,7 @@ export function useToolchains() {
     install,
     cancel,
     uninstall,
-    saveCustomPath,
-    savePreferredSource,
+    setProfilePreference,
     rescan,
   };
 }

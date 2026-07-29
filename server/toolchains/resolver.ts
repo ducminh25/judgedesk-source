@@ -3,9 +3,18 @@ import os from "os";
 import path from "path";
 import { execFileSync } from "child_process";
 import { ToolchainKind, ResolvedToolchain, ToolchainSource } from "./types.js";
-import { getToolchainsDir, loadPreferences } from "./storage.js";
+import {
+  getToolchainsDir,
+  loadToolchainPreferenceSnapshot,
+} from "./storage.js";
 import { getDescriptorForHost } from "./manifest.js";
 import { sandbox } from "../sandbox.js";
+import { getRegisteredProfileForKind } from "../languages/registry.js";
+import { getStoredProfilePreference } from "./preferences-v2.js";
+import {
+  getDiscoveredCandidates,
+  getToolchainDiscoverySnapshot,
+} from "./discovery.js";
 
 export const MIN_GNU_CPP_VERSION = "9.2.0";
 export const MIN_GNU_GDB_VERSION = "7.6.1";
@@ -201,12 +210,19 @@ export function resolveManagedToolchain(kind: ToolchainKind): ResolvedToolchain 
     );
     if (fs.existsSync(executablePath)) {
       const version = getExecutableVersion(executablePath, kind);
+      const ready = isSupportedExecutable(executablePath, kind);
       return {
         kind,
         source: "managed",
         executablePath,
         version,
-        ready: isSupportedExecutable(executablePath, kind),
+        ready,
+        ...(!ready
+          ? {
+              diagnostic: "Managed toolchain health check failed.",
+              diagnosticCode: "HEALTH_CHECK_FAILED" as const,
+            }
+          : {}),
       };
     }
   }
@@ -217,6 +233,9 @@ export function resolveManagedToolchain(kind: ToolchainKind): ResolvedToolchain 
     version: "",
     ready: false,
     diagnostic: "Managed toolchain not installed.",
+    diagnosticCode: descriptor
+      ? "MANAGED_PACKAGE_NOT_INSTALLED"
+      : "MANAGED_PACKAGE_UNSUPPORTED",
   };
 }
 
@@ -226,17 +245,23 @@ export function chooseNativeProtectedToolchain(
   managed: ResolvedToolchain,
   selected: ResolvedToolchain,
 ): ResolvedToolchain {
-  // Detection and preferences must preserve the active Python source. Execution paths
-  // separately require either managed bits or a future certified immutable snapshot.
-  if (kind === "python") return selected;
-  const requireManaged = platform === "win32";
-  return requireManaged && managed.ready ? managed : selected;
+  // D15 selections are fixed intent. Native protection may reject an active
+  // source, but it must never silently replace it with another installed source.
+  if (selected.source === "managed") return managed;
+  if (kind === "cpp" && platform === "win32" && selected.ready) {
+    return {
+      ...selected,
+      ready: false,
+      diagnostic:
+        "The selected local C++ compiler has not been certified for the Windows secure runner.",
+      diagnosticCode: "CERTIFICATION_REQUIRED",
+    };
+  }
+  return selected;
 }
 
 export function resolveNativeProtectedToolchain(kind: ToolchainKind): ResolvedToolchain {
   const managed = resolveManagedToolchain(kind);
-  const requireManaged = os.platform() === "win32" && kind === "cpp";
-  if (requireManaged && managed.ready) return managed;
   return chooseNativeProtectedToolchain(os.platform(), kind, managed, resolveToolchain(kind));
 }
 
@@ -685,10 +710,6 @@ function findPythonRegistryInstallations(): string[] {
 }
 
 export function resolveToolchain(kind: ToolchainKind): ResolvedToolchain {
-  const platform = os.platform();
-  const arch = os.arch();
-
-  // 1. Sandbox active
   if (sandbox.mode !== "none") {
     return {
       kind,
@@ -698,80 +719,161 @@ export function resolveToolchain(kind: ToolchainKind): ResolvedToolchain {
       ready: true,
     };
   }
-
-  const prefs = loadPreferences();
-  const preferredSource =
-    kind === "cpp" ? prefs.preferredSourceCpp : prefs.preferredSourcePython;
-  const customPath =
-    kind === "cpp" ? prefs.customCppPath : prefs.customPythonPath;
-
-  const managed = resolveManagedToolchain(kind);
-
-  // Helper to construct a System resolution result
-  const resolveSystem = (): ResolvedToolchain => {
-    const systemPath = kind === "cpp" ? findSystemCpp() : findSystemPython();
-    if (systemPath) {
-      const version = getExecutableVersion(systemPath, kind);
-      return {
-        kind,
-        source: "system",
-        executablePath: systemPath,
-        version,
-        ready: isSupportedExecutable(systemPath, kind),
-      };
-    }
-    return {
+  const profileId = getRegisteredProfileForKind(kind).profile.ref.id;
+  const preferenceSnapshot = loadToolchainPreferenceSnapshot();
+  const preference = getStoredProfilePreference(
+    preferenceSnapshot.preferences,
+    profileId,
+  );
+  if (preferenceSnapshot.status === "recovery") {
+    return unavailableToolchain(
       kind,
-      source: "system",
-      executablePath: "",
-      version: "",
-      ready: false,
-      diagnostic: "System compiler not found.",
-    };
-  };
-
-  // Helper to construct a Custom resolution result
-  const resolveCustom = (): ResolvedToolchain => {
-    if (customPath && fs.existsSync(customPath)) {
-      const version = getExecutableVersion(customPath, kind);
-      return {
-        kind,
-        source: "custom",
-        executablePath: customPath,
-        version,
-        ready: isSupportedExecutable(customPath, kind),
-      };
-    }
-    return {
+      "none",
+      "Toolchain preferences require recovery.",
+      "DISABLED_BY_USER",
+    );
+  }
+  if (preference.mode === "none") {
+    return unavailableToolchain(
       kind,
-      source: "custom",
-      executablePath: customPath || "",
-      version: "",
-      ready: false,
-      diagnostic: "Custom compiler path does not exist or is invalid.",
-    };
-  };
-
-  // Helper to construct a Managed resolution result
-  const resolveManaged = (): ResolvedToolchain => managed;
-
-  // Resolve according to user preference
-  if (preferredSource === "custom") {
-    const res = resolveCustom();
-    if (res.ready) return res;
-  } else if (preferredSource === "managed") {
-    const res = resolveManaged();
-    if (res.ready) return res;
-  } else {
-    const res = resolveSystem();
-    if (res.ready) return res;
+      "none",
+      "Toolchain profile is disabled by the user.",
+      "DISABLED_BY_USER",
+    );
+  }
+  if (preference.mode === "managed") return resolveManagedToolchain(kind);
+  if (preference.mode === "local_path") {
+    if (!preference.localPath) {
+      return unavailableToolchain(
+        kind,
+        "custom",
+        "A local executable path is required.",
+        "LOCAL_PATH_REQUIRED",
+      );
+    }
+    return resolveSelectedLocalExecutable(kind, "custom", preference.localPath);
   }
 
-  // Fallbacks: If preferred source fails, search remaining in order: Managed -> Custom -> System
-  if (managed.ready) return managed;
-  if (customPath && fs.existsSync(customPath)) {
-    const res = resolveCustom();
-    if (res.ready) return res;
+  const discovery = getToolchainDiscoverySnapshot();
+  if (discovery.status === "not_started" || discovery.status === "running") {
+    return unavailableToolchain(
+      kind,
+      "system",
+      "Toolchain detection is still in progress.",
+      "DETECTION_IN_PROGRESS",
+    );
   }
-  return resolveSystem();
+  if (discovery.status === "failed") {
+    return unavailableToolchain(
+      kind,
+      "system",
+      "Automatic toolchain detection failed.",
+      "AUTO_DETECT_NOT_FOUND",
+    );
+  }
+  const candidates = getDiscoveredCandidates(kind);
+  if (candidates.length === 0) {
+    return unavailableToolchain(
+      kind,
+      "system",
+      "No compatible local candidate was detected.",
+      "AUTO_DETECT_NOT_FOUND",
+    );
+  }
+  if (candidates.length > 1) {
+    return unavailableToolchain(
+      kind,
+      "system",
+      "Multiple local candidates were detected; choose one explicitly.",
+      "AUTO_DETECT_AMBIGUOUS",
+    );
+  }
+  return resolveSelectedLocalExecutable(
+    kind,
+    "system",
+    candidates[0].canonicalPath,
+    candidates[0].candidateId,
+  );
+}
+
+function resolveSelectedLocalExecutable(
+  kind: ToolchainKind,
+  source: Extract<ToolchainSource, "custom" | "system">,
+  executablePath: string,
+  candidateId?: string,
+): ResolvedToolchain {
+  const isWindowsNetworkOrDevicePath = os.platform() === "win32"
+    && executablePath.replaceAll("/", "\\").startsWith("\\\\");
+  if (
+    !path.isAbsolute(executablePath)
+    || isWindowsNetworkOrDevicePath
+  ) {
+    return {
+      ...unavailableToolchain(
+        kind,
+        source,
+        "The selected local executable path is not an accepted absolute local path.",
+        "LOCAL_EXECUTABLE_INVALID",
+      ),
+      executablePath,
+      ...(candidateId ? { candidateId } : {}),
+    };
+  }
+  try {
+    if (!fs.statSync(executablePath).isFile()) throw new Error("not a file");
+  } catch {
+    return {
+      ...unavailableToolchain(
+        kind,
+        source,
+        "The selected local executable does not exist or is not a regular file.",
+        source === "custom" ? "LOCAL_PATH_MISSING" : "AUTO_DETECT_NOT_FOUND",
+      ),
+      executablePath,
+      ...(candidateId ? { candidateId } : {}),
+    };
+  }
+  const version = getExecutableVersion(executablePath, kind);
+  const ready = isSupportedExecutable(executablePath, kind);
+  const diagnosticCode: NonNullable<ResolvedToolchain["diagnosticCode"]> =
+    version === "unknown" ? "LOCAL_EXECUTABLE_INVALID" : "HEALTH_CHECK_FAILED";
+  return {
+    kind,
+    source,
+    executablePath,
+    version,
+    ready,
+    ...(candidateId ? { candidateId } : {}),
+    ...(!ready
+      ? {
+          diagnostic: "The selected local executable failed version or health policy.",
+          diagnosticCode,
+        }
+      : {}),
+  };
+}
+
+/** Explicit user action only; passive discovery never calls this probe. */
+export function verifyLocalToolchainCandidate(
+  kind: ToolchainKind,
+  executablePath: string,
+): ResolvedToolchain {
+  return resolveSelectedLocalExecutable(kind, "custom", executablePath);
+}
+
+function unavailableToolchain(
+  kind: ToolchainKind,
+  source: ToolchainSource,
+  diagnostic: string,
+  diagnosticCode: NonNullable<ResolvedToolchain["diagnosticCode"]>,
+): ResolvedToolchain {
+  return {
+    kind,
+    source,
+    executablePath: "",
+    version: "",
+    ready: false,
+    diagnostic,
+    diagnosticCode,
+  };
 }

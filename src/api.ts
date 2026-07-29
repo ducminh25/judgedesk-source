@@ -3,7 +3,12 @@ import {
   fetchWithStartupRetry,
 } from "./features/desktop/browser-lifecycle.js";
 
-export let API_BASE = window.location.origin.includes("localhost:3000")
+const isLoopbackDevelopmentOrigin =
+  (window.location.hostname === "localhost"
+    || window.location.hostname === "127.0.0.1")
+  && !(window as any).__TAURI_INTERNALS__;
+
+export let API_BASE = isLoopbackDevelopmentOrigin
   ? ""
   : "http://127.0.0.1:3000";
 let backendStartupDeadline = Date.now() + BACKEND_STARTUP_TIMEOUT_MS;

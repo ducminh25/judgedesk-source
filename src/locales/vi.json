@@ -334,6 +334,10 @@
     "restartNow": "Khởi động lại JudgeDesk",
     "restarting": "Đang khởi động lại..."
   },
+  "languages": {
+    "cpp": "C++",
+    "python": "Python"
+  },
   "toolchains": {
     "idle": "Đang chờ",
     "downloading": "Đang tải",
@@ -349,7 +353,7 @@
     "install": "Cài đặt",
     "loadError": "Không thể tải cấu hình toolchains",
     "loadingState": "Đang tải cấu hình trình biên dịch...",
-    "loadingHint": "Bạn vẫn có thể nhập và lưu đường dẫn file thực thi trong khi quá trình tự động dò tiếp tục chạy.",
+    "loadingHint": "Đang nạp registry và các lựa chọn nguồn đã lưu.",
     "cppCompiler": "Trình biên dịch C/C++",
     "pythonRuntime": "Môi trường Python",
     "windows": "Windows",
@@ -378,7 +382,60 @@
     "diagnostics": {
       "systemMissing": "Không tìm thấy trình biên dịch hoặc môi trường chạy tương thích trên hệ thống.",
       "managedMissing": "Trình biên dịch hoặc môi trường chạy do ứng dụng quản lý chưa được cài đặt.",
-      "customInvalid": "Đường dẫn file thực thi tùy chỉnh không tồn tại hoặc không hợp lệ."
+      "customInvalid": "Đường dẫn file thực thi tùy chỉnh không tồn tại hoặc không hợp lệ.",
+      "DISABLED_BY_USER": "Ngôn ngữ này đang bị tắt trên máy tính.",
+      "PROFILE_UNSUPPORTED_ON_HOST": "Profile ngôn ngữ này không hỗ trợ hệ điều hành hoặc kiến trúc hiện tại.",
+      "MANAGED_PACKAGE_UNSUPPORTED": "JudgeDesk chưa cung cấp gói được quản lý cho profile và máy tính này.",
+      "MANAGED_PACKAGE_NOT_INSTALLED": "Trình biên dịch hoặc runtime do JudgeDesk quản lý chưa được cài đặt.",
+      "MANAGED_PACKAGE_CORRUPT": "Gói được quản lý không vượt qua kiểm tra toàn vẹn.",
+      "HEALTH_CHECK_FAILED": "Trình biên dịch hoặc runtime đã chọn không vượt qua kiểm tra hoạt động.",
+      "LOCAL_PATH_REQUIRED": "Hãy chọn file thực thi của trình biên dịch hoặc runtime cục bộ.",
+      "LOCAL_PATH_MISSING": "File thực thi cục bộ đã chọn không còn tồn tại.",
+      "LOCAL_EXECUTABLE_INVALID": "File đã chọn không phải trình biên dịch hoặc runtime được hỗ trợ.",
+      "LOCAL_VERSION_UNSUPPORTED": "Phiên bản cục bộ này nằm ngoài policy JudgeDesk đã kiểm thử.",
+      "LOCAL_NOT_SANDBOX_COMPATIBLE": "Trình biên dịch hoặc runtime cục bộ này không tương thích với policy máy chấm an toàn hiện tại.",
+      "AUTO_DETECT_NOT_FOUND": "Không tìm thấy candidate cục bộ. Hãy chọn đường dẫn hoặc cài gói do JudgeDesk quản lý.",
+      "AUTO_DETECT_AMBIGUOUS": "Tìm thấy nhiều candidate cục bộ. Hãy chọn rõ đường dẫn bạn muốn dùng.",
+      "DETECTION_IN_PROGRESS": "Quá trình dò nhanh trình biên dịch và runtime vẫn đang chạy.",
+      "CERTIFICATION_REQUIRED": "Đã phát hiện nhưng chưa được chứng nhận để chấm an toàn. Hãy dùng gói managed hoặc hoàn thành chứng nhận khi luồng này khả dụng.",
+      "CERTIFICATE_STALE": "Chứng nhận cũ đã hết hiệu lực và cần thực hiện lại.",
+      "TOOLCHAIN_DRIFTED": "Trình biên dịch hoặc runtime đã thay đổi sau khi chứng nhận nên bị chặn."
+    },
+    "registry": {
+      "firstRunHint": "Kiểm tra từng ngôn ngữ được hỗ trợ, chọn đúng một nguồn rồi hoàn tất thiết lập.",
+      "managerHint": "Lựa chọn nguồn là cố định; nguồn không khả dụng sẽ không âm thầm fallback.",
+      "preferencesRecovery": "Cấu hình toolchain đã lưu bị lỗi hoặc thuộc schema mới hơn. JudgeDesk đã tắt mọi profile và giữ nguyên file để phục hồi.",
+      "language": "Ngôn ngữ",
+      "sourceSelection": "Nguồn trình biên dịch/runtime",
+      "actions": "Thao tác",
+      "experimental": "Thử nghiệm",
+      "sources": {
+        "none": "None",
+        "managed": "Managed by toolchain",
+        "local_path": "Local (path)",
+        "local_auto": "Local (auto-detect)"
+      },
+      "statuses": {
+        "not_available": "Không tìm thấy",
+        "checker_only": "Chỉ dùng để dịch máy chấm",
+        "submission_ready": "Sẵn sàng chấm"
+      },
+      "discovery": {
+        "not_started": "Quá trình dò nhanh cục bộ chưa bắt đầu.",
+        "running": "Đang dò nhanh trình biên dịch và runtime cục bộ ở nền...",
+        "complete": "Đã hoàn tất dò nhanh cục bộ.",
+        "failed": "Dò nhanh cục bộ thất bại. Hãy bấm Quét lại để chủ động thử lại."
+      },
+      "registryRevision": "Phiên bản registry ngôn ngữ: {{revision}}",
+      "browseTitle": "Chọn file thực thi {{language}}",
+      "verifyAndUse": "Kiểm tra và sử dụng",
+      "downloadAndApply": "Tải về và áp dụng cho JudgeDesk",
+      "applyManaged": "Áp dụng gói managed",
+      "uninstallConfirm": "Gỡ gói do JudgeDesk quản lý này? Trình biên dịch và runtime cục bộ sẽ không bao giờ bị xóa.",
+      "mutationsBlocked": "Các lựa chọn trình biên dịch và runtime được khóa trong khi đang chấm. Hãy hủy hoặc chờ lượt chấm hiện tại kết thúc trước khi thay đổi.",
+      "managedUnavailable": "Không có gói managed dành cho máy tính này.",
+      "noCandidates": "Không tìm thấy candidate trong PATH hoặc các vị trí chuẩn đã giới hạn.",
+      "detectedCandidates": "Candidate đã phát hiện: {{count}}"
     },
     "setup": {
       "title": "Trình Thiết Lập Biên Dịch Lần Đầu",

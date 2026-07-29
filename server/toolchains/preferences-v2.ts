@@ -542,6 +542,21 @@ export function decodeToolchainPreferencesBytes(
   return decodeToolchainPreferencesJson(rawJson, mapping);
 }
 
+export function encodeToolchainPreferencesV2(
+  preferences: ToolchainPreferencesV2,
+  mapping: LegacyProfileMapping,
+): string {
+  const decoded = decodeAndMigrateToolchainPreferences(preferences, mapping);
+  if (decoded.status !== "ready-v2") {
+    throw new Error("Cannot persist an invalid toolchain preferences v2 document.");
+  }
+  return decoded.canonicalJson;
+}
+
+export function isValidToolchainLocalPath(value: unknown): value is string {
+  return isValidLocalPath(value);
+}
+
 export function getStoredProfilePreference(
   preferences: ToolchainPreferencesV2,
   profileId: LanguageProfileId,

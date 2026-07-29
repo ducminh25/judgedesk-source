@@ -21,8 +21,7 @@ export function getHostStatus(): HostStatus {
   const pythonCheckerReady = isPythonCheckerReady(detectedPython);
   const resolvedCpp = resolveNativeProtectedToolchain("cpp");
   const secureRunner = executorClient.health;
-  const cppRequiresManaged = os.platform() === "win32";
-  const cppSubmissionReady = cppRequiresManaged ? managedCpp.ready : resolvedCpp.ready;
+  const cppSubmissionReady = resolvedCpp.ready;
 
   return {
     gpp: {
@@ -32,9 +31,7 @@ export function getHostStatus(): HostStatus {
       managedInstalled: managedCpp.ready,
       submissionReady: cppSubmissionReady,
       checkerReady: cppSubmissionReady,
-      diagnostic: detectedCpp.ready && !cppSubmissionReady
-        ? "Detected but not usable with Native protection; install managed GCC."
-        : detectedCpp.diagnostic,
+      diagnostic: resolvedCpp.diagnostic || detectedCpp.diagnostic,
     },
     python: {
       installed: detectedPython.ready,

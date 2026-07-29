@@ -8,9 +8,17 @@ import { registerToolchainRoutes } from "./toolchain-routes.js";
 import {
   getPreferencesFilePath,
   loadPreferences,
+  loadToolchainPreferenceSnapshot,
   savePreferences,
   type ToolchainPreferences,
 } from "../toolchains/storage.js";
+import {
+  CPP_LANGUAGE_PROFILE_ID,
+  PYTHON_LANGUAGE_PROFILE_ID,
+} from "../languages/registry.js";
+import { getStoredProfilePreference } from "../toolchains/preferences-v2.js";
+import { serverLifecycle } from "../platform/server-lifecycle.js";
+import { TOOLCHAIN_CATALOG } from "../toolchains/manifest.js";
 
 type CapturedHandler = (
   request: { body: unknown; params: Record<string, string> },
@@ -49,6 +57,7 @@ function captureToolchainHandlers(): Map<string, CapturedHandler> {
   };
   app.get = capture("GET");
   app.post = capture("POST");
+  app.put = capture("PUT");
   app.delete = capture("DELETE");
   registerToolchainRoutes(app as unknown as Express);
   return handlers;
@@ -97,13 +106,115 @@ async function invokeCustomPath(
   return response;
 }
 
+test("GET exposes registry state without waiting for the remote package catalog", (t) => {
+  useTemporaryAppData(t);
+  const previousManifestUrl = process.env.THEMIS_TOOLCHAIN_MANIFEST_URL;
+  process.env.THEMIS_TOOLCHAIN_MANIFEST_URL = "http://127.0.0.1:9/toolchains.json";
+  t.after(() => {
+    if (previousManifestUrl === undefined) delete process.env.THEMIS_TOOLCHAIN_MANIFEST_URL;
+    else process.env.THEMIS_TOOLCHAIN_MANIFEST_URL = previousManifestUrl;
+  });
+  const handler = captureToolchainHandlers().get("GET /api/toolchains");
+  assert.ok(handler);
+  const response = createResponse();
+  const returned = handler({ body: undefined, params: {} }, response);
+  assert.equal(returned instanceof Promise, false);
+  const payload = response.payload as {
+    manifestStatus?: unknown;
+    registryRevision?: unknown;
+    profiles?: unknown[];
+    mutationsBlocked?: unknown;
+  };
+  assert.equal(payload.manifestStatus, "loading");
+  assert.equal(payload.registryRevision, 1);
+  assert.equal(payload.profiles?.length, 2);
+  assert.equal(payload.mutationsBlocked, false);
+});
+
+test("toolchain mutations fail closed while a judging session is active", async (t) => {
+  useTemporaryAppData(t);
+  loadToolchainPreferenceSnapshot();
+  const storedBefore = fs.readFileSync(getPreferencesFilePath(), "utf8");
+  const admission = serverLifecycle.tryStartJudgeSession(
+    `toolchain-route-test-${Date.now()}`,
+  );
+  assert.equal(admission.accepted, true);
+  if (!admission.accepted) return;
+  t.after(() => admission.lease.finish());
+
+  const handlers = captureToolchainHandlers();
+  const getResponse = createResponse();
+  await handlers.get("GET /api/toolchains")?.(
+    { body: undefined, params: {} },
+    getResponse,
+  );
+  assert.equal(
+    (getResponse.payload as { mutationsBlocked?: unknown }).mutationsBlocked,
+    true,
+  );
+
+  const preferenceResponse = createResponse();
+  await handlers.get("PUT /api/toolchains/profiles/:profileId/preference")?.(
+    {
+      body: { mode: "none" },
+      params: { profileId: CPP_LANGUAGE_PROFILE_ID },
+    },
+    preferenceResponse,
+  );
+  assert.equal(preferenceResponse.statusCode, 409);
+
+  const legacyResponse = createResponse();
+  await handlers.get("POST /api/toolchains/custom-path")?.(
+    { body: { kind: "cpp", preferredSource: "system" }, params: {} },
+    legacyResponse,
+  );
+  assert.equal(legacyResponse.statusCode, 409);
+
+  const rescanResponse = createResponse();
+  await handlers.get("POST /api/toolchains/rescan")?.(
+    { body: undefined, params: {} },
+    rescanResponse,
+  );
+  assert.equal(rescanResponse.statusCode, 409);
+
+  const hostArch = os.arch() === "x64" || os.arch() === "arm64"
+    ? os.arch()
+    : os.arch() === "x86_64" || os.arch() === "amd64"
+      ? "x64"
+      : os.arch() === "aarch64"
+        ? "arm64"
+        : os.arch();
+  const hostPackage = TOOLCHAIN_CATALOG.find(
+    (entry) => entry.platform === os.platform() && entry.arch === hostArch,
+  );
+  assert.ok(hostPackage);
+
+  const installResponse = createResponse();
+  await handlers.get("POST /api/toolchains/:id/install")?.(
+    { body: undefined, params: { id: hostPackage.id } },
+    installResponse,
+  );
+  assert.equal(installResponse.statusCode, 409);
+
+  const uninstallResponse = createResponse();
+  await handlers.get("DELETE /api/toolchains/:id")?.(
+    { body: undefined, params: { id: hostPackage.id } },
+    uninstallResponse,
+  );
+  assert.equal(uninstallResponse.statusCode, 409);
+  assert.equal(fs.readFileSync(getPreferencesFilePath(), "utf8"), storedBefore);
+});
+
 test("legacy v1 custom-path applies partial updates without erasing sibling preferences", async (t) => {
   useTemporaryAppData(t);
+  const oldCppPath = path.join(os.tmpdir(), "judgedesk-old-g++.exe");
+  const newCppPath = path.join(os.tmpdir(), "judgedesk-new-g++.exe");
+  const rememberedPythonPath = path.join(os.tmpdir(), "judgedesk-python.exe");
   const initial: ToolchainPreferences = {
     preferredSourceCpp: "custom",
-    customCppPath: String.raw`C:\old\g++.exe`,
+    customCppPath: oldCppPath,
     preferredSourcePython: "managed",
-    customPythonPath: String.raw`C:\remembered\python.exe`,
+    customPythonPath: rememberedPythonPath,
     installedToolchains: ["gcc-windows-x64"],
   };
   savePreferences(initial);
@@ -120,6 +231,8 @@ test("legacy v1 custom-path applies partial updates without erasing sibling pref
   const afterPython: ToolchainPreferences = {
     ...initial,
     preferredSourcePython: "system",
+    // v2 deliberately drops the legacy installed hint; disk is authoritative.
+    installedToolchains: [],
   };
   assert.equal(pythonResponse.statusCode, 200);
   assert.equal(
@@ -134,11 +247,11 @@ test("legacy v1 custom-path applies partial updates without erasing sibling pref
 
   const cppResponse = await invokeCustomPath(handler, {
     kind: "cpp",
-    path: String.raw`D:\new\g++.exe`,
+    path: newCppPath,
   });
   const afterCpp: ToolchainPreferences = {
     ...afterPython,
-    customCppPath: String.raw`D:\new\g++.exe`,
+    customCppPath: newCppPath,
   };
   assert.equal(cppResponse.statusCode, 200);
   assert.equal((cppResponse.payload as { success?: unknown }).success, true);
@@ -153,9 +266,9 @@ test("legacy v1 custom-path rejects malformed patches without writing preference
   useTemporaryAppData(t);
   const initial: ToolchainPreferences = {
     preferredSourceCpp: "system",
-    customCppPath: String.raw`C:\stable\g++.exe`,
+    customCppPath: path.join(os.tmpdir(), "judgedesk-stable-g++.exe"),
     preferredSourcePython: "managed",
-    customPythonPath: String.raw`C:\stable\python.exe`,
+    customPythonPath: path.join(os.tmpdir(), "judgedesk-stable-python.exe"),
     installedToolchains: ["python-windows-x64"],
   };
   savePreferences(initial);
@@ -166,11 +279,19 @@ test("legacy v1 custom-path rejects malformed patches without writing preference
   );
   assert.ok(handler);
 
-  for (const body of [
+  const malformedPatches: unknown[] = [
     { kind: "not-a-language" },
     { kind: "cpp", path: 42 },
+    { kind: "cpp", path: "relative-g++.exe" },
     { kind: "cpp", preferredSource: 42 },
-  ]) {
+  ];
+  if (process.platform === "win32") {
+    malformedPatches.push(
+      { kind: "cpp", path: "//server/share/g++.exe" },
+      { kind: "cpp", path: String.raw`\\?\C:\tools\g++.exe` },
+    );
+  }
+  for (const body of malformedPatches) {
     const response = await invokeCustomPath(handler, body);
     assert.equal(response.statusCode, 400);
     assert.equal((response.payload as { success?: unknown }).success, false);
@@ -179,4 +300,91 @@ test("legacy v1 custom-path rejects malformed patches without writing preference
       storedBefore,
     );
   }
+});
+
+test("profile preference route updates one stable registry ID and preserves dormant paths", async (t) => {
+  useTemporaryAppData(t);
+  savePreferences({
+    preferredSourceCpp: "custom",
+    customCppPath: String.raw`C:\remembered\g++.exe`,
+    preferredSourcePython: "managed",
+    customPythonPath: String.raw`C:\remembered\python.exe`,
+  });
+  const handler = captureToolchainHandlers().get(
+    "PUT /api/toolchains/profiles/:profileId/preference",
+  );
+  assert.ok(handler);
+
+  const response = createResponse();
+  await handler(
+    {
+      body: { mode: "local_auto" },
+      params: { profileId: CPP_LANGUAGE_PROFILE_ID },
+    },
+    response,
+  );
+  assert.equal(response.statusCode, 200);
+  const snapshot = loadToolchainPreferenceSnapshot();
+  assert.deepEqual(
+    getStoredProfilePreference(snapshot.preferences, CPP_LANGUAGE_PROFILE_ID),
+    { mode: "local_auto", localPath: String.raw`C:\remembered\g++.exe` },
+  );
+  assert.deepEqual(
+    getStoredProfilePreference(snapshot.preferences, PYTHON_LANGUAGE_PROFILE_ID),
+    { mode: "managed", localPath: String.raw`C:\remembered\python.exe` },
+  );
+});
+
+test("profile preference route rejects unknown modes and unsafe paths without writing", async (t) => {
+  useTemporaryAppData(t);
+  loadToolchainPreferenceSnapshot();
+  const storedBefore = fs.readFileSync(getPreferencesFilePath(), "utf8");
+  const handler = captureToolchainHandlers().get(
+    "PUT /api/toolchains/profiles/:profileId/preference",
+  );
+  assert.ok(handler);
+
+  const invalidPreferences: unknown[] = [
+    { mode: "system" },
+    { mode: "local_path", localPath: "" },
+    { mode: "managed", localPath: String.raw`C:\unexpected\g++.exe` },
+    { mode: "none", extra: true },
+  ];
+  if (process.platform === "win32") {
+    invalidPreferences.push(
+      { mode: "local_path", localPath: "//server/share/g++.exe" },
+      { mode: "local_path", localPath: String.raw`\\?\C:\tools\g++.exe` },
+    );
+  }
+  for (const body of invalidPreferences) {
+    const response = createResponse();
+    await handler(
+      { body, params: { profileId: CPP_LANGUAGE_PROFILE_ID } },
+      response,
+    );
+    assert.equal(response.statusCode, 400);
+    assert.equal(fs.readFileSync(getPreferencesFilePath(), "utf8"), storedBefore);
+  }
+
+  const failedVerification = createResponse();
+  await handler(
+    {
+      body: {
+        mode: "local_path",
+        localPath: path.join(os.tmpdir(), "judgedesk-does-not-exist", "g++"),
+      },
+      params: { profileId: CPP_LANGUAGE_PROFILE_ID },
+    },
+    failedVerification,
+  );
+  assert.equal(failedVerification.statusCode, 422);
+  assert.equal(fs.readFileSync(getPreferencesFilePath(), "utf8"), storedBefore);
+
+  const unknownResponse = createResponse();
+  await handler(
+    { body: { mode: "none" }, params: { profileId: "unknown-profile" } },
+    unknownResponse,
+  );
+  assert.equal(unknownResponse.statusCode, 404);
+  assert.equal(fs.readFileSync(getPreferencesFilePath(), "utf8"), storedBefore);
 });
