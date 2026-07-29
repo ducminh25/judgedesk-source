@@ -262,7 +262,10 @@ async function discoverKind(
   const candidates: DiscoveredToolchainCandidate[] = [];
   for (const candidate of [...pathCandidates, ...standardCandidates]) {
     if (candidates.length >= MAX_CANDIDATES_PER_PROFILE) break;
-    const canonicalPath = await canonicalExecutablePath(candidate.displayPath);
+    const canonicalPath = await canonicalExecutablePath(
+      candidate.displayPath,
+      kind,
+    );
     if (!canonicalPath) continue;
     const key = os.platform() === "win32" ? canonicalPath.toLowerCase() : canonicalPath;
     if (seen.has(key)) continue;
@@ -352,31 +355,21 @@ async function collectDarwinCandidates(kind: ToolchainKind): Promise<string[]> {
   if (kind === "cpp") {
     const candidates: string[] = [];
     try {
-      const { stdout } = await execFile("/usr/bin/xcode-select", ["-p"], {
+      // xcrun resolves the compiler belonging to the currently selected
+      // Developer root. Do not add inactive Xcode/CLT installations beside
+      // it: those are genuinely different toolchains and made every normal
+      // Mac look ambiguous merely because both roots happened to be present.
+      const { stdout } = await execFile("/usr/bin/xcrun", ["--find", "clang++"], {
         encoding: "utf8",
         timeout: 2_000,
         maxBuffer: 16 * 1024,
       });
-      const developerRoot = stdout.trim();
-      if (developerRoot) {
-        candidates.push(
-          path.posix.join(
-            developerRoot,
-            "Toolchains",
-            "XcodeDefault.xctoolchain",
-            "usr",
-            "bin",
-            "clang++",
-          ),
-          path.posix.join(developerRoot, "usr", "bin", "clang++"),
-        );
-      }
+      const selectedCompiler = stdout.trim();
+      if (selectedCompiler) candidates.push(selectedCompiler);
     } catch {
       // Command Line Tools are optional and absence is represented by no candidate.
     }
     candidates.push(
-      "/Library/Developer/CommandLineTools/usr/bin/clang++",
-      "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++",
       "/opt/homebrew/bin/clang++",
       "/opt/homebrew/bin/g++",
       "/usr/local/bin/clang++",
@@ -411,11 +404,23 @@ async function listImmediateDirectories(root: string): Promise<string[]> {
   }
 }
 
-async function canonicalExecutablePath(candidatePath: string): Promise<string | null> {
+async function canonicalExecutablePath(
+  candidatePath: string,
+  kind: ToolchainKind,
+): Promise<string | null> {
   // Never let a PATH entry turn first-run discovery into network I/O.
   if (!isAcceptedCandidatePath(candidatePath)) return null;
   try {
     const canonicalPath = await fs.promises.realpath(candidatePath);
+    if (
+      os.platform() === "darwin"
+      && kind === "cpp"
+      && (canonicalPath === "/usr/bin/clang++" || canonicalPath === "/usr/bin/g++")
+    ) {
+      // These are Apple driver stubs, not a pinned compiler identity. The
+      // selected platform compiler is represented by xcrun's resolved path.
+      return null;
+    }
     const metadata = await fs.promises.stat(canonicalPath);
     if (!metadata.isFile()) return null;
     if (os.platform() !== "win32" && (metadata.mode & 0o111) === 0) return null;
