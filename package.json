@@ -37,6 +37,7 @@
     "test:windows-resources": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-resource-gate.ps1",
     "test:windows-single-instance": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/windows-single-instance-gate.ps1",
     "test:macos-process-supervisor": "bash scripts/macos-process-supervisor-gate.sh",
+    "test:macos-packaged-checkers": "node scripts/macos-packaged-checker-gate.mjs",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

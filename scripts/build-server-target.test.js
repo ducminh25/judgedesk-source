@@ -317,6 +317,14 @@ test("Apple Silicon release scripts verify architecture, DMG, and sidecar", () =
     new URL("../server/executor-tests/macos-run-guardian.integration.test.ts", import.meta.url),
     "utf8",
   );
+  const processSupervisorGate = fs.readFileSync(
+    new URL("./macos-process-supervisor-gate.sh", import.meta.url),
+    "utf8",
+  );
+  const packagedCheckerGate = fs.readFileSync(
+    new URL("./macos-packaged-checker-gate.mjs", import.meta.url),
+    "utf8",
+  );
 
   assert.match(sidecarScript, /lipo "\$sidecar" -verify_arch arm64/);
   assert.match(sidecarScript, /smoke-test-sidecar\.js "\$sidecar"/);
@@ -360,6 +368,32 @@ test("Apple Silicon release scripts verify architecture, DMG, and sidecar", () =
     guardianHarness,
     /macOS per-run guardian enforces destructive single-fault boundaries/,
   );
+  assert.match(
+    processSupervisorGate,
+    /run_supervisor_command=.*--judgedesk-macos-run-supervisor/,
+  );
+  assert.match(
+    processSupervisorGate,
+    /parent_pid "\$candidate_anchor".*candidate_guardian/s,
+  );
+  assert.doesNotMatch(
+    processSupervisorGate,
+    /pgrep -P "\$active_executor" \| head -n 1/,
+  );
+  assert.match(
+    processSupervisorGate,
+    /port="\$\(wait_for_listening_port "\$active_server"\)"/,
+  );
+  assert.match(
+    processSupervisorGate,
+    /replacement_port="\$\(wait_for_listening_port "\$replacement_server"\)"/,
+  );
+  assert.match(packagedCheckerGate, /THEMIS_APP_DATA_DIR: appData/);
+  assert.match(packagedCheckerGate, /checker\.cpp/);
+  assert.match(packagedCheckerGate, /checker\.py/);
+  assert.match(packagedCheckerGate, /\/api\/batch-judge\/cancel/);
+  assert.match(packagedCheckerGate, /baselineWorkspaces/);
+  assert.match(packagedCheckerGate, /baselineProfiles/);
   assert.match(bundleScript, /hdiutil attach "\$dmg_file" -readonly -nobrowse/);
   assert.match(bundleScript, /trap cleanup_dmg_mount EXIT/);
   assert.match(bundleScript, /JUDGEDESK_TREE_GUARD_GENERATION/);
