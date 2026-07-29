@@ -14,6 +14,10 @@ fi
 # prevent a future refactor from silently deleting the hard limit or the fork-bomb case while
 # leaving a superficially green release workflow behind.
 grep -Fq 'set_limit(libc::RLIMIT_NPROC' native-executor/src/platform/macos.rs
+grep -Fq 'SYS_setpgid SYS_setsid SYS_posix_spawn' native-executor/src/platform/macos.rs
+grep -Fq 'posixSpawnGroupBlockedWithEperm' native-executor/src/platform/macos.rs
+grep -Fq 'libc::POSIX_SPAWN_SETPGROUP' native-executor/src/main.rs
+grep -Fq 'forbiddenExecBlockedWithEperm' native-executor/src/platform/macos.rs
 grep -Fq -- '--test-process-bomb' native-executor/src/main.rs
 grep -Fq 'kernel process ceiling contains a real process bomb' \
   server/executor-tests/security.integration.test.ts
