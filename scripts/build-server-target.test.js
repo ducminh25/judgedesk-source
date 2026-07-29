@@ -388,6 +388,10 @@ test("Apple Silicon release scripts verify architecture, DMG, and sidecar", () =
     processSupervisorGate,
     /replacement_port="\$\(wait_for_listening_port "\$replacement_server"\)"/,
   );
+  assert.match(
+    processSupervisorGate,
+    /final_status=.*secureRunner\?\.ready/s,
+  );
   assert.match(packagedCheckerGate, /THEMIS_APP_DATA_DIR: appData/);
   assert.match(packagedCheckerGate, /checker\.cpp/);
   assert.match(packagedCheckerGate, /checker\.py/);

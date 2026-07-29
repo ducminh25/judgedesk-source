@@ -567,6 +567,15 @@ quit_app
 open -n "$app"
 wait_for_inventory 4
 assert_full_generation
+final_server="$(only_pid backend "$server_command")"
+final_port="$(wait_for_listening_port "$final_server")" ||
+  fail "final backend did not open a listening port"
+final_status="$(curl -fsS --max-time 5 "http://127.0.0.1:$final_port/api/status")" ||
+  fail "final backend health request failed"
+node -e '
+  const status = JSON.parse(process.argv[1]);
+  if (!status.secureRunner?.ready) process.exit(1);
+' "$final_status" || fail "final backend secure runner is not ready"
 quit_app
 [[ -z "$(all_judgedesk_runtime_inventory)" ]] ||
   fail "a JudgeDesk runtime process remained after the final shutdown"
