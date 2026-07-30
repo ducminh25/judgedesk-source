@@ -88,6 +88,17 @@ const languageGates: Readonly<Record<string, LanguageGate>> = {
       "",
     ].join("\n"),
   },
+  python: {
+    language: "python",
+    toolchainKind: "python",
+    extension: ".py",
+    source: [
+      "import sys",
+      "values = [int(value) for value in sys.stdin.read().split()]",
+      "print(values[0] + values[1])",
+      "",
+    ].join("\n"),
+  },
   javascript: {
     language: "javascript",
     toolchainKind: "javascript",
@@ -218,6 +229,37 @@ function managedRuntimeSecurityGate(
         '      "UNSAFE file=" + fileBlocked + " network=" + networkBlocked + " detail=" + networkDetail);',
         "  }",
         "}",
+        "",
+      ].join("\n"),
+    };
+  }
+  if (name === "python") {
+    return {
+      language: "python",
+      toolchainKind: "python",
+      extension: ".py",
+      source: [
+        "import socket",
+        `sentinel = ${sentinelLiteral}`,
+        "file_blocked = False",
+        "try:",
+        "    with open(sentinel, encoding='utf-8') as private_file:",
+        "        private_file.read()",
+        "except (OSError, PermissionError):",
+        "    file_blocked = True",
+        "network_blocked = False",
+        "network_detail = 'connected'",
+        "probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)",
+        "probe.settimeout(0.5)",
+        "try:",
+        `    probe.connect(('127.0.0.1', ${loopbackPort}))`,
+        "except OSError as error:",
+        "    network_blocked = True",
+        "    network_detail = type(error).__name__",
+        "finally:",
+        "    probe.close()",
+        "print('SAFE' if file_blocked and network_blocked else",
+        "      f'UNSAFE file={file_blocked} network={network_blocked} detail={network_detail}')",
         "",
       ].join("\n"),
     };
