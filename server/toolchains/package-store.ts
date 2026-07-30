@@ -26,6 +26,11 @@ export interface ToolchainPackageReceiptV1 {
   components: readonly ToolchainPackageComponent[];
 }
 
+export interface VerifiedToolchainPackageReceipt {
+  root: string;
+  receipt: ToolchainPackageReceiptV1;
+}
+
 export interface InstalledToolchainPackage {
   id: string;
   version: string;
@@ -109,6 +114,26 @@ export function writeToolchainPackageReceipt(
     encodeToolchainPackageReceipt(createToolchainPackageReceipt(descriptor)),
     { encoding: "utf8", flag: "wx", mode: 0o600 },
   );
+}
+
+export function readVerifiedToolchainPackageReceipt(
+  entry: ToolchainCatalogEntry,
+  packageRoot: string,
+): VerifiedToolchainPackageReceipt {
+  const rootMetadata = fs.lstatSync(packageRoot);
+  if (!rootMetadata.isDirectory() || rootMetadata.isSymbolicLink()) {
+    throw new Error("Toolchain package root is not a regular directory.");
+  }
+  const canonicalRoot = fs.realpathSync(packageRoot);
+  const receipt = readReceipt(
+    path.join(canonicalRoot, TOOLCHAIN_PACKAGE_RECEIPT),
+    entry,
+    true,
+  );
+  if (!receipt) {
+    throw new Error("Toolchain package receipt is missing.");
+  }
+  return { root: canonicalRoot, receipt };
 }
 
 export function inspectInstalledToolchainPackage(

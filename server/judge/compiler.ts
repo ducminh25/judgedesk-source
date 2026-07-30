@@ -9,6 +9,7 @@ import {
   createExecutorWorkspace,
   findCachedManagedToolchain,
   importManagedToolchain,
+  prepareManagedToolchainComponent,
   prepareManagedToolchainExecutable,
 } from "../executor/workspace.js";
 import {
@@ -20,6 +21,7 @@ import type { ProblemResult, SubmissionLanguage } from "../types.js";
 import {
   findDarwinSdkDirectory,
   getExecutableVersion,
+  isManagedSubmissionToolchainReady,
   resolveManagedToolchain,
   resolveNativeProtectedToolchain,
   resolveToolchain,
@@ -31,13 +33,18 @@ import type {
 } from "../toolchains/types.js";
 import {
   buildCertifiedWindowsCppCheckerArgs,
-  buildCertifiedWindowsCppSubmissionArgs,
 } from "../toolchains/cpp-certification-policy.js";
 import { RESOURCE_ROOT } from "../runtime.js";
 import { resolveCompilerMemoryLimitBytes } from "./resource-policy.js";
 import { buildCompilerExecutorRunSpec } from "./execution-request.js";
 import { isBuiltInChecker } from "./standard-checkers.js";
 import { validatePythonCheckerSource } from "./python-checker.js";
+import {
+  buildCompilerAdapterEnvironment,
+  buildNativeCompilationRecipe,
+  isNativeCompiledLanguage,
+} from "./language-adapters.js";
+import type { PreparedSubmissionProgram } from "./prepared-program.js";
 
 declare const __JUDGEDESK_TESTLIB__: string;
 
@@ -94,6 +101,7 @@ interface CompileSubmissionOptions {
   cppToolchain?: ResolvedToolchain;
   cToolchain?: ResolvedToolchain;
   pythonToolchain?: ResolvedToolchain;
+  toolchains?: Readonly<Partial<Record<ToolchainKind, ResolvedToolchain>>>;
 }
 
 export interface CompilationResult {
@@ -101,6 +109,7 @@ export interface CompilationResult {
   compileStatus: ProblemResult["compileStatus"];
   compileError: string;
   compileTime: number;
+  program?: PreparedSubmissionProgram;
 }
 
 interface PreparedCompiler {
@@ -180,7 +189,9 @@ export async function compileSubmission(options: CompileSubmissionOptions): Prom
   const { language, contestantName, problemName, submissionPath, tempDirectory, jobId } = options;
   const compileStart = process.hrtime.bigint();
   if (language === "python") {
-    const python = options.pythonToolchain ?? await resolveCompilationToolchain("python");
+    const python = options.toolchains?.python
+      ?? options.pythonToolchain
+      ?? await resolveCompilationToolchain("python");
     if (!python.ready) return compilationFailure("", "TOOLCHAIN_PYTHON_MISSING", compileStart);
     if (python.source !== "managed") {
       return compilationFailure("", "TOOLCHAIN_NOT_SANDBOX_COMPATIBLE", compileStart);
@@ -190,9 +201,43 @@ export async function compileSubmission(options: CompileSubmissionOptions): Prom
       compileStatus: "OK",
       compileError: "",
       compileTime: 0,
+      program: {
+        kind: "script-runtime",
+        language: "python",
+        sourcePath: submissionPath,
+        stagedFileName: "submission.py",
+        runtimeKind: "python",
+        runtimeToolchain: python,
+      },
     };
   }
-  if (language !== "cpp" && language !== "c") {
+  if (language === "javascript") {
+    const javascript = options.toolchains?.javascript
+      ?? await resolveCompilationToolchain("javascript");
+    if (!isManagedSubmissionToolchainReady(javascript)) {
+      return compilationFailure(
+        "",
+        "TOOLCHAIN_JAVASCRIPT_MISSING",
+        compileStart,
+      );
+    }
+    return {
+      executablePath:
+        javascript.executionPath || javascript.executablePath,
+      compileStatus: "OK",
+      compileError: "",
+      compileTime: 0,
+      program: {
+        kind: "script-runtime",
+        language: "javascript",
+        sourcePath: submissionPath,
+        stagedFileName: "submission.js",
+        runtimeKind: "javascript",
+        runtimeToolchain: javascript,
+      },
+    };
+  }
+  if (!isNativeCompiledLanguage(language)) {
     return compilationFailure(
       "",
       `LANGUAGE_ADAPTER_UNAVAILABLE: ${language}`,
@@ -202,11 +247,28 @@ export async function compileSubmission(options: CompileSubmissionOptions): Prom
 
   const executablePath = path.join(tempDirectory, `${safeName(contestantName)}_${safeName(problemName)}.out`);
   try {
-    const toolchain = language === "cpp"
-      ? options.cppToolchain ?? await resolveCompilationToolchain("cpp")
-      : options.cToolchain ?? await resolveCompilationToolchain("c");
+    const recipe = buildNativeCompilationRecipe(
+      language,
+      os.platform(),
+      submissionPath,
+      executablePath,
+    );
+    const toolchain = options.toolchains?.[recipe.toolchainKind]
+      ?? (language === "cpp"
+        ? options.cppToolchain
+        : language === "c"
+          ? options.cToolchain
+          : undefined)
+      ?? await resolveCompilationToolchain(recipe.toolchainKind);
     if (!toolchain.ready) {
       throw new Error(`TOOLCHAIN_${language.toUpperCase()}_MISSING`);
+    }
+    if (
+      language !== "cpp"
+      && language !== "c"
+      && !isManagedSubmissionToolchainReady(toolchain)
+    ) {
+      throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
     }
     if (
       process.platform === "win32"
@@ -215,25 +277,45 @@ export async function compileSubmission(options: CompileSubmissionOptions): Prom
       throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
     }
     const compilerPath = toolchain.executionPath || toolchain.executablePath;
-    await runCompilerPipelineWithLimits(
-      compilerPath,
-      buildSubmissionCompilerArgs(
-        os.platform(),
-        submissionPath,
+    const limits = {
+      timeoutMs: recipe.timeoutMs,
+      maxGeneratedFileBytes: recipe.maxGeneratedFileBytes,
+    };
+    if (recipe.splitDarwinClangPhases) {
+      await runCompilerPipelineWithLimits(
+        compilerPath,
+        recipe.args,
+        tempDirectory,
         executablePath,
-        language,
-      ),
-      tempDirectory,
-      executablePath,
-      jobId,
-      DEFAULT_COMPILE_LIMITS,
-      language,
-    );
+        jobId,
+        limits,
+        recipe.toolchainKind as "cpp" | "c",
+        recipe.environment,
+        toolchain,
+      );
+    } else {
+      await runCompilerWithLimits(
+        compilerPath,
+        recipe.args,
+        tempDirectory,
+        executablePath,
+        jobId,
+        limits,
+        recipe.toolchainKind,
+        recipe.environment,
+        toolchain,
+      );
+    }
     return {
       executablePath,
       compileStatus: "OK",
       compileError: "",
       compileTime: elapsedMs(compileStart),
+      program: {
+        kind: "native",
+        language,
+        artifactPath: executablePath,
+      },
     };
   } catch (error) {
     return compilationFailure(executablePath, normalizeCompilerError(error), compileStart);
@@ -274,6 +356,9 @@ async function compileCustomChecker(
       checkerBinaryPath,
       jobId,
       CHECKER_COMPILE_LIMITS,
+      "cpp",
+      {},
+      cpp,
     );
     return { path: checkerBinaryPath, runtime: "native" };
   } catch (error) {
@@ -335,38 +420,12 @@ export function buildSubmissionCompilerArgs(
   outputPath: string,
   language: "cpp" | "c" = "cpp",
 ): string[] {
-  if (platform === "win32" && language === "cpp") {
-    return buildCertifiedWindowsCppSubmissionArgs(sourcePath, outputPath);
-  }
-  const args = [
-    language === "cpp" ? "-std=c++14" : "-std=c11",
-    "-pipe",
-    "-O2",
-  ];
-  if (language === "cpp") args.push("-fno-finite-loops");
-  if (platform === "darwin") {
-    // AArch64 integer division by zero does not trap in hardware like x86 IDIV.
-    // Ask Apple Clang to emit a runtime trap so the affected testcase receives
-    // the same RE verdict on Apple Silicon as it does on Windows.
-    args.push(
-      "-fsanitize=integer-divide-by-zero",
-      "-fsanitize-trap=integer-divide-by-zero",
-    );
-  } else {
-    if (platform === "win32") {
-      args.push(
-        "-fsanitize=integer-divide-by-zero",
-        "-fsanitize-undefined-trap-on-error",
-      );
-    }
-    args.push("-s", "-static", "-lm");
-  }
-  // Apple SDKs provide math symbols through libSystem rather than a separate
-  // libm. Passing `-lm` fails on Xcode 17/macOS 26, while `-s` is obsolete.
-  args.push("-x", language === "cpp" ? "c++" : "c");
-  if (platform === "win32") args.push("-Wl,--stack,66060288");
-  args.push(sourcePath, "-o", outputPath);
-  return args;
+  return buildNativeCompilationRecipe(
+    language,
+    platform,
+    sourcePath,
+    outputPath,
+  ).args;
 }
 
 export function buildCustomCheckerCompilerArgs(
@@ -396,13 +455,20 @@ export async function runCompilerWithLimits(
   outputPath: string,
   jobId?: string,
   limits: CompileLimits = DEFAULT_COMPILE_LIMITS,
-  kind: Extract<ToolchainKind, "cpp" | "c"> = "cpp",
+  kind: ToolchainKind = "cpp",
+  adapterEnvironment: Readonly<Record<string, string>> = {},
+  pinnedToolchain?: Readonly<ResolvedToolchain>,
 ): Promise<void> {
   const workspace = await createExecutorWorkspace();
   const runId = `compile_${crypto.randomUUID().replaceAll("-", "_")}`;
   try {
     attachExecutorRun(jobId, runId);
-    const compiler = await prepareCompiler(workspace, compilerPath, kind);
+    const compiler = await prepareCompiler(
+      workspace,
+      compilerPath,
+      kind,
+      pinnedToolchain,
+    );
     if (compiler.compatibilityHeaderPath) {
       const stagedHeader = workspace.stage(
         compiler.compatibilityHeaderPath,
@@ -415,9 +481,15 @@ export async function runCompilerWithLimits(
     stagedArgs.unshift(...compiler.argumentPrefix);
     const environment = {
       ...buildCompilerEnvironment(compiler.executablePath),
+      ...buildCompilerAdapterEnvironment(kind, workspace.path),
+      ...adapterEnvironment,
       ...compiler.environment,
     };
-    if (process.platform === "win32" && compiler.root) {
+    if (
+      process.platform === "win32"
+      && compiler.root
+      && (kind === "cpp" || kind === "c")
+    ) {
       const programDirectory = findGccProgramDirectory(compiler.root, kind);
       // A relocated GCC driver otherwise remembers the source installation prefix and reports
       // "cannot execute cc1plus" inside LPAC. -B and COMPILER_PATH keep every compiler child in
@@ -460,6 +532,8 @@ async function runCompilerPipelineWithLimits(
   jobId?: string,
   limits: CompileLimits = DEFAULT_COMPILE_LIMITS,
   kind: Extract<ToolchainKind, "cpp" | "c"> = "cpp",
+  adapterEnvironment: Readonly<Record<string, string>> = {},
+  pinnedToolchain?: Readonly<ResolvedToolchain>,
 ): Promise<void> {
   if (process.platform !== "darwin") {
     await runCompilerWithLimits(
@@ -470,6 +544,8 @@ async function runCompilerPipelineWithLimits(
       jobId,
       limits,
       kind,
+      adapterEnvironment,
+      pinnedToolchain,
     );
     return;
   }
@@ -486,6 +562,8 @@ async function runCompilerPipelineWithLimits(
       jobId,
       limits,
       kind,
+      adapterEnvironment,
+      pinnedToolchain,
     );
     const elapsed = elapsedMs(started);
     const remaining = Math.max(1, limits.timeoutMs - Math.ceil(elapsed));
@@ -497,6 +575,8 @@ async function runCompilerPipelineWithLimits(
       jobId,
       { ...limits, timeoutMs: remaining },
       kind,
+      adapterEnvironment,
+      pinnedToolchain,
     );
   } finally {
     fs.rmSync(objectPath, { force: true });
@@ -547,8 +627,36 @@ export function buildCompilerEnvironment(
 async function prepareCompiler(
   workspace: Awaited<ReturnType<typeof createExecutorWorkspace>>,
   compilerPath: string,
-  kind: Extract<ToolchainKind, "cpp" | "c">,
+  kind: ToolchainKind,
+  pinnedToolchain?: Readonly<ResolvedToolchain>,
 ): Promise<PreparedCompiler> {
+  if (pinnedToolchain) {
+    if (
+      pinnedToolchain.kind !== kind
+      || !pinnedToolchain.ready
+      || !sameFile(
+        pinnedToolchain.executionPath || pinnedToolchain.executablePath,
+        compilerPath,
+      )
+    ) {
+      throw new Error("TOOLCHAIN_CHANGED_DURING_JUDGING");
+    }
+    if (pinnedToolchain.source === "managed") {
+      const prepared = pinnedToolchain.packageDigest
+        ? await prepareManagedToolchainComponent(
+            kind,
+            pinnedToolchain,
+            pinnedToolchain.packageComponentId,
+            "compiler",
+          )
+        : await prepareManagedToolchainExecutable(kind, pinnedToolchain);
+      return {
+        ...prepared,
+        argumentPrefix: [],
+        environment: {},
+      };
+    }
+  }
   const cached = await findCachedManagedToolchain(kind);
   if (cached && sameFile(cached.executablePath, compilerPath)) {
     return {
@@ -561,7 +669,14 @@ async function prepareCompiler(
   }
   const resolved = resolveToolchain(kind);
   if (resolved.ready && resolved.source === "managed" && sameFile(resolved.executablePath, compilerPath)) {
-    const prepared = await prepareManagedToolchainExecutable(kind, resolved);
+    const prepared = resolved.packageDigest
+      ? await prepareManagedToolchainComponent(
+          kind,
+          resolved,
+          resolved.packageComponentId,
+          "compiler",
+        )
+      : await prepareManagedToolchainExecutable(kind, resolved);
     return {
       ...prepared,
       argumentPrefix: [],
@@ -606,8 +721,17 @@ async function prepareCompiler(
     };
   }
   const darwin = process.platform === "darwin"
+    && (kind === "cpp" || kind === "c")
     ? resolveDarwinCompilerSupport(realCompiler, kind)
     : null;
+  if (
+    process.platform === "darwin"
+    && kind !== "cpp"
+    && kind !== "c"
+    && !isDescendant(managedRoot, realCompiler)
+  ) {
+    throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+  }
   const name = stagedCompilerName(realCompiler);
   const staged = workspace.stage(realCompiler, name, true);
   return {
@@ -847,6 +971,13 @@ function stageCompilerArguments(
   const staged = new Map<string, string>();
   return args.map((argument, index) => {
     if (samePath(argument, outputPath)) return stagedOutput;
+    if (
+      argument.startsWith("-o")
+      && argument.length > 2
+      && samePath(argument.slice(2), outputPath)
+    ) {
+      return `-o${stagedOutput}`;
+    }
     if (!path.isAbsolute(argument) || !fs.existsSync(argument)) return argument;
     const canonical = fs.realpathSync(argument);
     const existing = staged.get(canonical);

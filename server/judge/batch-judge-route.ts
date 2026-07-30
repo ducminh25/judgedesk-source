@@ -12,6 +12,8 @@ import { createRunMetadata } from "../platform/run-metadata.js";
 import { serverLifecycle } from "../platform/server-lifecycle.js";
 import { SingleJudgeSessionGate } from "./resource-policy.js";
 import { toolchainMaintenanceGate } from "../toolchains/maintenance-gate.js";
+import { listRegisteredLanguageProfiles } from "../languages/registry.js";
+import type { PinnedJudgeToolchains } from "./toolchain-preflight.js";
 
 export function registerBatchJudgeRoute(app: Express): void {
   const sessionGate = new SingleJudgeSessionGate();
@@ -98,11 +100,17 @@ export function registerBatchJudgeRoute(app: Express): void {
     try {
       res.setHeader("X-JudgeDesk-Job-Id", registration.jobId);
       workspace = createRunWorkspace();
-      const pinnedToolchains = Object.freeze({
-        cpp: Object.freeze(await resolveCompilationToolchain("cpp")),
-        c: Object.freeze(await resolveCompilationToolchain("c")),
-        python: Object.freeze(await resolveCompilationToolchain("python")),
-      });
+      const pinnedEntries = await Promise.all(
+        listRegisteredLanguageProfiles().map(async (entry) => [
+          entry.toolchainKind,
+          Object.freeze(
+            await resolveCompilationToolchain(entry.toolchainKind),
+          ),
+        ] as const),
+      );
+      const pinnedToolchains = Object.freeze(
+        Object.fromEntries(pinnedEntries),
+      ) as PinnedJudgeToolchains;
       sendEvent("metadata", createRunMetadata(pinnedToolchains));
       await runJudgeSession({
         request: {

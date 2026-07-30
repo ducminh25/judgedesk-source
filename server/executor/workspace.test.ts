@@ -23,6 +23,26 @@ test("a built-in managed toolchain is referenced directly without an executor-ca
   );
   fs.mkdirSync(path.dirname(executablePath), { recursive: true });
   fs.writeFileSync(executablePath, "runtime");
+  const entrypoint = descriptor.entrypoints.find(
+    (candidate) => candidate.kind === "python",
+  );
+  assert.ok(entrypoint);
+  fs.writeFileSync(
+    path.join(packageRoot, ".judgedesk-package.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      packageId: descriptor.id,
+      version: descriptor.version,
+      archiveSha256: "a".repeat(64),
+      entrypointComponentId: entrypoint.componentId,
+      components: [{
+        id: entrypoint.componentId,
+        kind: "executable",
+        relativePath: entrypoint.executableRelativePath,
+        roles: ["submission-runtime", "checker-runtime"],
+      }],
+    }),
+  );
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
 
   const resolved: ResolvedToolchain = {
@@ -34,7 +54,7 @@ test("a built-in managed toolchain is referenced directly without an executor-ca
     packageOrigin: "built-in",
     packageRoot,
     packageDigest: "a".repeat(64),
-    packageComponentId: "python",
+    packageComponentId: entrypoint.componentId,
   };
   const prepared = await prepareManagedToolchainExecutable("python", resolved);
 
@@ -47,6 +67,6 @@ test("a built-in managed toolchain is referenced directly without an executor-ca
   assert.deepEqual(prepared.toolchain, {
     packageId: descriptor.id,
     packageDigest: "a".repeat(64),
-    componentId: "python",
+    componentId: entrypoint.componentId,
   });
 });

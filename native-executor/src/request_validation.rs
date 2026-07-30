@@ -7,6 +7,8 @@ use std::path::{Component, Path, PathBuf};
 const MAX_ID_BYTES: usize = 96;
 const BUILTIN_TOOLCHAINS_ENV: &str = "JUDGEDESK_BUILTIN_TOOLCHAINS_DIR";
 const PACKAGE_RECEIPT: &str = ".judgedesk-package.json";
+const CACHE_MARKER: &str = ".judgedesk-import-complete";
+const CACHE_SCHEMA: &str = "3-internal-symlinks";
 const MAX_RECEIPT_BYTES: u64 = 16 * 1024;
 
 #[derive(Debug, Deserialize)]
@@ -77,7 +79,8 @@ fn validate_run_with_builtin_root(
 
     let (executable, toolchain_package_root) = match spec.toolchain.as_ref() {
         Some(grant) => {
-            let (executable, package_root) = resolve_builtin_toolchain(spec, grant, built_in_root)?;
+            let (executable, package_root) =
+                resolve_granted_toolchain(&canonical_root, spec, grant, built_in_root)?;
             (executable, Some(package_root))
         }
         None => (
@@ -178,13 +181,28 @@ fn validate_grant_role(role: RunRole, grant_role: ToolchainGrantRole) -> Result<
     Ok(())
 }
 
+fn resolve_granted_toolchain(
+    executor_root: &Path,
+    spec: &RunSpec,
+    grant: &ToolchainGrant,
+    built_in_root: Option<&Path>,
+) -> Result<(PathBuf, PathBuf), String> {
+    if spec.executable_id.starts_with("builtin-toolchains/") {
+        return resolve_builtin_toolchain(spec, grant, built_in_root);
+    }
+    if spec.executable_id.starts_with("toolchains/") {
+        return resolve_cached_toolchain(executor_root, spec, grant);
+    }
+    Err("toolchain grant executableId has an unsupported location".into())
+}
+
 fn resolve_builtin_toolchain(
     spec: &RunSpec,
     grant: &ToolchainGrant,
     built_in_root: Option<&Path>,
 ) -> Result<(PathBuf, PathBuf), String> {
-    validate_id(&grant.package_id, "toolchain packageId")?;
-    validate_id(&grant.component_id, "toolchain componentId")?;
+    validate_toolchain_id(&grant.package_id, "toolchain packageId")?;
+    validate_toolchain_id(&grant.component_id, "toolchain componentId")?;
     if grant.package_digest.len() != 64
         || !grant
             .package_digest
@@ -238,7 +256,7 @@ fn resolve_builtin_toolchain(
     }
     let mut component_ids = std::collections::HashSet::new();
     for component in &receipt.components {
-        validate_id(&component.id, "toolchain receipt component")?;
+        validate_toolchain_id(&component.id, "toolchain receipt component")?;
         validate_safe_package_relative(&component.relative_path)?;
         if !component_ids.insert(component.id.as_str()) || component.roles.is_empty() {
             return Err("built-in package receipt contains invalid components".into());
@@ -266,6 +284,137 @@ fn resolve_builtin_toolchain(
         return Err("granted toolchain executable escapes its package root".into());
     }
     Ok((executable, package_root))
+}
+
+fn resolve_cached_toolchain(
+    executor_root: &Path,
+    spec: &RunSpec,
+    grant: &ToolchainGrant,
+) -> Result<(PathBuf, PathBuf), String> {
+    validate_toolchain_id(&grant.package_id, "toolchain packageId")?;
+    validate_toolchain_id(&grant.component_id, "toolchain componentId")?;
+    validate_package_digest(&grant.package_digest)?;
+
+    let relative = Path::new(&spec.executable_id);
+    let components = relative.components().collect::<Vec<_>>();
+    if components.len() < 3
+        || !components
+            .iter()
+            .all(|component| matches!(component, Component::Normal(_)))
+        || components[0].as_os_str() != "toolchains"
+    {
+        return Err("cached toolchain executableId is not normalized".into());
+    }
+    let cache_id = components[1].as_os_str().to_string_lossy();
+    validate_toolchain_id(&cache_id, "toolchain cache ID")?;
+
+    let toolchains_root = fs::canonicalize(executor_root.join("toolchains"))
+        .map_err(|error| format!("executor toolchain cache unavailable: {error}"))?;
+    if toolchains_root.parent() != Some(executor_root) || !toolchains_root.is_dir() {
+        return Err("executor toolchain cache is invalid".into());
+    }
+    let lexical_package_root = toolchains_root.join(cache_id.as_ref());
+    reject_link_or_reparse(&lexical_package_root, "cached package root")?;
+    let package_root = fs::canonicalize(&lexical_package_root)
+        .map_err(|error| format!("cached package root unavailable: {error}"))?;
+    if package_root.parent() != Some(toolchains_root.as_path()) || !package_root.is_dir() {
+        return Err("cached package root escapes the toolchain cache".into());
+    }
+
+    let receipt_path = package_root.join(PACKAGE_RECEIPT);
+    reject_link_or_reparse(&receipt_path, "cached package receipt")?;
+    let receipt = read_package_receipt(&receipt_path, grant)?;
+    let marker_path = package_root.join(CACHE_MARKER);
+    reject_link_or_reparse(&marker_path, "cached package marker")?;
+    let expected_marker = format!(
+        "{CACHE_SCHEMA}\n{}\n{}\n",
+        receipt.package_id, receipt.version
+    );
+    let marker = fs::read_to_string(&marker_path)
+        .map_err(|error| format!("cached package marker unavailable: {error}"))?;
+    if marker != expected_marker {
+        return Err("cached package marker does not match its receipt".into());
+    }
+
+    let component = find_granted_component(&receipt, grant)?;
+    let expected_id = format!("toolchains/{}/{}", cache_id, component.relative_path);
+    if spec.executable_id != expected_id {
+        return Err("executableId does not match the granted cache component".into());
+    }
+    let executable = fs::canonicalize(package_root.join(Path::new(&component.relative_path)))
+        .map_err(|error| format!("granted cached executable unavailable: {error}"))?;
+    if !executable.starts_with(&package_root) || !executable.is_file() {
+        return Err("granted cached executable escapes its package root".into());
+    }
+    Ok((executable, package_root))
+}
+
+fn validate_package_digest(value: &str) -> Result<(), String> {
+    if value.len() != 64
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err("toolchain packageDigest is not a lowercase SHA-256 digest".into());
+    }
+    Ok(())
+}
+
+fn read_package_receipt(
+    receipt_path: &Path,
+    grant: &ToolchainGrant,
+) -> Result<PackageReceipt, String> {
+    let receipt_metadata = fs::metadata(receipt_path)
+        .map_err(|error| format!("toolchain package receipt unavailable: {error}"))?;
+    if !receipt_metadata.is_file()
+        || receipt_metadata.len() == 0
+        || receipt_metadata.len() > MAX_RECEIPT_BYTES
+    {
+        return Err("toolchain package receipt has an invalid size".into());
+    }
+    let receipt_bytes = fs::read(receipt_path)
+        .map_err(|error| format!("cannot read toolchain package receipt: {error}"))?;
+    let receipt: PackageReceipt = serde_json::from_slice(&receipt_bytes)
+        .map_err(|error| format!("toolchain package receipt is invalid: {error}"))?;
+    if receipt.schema_version != 1
+        || receipt.package_id != grant.package_id
+        || receipt.archive_sha256 != grant.package_digest
+        || receipt.version.is_empty()
+        || receipt.version.len() > 128
+        || receipt.components.is_empty()
+        || receipt.components.len() > 64
+        || !receipt.components.iter().any(|component| {
+            component.id == receipt.entrypoint_component_id
+                && component.kind == PackageComponentKind::Executable
+        })
+    {
+        return Err("toolchain package receipt does not match the grant".into());
+    }
+    let mut component_ids = std::collections::HashSet::new();
+    for component in &receipt.components {
+        validate_toolchain_id(&component.id, "toolchain receipt component")?;
+        validate_safe_package_relative(&component.relative_path)?;
+        if !component_ids.insert(component.id.as_str()) || component.roles.is_empty() {
+            return Err("toolchain package receipt contains invalid components".into());
+        }
+    }
+    Ok(receipt)
+}
+
+fn find_granted_component<'a>(
+    receipt: &'a PackageReceipt,
+    grant: &ToolchainGrant,
+) -> Result<&'a PackageComponent, String> {
+    let component = receipt
+        .components
+        .iter()
+        .find(|component| component.id == grant.component_id)
+        .ok_or_else(|| "toolchain grant component is absent from the receipt".to_string())?;
+    if component.kind != PackageComponentKind::Executable || !component.roles.contains(&grant.role)
+    {
+        return Err("toolchain grant component does not permit this role".into());
+    }
+    Ok(component)
 }
 
 fn validate_safe_package_relative(value: &str) -> Result<(), String> {
@@ -377,6 +526,20 @@ fn validate_id(value: &str, field: &str) -> Result<(), String> {
         || !value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'))
+    {
+        return Err(format!("{field} contains invalid characters"));
+    }
+    Ok(())
+}
+
+fn validate_toolchain_id(value: &str, field: &str) -> Result<(), String> {
+    if value.is_empty()
+        || value.len() > 128
+        || !value.bytes().enumerate().all(|(index, byte)| {
+            byte.is_ascii_lowercase()
+                || byte.is_ascii_digit()
+                || (index > 0 && matches!(byte, b'.' | b'_' | b'-'))
+        })
     {
         return Err(format!("{field} contains invalid characters"));
     }
@@ -681,6 +844,69 @@ mod tests {
 
         fs::remove_dir_all(root).unwrap();
         fs::remove_dir_all(built_in).unwrap();
+    }
+
+    #[test]
+    fn cached_toolchain_grant_is_receipt_marker_and_role_scoped() {
+        let root = test_root();
+        let workspace = root.join("workspaces").join("workspace");
+        let package = root.join("toolchains").join("runtime-pack_1.0.0");
+        let executable = package.join("bin").join("runtime");
+        fs::create_dir_all(&workspace).unwrap();
+        fs::create_dir_all(root.join("artifacts")).unwrap();
+        fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        fs::write(&executable, b"runtime").unwrap();
+        fs::write(
+            package.join(PACKAGE_RECEIPT),
+            serde_json::to_vec(&serde_json::json!({
+                "schemaVersion": 1,
+                "packageId": "runtime-pack",
+                "version": "1.0.0",
+                "archiveSha256": "a".repeat(64),
+                "entrypointComponentId": "runtime",
+                "components": [{
+                    "id": "runtime",
+                    "kind": "executable",
+                    "relativePath": "bin/runtime",
+                    "roles": ["submission-runtime"]
+                }]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        fs::write(
+            package.join(CACHE_MARKER),
+            "3-internal-symlinks\nruntime-pack\n1.0.0\n",
+        )
+        .unwrap();
+
+        let mut spec = sample_spec(
+            RunRole::Submission,
+            "toolchains/runtime-pack_1.0.0/bin/runtime",
+        );
+        spec.toolchain = Some(ToolchainGrant {
+            package_id: "runtime-pack".into(),
+            package_digest: "a".repeat(64),
+            component_id: "runtime".into(),
+            role: ToolchainGrantRole::SubmissionRuntime,
+        });
+        let validated = validate_run(&root, &spec).unwrap();
+        assert_eq!(validated.executable, fs::canonicalize(&executable).unwrap());
+        assert_eq!(
+            validated.toolchain_package_root,
+            Some(fs::canonicalize(&package).unwrap())
+        );
+
+        fs::write(
+            package.join(CACHE_MARKER),
+            "3-internal-symlinks\nruntime-pack\n9.9.9\n",
+        )
+        .unwrap();
+        assert!(validate_run(&root, &spec)
+            .unwrap_err()
+            .contains("marker does not match"));
+
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

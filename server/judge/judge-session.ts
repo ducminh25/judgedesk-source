@@ -9,7 +9,6 @@ import {
   resolveChecker,
   type CompiledChecker,
 } from "./compiler.js";
-import type { ResolvedToolchain } from "../toolchains/types.js";
 import type { JudgeEventWriter } from "./judge-event-writer.js";
 import { calculateProblemSummary } from "./scoring.js";
 import {
@@ -21,6 +20,7 @@ import { createProblemDirectoryResolver, listTestDirectories, resolveTestCaseFil
 import { runTestCase } from "./testcase-runner.js";
 import {
   assertJudgeToolchainPreflight,
+  type PinnedJudgeToolchains,
   type JudgeToolchainRequirements,
 } from "./toolchain-preflight.js";
 import { ensureCertifiedLocalCppSessionProbe } from "./certified-local-session-probe.js";
@@ -31,11 +31,7 @@ interface JudgeSessionOptions {
   testDirectory: string;
   tempDirectory: string;
   events: JudgeEventWriter;
-  pinnedToolchains: Readonly<{
-    cpp: Readonly<ResolvedToolchain>;
-    c: Readonly<ResolvedToolchain>;
-    python: Readonly<ResolvedToolchain>;
-  }>;
+  pinnedToolchains: PinnedJudgeToolchains;
 }
 
 export async function runJudgeSession(options: JudgeSessionOptions): Promise<void> {
@@ -57,11 +53,8 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
   const targetProblems = Array.isArray(request.targetProblems) ? request.targetProblems : null;
   const activeProblemsList = targetProblems || [];
   const toolchainRequirements: JudgeToolchainRequirements = {
-    cppSubmission: false,
-    cSubmission: false,
-    pythonSubmission: false,
-    cppChecker: false,
-    pythonChecker: false,
+    submissions: new Set(),
+    checkers: new Set(),
   };
   const pinnedSubmissions = new Map<string, Map<string, Submission | null>>();
   for (const contestant of contestantDirs) {
@@ -71,9 +64,7 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
     for (const targetProblem of activeProblemsList) {
       const submission = findSubmission(contestantPath, targetProblem);
       submissions.set(targetProblem, submission);
-      if (submission?.language === "cpp") toolchainRequirements.cppSubmission = true;
-      if (submission?.language === "c") toolchainRequirements.cSubmission = true;
-      if (submission?.language === "python") toolchainRequirements.pythonSubmission = true;
+      if (submission) toolchainRequirements.submissions.add(submission.language);
     }
   }
   for (const targetProblem of activeProblemsList) {
@@ -85,11 +76,14 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
       request.problemConfigs?.[targetProblem],
     );
     const checker = config.checkerType.toLowerCase();
-    if (checker.endsWith(".cpp")) toolchainRequirements.cppChecker = true;
-    if (checker.endsWith(".py")) toolchainRequirements.pythonChecker = true;
+    if (checker.endsWith(".cpp")) toolchainRequirements.checkers.add("cpp");
+    if (checker.endsWith(".py")) toolchainRequirements.checkers.add("python");
   }
   assertJudgeToolchainPreflight(toolchainRequirements, pinnedToolchains);
-  if (toolchainRequirements.cppSubmission || toolchainRequirements.cppChecker) {
+  if (
+    toolchainRequirements.submissions.has("cpp")
+    || toolchainRequirements.checkers.has("cpp")
+  ) {
     sendEvent("progress", {
       contestant: "",
       problem: "",
@@ -209,6 +203,7 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
         cppToolchain: pinnedToolchains.cpp,
         cToolchain: pinnedToolchains.c,
         pythonToolchain: pinnedToolchains.python,
+        toolchains: pinnedToolchains,
       });
       const executablePath = compilation.executablePath;
       const compileTime = compilation.compileTime;
@@ -309,6 +304,7 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
              score: scoreForTc,
              config: probConf,
              checker: compiledCheckers[`${problemName}_${checkerType}`],
+             program: compilation.program,
              jobId
            });
            if (jobId && activeJobs.get(jobId)?.cancel) break;
