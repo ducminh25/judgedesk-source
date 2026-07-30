@@ -397,7 +397,7 @@
       "AUTO_DETECT_NOT_FOUND": "Không tìm thấy candidate cục bộ. Hãy chọn đường dẫn hoặc cài gói do JudgeDesk quản lý.",
       "AUTO_DETECT_AMBIGUOUS": "Tìm thấy nhiều candidate cục bộ. Hãy chọn rõ đường dẫn bạn muốn dùng.",
       "DETECTION_IN_PROGRESS": "Quá trình dò nhanh trình biên dịch và runtime vẫn đang chạy.",
-      "CERTIFICATION_REQUIRED": "Đã phát hiện nhưng chưa được chứng nhận để chấm an toàn. Hãy dùng gói managed hoặc hoàn thành chứng nhận khi luồng này khả dụng.",
+      "CERTIFICATION_REQUIRED": "Đã phát hiện nhưng chưa được chứng nhận để chấm an toàn. Hãy dùng gói managed hoặc chứng nhận trình biên dịch cục bộ này.",
       "CERTIFICATE_STALE": "Chứng nhận cũ đã hết hiệu lực và cần thực hiện lại.",
       "TOOLCHAIN_DRIFTED": "Trình biên dịch hoặc runtime đã thay đổi sau khi chứng nhận nên bị chặn."
     },
@@ -435,7 +435,10 @@
       "mutationsBlocked": "Các lựa chọn trình biên dịch và runtime được khóa trong khi đang chấm. Hãy hủy hoặc chờ lượt chấm hiện tại kết thúc trước khi thay đổi.",
       "managedUnavailable": "Không có gói managed dành cho máy tính này.",
       "noCandidates": "Không tìm thấy candidate trong PATH hoặc các vị trí chuẩn đã giới hạn.",
-      "detectedCandidates": "Candidate đã phát hiện: {{count}}"
+      "detectedCandidates": "Candidate đã phát hiện: {{count}}",
+      "certifyLocal": "Chứng nhận cho JudgeDesk",
+      "certifying": "Đang chứng nhận...",
+      "certificationConfirm": "JudgeDesk sẽ sao chép và chứng nhận trình biên dịch cục bộ này cho cả submission và checker C++.\n\nTrình biên dịch: {{path}}\nSố file: {{files}}\nKích thước snapshot: {{size}} MiB\n\nBản cài đặt gốc sẽ không bị thay đổi. Kiểm tra một lần này có thể mất vài phút. Tiếp tục?"
     },
     "setup": {
       "title": "Trình Thiết Lập Biên Dịch Lần Đầu",
@@ -449,7 +452,7 @@
       "pythonTitle": "Chỉ trình biên dịch Python",
       "pythonDesc": "Cài đặt trình thông dịch Python 3.12 cô lập (tải về khoảng 45 MB).",
       "judgerTitle": "Chỉ dùng Judger (Bỏ qua tải về)",
-      "judgerDesc": "Bỏ qua tải về. Submission Python và custom Python checker sẽ chưa dùng được cho đến khi cài managed Python. Luồng local runtime được chứng nhận trong tương lai sẽ không dùng fallback thiếu an toàn trên host. Trên Windows, C++ submission cũng cần managed GCC.",
+      "judgerDesc": "Bỏ qua tải về. Submission Python và custom Python checker sẽ chưa dùng được cho đến khi cài managed Python. C++ trên Windows cần managed GCC hoặc trình biên dịch cục bộ đã được JudgeDesk chứng nhận và tạo snapshot.",
       "managedPythonNotice": "Native protection hiện yêu cầu managed Python cho cả submission của thí sinh và custom Python checker. Bạn có thể từ chối lúc này; JudgeDesk sẽ fail-closed thay vì chạy Python hệ thống bên ngoài secure executor.",
       "skip": "Bỏ qua lúc này",
       "next": "Bắt đầu thiết lập",

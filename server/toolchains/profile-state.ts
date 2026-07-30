@@ -24,7 +24,8 @@ import { getStoredProfilePreference } from "./preferences-v2.js";
 import {
   isPythonCheckerReady,
   isPythonSubmissionReady,
-  resolveNativeProtectedToolchain,
+  chooseNativeProtectedToolchain,
+  resolveManagedToolchain,
   resolveToolchain,
 } from "./resolver.js";
 import {
@@ -75,10 +76,18 @@ export interface LanguageProfileView {
     message?: string;
   };
   active: ResolvedToolchain;
-  provenance?: "managed-package" | "platform-certified" | "unverified-local";
+  provenance?: "managed-package" | "platform-certified" | "certified-local" | "unverified-local";
   candidates: readonly DiscoveredToolchainCandidate[];
   sources: Record<ToolchainSourceMode, ProfileSourceAvailability>;
   managedPackage?: ProfileManagedPackage;
+  certification?: {
+    supported: boolean;
+    required: boolean;
+    canCertify: boolean;
+    certificateId?: string;
+    issuedAt?: string;
+    snapshotDigest?: string;
+  };
 }
 
 export interface LanguageProfileState {
@@ -182,6 +191,7 @@ function provenanceFor(
   submissionReady: boolean,
   checkerReady: boolean,
 ): LanguageProfileView["provenance"] {
+  if (active.provenance === "certified-local") return "certified-local";
   if (active.source === "managed") return "managed-package";
   if (
     os.platform() === "darwin"
@@ -211,7 +221,12 @@ export function buildLanguageProfileState(
     );
     const selected = resolveToolchain(kind);
     const active = kind === "cpp"
-      ? resolveNativeProtectedToolchain(kind)
+      ? chooseNativeProtectedToolchain(
+          os.platform(),
+          kind,
+          resolveManagedToolchain(kind),
+          selected,
+        )
       : selected;
     let submissionReady = kind === "python"
       ? isPythonSubmissionReady(selected)
@@ -250,6 +265,13 @@ export function buildLanguageProfileState(
             reasonCode: "PROFILE_UNSUPPORTED_ON_HOST",
           },
     };
+    const localSelection = selection.mode === "local_path" || selection.mode === "local_auto";
+    const certificationSupported = kind === "cpp" && os.platform() === "win32";
+    const selectedLocalPathAvailable = selection.mode === "local_path"
+      ? !!selection.localPath
+      : selection.mode === "local_auto"
+        ? getDiscoveredCandidates(kind).length === 1
+        : false;
     return {
       id: profile.ref.id,
       version: profile.ref.version,
@@ -273,6 +295,22 @@ export function buildLanguageProfileState(
       candidates: getDiscoveredCandidates(kind),
       sources,
       ...(managedPackage ? { managedPackage } : {}),
+      ...(kind === "cpp"
+        ? {
+            certification: {
+              supported: certificationSupported,
+              required: certificationSupported && localSelection && !submissionReady,
+              canCertify:
+                certificationSupported
+                && localSelection
+                && selectedLocalPathAvailable
+                && !submissionReady,
+              ...(active.certificateId ? { certificateId: active.certificateId } : {}),
+              ...(active.certificateIssuedAt ? { issuedAt: active.certificateIssuedAt } : {}),
+              ...(active.snapshotDigest ? { snapshotDigest: active.snapshotDigest } : {}),
+            },
+          }
+        : {}),
     } satisfies LanguageProfileView;
   });
   return {

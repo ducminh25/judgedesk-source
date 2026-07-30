@@ -111,6 +111,19 @@ test("native protection preserves explicit C++ source intent without fallback", 
     chooseNativeProtectedToolchain("win32", "cpp", managed, managed),
     managed,
   );
+  const certified = {
+    ...system,
+    provenance: "certified-local" as const,
+    certificateId: `cert_${"a".repeat(64)}`,
+    executionPath: String.raw`C:\executor\toolchains\local_cpp\payload\bin\g++.exe`,
+    executionId: "toolchains/local_cpp/payload/bin/g++.exe",
+    snapshotDigest: "b".repeat(64),
+    certifiedRoles: ["submission", "checker"] as const,
+  };
+  assert.equal(
+    chooseNativeProtectedToolchain("win32", "cpp", managed, certified),
+    certified,
+  );
   assert.deepEqual(
     chooseNativeProtectedToolchain("win32", "cpp", { ...managed, ready: false }, system),
     {

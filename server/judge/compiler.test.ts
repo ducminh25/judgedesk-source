@@ -157,6 +157,31 @@ test("relocated managed GCC discovers only cache-contained system include direct
   assert.ok(found.every((directory) => path.relative(root, directory) && !path.relative(root, directory).startsWith("..")));
 });
 
+test("relocated MSYS2 UCRT64 GCC accepts its root include directory", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-msys2-gcc-includes-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const cppRoot = path.join(root, "include", "c++", "16.1.0");
+  const cppTargetBits = path.join(cppRoot, "x86_64-w64-mingw32", "bits");
+  const gccInclude = path.join(root, "lib", "gcc", "x86_64-w64-mingw32", "16.1.0", "include");
+  const runtimeInclude = path.join(root, "include");
+  for (const directory of [cppRoot, cppTargetBits, gccInclude, runtimeInclude]) {
+    fs.mkdirSync(directory, { recursive: true });
+  }
+  fs.writeFileSync(path.join(cppRoot, "iostream"), "");
+  fs.writeFileSync(path.join(cppTargetBits, "c++config.h"), "");
+  fs.writeFileSync(path.join(gccInclude, "stddef.h"), "");
+  fs.writeFileSync(path.join(runtimeInclude, "windows.h"), "");
+
+  const found = findGccIncludeDirectories(root).map((directory) => path.resolve(directory));
+  for (const expected of [cppRoot, path.dirname(cppTargetBits), gccInclude, runtimeInclude]) {
+    assert.ok(found.includes(path.resolve(expected)), `missing ${expected}`);
+  }
+  assert.ok(found.every((directory) => {
+    const relative = path.relative(root, directory);
+    return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
+  }));
+});
+
 function executorTestHelper(): string {
   const target = process.platform === "win32"
     ? "judgedesk-executor-x86_64-pc-windows-msvc.exe"

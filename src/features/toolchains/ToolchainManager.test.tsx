@@ -40,6 +40,7 @@ async function renderWithTranslations(element: ReactNode) {
                 submission_ready: "Submission ready",
               },
               verifyAndUse: "Verify & use",
+              certifyLocal: "Certify for JudgeDesk",
               downloadAndApply: "Download and apply for JudgeDesk",
               applyManaged: "Apply managed package",
               uninstallConfirm: "Confirm uninstall",
@@ -124,6 +125,11 @@ describe("toolchain settings UI regressions", () => {
             totalBytes: 1,
           },
         },
+        certification: {
+          supported: true,
+          required: true,
+          canCertify: true,
+        },
       },
       {
         id: "python-cpython312",
@@ -174,6 +180,8 @@ describe("toolchain settings UI regressions", () => {
         onInstall={async () => true}
         onCancel={async () => {}}
         onUninstall={async () => true}
+        onPlanCertification={async () => null}
+        onCertify={async () => true}
       />,
     );
 
@@ -182,6 +190,7 @@ describe("toolchain settings UI regressions", () => {
     assert.match(markup, /Not available/);
     assert.match(markup, /Submission ready/);
     assert.match(markup, /Download and apply for JudgeDesk/);
+    assert.match(markup, /Certify for JudgeDesk/);
     assert.match(markup, /Uninstall/);
 
     const lockedMarkup = await renderWithTranslations(
@@ -193,6 +202,8 @@ describe("toolchain settings UI regressions", () => {
         onInstall={async () => true}
         onCancel={async () => {}}
         onUninstall={async () => true}
+        onPlanCertification={async () => null}
+        onCertify={async () => true}
       />,
     );
     assert.equal(

@@ -4,12 +4,26 @@ import { isTextFile } from "../file-utils.js";
 import { activeJobs } from "../jobs.js";
 import type { BatchJudgeRequest, ContestantResult, ProblemResult, TestCaseRun } from "../types.js";
 import { resolveProblemConfig } from "../problems/problem-config-repository.js";
-import { compileSubmission, resolveChecker, type CompiledChecker } from "./compiler.js";
+import {
+  compileSubmission,
+  resolveChecker,
+  type CompiledChecker,
+} from "./compiler.js";
+import type { ResolvedToolchain } from "../toolchains/types.js";
 import type { JudgeEventWriter } from "./judge-event-writer.js";
 import { calculateProblemSummary } from "./scoring.js";
-import { findSubmission, listContestants } from "./submission-discovery.js";
+import {
+  findSubmission,
+  listContestants,
+  type Submission,
+} from "./submission-discovery.js";
 import { createProblemDirectoryResolver, listTestDirectories, resolveTestCaseFiles } from "./testcase-discovery.js";
 import { runTestCase } from "./testcase-runner.js";
+import {
+  assertJudgeToolchainPreflight,
+  type JudgeToolchainRequirements,
+} from "./toolchain-preflight.js";
+import { ensureCertifiedLocalCppSessionProbe } from "./certified-local-session-probe.js";
 
 interface JudgeSessionOptions {
   request: Partial<BatchJudgeRequest>;
@@ -17,10 +31,21 @@ interface JudgeSessionOptions {
   testDirectory: string;
   tempDirectory: string;
   events: JudgeEventWriter;
+  pinnedToolchains: Readonly<{
+    cpp: Readonly<ResolvedToolchain>;
+    python: Readonly<ResolvedToolchain>;
+  }>;
 }
 
 export async function runJudgeSession(options: JudgeSessionOptions): Promise<void> {
-  const { request, contestantsDirectory: resolvedThisinh, testDirectory: resolvedTest, tempDirectory: tempDir, events } = options;
+  const {
+    request,
+    contestantsDirectory: resolvedThisinh,
+    testDirectory: resolvedTest,
+    tempDirectory: tempDir,
+    events,
+    pinnedToolchains,
+  } = options;
   const thisinhPath = request.thisinhPath!;
   const testPath = request.testPath!;
   const { jobId } = request;
@@ -28,11 +53,66 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
   const getTestProblemDirObj = createProblemDirectoryResolver(resolvedTest);
   const contestantDirs = listContestants(resolvedThisinh, request.targetContestants);
   const contestants: ContestantResult[] = [];
+  const targetProblems = Array.isArray(request.targetProblems) ? request.targetProblems : null;
+  const activeProblemsList = targetProblems || [];
+  const toolchainRequirements: JudgeToolchainRequirements = {
+    cppSubmission: false,
+    pythonSubmission: false,
+    cppChecker: false,
+    pythonChecker: false,
+  };
+  const pinnedSubmissions = new Map<string, Map<string, Submission | null>>();
+  for (const contestant of contestantDirs) {
+    const contestantPath = path.join(resolvedThisinh, contestant);
+    const submissions = new Map<string, Submission | null>();
+    pinnedSubmissions.set(contestant, submissions);
+    for (const targetProblem of activeProblemsList) {
+      const submission = findSubmission(contestantPath, targetProblem);
+      submissions.set(targetProblem, submission);
+      if (submission?.language === "cpp") toolchainRequirements.cppSubmission = true;
+      if (submission?.language === "python") toolchainRequirements.pythonSubmission = true;
+    }
+  }
+  for (const targetProblem of activeProblemsList) {
+    const testProblemDirectory = getTestProblemDirObj(targetProblem);
+    if (!testProblemDirectory) continue;
+    const config = resolveProblemConfig(
+      targetProblem,
+      testProblemDirectory.path,
+      request.problemConfigs?.[targetProblem],
+    );
+    const checker = config.checkerType.toLowerCase();
+    if (checker.endsWith(".cpp")) toolchainRequirements.cppChecker = true;
+    if (checker.endsWith(".py")) toolchainRequirements.pythonChecker = true;
+  }
+  assertJudgeToolchainPreflight(toolchainRequirements, pinnedToolchains);
+  if (toolchainRequirements.cppSubmission || toolchainRequirements.cppChecker) {
+    sendEvent("progress", {
+      contestant: "",
+      problem: "",
+      action: "Verifying certified compiler/runtime...",
+      percent: 0,
+    });
+    await ensureCertifiedLocalCppSessionProbe(pinnedToolchains.cpp, tempDir, jobId);
+  }
+  console.info("[Judge] Toolchain pin", {
+    jobId,
+    cpp: {
+      source: pinnedToolchains.cpp.source,
+      certificateId: pinnedToolchains.cpp.certificateId,
+      snapshotDigest: pinnedToolchains.cpp.snapshotDigest,
+      version: pinnedToolchains.cpp.version,
+    },
+    python: {
+      source: pinnedToolchains.python.source,
+      certificateId: pinnedToolchains.python.certificateId,
+      version: pinnedToolchains.python.version,
+    },
+  });
 
   // Map compiled checkers to avoid recompiling
   const compiledCheckers: Record<string, CompiledChecker> = {};
 
-  const targetProblems = Array.isArray(request.targetProblems) ? request.targetProblems : null;
   const totalProblemsCount = contestantDirs.length * (targetProblems ? targetProblems.length : 1);
   let completedProblemsCount = 0;
 
@@ -40,8 +120,6 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
     if (jobId && activeJobs.get(jobId)?.cancel) break;
     const contestantPath = path.join(resolvedThisinh, contestant);
     const problems: ProblemResult[] = [];
-    const activeProblemsList = targetProblems || [];
-
     for (const targetProb of activeProblemsList) {
       if (jobId && activeJobs.get(jobId)?.cancel) break;
       sendEvent("progress", {
@@ -50,7 +128,7 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
         percent: totalProblemsCount ? (completedProblemsCount / totalProblemsCount) * 100 : 0
       });
 
-      const submission = findSubmission(contestantPath, targetProb);
+      const submission = pinnedSubmissions.get(contestant)?.get(targetProb) ?? null;
       if (!submission) {
         const missingResult: ProblemResult = {
           problemName: targetProb,
@@ -119,7 +197,9 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
         problemName,
         submissionPath: subPath,
         tempDirectory: tempDir,
-        jobId
+        jobId,
+        cppToolchain: pinnedToolchains.cpp,
+        pythonToolchain: pinnedToolchains.python,
       });
       const executablePath = compilation.executablePath;
       const compileTime = compilation.compileTime;
@@ -137,7 +217,9 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
              problemName,
              problemDirectory: testProblemDir.path,
              tempDirectory: tempDir,
-             jobId
+             jobId,
+             cppToolchain: pinnedToolchains.cpp,
+             pythonToolchain: pinnedToolchains.python,
            });
          }
          const poly = probConf.polygonConfig;

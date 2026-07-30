@@ -15,6 +15,7 @@ import {
   getDiscoveredCandidates,
   getToolchainDiscoverySnapshot,
 } from "./discovery.js";
+import { resolveLocalCppCertificateReadiness } from "./certificate-readiness.js";
 
 export const MIN_GNU_CPP_VERSION = "9.2.0";
 export const MIN_GNU_GDB_VERSION = "7.6.1";
@@ -248,7 +249,17 @@ export function chooseNativeProtectedToolchain(
   // D15 selections are fixed intent. Native protection may reject an active
   // source, but it must never silently replace it with another installed source.
   if (selected.source === "managed") return managed;
-  if (kind === "cpp" && platform === "win32" && selected.ready) {
+  if (
+    kind === "cpp"
+    && platform === "win32"
+    && selected.ready
+    && (
+      selected.provenance !== "certified-local"
+      || !selected.certificateId
+      || !selected.executionPath
+      || !selected.certifiedRoles?.includes("submission")
+    )
+  ) {
     return {
       ...selected,
       ready: false,
@@ -820,7 +831,8 @@ function resolveSelectedLocalExecutable(
     };
   }
   try {
-    if (!fs.statSync(executablePath).isFile()) throw new Error("not a file");
+    const metadata = fs.lstatSync(executablePath);
+    if (!metadata.isFile() || metadata.isSymbolicLink()) throw new Error("not a regular file");
   } catch {
     return {
       ...unavailableToolchain(
@@ -833,14 +845,66 @@ function resolveSelectedLocalExecutable(
       ...(candidateId ? { candidateId } : {}),
     };
   }
-  const version = getExecutableVersion(executablePath, kind);
-  const ready = isSupportedExecutable(executablePath, kind);
+  const canonicalExecutablePath = fs.realpathSync(executablePath);
+  if (kind === "cpp" && os.platform() === "win32") {
+    const certificate = resolveLocalCppCertificateReadiness(canonicalExecutablePath);
+    if (certificate.state === "ready") {
+      return {
+        kind,
+        source,
+        executablePath: certificate.canonicalExecutablePath,
+        version: certificate.certificate.toolchain.version,
+        ready: true,
+        provenance: "certified-local",
+        certificateId: certificate.certificate.certificateId,
+        candidateFingerprint: certificate.certificate.candidateFingerprint,
+        certificateIssuedAt: certificate.certificate.issuedAt,
+        certifiedRoles: certificate.certificate.certifiedRoles,
+        snapshotDigest: certificate.certificate.deployment.kind === "local-snapshot"
+          ? certificate.certificate.deployment.snapshotDigest
+          : undefined,
+        executionPath: certificate.snapshotExecutablePath,
+        executionId: certificate.snapshotExecutableId,
+        executionRoot: certificate.snapshotRoot,
+        ...(candidateId ? { candidateId } : {}),
+      };
+    }
+    return {
+      kind,
+      source,
+      executablePath: canonicalExecutablePath,
+      version: "",
+      ready: false,
+      diagnostic: certificate.diagnostic,
+      diagnosticCode: certificate.code,
+      ...(certificate.certificateId ? { certificateId: certificate.certificateId } : {}),
+      ...(candidateId ? { candidateId } : {}),
+    };
+  }
+  if (kind === "python") {
+    return {
+      kind,
+      source,
+      executablePath: canonicalExecutablePath,
+      version: "",
+      ready: false,
+      diagnostic:
+        "Local/system Python must be certified and snapshotted before judging.",
+      diagnosticCode: "CERTIFICATION_REQUIRED",
+      ...(candidateId ? { candidateId } : {}),
+    };
+  }
+  const version = getExecutableVersion(canonicalExecutablePath, kind);
+  const ready = isSupportedExecutable(canonicalExecutablePath, kind);
   const diagnosticCode: NonNullable<ResolvedToolchain["diagnosticCode"]> =
     version === "unknown" ? "LOCAL_EXECUTABLE_INVALID" : "HEALTH_CHECK_FAILED";
   return {
     kind,
     source,
-    executablePath,
+    executablePath: canonicalExecutablePath,
+    ...(ready && kind === "cpp" && os.platform() === "darwin"
+      ? { provenance: "platform-certified" as const }
+      : {}),
     version,
     ready,
     ...(candidateId ? { candidateId } : {}),

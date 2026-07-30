@@ -397,7 +397,7 @@
       "AUTO_DETECT_NOT_FOUND": "No local candidate was found. Choose a path or install a managed package.",
       "AUTO_DETECT_AMBIGUOUS": "Several local candidates were found. Choose the intended path explicitly.",
       "DETECTION_IN_PROGRESS": "Fast local detection is still running.",
-      "CERTIFICATION_REQUIRED": "Detected, but not yet certified for secure judging. Choose a managed package or complete certification when that workflow is available.",
+      "CERTIFICATION_REQUIRED": "Detected, but not yet certified for secure judging. Choose a managed package or certify this local compiler.",
       "CERTIFICATE_STALE": "The previous certification is stale and must be renewed.",
       "TOOLCHAIN_DRIFTED": "The compiler/runtime changed after certification and was blocked."
     },
@@ -435,7 +435,10 @@
       "mutationsBlocked": "Compiler and runtime choices are locked while judging is in progress. Cancel or finish the current judging session before changing them.",
       "managedUnavailable": "No managed package is available for this computer.",
       "noCandidates": "No candidate was found in PATH or the bounded standard locations.",
-      "detectedCandidates": "Detected candidates: {{count}}"
+      "detectedCandidates": "Detected candidates: {{count}}",
+      "certifyLocal": "Certify for JudgeDesk",
+      "certifying": "Certifying...",
+      "certificationConfirm": "JudgeDesk will copy and certify this local compiler for both submissions and C++ checkers.\n\nCompiler: {{path}}\nFiles: {{files}}\nSnapshot size: {{size}} MiB\n\nThe original installation will not be changed. This one-time check can take several minutes. Continue?"
     },
     "setup": {
       "title": "Compiler Setup Wizard",
@@ -449,7 +452,7 @@
       "pythonTitle": "Python Interpreter Only",
       "pythonDesc": "Installs the standalone Python 3.12 interpreter (about 45 MB download).",
       "judgerTitle": "Judger Only (Skip download)",
-      "judgerDesc": "Skips downloads. Python submissions and custom Python checkers remain unavailable until managed Python is installed. A future certified local-runtime flow will not use an unsafe host fallback. Windows C++ submissions also require managed GCC.",
+      "judgerDesc": "Skips downloads. Python submissions and custom Python checkers remain unavailable until managed Python is installed. Windows C++ requires either managed GCC or a local compiler certified and snapshotted by JudgeDesk.",
       "managedPythonNotice": "Native protection currently requires managed Python for contestant submissions and custom Python checkers. You may decline now; JudgeDesk will fail closed instead of running system Python outside the secure executor.",
       "skip": "Skip for now",
       "next": "Start Setup",
