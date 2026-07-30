@@ -595,6 +595,7 @@ fn build_profile(spec: &RunSpec, paths: &ValidatedRun) -> Result<String, String>
             // macOS dispatches /bin/sh through its signed /bin/bash variant, so both
             // exact executable identities are required by process-exec.
             for executable in ["/bin/sh", "/bin/bash", "/bin/cat", "/bin/rm"] {
+                add_metadata_ancestor_rules(&mut metadata_rules, Path::new(executable));
                 read_rules.push(format!("(literal \"{executable}\")"));
                 process_exec_rules.push(format!("(literal \"{executable}\")"));
             }
