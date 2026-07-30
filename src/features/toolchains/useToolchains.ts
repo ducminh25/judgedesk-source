@@ -47,6 +47,21 @@ export interface ResolvedToolchain {
   diagnostic?: string;
   diagnosticCode?: string;
   candidateId?: string;
+  provenance?: "managed-package" | "platform-certified" | "certified-local" | "unverified-local";
+  certificateId?: string;
+  certificateIssuedAt?: string;
+  snapshotDigest?: string;
+}
+
+export interface ToolchainCertificationPlan {
+  profileId: string;
+  mode: "local-snapshot";
+  canonicalExecutablePath: string;
+  sourceRoot: string;
+  relativeExecutablePath: string;
+  fileCount: number;
+  totalBytes: number;
+  maxSupportedSnapshotBytes: number;
 }
 
 export interface DiscoveredToolchainCandidate {
@@ -71,7 +86,7 @@ export interface LanguageProfileView {
   roles: { submissionReady: boolean; checkerReady: boolean };
   diagnostic?: { code: string; messageKey: string; message?: string };
   active: ResolvedToolchain;
-  provenance?: "managed-package" | "platform-certified" | "unverified-local";
+  provenance?: "managed-package" | "platform-certified" | "certified-local" | "unverified-local";
   candidates: DiscoveredToolchainCandidate[];
   sources: Record<
     ToolchainSourceMode,
@@ -83,6 +98,14 @@ export interface LanguageProfileView {
     installed: boolean;
     downloadAvailable: boolean;
     progress: ToolchainProgress;
+  };
+  certification?: {
+    supported: boolean;
+    required: boolean;
+    canCertify: boolean;
+    certificateId?: string;
+    issuedAt?: string;
+    snapshotDigest?: string;
   };
 }
 
@@ -265,6 +288,41 @@ export function useToolchains() {
     }
   };
 
+  const planCertification = async (
+    profileId: string,
+  ): Promise<ToolchainCertificationPlan | null> => {
+    try {
+      setError(null);
+      const response = await apiFetch(
+        `/api/toolchains/profiles/${encodeURIComponent(profileId)}/certification-plan`,
+        { method: "POST" },
+      );
+      const payload = (await response.json()) as {
+        success: true;
+        plan: ToolchainCertificationPlan;
+      };
+      return payload.plan;
+    } catch (caught: any) {
+      setError(caught.message);
+      return null;
+    }
+  };
+
+  const certify = async (profileId: string): Promise<boolean> => {
+    try {
+      setError(null);
+      await apiFetch(`/api/toolchains/profiles/${encodeURIComponent(profileId)}/certify`, {
+        method: "POST",
+      });
+      await fetchState();
+      return true;
+    } catch (caught: any) {
+      setError(caught.message);
+      await fetchState();
+      return false;
+    }
+  };
+
   return {
     state,
     error,
@@ -274,5 +332,7 @@ export function useToolchains() {
     uninstall,
     setProfilePreference,
     rescan,
+    planCertification,
+    certify,
   };
 }

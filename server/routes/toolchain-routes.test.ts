@@ -388,3 +388,38 @@ test("profile preference route rejects unknown modes and unsafe paths without wr
   assert.equal(unknownResponse.statusCode, 404);
   assert.equal(fs.readFileSync(getPreferencesFilePath(), "utf8"), storedBefore);
 });
+
+test("certification plan is derived only from the selected local Windows compiler", {
+  skip: process.platform === "win32" ? false : "Windows local certification is intentionally host-specific",
+}, async (t) => {
+  useTemporaryAppData(t);
+  const toolchainRoot = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-plan-route-"));
+  t.after(() => fs.rmSync(toolchainRoot, { recursive: true, force: true }));
+  const compilerPath = path.join(toolchainRoot, "bin", "g++.exe");
+  fs.mkdirSync(path.dirname(compilerPath), { recursive: true });
+  fs.writeFileSync(compilerPath, "structural-compiler-fixture");
+  savePreferences({
+    preferredSourceCpp: "custom",
+    customCppPath: compilerPath,
+    preferredSourcePython: "managed",
+  });
+  const handlers = captureToolchainHandlers();
+  const planHandler = handlers.get(
+    "POST /api/toolchains/profiles/:profileId/certification-plan",
+  );
+  assert.ok(planHandler);
+  const response = createResponse();
+  await planHandler(
+    { body: undefined, params: { profileId: CPP_LANGUAGE_PROFILE_ID } },
+    response,
+  );
+  assert.equal(response.statusCode, 200);
+  const payload = response.payload as {
+    success: boolean;
+    plan: { canonicalExecutablePath: string; fileCount: number; totalBytes: number };
+  };
+  assert.equal(payload.success, true);
+  assert.equal(payload.plan.canonicalExecutablePath, fs.realpathSync(compilerPath));
+  assert.equal(payload.plan.fileCount, 1);
+  assert.equal(payload.plan.totalBytes, Buffer.byteLength("structural-compiler-fixture"));
+});

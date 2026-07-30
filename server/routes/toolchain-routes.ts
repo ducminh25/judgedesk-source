@@ -8,9 +8,14 @@ import {
 } from "../languages/registry.js";
 import type { ToolchainSourceMode } from "../languages/contracts.js";
 import {
+  getDiscoveredCandidates,
   getToolchainDiscoverySnapshot,
   requestToolchainRescan,
 } from "../toolchains/discovery.js";
+import {
+  certifyLocalCppToolchain,
+  planLocalCppCertification,
+} from "../toolchains/certification.js";
 import {
   cancelInstallation,
   getInstallProgress,
@@ -42,6 +47,7 @@ import {
 import type { ToolchainKind } from "../toolchains/types.js";
 import type { ToolchainDescriptor } from "../toolchains/types.js";
 import { serverLifecycle } from "../platform/server-lifecycle.js";
+import { toolchainMaintenanceGate } from "../toolchains/maintenance-gate.js";
 
 const SOURCE_MODES = new Set<ToolchainSourceMode>([
   "none",
@@ -54,7 +60,7 @@ const TOOLCHAIN_MUTATION_BLOCKED_MESSAGE =
   "Toolchain settings cannot change while judging is in progress.";
 
 function toolchainMutationsBlocked(): boolean {
-  return serverLifecycle.activeJudgeSessionCount > 0;
+  return serverLifecycle.activeJudgeSessionCount > 0 || toolchainMaintenanceGate.locked;
 }
 
 function assertToolchainMutationAllowed(): void {
@@ -130,6 +136,27 @@ function profileSupportsCurrentHost(profileId: string): boolean {
   return entry.profile.supportedHosts.some(
     (host) => host.platform === os.platform() && host.arch === mappedArchitecture(),
   );
+}
+
+function selectedLocalExecutablePath(profileId: string): string {
+  const entry = getRegisteredLanguageProfile(profileId);
+  if (!entry) throw new Error("Unknown language profile.");
+  const snapshot = loadToolchainPreferenceSnapshot();
+  if (snapshot.status === "recovery") {
+    throw new Error("Toolchain preferences require recovery.");
+  }
+  const preference = getStoredProfilePreference(snapshot.preferences, profileId);
+  if (preference.mode === "local_path" && preference.localPath) {
+    return preference.localPath;
+  }
+  if (preference.mode === "local_auto") {
+    const candidates = getDiscoveredCandidates(entry.toolchainKind);
+    if (candidates.length === 1) return candidates[0].canonicalPath;
+    if (candidates.length > 1) {
+      throw new Error("Multiple local candidates were detected; choose one explicitly.");
+    }
+  }
+  throw new Error("Select one local compiler path before certification.");
 }
 
 export function registerToolchainRoutes(app: Express): void {
@@ -220,6 +247,66 @@ export function registerToolchainRoutes(app: Express): void {
       manifestStatus: manifestState.status,
       manifestError: manifestState.error,
     });
+  });
+
+  app.post("/api/toolchains/profiles/:profileId/certification-plan", async (req, res) => {
+    const { profileId } = req.params;
+    const entry = getRegisteredLanguageProfile(profileId);
+    if (!entry) {
+      return res.status(404).json({ success: false, message: "Unknown language profile." });
+    }
+    if (entry.toolchainKind !== "cpp" || os.platform() !== "win32") {
+      return res.status(422).json({
+        success: false,
+        message: "Local certification is currently available for Windows GNU C++ only.",
+      });
+    }
+    if (toolchainMutationsBlocked()) {
+      return res.status(409).json({
+        success: false,
+        message: TOOLCHAIN_MUTATION_BLOCKED_MESSAGE,
+      });
+    }
+    try {
+      const executablePath = selectedLocalExecutablePath(profileId);
+      const plan = await planLocalCppCertification(executablePath);
+      return res.json({ success: true, plan });
+    } catch (error) {
+      return res.status(422).json({
+        success: false,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  app.post("/api/toolchains/profiles/:profileId/certify", async (req, res) => {
+    const { profileId } = req.params;
+    const entry = getRegisteredLanguageProfile(profileId);
+    if (!entry) {
+      return res.status(404).json({ success: false, message: "Unknown language profile." });
+    }
+    if (entry.toolchainKind !== "cpp" || os.platform() !== "win32") {
+      return res.status(422).json({
+        success: false,
+        message: "Local certification is currently available for Windows GNU C++ only.",
+      });
+    }
+    if (toolchainMutationsBlocked()) {
+      return res.status(409).json({
+        success: false,
+        message: TOOLCHAIN_MUTATION_BLOCKED_MESSAGE,
+      });
+    }
+    try {
+      const executablePath = selectedLocalExecutablePath(profileId);
+      const result = await certifyLocalCppToolchain(executablePath);
+      clearToolchainDetectionCache();
+      return res.json({ success: true, result });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const status = message.startsWith("TOOLCHAIN_MUTATION_BLOCKED") ? 409 : 422;
+      return res.status(status).json({ success: false, message });
+    }
   });
 
   app.post("/api/toolchains/:id/install", async (req, res) => {
@@ -409,7 +496,10 @@ export function registerToolchainRoutes(app: Express): void {
         entry.toolchainKind,
         String(req.body.localPath),
       );
-      if (!verification.ready) {
+      if (
+        !verification.ready
+        && verification.diagnosticCode !== "CERTIFICATION_REQUIRED"
+      ) {
         return res.status(422).json({
           success: false,
           message: verification.diagnostic || "Local toolchain verification failed.",

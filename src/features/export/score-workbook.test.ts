@@ -19,7 +19,16 @@ test("score export creates summary and detail worksheets", async () => {
       },
       executor: { mode: "windows-lpac-job", version: "1.2.5", ready: true },
       toolchains: {
-        cpp: { source: "managed", version: "14.2.0", submissionReady: true },
+        cpp: {
+          source: "custom",
+          version: "16.1.0",
+          submissionReady: true,
+          checkerReady: true,
+          provenance: "certified-local",
+          certificateId: `cert_${"a".repeat(64)}`,
+          candidateFingerprint: "b".repeat(64),
+          snapshotDigest: "c".repeat(64),
+        },
         python: {
           source: "system",
           version: "3.12.8",
@@ -78,5 +87,7 @@ test("score export creates summary and detail worksheets", async () => {
   const diagnostic = JSON.parse(buildDiagnosticJson(result, ["Alice"], ["sum"]));
   assert.equal(diagnostic.schemaVersion, 1);
   assert.equal(diagnostic.metadata.build.gitCommit, "abc123");
+  assert.equal(diagnostic.metadata.toolchains.cpp.provenance, "certified-local");
+  assert.equal(diagnostic.metadata.toolchains.cpp.snapshotDigest, "c".repeat(64));
   assert.equal(diagnostic.contestants[0].problems[0].testCases[0].execution.reason, "exited");
 });

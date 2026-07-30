@@ -85,7 +85,16 @@ export interface RunMetadata {
     ready: boolean;
   };
   toolchains: {
-    cpp: { source: string; version: string; submissionReady: boolean };
+    cpp: {
+      source: string;
+      version: string;
+      submissionReady: boolean;
+      checkerReady?: boolean;
+      provenance?: string;
+      certificateId?: string;
+      candidateFingerprint?: string;
+      snapshotDigest?: string;
+    };
     python: {
       source: string;
       version: string;

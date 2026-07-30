@@ -15,6 +15,7 @@ import {
 import { useTranslation } from "react-i18next";
 import {
   type LanguageProfileView,
+  type ToolchainCertificationPlan,
   type ToolchainSourceMode,
   useToolchains,
 } from "./useToolchains.js";
@@ -41,6 +42,8 @@ export default function ToolchainManager({ onClose, firstRun = false }: Props) {
     uninstall,
     setProfilePreference,
     rescan,
+    planCertification,
+    certify,
   } = useToolchains();
 
   return (
@@ -121,6 +124,8 @@ export default function ToolchainManager({ onClose, firstRun = false }: Props) {
                 onInstall={install}
                 onCancel={cancel}
                 onUninstall={uninstall}
+                onPlanCertification={planCertification}
+                onCertify={certify}
               />
             </div>
           )}
@@ -153,6 +158,8 @@ export function ToolchainRegistryTable({
   onInstall,
   onCancel,
   onUninstall,
+  onPlanCertification,
+  onCertify,
 }: {
   profiles: LanguageProfileView[];
   discoveryStatus: "not_started" | "running" | "complete" | "failed";
@@ -165,6 +172,8 @@ export function ToolchainRegistryTable({
   onInstall: (id: string) => Promise<boolean>;
   onCancel: (id: string) => Promise<void>;
   onUninstall: (id: string) => Promise<boolean>;
+  onPlanCertification: (profileId: string) => Promise<ToolchainCertificationPlan | null>;
+  onCertify: (profileId: string) => Promise<boolean>;
 }) {
   const { t } = useTranslation();
   return (
@@ -189,6 +198,8 @@ export function ToolchainRegistryTable({
               onInstall={onInstall}
               onCancel={onCancel}
               onUninstall={onUninstall}
+              onPlanCertification={onPlanCertification}
+              onCertify={onCertify}
             />
           ))}
         </tbody>
@@ -236,6 +247,8 @@ function ProfileRow({
   onInstall,
   onCancel,
   onUninstall,
+  onPlanCertification,
+  onCertify,
 }: {
   key?: React.Key;
   profile: LanguageProfileView;
@@ -249,11 +262,14 @@ function ProfileRow({
   onInstall: (id: string) => Promise<boolean>;
   onCancel: (id: string) => Promise<void>;
   onUninstall: (id: string) => Promise<boolean>;
+  onPlanCertification: (profileId: string) => Promise<ToolchainCertificationPlan | null>;
+  onCertify: (profileId: string) => Promise<boolean>;
 }) {
   const { t } = useTranslation();
   const [localPath, setLocalPath] = useState(profile.selection.localPath || "");
   const [pathDirty, setPathDirty] = useState(false);
   const [pending, setPending] = useState(false);
+  const [certifying, setCertifying] = useState(false);
 
   useEffect(() => {
     if (!pathDirty) setLocalPath(profile.selection.localPath || "");
@@ -292,7 +308,26 @@ function ProfileRow({
   const installing = !!managed && ["downloading", "extracting", "verifying"].includes(
     managed.progress.status,
   );
-  const controlsDisabled = preferenceLocked || pending;
+  const controlsDisabled = preferenceLocked || pending || certifying;
+
+  const certifyLocalToolchain = async () => {
+    setCertifying(true);
+    try {
+      const plan = await onPlanCertification(profile.id);
+      if (!plan) return;
+      const sizeMiB = new Intl.NumberFormat(undefined, {
+        maximumFractionDigits: 1,
+      }).format(plan.totalBytes / 1024 / 1024);
+      const confirmed = window.confirm(t("toolchains.registry.certificationConfirm", {
+        path: plan.canonicalExecutablePath,
+        files: new Intl.NumberFormat().format(plan.fileCount),
+        size: sizeMiB,
+      }));
+      if (confirmed) await onCertify(profile.id);
+    } finally {
+      setCertifying(false);
+    }
+  };
 
   return (
     <tr className="align-top bg-surface">
@@ -315,6 +350,14 @@ function ProfileRow({
               defaultValue: profile.diagnostic.message || profile.diagnostic.code,
             })}
           </p>
+        )}
+        {profile.certification?.certificateId && (
+          <div className="mt-2 flex items-center gap-1 text-[10px] text-emerald-600 dark:text-emerald-400">
+            <ShieldCheck className="h-3 w-3" />
+            <span className="font-mono">
+              {profile.certification.certificateId.slice(0, 17)}…
+            </span>
+          </div>
         )}
         {(profile.active.executablePath || profile.active.version) && (
           <div className="mt-2 space-y-1 break-all font-mono text-[10px] text-text-muted">
@@ -396,6 +439,21 @@ function ProfileRow({
       </td>
       <td className="px-4 py-4">
         <div className="flex flex-col items-start gap-2">
+          {profile.certification?.canCertify && (
+            <button
+              type="button"
+              disabled={controlsDisabled}
+              onClick={() => void certifyLocalToolchain()}
+              className="flex items-center gap-1.5 rounded bg-emerald-600 px-3 py-1.5 text-2xs font-bold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {certifying
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <ShieldCheck className="h-3.5 w-3.5" />}
+              {certifying
+                ? t("toolchains.registry.certifying")
+                : t("toolchains.registry.certifyLocal")}
+            </button>
+          )}
           {managed && !managed.installed && (
             <button
               type="button"

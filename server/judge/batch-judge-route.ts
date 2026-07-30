@@ -1,14 +1,17 @@
 import fs from "fs";
 import path from "path";
+import crypto from "node:crypto";
 import type { Express } from "express";
 import { tryRegisterJudgeJob } from "../jobs.js";
 import { createJudgeEventWriter } from "./judge-event-writer.js";
 import { runJudgeSession } from "./judge-session.js";
+import { resolveCompilationToolchain } from "./compiler.js";
 import { createRunWorkspace } from "./run-workspace.js";
 import { executorClient } from "../executor/client.js";
 import { createRunMetadata } from "../platform/run-metadata.js";
 import { serverLifecycle } from "../platform/server-lifecycle.js";
 import { SingleJudgeSessionGate } from "./resource-policy.js";
+import { toolchainMaintenanceGate } from "../toolchains/maintenance-gate.js";
 
 export function registerBatchJudgeRoute(app: Express): void {
   const sessionGate = new SingleJudgeSessionGate();
@@ -18,6 +21,13 @@ export function registerBatchJudgeRoute(app: Express): void {
     if (!serverLifecycle.acceptsNewJudgeSessions) {
       events.send("error", {
         message: "SERVER_DRAINING: JudgeDesk is preparing to shut down.",
+      });
+      events.end();
+      return;
+    }
+    if (toolchainMaintenanceGate.active) {
+      events.send("error", {
+        message: "TOOLCHAIN_MAINTENANCE_ACTIVE: wait for compiler/runtime verification to finish.",
       });
       events.end();
       return;
@@ -57,8 +67,20 @@ export function registerBatchJudgeRoute(app: Express): void {
       events.end();
       return;
     }
+    const toolchainJudgeLease = toolchainMaintenanceGate.tryAcquireJudge(
+      `judge-${crypto.randomUUID()}`,
+    );
+    if (!toolchainJudgeLease) {
+      sessionGate.release();
+      sendEvent("error", {
+        message: "TOOLCHAIN_MAINTENANCE_ACTIVE: wait for compiler/runtime verification to finish.",
+      });
+      events.end();
+      return;
+    }
     const registration = tryRegisterJudgeJob(jobId);
     if (registration.accepted === false) {
+      toolchainJudgeLease.finish();
       sessionGate.release();
       const messages = {
         draining: "SERVER_DRAINING: JudgeDesk is preparing to shut down.",
@@ -75,8 +97,12 @@ export function registerBatchJudgeRoute(app: Express): void {
     let workspace: ReturnType<typeof createRunWorkspace> | undefined;
     try {
       res.setHeader("X-JudgeDesk-Job-Id", registration.jobId);
-      sendEvent("metadata", createRunMetadata());
       workspace = createRunWorkspace();
+      const pinnedToolchains = Object.freeze({
+        cpp: Object.freeze(await resolveCompilationToolchain("cpp")),
+        python: Object.freeze(await resolveCompilationToolchain("python")),
+      });
+      sendEvent("metadata", createRunMetadata(pinnedToolchains));
       await runJudgeSession({
         request: {
           ...req.body,
@@ -85,7 +111,8 @@ export function registerBatchJudgeRoute(app: Express): void {
         contestantsDirectory: resolvedThisinh,
         testDirectory: resolvedTest,
         tempDirectory: workspace.path,
-        events
+        events,
+        pinnedToolchains,
       });
       sendEvent("done", { success: true });
     } catch (error) {
@@ -93,6 +120,7 @@ export function registerBatchJudgeRoute(app: Express): void {
     } finally {
       workspace?.dispose();
       registration.finish();
+      toolchainJudgeLease.finish();
       sessionGate.release();
       events.end();
     }
