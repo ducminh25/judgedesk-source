@@ -618,58 +618,23 @@ export function cloneRegularDirectory(
   sourcePath: string,
   destinationPath: string,
 ): void {
-  const sourceRoot = fs.lstatSync(sourcePath);
-  if (!sourceRoot.isDirectory() || sourceRoot.isSymbolicLink()) {
-    throw new Error(
-      "Executor directory staging accepts a regular non-symlink directory only.",
-    );
+  if (fs.existsSync(destinationPath)) {
+    throw new Error("Executor directory staging destination already exists.");
   }
-
-  fs.mkdirSync(destinationPath, {
-    recursive: false,
-    mode: sourceRoot.mode & 0o777,
-  });
   try {
-    copyEntries(sourcePath, destinationPath);
-    if (process.platform !== "win32") {
-      fs.chmodSync(destinationPath, sourceRoot.mode & 0o777);
-    }
+    fs.cpSync(sourcePath, destinationPath, {
+      recursive: true,
+      dereference: false,
+      force: false,
+      errorOnExist: true,
+      // COPYFILE_FICLONE asks APFS/ReFS-capable hosts for copy-on-write and
+      // safely falls back to a byte copy elsewhere. Never use hard links:
+      // cache writes must not mutate the signed package or another run.
+      mode: fs.constants.COPYFILE_FICLONE,
+    });
   } catch (error) {
     fs.rmSync(destinationPath, { recursive: true, force: true });
     throw error;
-  }
-}
-
-function copyEntries(sourceDirectory: string, destinationDirectory: string): void {
-  for (const entry of fs.readdirSync(sourceDirectory, { withFileTypes: true })) {
-    const source = path.join(sourceDirectory, entry.name);
-    const destination = path.join(destinationDirectory, entry.name);
-    const metadata = fs.lstatSync(source);
-    if (metadata.isSymbolicLink()) {
-      throw new Error("Executor directory staging rejects symbolic links.");
-    }
-    if (metadata.isDirectory()) {
-      fs.mkdirSync(destination, {
-        recursive: false,
-        mode: metadata.mode & 0o777,
-      });
-      copyEntries(source, destination);
-      if (process.platform !== "win32") {
-        fs.chmodSync(destination, metadata.mode & 0o777);
-      }
-      continue;
-    }
-    if (!metadata.isFile()) {
-      throw new Error("Executor directory staging accepts regular files only.");
-    }
-    // COPYFILE_FICLONE asks APFS/ReFS-capable hosts for a copy-on-write clone and
-    // safely falls back to a regular byte copy elsewhere. Never use hard links:
-    // compiler cache writes must not mutate the signed package or another run.
-    fs.copyFileSync(
-      source,
-      destination,
-      fs.constants.COPYFILE_FICLONE | fs.constants.COPYFILE_EXCL,
-    );
   }
 }
 

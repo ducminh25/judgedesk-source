@@ -7,6 +7,7 @@ import { getDescriptorForHost } from "../toolchains/manifest.js";
 import type { ResolvedToolchain } from "../toolchains/types.js";
 import {
   cloneRegularDirectory,
+  inspectRegularDirectory,
   managedToolchainSourceRoot,
   prepareManagedToolchainExecutable,
 } from "./workspace.js";
@@ -120,6 +121,10 @@ test("workspace directory clones are isolated copies and preserve empty director
   fs.mkdirSync(path.join(source, "nested", "empty"), { recursive: true });
   fs.writeFileSync(path.join(source, "nested", "cache.bin"), "original");
 
+  inspectRegularDirectory(source, {
+    maxFiles: 10,
+    maxBytes: 1_024,
+  });
   cloneRegularDirectory(source, destination);
 
   assert.equal(
@@ -154,7 +159,13 @@ test("workspace directory cloning rejects symlinks without leaving a partial cop
   }
 
   assert.throws(
-    () => cloneRegularDirectory(source, destination),
+    () => {
+      inspectRegularDirectory(source, {
+        maxFiles: 10,
+        maxBytes: 1_024,
+      });
+      cloneRegularDirectory(source, destination);
+    },
     /rejects symbolic links/,
   );
   assert.equal(fs.existsSync(destination), false);
