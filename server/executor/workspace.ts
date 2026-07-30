@@ -3,10 +3,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { getDescriptorForHost } from "../toolchains/manifest.js";
+import { readVerifiedToolchainPackageReceipt } from "../toolchains/package-store.js";
 import type {
   ResolvedToolchain,
   ToolchainCatalogEntry,
   ToolchainKind,
+  ToolchainPackageRole,
 } from "../toolchains/types.js";
 import type { ExecutorToolchainIdentity } from "./protocol.js";
 import { executorClient } from "./client.js";
@@ -174,18 +176,79 @@ export async function prepareManagedToolchainExecutable(
   resolved: ResolvedToolchain,
 ): Promise<CachedManagedToolchain> {
   if (
-    resolved.source === "managed"
-    && resolved.packageOrigin === "built-in"
-    && resolved.packageRoot
-    && resolved.packageDigest
-    && resolved.packageComponentId
+    resolved.packageOrigin === "downloaded"
+    && (!resolved.packageRoot
+      || !resolved.packageDigest
+      || !resolved.packageComponentId)
+    && (kind === "cpp" || kind === "c" || kind === "python")
   ) {
-    const descriptor = getDescriptorForHost(os.platform(), os.arch(), kind);
-    if (!descriptor || descriptor.id !== path.basename(resolved.packageRoot)) {
-      throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+    const cached = await findCachedManagedToolchain(kind);
+    if (cached && sameFilePath(cached.executablePath, resolved.executablePath)) {
+      return cached;
     }
-    const canonicalRoot = fs.realpathSync(resolved.packageRoot);
-    const canonicalExecutable = fs.realpathSync(resolved.executablePath);
+    return {
+      ...resolved,
+      ...await importManagedToolchain(
+        kind,
+        resolved.executablePath,
+        resolved.version,
+      ),
+    };
+  }
+  return prepareManagedToolchainComponent(
+    kind,
+    resolved,
+    resolved.packageComponentId,
+  );
+}
+
+export async function prepareManagedToolchainComponent(
+  kind: ToolchainKind,
+  resolved: ResolvedToolchain,
+  requestedComponentId: string | undefined,
+  expectedRole?: ToolchainPackageRole,
+): Promise<CachedManagedToolchain> {
+  if (
+    resolved.kind !== kind
+    || resolved.source !== "managed"
+    || !resolved.ready
+    || !resolved.packageRoot
+    || !resolved.packageDigest
+  ) {
+    throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+  }
+  const descriptor = getDescriptorForHost(os.platform(), os.arch(), kind);
+  if (!descriptor || descriptor.id !== path.basename(resolved.packageRoot)) {
+    throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+  }
+  const installed = readVerifiedToolchainPackageReceipt(
+    descriptor,
+    resolved.packageRoot,
+  );
+  if (installed.receipt.archiveSha256 !== resolved.packageDigest) {
+    throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+  }
+  const componentId = requestedComponentId
+    ?? installed.receipt.entrypointComponentId;
+  const component = installed.receipt.components.find(
+    (candidate) =>
+      candidate.id === componentId
+      && candidate.kind === "executable",
+  );
+  if (
+    !component
+    || (expectedRole && !component.roles.includes(expectedRole))
+  ) {
+    throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+  }
+
+  if (
+    resolved.packageOrigin === "built-in"
+  ) {
+    const canonicalRoot = installed.root;
+    const canonicalExecutable = fs.realpathSync(
+      path.join(canonicalRoot, ...component.relativePath.split("/")),
+    );
     if (!isDescendant(canonicalRoot, canonicalExecutable)) {
       throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
     }
@@ -200,22 +263,66 @@ export async function prepareManagedToolchainExecutable(
       toolchain: {
         packageId: descriptor.id,
         packageDigest: resolved.packageDigest,
-        componentId: resolved.packageComponentId,
+        componentId,
       },
     };
   }
 
   const cached = await findCachedManagedToolchain(kind);
-  if (cached && sameFilePath(cached.executablePath, resolved.executablePath)) {
-    return cached;
+  const preparedEntrypoint = cached
+    && sameFilePath(cached.executablePath, resolved.executablePath)
+    ? cached
+    : {
+        ...resolved,
+        ...await importManagedToolchain(
+          kind,
+          resolved.executablePath,
+          resolved.version,
+        ),
+      };
+  const cachedReceipt = readVerifiedToolchainPackageReceipt(
+    descriptor,
+    preparedEntrypoint.root,
+  );
+  if (cachedReceipt.receipt.archiveSha256 !== resolved.packageDigest) {
+    throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+  }
+  const cachedComponent = cachedReceipt.receipt.components.find(
+    (candidate) =>
+      candidate.id === componentId
+      && candidate.kind === "executable"
+      && (!expectedRole || candidate.roles.includes(expectedRole)),
+  );
+  if (!cachedComponent) {
+    throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+  }
+  const cachedExecutable = fs.realpathSync(
+    path.join(
+      cachedReceipt.root,
+      ...cachedComponent.relativePath.split("/"),
+    ),
+  );
+  if (!isDescendant(cachedReceipt.root, cachedExecutable)) {
+    throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+  }
+  const health = await executorClient.start();
+  if (!health.ready) {
+    throw new Error(
+      health.diagnostics.join("; ") || "SECURE_RUNNER_UNAVAILABLE",
+    );
   }
   return {
     ...resolved,
-    ...await importManagedToolchain(
-      kind,
-      resolved.executablePath,
-      resolved.version,
-    ),
+    executablePath: cachedExecutable,
+    executableId: path
+      .relative(health.executorRoot, cachedExecutable)
+      .replaceAll("\\", "/"),
+    root: cachedReceipt.root,
+    toolchain: {
+      packageId: descriptor.id,
+      packageDigest: resolved.packageDigest,
+      componentId,
+    },
   };
 }
 

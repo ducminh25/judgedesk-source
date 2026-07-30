@@ -3,12 +3,15 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import type { ResolvedToolchain } from "../toolchains/types.js";
+import type {
+  ResolvedToolchain,
+  ToolchainKind,
+} from "../toolchains/types.js";
 import type { JudgeEventWriter } from "./judge-event-writer.js";
 import { runJudgeSession } from "./judge-session.js";
 
 function pin(
-  kind: "cpp" | "c" | "python",
+  kind: ToolchainKind,
   overrides: Partial<ResolvedToolchain> = {},
 ): ResolvedToolchain {
   return {
@@ -63,6 +66,12 @@ test("judge session preflight rejects a missing C++ capability before emitting r
         }),
         c: pin("c"),
         python: pin("python"),
+        pascal: pin("pascal"),
+        go: pin("go"),
+        java: pin("java"),
+        rust: pin("rust"),
+        javascript: pin("javascript"),
+        csharp: pin("csharp"),
       },
     }),
     /TOOLCHAIN_PREFLIGHT_FAILED: C\+\+ submissions: CERTIFICATION_REQUIRED/,

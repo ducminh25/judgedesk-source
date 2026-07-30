@@ -26,6 +26,8 @@ import {
   resolveConfiguredSubmissionMemoryLimitBytes,
   resolveSubmissionMemoryLimitBytes,
 } from "./resource-policy.js";
+import type { PreparedSubmissionProgram } from "./prepared-program.js";
+import { prepareIsolatedNodeScript } from "./node-runtime.js";
 import { isBuiltInChecker, runStandardChecker } from "./standard-checkers.js";
 
 interface TestCaseRunnerOptions {
@@ -46,6 +48,7 @@ interface TestCaseRunnerOptions {
   score: number;
   config: NormalizedProblemConfig;
   checker: CompiledChecker | undefined;
+  program?: PreparedSubmissionProgram;
   jobId?: string;
 }
 
@@ -189,6 +192,39 @@ async function prepareSubmission(
   environment: Record<string, string>;
   toolchain?: import("../executor/protocol.js").ExecutorToolchainIdentity;
 }> {
+  if (options.program?.kind === "native") {
+    const artifact = await importExecutorArtifact(options.program.artifactPath);
+    return { executableId: artifact.executableId, args: [], environment: {} };
+  }
+  if (
+    options.program?.kind === "script-runtime"
+    && options.program.language === "python"
+  ) {
+    return prepareIsolatedPythonScript(
+      workspace,
+      options.program.sourcePath,
+      options.program.stagedFileName,
+      options.program.runtimeToolchain.executionPath
+        || options.program.runtimeToolchain.executablePath,
+      options.program.runtimeToolchain,
+    );
+  }
+  if (
+    options.program?.kind === "script-runtime"
+    && options.program.language === "javascript"
+  ) {
+    return prepareIsolatedNodeScript(
+      workspace,
+      options.program.sourcePath,
+      options.program.stagedFileName,
+      options.program.runtimeToolchain,
+    );
+  }
+  if (options.program) {
+    throw new Error(
+      `LANGUAGE_ADAPTER_UNAVAILABLE: ${options.program.language}`,
+    );
+  }
   if (options.language === "cpp" || options.language === "c") {
     const artifact = await importExecutorArtifact(options.executablePath);
     return { executableId: artifact.executableId, args: [], environment: {} };
