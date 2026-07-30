@@ -5,7 +5,45 @@ import path from "node:path";
 import test from "node:test";
 import { getDescriptorForHost } from "../toolchains/manifest.js";
 import type { ResolvedToolchain } from "../toolchains/types.js";
-import { prepareManagedToolchainExecutable } from "./workspace.js";
+import {
+  managedToolchainSourceRoot,
+  prepareManagedToolchainExecutable,
+} from "./workspace.js";
+
+test("a catalog symlink resolves against its explicit managed package root", (t) => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "judgedesk-managed-symlink-"),
+  );
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const bin = path.join(root, "bin");
+  const versionedExecutable = path.join(bin, "python3.12");
+  const catalogEntrypoint = path.join(bin, "python3");
+  fs.mkdirSync(bin);
+  fs.writeFileSync(versionedExecutable, "runtime");
+  try {
+    fs.symlinkSync("python3.12", catalogEntrypoint, "file");
+  } catch {
+    t.skip("creating file symlinks requires additional privileges");
+    return;
+  }
+
+  assert.equal(
+    managedToolchainSourceRoot(
+      fs.realpathSync(catalogEntrypoint),
+      "bin/python3",
+      root,
+    ),
+    fs.realpathSync(root),
+  );
+  assert.throws(
+    () =>
+      managedToolchainSourceRoot(
+        fs.realpathSync(catalogEntrypoint),
+        "bin/python3",
+      ),
+    /TOOLCHAIN_NOT_SANDBOX_COMPATIBLE/,
+  );
+});
 
 test("a built-in managed toolchain is referenced directly without an executor-cache copy", async (t) => {
   const descriptor = getDescriptorForHost(os.platform(), os.arch(), "python");
