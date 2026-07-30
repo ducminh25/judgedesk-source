@@ -55,7 +55,12 @@ test("profile state is registry ordered and reports first-run detection without 
   )) {
     assert.equal(profile.selection.mode, "none");
     assert.equal(profile.status, "not_available");
-    assert.equal(profile.diagnostic?.code, "DISABLED_BY_USER");
+    assert.equal(
+      profile.diagnostic?.code,
+      profile.supportedOnHost
+        ? "DISABLED_BY_USER"
+        : "PROFILE_UNSUPPORTED_ON_HOST",
+    );
   }
 });
 

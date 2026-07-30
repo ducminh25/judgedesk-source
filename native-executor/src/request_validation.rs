@@ -9,6 +9,12 @@ const BUILTIN_TOOLCHAINS_ENV: &str = "JUDGEDESK_BUILTIN_TOOLCHAINS_DIR";
 const PACKAGE_RECEIPT: &str = ".judgedesk-package.json";
 const CACHE_MARKER: &str = ".judgedesk-import-complete";
 const CACHE_SCHEMA: &str = "3-internal-symlinks";
+const MANAGED_RUNTIME_MARKERS: [&str; 4] = [
+    "JUDGEDESK_PYTHON_ISOLATED",
+    "JUDGEDESK_NODE_ISOLATED",
+    "JUDGEDESK_JAVA_ISOLATED",
+    "JUDGEDESK_DOTNET_ISOLATED",
+];
 const MAX_RECEIPT_BYTES: u64 = 16 * 1024;
 
 #[derive(Debug, Deserialize)]
@@ -108,14 +114,10 @@ fn validate_run_with_builtin_root(
                 .into(),
         );
     }
-    let isolated_python = spec
-        .environment
-        .get("JUDGEDESK_PYTHON_ISOLATED")
-        .map(String::as_str)
-        == Some("1");
-    if isolated_python && !matches!(spec.role, RunRole::Submission | RunRole::CheckerRuntime) {
+    let isolated_runtime = validate_managed_runtime_marker(spec)?;
+    if isolated_runtime && !matches!(spec.role, RunRole::Submission | RunRole::CheckerRuntime) {
         return Err(
-            "the isolated Python marker is valid only for submissions and checker runtimes".into(),
+            "a managed runtime marker is valid only for submissions and checker runtimes".into(),
         );
     }
     if matches!(spec.role, RunRole::Checker | RunRole::CheckerRuntime)
@@ -139,7 +141,7 @@ fn validate_run_with_builtin_root(
         // Submission runtimes retain their legacy typed marker until the language-profile
         // adapter migration lands. Checker runtimes use an explicit role, so an environment
         // variable can no longer downgrade an arbitrary native checker out of LPAC.
-        if !matches!(spec.role, RunRole::Submission) || !isolated_python {
+        if !matches!(spec.role, RunRole::Submission) || !isolated_runtime {
             return Err(
                 "only compilers, checker runtimes, and verified isolated submission runtimes may execute from toolchain cache"
                     .into(),
@@ -164,6 +166,22 @@ fn validate_run_with_builtin_root(
         stdout,
         stderr,
     })
+}
+
+fn validate_managed_runtime_marker(spec: &RunSpec) -> Result<bool, String> {
+    let mut selected = None;
+    for marker in MANAGED_RUNTIME_MARKERS {
+        let Some(value) = spec.environment.get(marker) else {
+            continue;
+        };
+        if value != "1" {
+            return Err("managed runtime markers must have the exact value '1'".into());
+        }
+        if selected.replace(marker).is_some() {
+            return Err("an executor run cannot select multiple managed runtimes".into());
+        }
+    }
+    Ok(selected.is_some())
 }
 
 fn validate_grant_role(role: RunRole, grant_role: ToolchainGrantRole) -> Result<(), String> {
@@ -469,8 +487,16 @@ pub(crate) fn validate_environment(environment: &BTreeMap<String, String>) -> Re
         return Err("environment exceeds protocol limits".into());
     }
 
+    let mut portable_keys = std::collections::HashSet::with_capacity(environment.len());
     for key in environment.keys() {
         let normalized = key.to_ascii_uppercase();
+        // Windows treats environment names case-insensitively. Rejecting
+        // portable duplicates on every host keeps a request's meaning
+        // identical across Windows and macOS and prevents PATH/Path or marker
+        // aliases from bypassing a pinned adapter value.
+        if !portable_keys.insert(normalized.clone()) {
+            return Err("environment contains duplicate portable variable names".into());
+        }
         let loader_control = normalized.starts_with("DYLD_")
             || normalized.starts_with("__XPC_DYLD_")
             || normalized.starts_with("LD_")
@@ -704,9 +730,18 @@ mod tests {
     }
 
     #[test]
-    fn environment_allows_current_compiler_and_managed_python_contracts() {
+    fn environment_rejects_names_that_collide_on_windows() {
+        assert!(validate_environment(&BTreeMap::from([
+            ("PATH".into(), "first".into()),
+            ("Path".into(), "second".into()),
+        ]))
+        .is_err());
+    }
+
+    #[test]
+    fn environment_allows_current_compiler_and_managed_runtime_contracts() {
         let environment = BTreeMap::from([
-            ("JUDGEDESK_PYTHON_ISOLATED".into(), "1".into()),
+            ("JUDGEDESK_NODE_ISOLATED".into(), "1".into()),
             ("PYTHONNOUSERSITE".into(), "1".into()),
             ("PYTHONDONTWRITEBYTECODE".into(), "1".into()),
             ("PYTHONHOME".into(), "/managed/python".into()),

@@ -25,15 +25,15 @@ use windows_sys::Win32::Security::Isolation::{
     CreateAppContainerProfile, DeriveAppContainerSidFromAppContainerName, GetAppContainerFolderPath,
 };
 use windows_sys::Win32::Security::{
-    AddAccessAllowedAceEx, CreateWellKnownSid, FreeSid, GetLengthSid, GetTokenInformation,
-    InitializeAcl, TokenUser, WinBuiltinAdministratorsSid, WinLocalSystemSid, ACCESS_ALLOWED_ACE,
-    ACL, ACL_REVISION, CONTAINER_INHERIT_ACE, DACL_SECURITY_INFORMATION, OBJECT_INHERIT_ACE,
-    PROTECTED_DACL_SECURITY_INFORMATION, PSID, SECURITY_ATTRIBUTES, SECURITY_CAPABILITIES,
-    SECURITY_MAX_SID_SIZE, TOKEN_QUERY, TOKEN_USER,
+    AddAccessAllowedAceEx, CreateWellKnownSid, DeriveCapabilitySidsFromName, FreeSid, GetLengthSid,
+    GetTokenInformation, InitializeAcl, TokenUser, WinBuiltinAdministratorsSid, WinLocalSystemSid,
+    ACCESS_ALLOWED_ACE, ACL, ACL_REVISION, CONTAINER_INHERIT_ACE, DACL_SECURITY_INFORMATION,
+    OBJECT_INHERIT_ACE, PROTECTED_DACL_SECURITY_INFORMATION, PSID, SECURITY_ATTRIBUTES,
+    SECURITY_CAPABILITIES, SECURITY_MAX_SID_SIZE, SID_AND_ATTRIBUTES, TOKEN_QUERY, TOKEN_USER,
 };
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, CREATE_ALWAYS, FILE_ALL_ACCESS, FILE_ATTRIBUTE_NORMAL, FILE_GENERIC_EXECUTE,
-    FILE_GENERIC_READ, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+    FILE_GENERIC_READ, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TRAVERSE, OPEN_EXISTING,
 };
 use windows_sys::Win32::System::Com::CoTaskMemFree;
 use windows_sys::Win32::System::Diagnostics::ToolHelp::{
@@ -50,7 +50,7 @@ use windows_sys::Win32::System::JobObjects::{
     JOB_OBJECT_LIMIT_JOB_MEMORY, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
 };
 use windows_sys::Win32::System::SystemServices::{
-    JOB_OBJECT_MSG_ACTIVE_PROCESS_LIMIT, JOB_OBJECT_MSG_JOB_MEMORY_LIMIT,
+    JOB_OBJECT_MSG_ACTIVE_PROCESS_LIMIT, JOB_OBJECT_MSG_JOB_MEMORY_LIMIT, SE_GROUP_ENABLED,
 };
 use windows_sys::Win32::System::Threading::{
     CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess, GetExitCodeProcess,
@@ -67,6 +67,12 @@ use windows_sys::Win32::System::IO::{CreateIoCompletionPort, GetQueuedCompletion
 const PROFILE_NAME: &str = "JudgeDesk.NativeSecureExecutor.v1";
 const CANCEL_EXIT_CODE: u32 = 0x4a44_0001;
 const LIMIT_EXIT_CODE: u32 = 0x4a44_0002;
+const MANAGED_RUNTIME_MARKERS: [&str; 4] = [
+    "JUDGEDESK_PYTHON_ISOLATED",
+    "JUDGEDESK_NODE_ISOLATED",
+    "JUDGEDESK_JAVA_ISOLATED",
+    "JUDGEDESK_DOTNET_ISOLATED",
+];
 
 pub struct WindowsPlatform {
     sid: Vec<u8>,
@@ -87,6 +93,7 @@ impl WindowsPlatform {
         let root = initialize_root(profile_root.join("LocalState"))?;
         protect_cache_directory(&root.join("toolchains"), &sid)?;
         protect_cache_directory(&root.join("artifacts"), &sid)?;
+        protect_workspace_parent(&root.join("workspaces"), &sid)?;
         let mut platform = Self {
             sid,
             self_test: SelfTest {
@@ -231,6 +238,14 @@ impl WindowsPlatform {
         active: &ActiveRuns,
     ) -> Result<RunResult, String> {
         let setup_started = Instant::now();
+        // A single long-lived AppContainer package SID would otherwise let two
+        // concurrent submissions inspect each other's workspace under
+        // LocalState. Give every run an unforgeable capability SID and protect
+        // the complete workspace tree with that SID before any handle is
+        // opened or process is created.
+        prepare_workspace_profile_directories(&paths.workspace)?;
+        let workspace_capability_sid = derive_workspace_capability_sid(&spec.workspace_id)?;
+        protect_workspace_tree(&paths.workspace, &workspace_capability_sid)?;
         let stdin = open_input(paths.stdin.as_deref())?;
         let stdout = open_output(&paths.stdout)?;
         let stderr = open_output(&paths.stderr)?;
@@ -256,28 +271,31 @@ impl WindowsPlatform {
             "associate Job Object completion port",
         )?;
 
+        let mut workspace_capability = SID_AND_ATTRIBUTES {
+            Sid: workspace_capability_sid.as_ptr() as PSID,
+            Attributes: SE_GROUP_ENABLED as u32,
+        };
         let mut security = SECURITY_CAPABILITIES {
             AppContainerSid: self.sid.as_ptr() as PSID,
-            Capabilities: null_mut(),
-            CapabilityCount: 0,
+            Capabilities: &mut workspace_capability,
+            CapabilityCount: 1,
             Reserved: 0,
         };
         let mut lpac_policy = PROCESS_CREATION_ALL_APPLICATION_PACKAGES_OPT_OUT;
         let mut handles = inherited;
         let compiler_may_spawn = matches!(spec.role, RunRole::Compiler);
-        // Certified interpreted runtimes depend on system DLLs and registry/file resources
+        // Managed language runtimes depend on system DLLs and registry/file resources
         // granted to regular AppContainers through ALL APPLICATION PACKAGES. LPAC opts out of
-        // those grants and the managed CPython baseline terminates during startup with
-        // STATUS_ACCESS_DENIED. The typed roles below, rather than an environment variable by
-        // itself, select this compatibility boundary. A regular AppContainer still has no
-        // capabilities, so network and private user-file access remain default-deny; the Job
-        // Object continues to enforce process and resource limits.
+        // those grants: CPython terminates with STATUS_ACCESS_DENIED and Node fails WSAStartup
+        // before user code runs. The typed submission role plus an exact runtime marker select
+        // this compatibility boundary. A regular AppContainer still has no capabilities, so
+        // network and private user-file access remain default-deny; the Job Object continues to
+        // enforce process and resource limits.
         let isolated_submission_runtime = matches!(spec.role, RunRole::Submission)
-            && spec
-                .environment
-                .get("JUDGEDESK_PYTHON_ISOLATED")
-                .map(String::as_str)
-                == Some("1");
+            && spec.toolchain.is_some()
+            && MANAGED_RUNTIME_MARKERS
+                .iter()
+                .any(|marker| spec.environment.get(*marker).map(String::as_str) == Some("1"));
         let certified_checker_runtime = matches!(spec.role, RunRole::CheckerRuntime);
         let use_lpac =
             !compiler_may_spawn && !isolated_submission_runtime && !certified_checker_runtime;
@@ -543,35 +561,146 @@ fn protect_cache_directory(path: &Path, app_container_sid: &[u8]) -> Result<(), 
     let user_sid = current_user_sid()?;
     let system_sid = well_known_sid(WinLocalSystemSid)?;
     let administrators_sid = well_known_sid(WinBuiltinAdministratorsSid)?;
-    let sids: [(&[u8], u32); 4] = [
-        (&user_sid, FILE_ALL_ACCESS),
-        (&system_sid, FILE_ALL_ACCESS),
-        (&administrators_sid, FILE_ALL_ACCESS),
-        (app_container_sid, FILE_GENERIC_READ | FILE_GENERIC_EXECUTE),
+    let inherit = OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE;
+    let grants = [
+        AclGrant::new(&user_sid, FILE_ALL_ACCESS, inherit),
+        AclGrant::new(&system_sid, FILE_ALL_ACCESS, inherit),
+        AclGrant::new(&administrators_sid, FILE_ALL_ACCESS, inherit),
+        AclGrant::new(
+            app_container_sid,
+            FILE_GENERIC_READ | FILE_GENERIC_EXECUTE,
+            inherit,
+        ),
     ];
+    set_protected_acl(path, &grants, "protect executor cache")
+}
+
+fn protect_workspace_parent(path: &Path, app_container_sid: &[u8]) -> Result<(), String> {
+    let user_sid = current_user_sid()?;
+    let system_sid = well_known_sid(WinLocalSystemSid)?;
+    let administrators_sid = well_known_sid(WinBuiltinAdministratorsSid)?;
+    let inherit = OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE;
+    let grants = [
+        AclGrant::new(&user_sid, FILE_ALL_ACCESS, inherit),
+        AclGrant::new(&system_sid, FILE_ALL_ACCESS, inherit),
+        AclGrant::new(&administrators_sid, FILE_ALL_ACCESS, inherit),
+        // The package SID may traverse the stable parent when it already knows
+        // a workspace name, but it cannot list the parent and this ACE is not
+        // inherited by child workspaces.
+        AclGrant::new(app_container_sid, FILE_TRAVERSE, 0),
+    ];
+    set_protected_acl(path, &grants, "protect executor workspace parent")
+}
+
+fn prepare_workspace_profile_directories(workspace: &Path) -> Result<(), String> {
+    // GetTempPath inside an AppContainer can resolve the package's redirected
+    // AC\Temp folder relative to USERPROFILE even when TEMP/TMP are pinned.
+    // Materialize that location inside this run instead of falling back to the
+    // real per-user profile.
+    fs::create_dir_all(
+        workspace
+            .join("Packages")
+            .join(PROFILE_NAME.to_ascii_lowercase())
+            .join("AC")
+            .join("Temp"),
+    )
+    .map_err(|error| format!("create executor workspace profile directories: {error}"))
+}
+
+fn protect_workspace_tree(path: &Path, capability_sid: &[u8]) -> Result<(), String> {
+    let user_sid = current_user_sid()?;
+    let system_sid = well_known_sid(WinLocalSystemSid)?;
+    let administrators_sid = well_known_sid(WinBuiltinAdministratorsSid)?;
+    let inherit = OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE;
+    let directory_grants = [
+        AclGrant::new(&user_sid, FILE_ALL_ACCESS, inherit),
+        AclGrant::new(&system_sid, FILE_ALL_ACCESS, inherit),
+        AclGrant::new(&administrators_sid, FILE_ALL_ACCESS, inherit),
+        AclGrant::new(capability_sid, FILE_ALL_ACCESS, inherit),
+    ];
+    let file_grants = [
+        AclGrant::new(&user_sid, FILE_ALL_ACCESS, 0),
+        AclGrant::new(&system_sid, FILE_ALL_ACCESS, 0),
+        AclGrant::new(&administrators_sid, FILE_ALL_ACCESS, 0),
+        AclGrant::new(capability_sid, FILE_ALL_ACCESS, 0),
+    ];
+    let mut pending = vec![path.to_path_buf()];
+    while let Some(current) = pending.pop() {
+        let metadata = fs::symlink_metadata(&current)
+            .map_err(|error| format!("inspect executor workspace ACL target: {error}"))?;
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+        if metadata.file_type().is_symlink()
+            || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+        {
+            return Err("executor workspace ACL target cannot be a reparse point".into());
+        }
+        if metadata.is_dir() {
+            let entries = fs::read_dir(&current)
+                .map_err(|error| format!("enumerate executor workspace ACL target: {error}"))?;
+            for entry in entries {
+                pending.push(
+                    entry
+                        .map_err(|error| {
+                            format!("enumerate executor workspace ACL entry: {error}")
+                        })?
+                        .path(),
+                );
+            }
+            set_protected_acl(
+                &current,
+                &directory_grants,
+                "isolate executor workspace directory",
+            )?;
+        } else if metadata.is_file() {
+            set_protected_acl(&current, &file_grants, "isolate executor workspace file")?;
+        } else {
+            return Err("executor workspace contains an unsupported file type".into());
+        }
+    }
+    Ok(())
+}
+
+struct AclGrant<'a> {
+    sid: &'a [u8],
+    access: u32,
+    inheritance: u32,
+}
+
+impl<'a> AclGrant<'a> {
+    const fn new(sid: &'a [u8], access: u32, inheritance: u32) -> Self {
+        Self {
+            sid,
+            access,
+            inheritance,
+        }
+    }
+}
+
+fn set_protected_acl(path: &Path, grants: &[AclGrant<'_>], action: &str) -> Result<(), String> {
     let acl_bytes = size_of::<ACL>()
-        + sids
+        + grants
             .iter()
-            .map(|(sid, _)| size_of::<ACCESS_ALLOWED_ACE>() - size_of::<u32>() + sid.len())
+            .map(|grant| size_of::<ACCESS_ALLOWED_ACE>() - size_of::<u32>() + grant.sid.len())
             .sum::<usize>();
     let mut storage = vec![0_u32; acl_bytes.div_ceil(size_of::<u32>())];
     let acl = storage.as_mut_ptr().cast::<ACL>();
     win_bool(
         unsafe { InitializeAcl(acl, (storage.len() * size_of::<u32>()) as u32, ACL_REVISION) },
-        "initialize cache ACL",
+        "initialize protected ACL",
     )?;
-    for (sid, access) in sids {
+    for grant in grants {
         win_bool(
             unsafe {
                 AddAccessAllowedAceEx(
                     acl,
                     ACL_REVISION,
-                    OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE,
-                    access,
-                    sid.as_ptr() as PSID,
+                    grant.inheritance,
+                    grant.access,
+                    grant.sid.as_ptr() as PSID,
                 )
             },
-            "add cache ACL entry",
+            "add protected ACL entry",
         )?;
     }
     let wide_path = wide(path.as_os_str());
@@ -588,11 +717,64 @@ fn protect_cache_directory(path: &Path, app_container_sid: &[u8]) -> Result<(), 
     };
     if status != 0 {
         return Err(format!(
-            "protect executor cache {}: Windows error {status}",
+            "{action} {}: Windows error {status}",
             path.display()
         ));
     }
     Ok(())
+}
+
+fn derive_workspace_capability_sid(workspace_id: &str) -> Result<Vec<u8>, String> {
+    let capability_name = wide_string(&format!("JudgeDesk.Workspace.{workspace_id}"));
+    let mut group_sids: *mut PSID = null_mut();
+    let mut group_count = 0_u32;
+    let mut capability_sids: *mut PSID = null_mut();
+    let mut capability_count = 0_u32;
+    let derived = unsafe {
+        DeriveCapabilitySidsFromName(
+            capability_name.as_ptr(),
+            &mut group_sids,
+            &mut group_count,
+            &mut capability_sids,
+            &mut capability_count,
+        )
+    };
+    if derived == 0 {
+        return Err(format!(
+            "derive executor workspace capability: {}",
+            io::Error::last_os_error()
+        ));
+    }
+    let result = if capability_count == 1 && !capability_sids.is_null() {
+        let sid = unsafe { *capability_sids };
+        if sid.is_null() {
+            Err("executor workspace capability returned a null SID".into())
+        } else {
+            clone_sid(sid)
+        }
+    } else {
+        Err(format!(
+            "executor workspace capability returned {capability_count} SIDs"
+        ))
+    };
+    unsafe {
+        free_local_sid_array(group_sids, group_count);
+        free_local_sid_array(capability_sids, capability_count);
+    }
+    result
+}
+
+unsafe fn free_local_sid_array(sids: *mut PSID, count: u32) {
+    if sids.is_null() {
+        return;
+    }
+    for index in 0..count as usize {
+        let sid = *sids.add(index);
+        if !sid.is_null() {
+            LocalFree(sid);
+        }
+    }
+    LocalFree(sids.cast());
 }
 
 fn current_user_sid() -> Result<Vec<u8>, String> {
@@ -1015,6 +1197,20 @@ fn process_times(process: HANDLE) -> Option<(Option<u64>, Option<u64>)> {
 }
 
 fn environment_block(values: &BTreeMap<String, String>, workspace: &Path) -> Vec<u16> {
+    let environment = environment_values(values, workspace);
+    let mut block = Vec::new();
+    for (key, value) in environment {
+        block.extend(format!("{key}={value}").encode_utf16());
+        block.push(0);
+    }
+    block.push(0);
+    block
+}
+
+fn environment_values(
+    values: &BTreeMap<String, String>,
+    workspace: &Path,
+) -> BTreeMap<String, String> {
     let mut environment = BTreeMap::new();
     let workspace_text = workspace.to_string_lossy().into_owned();
     if workspace_text.as_bytes().get(1) == Some(&b':') {
@@ -1024,14 +1220,10 @@ fn environment_block(values: &BTreeMap<String, String>, workspace: &Path) -> Vec
     }
     const SAFE_PARENT_VARIABLES: &[&str] = &[
         "ALLUSERSPROFILE",
-        "APPDATA",
         "CommonProgramFiles",
         "CommonProgramFiles(x86)",
         "CommonProgramW6432",
         "COMSPEC",
-        "HOMEDRIVE",
-        "HOMEPATH",
-        "LOCALAPPDATA",
         "OS",
         "Path",
         "PATHEXT",
@@ -1042,26 +1234,41 @@ fn environment_block(values: &BTreeMap<String, String>, workspace: &Path) -> Vec
         "PUBLIC",
         "SystemDrive",
         "SystemRoot",
-        "USERPROFILE",
         "windir",
     ];
     for key in SAFE_PARENT_VARIABLES {
         if let Ok(value) = std::env::var(key) {
-            environment.insert((*key).to_string(), value);
+            insert_environment_value(&mut environment, key, value);
         }
     }
-    environment.insert("TEMP".into(), workspace_text.clone());
-    environment.insert("TMP".into(), workspace_text);
     for (key, value) in values {
-        environment.insert(key.clone(), value.clone());
+        insert_environment_value(&mut environment, key, value.clone());
     }
-    let mut block = Vec::new();
-    for (key, value) in environment {
-        block.extend(format!("{key}={value}").encode_utf16());
-        block.push(0);
+
+    // User-profile and temporary paths are containment controls. Inheriting them from the
+    // desktop process makes managed runtimes probe private user directories that an
+    // AppContainer cannot access, and would expose those directories if their ACLs were ever
+    // relaxed. Force every writable per-user location into this run's private workspace after
+    // merging caller values so no adapter can accidentally override the boundary.
+    for key in ["APPDATA", "LOCALAPPDATA", "TEMP", "TMP", "USERPROFILE"] {
+        insert_environment_value(&mut environment, key, workspace_text.clone());
     }
-    block.push(0);
-    block
+    if workspace_text.as_bytes().get(1) == Some(&b':') {
+        insert_environment_value(&mut environment, "HOMEDRIVE", workspace_text[..2].into());
+        insert_environment_value(&mut environment, "HOMEPATH", workspace_text[2..].into());
+    }
+    environment
+}
+
+fn insert_environment_value(environment: &mut BTreeMap<String, String>, key: &str, value: String) {
+    let existing = environment
+        .keys()
+        .find(|candidate| !candidate.starts_with('=') && candidate.eq_ignore_ascii_case(key))
+        .cloned();
+    if let Some(existing) = existing {
+        environment.remove(&existing);
+    }
+    environment.insert(key.to_string(), value);
 }
 
 fn build_command_line(executable: &Path, arguments: &[String]) -> String {
@@ -1149,5 +1356,45 @@ mod tests {
             assert!(is_process_creation_memory_error(error));
         }
         assert!(!is_process_creation_memory_error(225));
+    }
+
+    #[test]
+    fn target_environment_forces_private_profile_and_temp_paths() {
+        let workspace = Path::new(r"C:\executor\workspaces\run");
+        let supplied = BTreeMap::from([
+            ("APPDATA".into(), r"D:\host\appdata".into()),
+            ("LOCALAPPDATA".into(), r"D:\host\local".into()),
+            ("TEMP".into(), r"D:\host\temp".into()),
+            ("TMP".into(), r"D:\host\tmp".into()),
+            ("USERPROFILE".into(), r"D:\host\profile".into()),
+        ]);
+        let environment = environment_values(&supplied, workspace);
+        for key in ["APPDATA", "LOCALAPPDATA", "TEMP", "TMP", "USERPROFILE"] {
+            assert_eq!(environment[key], workspace.to_string_lossy());
+        }
+        assert_eq!(environment["HOMEDRIVE"], "C:");
+        assert_eq!(environment["HOMEPATH"], r"\executor\workspaces\run");
+    }
+
+    #[test]
+    fn target_environment_has_only_one_case_insensitive_path_value() {
+        let workspace = Path::new(r"C:\executor\workspaces\run");
+        let supplied = BTreeMap::from([("PATH".into(), r"C:\managed\bin".into())]);
+        let environment = environment_values(&supplied, workspace);
+        let path_values: Vec<_> = environment
+            .iter()
+            .filter(|(key, _)| key.eq_ignore_ascii_case("PATH"))
+            .collect();
+        assert_eq!(path_values.len(), 1);
+        assert_eq!(path_values[0].1, r"C:\managed\bin");
+    }
+
+    #[test]
+    fn workspace_capabilities_are_stable_and_distinct() {
+        let first = derive_workspace_capability_sid("workspace_one").unwrap();
+        let repeated = derive_workspace_capability_sid("workspace_one").unwrap();
+        let second = derive_workspace_capability_sid("workspace_two").unwrap();
+        assert_eq!(first, repeated);
+        assert_ne!(first, second);
     }
 }

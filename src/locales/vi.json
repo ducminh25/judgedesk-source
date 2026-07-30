@@ -392,6 +392,7 @@
       "customInvalid": "Đường dẫn file thực thi tùy chỉnh không tồn tại hoặc không hợp lệ.",
       "DISABLED_BY_USER": "Ngôn ngữ này đang bị tắt trên máy tính.",
       "PROFILE_UNSUPPORTED_ON_HOST": "Profile ngôn ngữ này không hỗ trợ hệ điều hành hoặc kiến trúc hiện tại.",
+      "MINIMUM_OS_UNSUPPORTED": "Bộ công cụ ngôn ngữ này yêu cầu phiên bản hệ điều hành mới hơn.",
       "MANAGED_PACKAGE_UNSUPPORTED": "JudgeDesk chưa cung cấp gói được quản lý cho profile và máy tính này.",
       "MANAGED_PACKAGE_NOT_INSTALLED": "Trình biên dịch hoặc runtime do JudgeDesk quản lý chưa được cài đặt.",
       "MANAGED_PACKAGE_CORRUPT": "Gói được quản lý không vượt qua kiểm tra toàn vẹn.",

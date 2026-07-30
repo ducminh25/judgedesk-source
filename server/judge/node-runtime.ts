@@ -35,10 +35,18 @@ export async function prepareIsolatedNodeScript(
   workspace.stage(sourcePath, stagedName);
   return {
     executableId: runtime.executableId,
-    args: [path.join(workspace.path, stagedName)],
+    args: [
+      "--no-addons",
+      "--disable-proto=throw",
+      "--no-deprecation",
+      "--preserve-symlinks",
+      "--preserve-symlinks-main",
+      stagedName,
+    ],
     environment: {
       JUDGEDESK_NODE_ISOLATED: "1",
       NODE_DISABLE_COLORS: "1",
+      NODE_NO_WARNINGS: "1",
       PATH: path.dirname(runtime.executablePath),
     },
     ...(runtime.toolchain ? { toolchain: runtime.toolchain } : {}),

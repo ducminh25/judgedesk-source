@@ -133,6 +133,64 @@ test("startup self-test proves the platform boundaries before hostile fixtures r
   assert.equal(health.memoryLimitSupported, true);
 });
 
+test(
+  "concurrent runs cannot read or overwrite a sibling workspace",
+  { timeout: 20_000 },
+  async () => {
+    const first = await createExecutorWorkspace();
+    const second = await createExecutorWorkspace();
+    try {
+      first.stage(helperBinary, "probe.exe", true);
+      second.stage(helperBinary, "probe.exe", true);
+      const firstSecret = path.join(first.path, "secret.txt");
+      const secondSecret = path.join(second.path, "secret.txt");
+      fs.writeFileSync(firstSecret, "FIRST_PRIVATE", "utf8");
+      fs.writeFileSync(secondSecret, "SECOND_PRIVATE", "utf8");
+
+      const runProbe = async (
+        workspace: typeof first,
+        siblingSecret: string,
+        label: string,
+      ) => {
+        const result = await executorClient.run({
+          runId: `workspace_${label}_${crypto.randomUUID().replaceAll("-", "_")}`,
+          role: "security-probe",
+          workspaceId: workspace.id,
+          executableId: workspace.relative("probe.exe"),
+          args: ["--test-file-network-probe", siblingSecret],
+          stdoutFile: "stdout.txt",
+          stderrFile: "stderr.txt",
+          environment: {},
+          limits: {
+            ...DEFAULT_EXECUTOR_LIMITS.submission,
+            wallTimeMs: 3_000,
+            memoryBytes: 128 * MiB,
+          },
+        });
+        const stdout = fs.readFileSync(
+          path.join(workspace.path, "stdout.txt"),
+          "utf8",
+        );
+        assert.equal(result.reason, "exited", JSON.stringify(result));
+        assert.equal(result.exitCode, 0, stdout);
+        const probe = JSON.parse(stdout) as Record<string, unknown>;
+        assert.equal(probe.readBlocked, true, stdout);
+        assert.equal(probe.writeBlocked, true, stdout);
+      };
+
+      await Promise.all([
+        runProbe(first, secondSecret, "first"),
+        runProbe(second, firstSecret, "second"),
+      ]);
+      assert.equal(fs.readFileSync(firstSecret, "utf8"), "FIRST_PRIVATE");
+      assert.equal(fs.readFileSync(secondSecret, "utf8"), "SECOND_PRIVATE");
+    } finally {
+      first.dispose();
+      second.dispose();
+    }
+  },
+);
+
 test("submission cannot modify the immutable artifact cache", async () => {
   const artifact = await importExecutorArtifact(helperBinary);
   const workspace = await createExecutorWorkspace();

@@ -168,7 +168,7 @@ const LANGUAGE_REGISTRY = [
       extensions: [".go"],
       supportedHosts: [
         { platform: "win32", arch: "x64", minimumOs: "10.0" },
-        { platform: "darwin", arch: "arm64", minimumOs: "11.0" },
+        { platform: "darwin", arch: "arm64", minimumOs: "12.0" },
       ],
       roles: {
         submission: {
@@ -197,7 +197,6 @@ const LANGUAGE_REGISTRY = [
       stability: "experimental",
       extensions: [".java"],
       supportedHosts: [
-        { platform: "win32", arch: "x64", minimumOs: "10.0" },
         { platform: "darwin", arch: "arm64", minimumOs: "11.0" },
       ],
       roles: {
@@ -258,7 +257,7 @@ const LANGUAGE_REGISTRY = [
       extensions: [".js"],
       supportedHosts: [
         { platform: "win32", arch: "x64", minimumOs: "10.0" },
-        { platform: "darwin", arch: "arm64", minimumOs: "11.0" },
+        { platform: "darwin", arch: "arm64", minimumOs: "13.5" },
       ],
       roles: {
         submission: {
@@ -287,7 +286,7 @@ const LANGUAGE_REGISTRY = [
       extensions: [".cs"],
       supportedHosts: [
         { platform: "win32", arch: "x64", minimumOs: "10.0" },
-        { platform: "darwin", arch: "arm64", minimumOs: "11.0" },
+        { platform: "darwin", arch: "arm64", minimumOs: "14.0" },
       ],
       roles: {
         submission: {

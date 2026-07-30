@@ -13,6 +13,7 @@ import {
   compareVersions,
   buildCompilerProbeArgs,
   buildDarwinSdkCandidates,
+  buildSelectedDarwinCompilerCandidates,
   buildSelectedDarwinCppCandidates,
   buildToolchainEnvironment,
   inferDarwinDeveloperRoot,
@@ -20,9 +21,29 @@ import {
   isPythonSubmissionReady,
   isDarwinAppleToolchainLocation,
   isDarwinSandboxCompatibleCpp,
+  managedPackageVersionMatches,
   MIN_GNU_CPP_VERSION,
   MIN_GNU_GDB_VERSION,
 } from "./resolver.js";
+
+test("receipt-backed managed packages must match their exact catalog version", () => {
+  assert.equal(
+    managedPackageVersionMatches("java", "21.0.12", "21.0.12+8"),
+    true,
+  );
+  assert.equal(
+    managedPackageVersionMatches("java", "25.0.3", "21.0.12+8"),
+    false,
+  );
+  assert.equal(
+    managedPackageVersionMatches("javascript", "24.18.1", "24.18.1"),
+    true,
+  );
+  assert.equal(
+    managedPackageVersionMatches("rust", "1.97.0", "1.97.1"),
+    false,
+  );
+});
 
 test("macOS native protection rejects non-Apple compiler locations", () => {
   assert.equal(isDarwinSandboxCompatibleCpp("/opt/homebrew/bin/g++-14"), false);
@@ -44,6 +65,16 @@ test("macOS resolves the real compiler inside the selected Developer root", () =
     [
       "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++",
       "/Applications/Xcode.app/Contents/Developer/usr/bin/clang++",
+    ],
+  );
+  assert.deepEqual(
+    buildSelectedDarwinCompilerCandidates(
+      "/Library/Developer/CommandLineTools",
+      "c",
+    ),
+    [
+      "/Library/Developer/CommandLineTools/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+      "/Library/Developer/CommandLineTools/usr/bin/clang",
     ],
   );
   assert.equal(

@@ -42,11 +42,17 @@ test(
       : "set JUDGEDESK_REAL_TOOLCHAIN_GATES=1 on Windows or macOS",
   },
   async (t) => {
-    const [{ executorClient }, { compileSubmission }, { runTestCase }] =
+    const [
+      { executorClient },
+      { compileSubmission },
+      { runTestCase },
+      { resolveManagedToolchain },
+    ] =
       await Promise.all([
         import("../executor/client.js"),
         import("./compiler.js"),
         import("./testcase-runner.js"),
+        import("../toolchains/resolver.js"),
       ]);
     const compiler = process.platform === "win32"
       ? path.join(
@@ -86,17 +92,21 @@ test(
     );
     fs.writeFileSync(input, "19 23\n", "utf8");
     fs.writeFileSync(expected, "42\n", "utf8");
-    const cToolchain: ResolvedToolchain = {
-      kind: "c",
-      source: process.platform === "win32" ? "managed" : "system",
-      executablePath: compiler,
-      version: process.platform === "win32" ? "14.2.0" : "17.0.0",
-      ready: true,
-      provenance:
-        process.platform === "win32"
-          ? "managed-package"
-          : "platform-certified",
-    };
+    const cToolchain: ResolvedToolchain = process.platform === "win32"
+      ? resolveManagedToolchain("c")
+      : {
+          kind: "c",
+          source: "system",
+          executablePath: compiler,
+          version: "17.0.0",
+          ready: true,
+          provenance: "platform-certified",
+        };
+    assert.equal(
+      cToolchain.ready,
+      true,
+      cToolchain.diagnostic || "managed C compiler is not ready",
+    );
     const compiled = await compileSubmission({
       language: "c",
       contestantName: "student",

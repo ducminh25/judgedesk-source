@@ -72,9 +72,7 @@ export function ToolchainCard({
         <div className="flex items-start justify-between">
           <div>
             <h4 className="text-sm font-bold text-text-primary flex items-center gap-2">
-              {toolchain.kind === "cpp"
-                ? t("toolchains.cppCompiler")
-                : t("toolchains.pythonRuntime")}
+              {t(`languages.${toolchain.kind}`)}
               <span className="text-[10px] font-mono bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded font-bold">
                 {toolchain.version}
               </span>

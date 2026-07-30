@@ -28,6 +28,7 @@ import {
 } from "./resource-policy.js";
 import type { PreparedSubmissionProgram } from "./prepared-program.js";
 import { prepareIsolatedNodeScript } from "./node-runtime.js";
+import { prepareDirectoryRuntimeProgram } from "./managed-runtime.js";
 import { isBuiltInChecker, runStandardChecker } from "./standard-checkers.js";
 
 interface TestCaseRunnerOptions {
@@ -60,7 +61,10 @@ export async function runTestCase(options: TestCaseRunnerOptions): Promise<TestC
   const runId = `submission_${crypto.randomUUID().replaceAll("-", "_")}`;
   try {
     attachExecutorRun(options.jobId, runId);
-    const launch = await prepareSubmission(workspace, options);
+    const memoryBytes = resolveSubmissionMemoryLimitBytes(
+      options.config.memoryLimit,
+    );
+    const launch = await prepareSubmission(workspace, options, memoryBytes);
     const inputFilename = safeWorkspacePath(options.config.inputFile || `${options.problemName}.inp`);
     let stdinFile: string | undefined;
     if (options.config.useStdIn) {
@@ -70,7 +74,6 @@ export async function runTestCase(options: TestCaseRunnerOptions): Promise<TestC
       workspace.stage(options.inputPath, inputFilename);
     }
 
-    const memoryBytes = resolveSubmissionMemoryLimitBytes(options.config.memoryLimit);
     const result = await runReservedExecutor(options.jobId, buildSubmissionExecutorRunSpec({
       runId,
       workspaceId: workspace.id,
@@ -186,6 +189,7 @@ export async function runTestCase(options: TestCaseRunnerOptions): Promise<TestC
 async function prepareSubmission(
   workspace: Awaited<ReturnType<typeof createExecutorWorkspace>>,
   options: TestCaseRunnerOptions,
+  memoryBytes: number,
 ): Promise<{
   executableId: string;
   args: string[];
@@ -207,6 +211,13 @@ async function prepareSubmission(
       options.program.runtimeToolchain.executionPath
         || options.program.runtimeToolchain.executablePath,
       options.program.runtimeToolchain,
+    );
+  }
+  if (options.program?.kind === "directory-runtime") {
+    return prepareDirectoryRuntimeProgram(
+      workspace,
+      options.program,
+      memoryBytes,
     );
   }
   if (

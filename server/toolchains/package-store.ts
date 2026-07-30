@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
+import { getJudgeDeskDistribution } from "../distribution.js";
 import { RESOURCE_ROOT } from "../runtime.js";
+import { loadBundledOfficialManifestSync } from "./manifest.js";
 import { getDownloadedToolchainsDir } from "./storage.js";
 import type {
   ToolchainCatalogEntry,
@@ -133,6 +135,7 @@ export function readVerifiedToolchainPackageReceipt(
   if (!receipt) {
     throw new Error("Toolchain package receipt is missing.");
   }
+  validateProductionReceipt(entry, receipt);
   return { root: canonicalRoot, receipt };
 }
 
@@ -206,6 +209,10 @@ function inspectPackageRoot(
   const canonicalRoot = fs.realpathSync(packageRoot);
   const receiptPath = path.join(canonicalRoot, TOOLCHAIN_PACKAGE_RECEIPT);
   const receipt = readReceipt(receiptPath, entry, receiptRequired);
+  if (receipt) {
+    validateProductionReceipt(entry, receipt);
+    validateInstalledComponents(canonicalRoot, receipt.components);
+  }
   const executableRelativePath = normalizeRelativePath(
     requestedEntrypoint.executableRelativePath,
     "toolchain executable",
@@ -238,6 +245,65 @@ function inspectPackageRoot(
     integrity: receipt ? "verified-receipt" : "legacy-entrypoint",
     uninstallable: origin === "downloaded",
   };
+}
+
+function validateProductionReceipt(
+  entry: ToolchainCatalogEntry,
+  receipt: ToolchainPackageReceiptV1,
+): void {
+  if (getJudgeDeskDistribution() === "development") return;
+  const descriptor = loadBundledOfficialManifestSync().find(
+    (candidate) => candidate.id === entry.id,
+  );
+  if (!descriptor) {
+    throw new Error(
+      "Toolchain package is absent from the bundled signed manifest.",
+    );
+  }
+  assertToolchainPackageReceiptMatchesDescriptor(receipt, descriptor);
+}
+
+export function assertToolchainPackageReceiptMatchesDescriptor(
+  receipt: ToolchainPackageReceiptV1,
+  descriptor: ToolchainDescriptor,
+): void {
+  const expected = createToolchainPackageReceipt(descriptor);
+  if (encodeToolchainPackageReceipt(receipt)
+    !== encodeToolchainPackageReceipt(expected)) {
+    throw new Error(
+      "Toolchain package receipt does not match the bundled signed manifest.",
+    );
+  }
+}
+
+function validateInstalledComponents(
+  packageRoot: string,
+  components: readonly ToolchainPackageComponent[],
+): void {
+  for (const component of components) {
+    const componentPath = fs.realpathSync(
+      component.relativePath === "."
+        ? packageRoot
+        : path.join(
+            packageRoot,
+            ...component.relativePath.split("/"),
+          ),
+    );
+    if (!isDescendantOrEqual(packageRoot, componentPath)) {
+      throw new Error(
+        `Toolchain component '${component.id}' escapes its package root.`,
+      );
+    }
+    const metadata = fs.statSync(componentPath);
+    if (
+      (component.kind === "executable" && !metadata.isFile())
+      || (component.kind === "support-root" && !metadata.isDirectory())
+    ) {
+      throw new Error(
+        `Toolchain component '${component.id}' has an invalid type.`,
+      );
+    }
+  }
 }
 
 function readReceipt(

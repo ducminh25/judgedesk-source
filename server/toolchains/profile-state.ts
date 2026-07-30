@@ -37,6 +37,11 @@ import type {
   ToolchainDescriptor,
   ToolchainKind,
 } from "./types.js";
+import {
+  getHostProductVersion,
+  isMinimumOsSupported,
+} from "./host-compatibility.js";
+import { TOOLCHAIN_RELEASE_BLUEPRINTS } from "./manifest.js";
 
 export interface ProfileSourceAvailability {
   available: boolean;
@@ -107,13 +112,21 @@ function mappedHostArchitecture(): "x64" | "arm64" | null {
 }
 
 function isProfileSupportedOnHost(
-  supportedHosts: readonly { platform: string; arch: string }[],
+  supportedHosts: readonly {
+    platform: string;
+    arch: string;
+    minimumOs: string;
+  }[],
 ): boolean {
   const architecture = mappedHostArchitecture();
   if (!architecture) return false;
-  return supportedHosts.some(
-    (host) => host.platform === os.platform() && host.arch === architecture,
+  const host = supportedHosts.find(
+    (candidate) =>
+      candidate.platform === os.platform()
+      && candidate.arch === architecture,
   );
+  return !!host
+    && isMinimumOsSupported(host.minimumOs, getHostProductVersion());
 }
 
 function defaultProgress(id: string): InstallProgress {
@@ -251,13 +264,29 @@ export function buildLanguageProfileState(
       architecture || os.arch(),
       kind,
     );
+    const managedDescriptor = getDescriptorForHost(
+      os.platform(),
+      architecture || os.arch(),
+      kind,
+    );
+    const managedMinimumOs = managedDescriptor
+      ? TOOLCHAIN_RELEASE_BLUEPRINTS[managedDescriptor.id]?.minimumOs
+      : undefined;
+    const managedHostSupported = managedSupported
+      && (!managedMinimumOs
+        || isMinimumOsSupported(
+          managedMinimumOs,
+          getHostProductVersion(),
+        ));
     const sources: LanguageProfileView["sources"] = {
       none: { available: true },
-      managed: managedSupported
+      managed: managedHostSupported
         ? { available: true }
         : {
             available: false,
-            reasonCode: "MANAGED_PACKAGE_UNSUPPORTED",
+            reasonCode: managedSupported
+              ? "MINIMUM_OS_UNSUPPORTED"
+              : "MANAGED_PACKAGE_UNSUPPORTED",
           },
       local_path: supportedOnHost
         ? { available: true }
