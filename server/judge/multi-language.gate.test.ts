@@ -189,6 +189,39 @@ function managedRuntimeSecurityGate(
       ].join("\n"),
     };
   }
+  if (name === "java") {
+    return {
+      language: "java",
+      toolchainKind: "java",
+      extension: ".java",
+      source: [
+        "import java.io.IOException;",
+        "import java.net.InetSocketAddress;",
+        "import java.net.Socket;",
+        "import java.nio.file.Files;",
+        "import java.nio.file.Path;",
+        "public class Main {",
+        "  public static void main(String[] args) {",
+        "    boolean fileBlocked = false;",
+        `    try { Files.readString(Path.of(${sentinelLiteral})); }`,
+        "    catch (IOException | SecurityException error) { fileBlocked = true; }",
+        "    boolean networkBlocked = false;",
+        '    String networkDetail = "connected";',
+        "    try (Socket socket = new Socket()) {",
+        `      socket.connect(new InetSocketAddress("127.0.0.1", ${loopbackPort}), 500);`,
+        "    }",
+        "    catch (IOException | SecurityException error) {",
+        "      networkBlocked = true;",
+        "      networkDetail = error.getClass().getSimpleName();",
+        "    }",
+        '    System.out.println(fileBlocked && networkBlocked ? "SAFE" :',
+        '      "UNSAFE file=" + fileBlocked + " network=" + networkBlocked + " detail=" + networkDetail);',
+        "  }",
+        "}",
+        "",
+      ].join("\n"),
+    };
+  }
   return null;
 }
 
