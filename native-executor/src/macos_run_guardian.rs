@@ -433,13 +433,21 @@ mod imp {
                 );
                 hold_generation_guard_forever()
             }
-            Err(error) => match session.remove_sandbox_profile() {
-                Ok(()) => Err(error),
-                Err(cleanup_error) => Err(io::Error::new(
-                    error.kind(),
-                    format!("{error}; remove Seatbelt profile: {cleanup_error}"),
-                )),
-            },
+            Err(error) => {
+                // Before a supervisor anchor exists, the executor can safely classify the
+                // launch as failed, but it still needs the authenticated root cause. Guardian
+                // stdio is deliberately /dev/null, so report the failure on the existing
+                // control channel before exiting. A best-effort diagnostic must never weaken
+                // the cleanup result or turn a failed launch into a successful one.
+                session.send_fatal("GUARDIAN_STARTUP_FAILED", error.to_string());
+                match session.remove_sandbox_profile() {
+                    Ok(()) => Err(error),
+                    Err(cleanup_error) => Err(io::Error::new(
+                        error.kind(),
+                        format!("{error}; remove Seatbelt profile: {cleanup_error}"),
+                    )),
+                }
+            }
         }
     }
 
