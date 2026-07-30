@@ -46,6 +46,7 @@ fn is_allowed_guardian_environment_key(key: &OsStr) -> bool {
             | crate::tree_guard::REQUIRED_ENV
             | crate::tree_guard::PATH_ENV
             | crate::tree_guard::GENERATION_ENV
+            | crate::request_validation::BUILTIN_TOOLCHAINS_ENV
             | crate::fault_trace::FAULT_GATE_ENV
             | crate::fault_trace::FAULT_EVENT_LOG_ENV
     )
@@ -258,6 +259,13 @@ mod imp {
         )?;
         extend_unique_environment(&mut environment, tree_environment)?;
         extend_unique_environment(&mut environment, trace_environment)?;
+        if let Some(built_in_root) = inherited_builtin_toolchains_root()? {
+            insert_os_environment(
+                &mut environment,
+                crate::request_validation::BUILTIN_TOOLCHAINS_ENV,
+                built_in_root.into_os_string(),
+            )?;
+        }
 
         let mut child = spawn_internal_child(
             &executable,
@@ -1517,6 +1525,22 @@ mod imp {
         }
     }
 
+    fn inherited_builtin_toolchains_root() -> io::Result<Option<PathBuf>> {
+        let Some(configured) = std::env::var_os(crate::request_validation::BUILTIN_TOOLCHAINS_ENV)
+        else {
+            return Ok(None);
+        };
+        let canonical = std::fs::canonicalize(PathBuf::from(configured))
+            .map_err(|error| contextual(error, "canonicalize built-in toolchain root"))?;
+        if !canonical.is_absolute() || !canonical.is_dir() {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "built-in toolchain root must be an absolute existing directory",
+            ));
+        }
+        Ok(Some(canonical))
+    }
+
     fn trusted_current_executable() -> io::Result<PathBuf> {
         let executable = std::env::current_exe()?;
         let executable = std::fs::canonicalize(executable)?;
@@ -2074,6 +2098,7 @@ mod tests {
             crate::tree_guard::REQUIRED_ENV,
             crate::tree_guard::PATH_ENV,
             crate::tree_guard::GENERATION_ENV,
+            crate::request_validation::BUILTIN_TOOLCHAINS_ENV,
             crate::fault_trace::FAULT_GATE_ENV,
             crate::fault_trace::FAULT_EVENT_LOG_ENV,
         ];

@@ -5,7 +5,7 @@ use std::fs;
 use std::path::{Component, Path, PathBuf};
 
 const MAX_ID_BYTES: usize = 96;
-const BUILTIN_TOOLCHAINS_ENV: &str = "JUDGEDESK_BUILTIN_TOOLCHAINS_DIR";
+pub(crate) const BUILTIN_TOOLCHAINS_ENV: &str = "JUDGEDESK_BUILTIN_TOOLCHAINS_DIR";
 const PACKAGE_RECEIPT: &str = ".judgedesk-package.json";
 const CACHE_MARKER: &str = ".judgedesk-import-complete";
 const CACHE_SCHEMA: &str = "3-internal-symlinks";
