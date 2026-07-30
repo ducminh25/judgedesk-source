@@ -161,6 +161,7 @@ export async function importManagedToolchain(
   kind: ToolchainKind,
   executablePath: string,
   version: string,
+  packageRoot?: string,
 ): Promise<{ executableId: string; executablePath: string; root: string }> {
   const health = await executorClient.start();
   const managedRoot = path.resolve(process.env.LOCALAPPDATA || "", "ThemisV2", "toolchains");
@@ -174,6 +175,7 @@ export async function importManagedToolchain(
   const sourceRoot = managedToolchainSourceRoot(
     path.resolve(executablePath),
     entrypoint.executableRelativePath,
+    packageRoot,
   );
   const canonicalSourceRoot = fs.realpathSync(sourceRoot);
   const executableWithinSource = path.relative(canonicalSourceRoot, canonicalExecutable);
@@ -227,6 +229,7 @@ export async function prepareManagedToolchainExecutable(
         kind,
         resolved.executablePath,
         resolved.version,
+        resolved.packageRoot,
       ),
     };
   }
@@ -313,6 +316,7 @@ export async function prepareManagedToolchainComponent(
           kind,
           resolved.executablePath,
           resolved.version,
+          resolved.packageRoot,
         ),
       };
   const cachedReceipt = readVerifiedToolchainPackageReceipt(
@@ -465,10 +469,24 @@ export function rewriteManagedToolchainSymlinks(
 export function managedToolchainSourceRoot(
   executablePath: string,
   executableRelativePath: string,
+  packageRoot?: string,
 ): string {
   const components = executableRelativePath.split(/[\\/]/).filter(Boolean);
   if (components.length === 0 || components.some((component) => component === "." || component === "..")) {
     throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+  }
+  if (packageRoot) {
+    const canonicalRoot = fs.realpathSync(packageRoot);
+    const catalogEntrypoint = path.resolve(canonicalRoot, ...components);
+    const canonicalCatalogEntrypoint = fs.realpathSync(catalogEntrypoint);
+    const canonicalExecutable = fs.realpathSync(executablePath);
+    if (
+      !isDescendant(canonicalRoot, canonicalCatalogEntrypoint)
+      || !sameFilePath(canonicalCatalogEntrypoint, canonicalExecutable)
+    ) {
+      throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+    }
+    return canonicalRoot;
   }
   let root = path.resolve(executablePath);
   for (let index = 0; index < components.length; index += 1) root = path.dirname(root);
