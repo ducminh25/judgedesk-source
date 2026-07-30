@@ -33,6 +33,7 @@ interface JudgeSessionOptions {
   events: JudgeEventWriter;
   pinnedToolchains: Readonly<{
     cpp: Readonly<ResolvedToolchain>;
+    c: Readonly<ResolvedToolchain>;
     python: Readonly<ResolvedToolchain>;
   }>;
 }
@@ -57,6 +58,7 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
   const activeProblemsList = targetProblems || [];
   const toolchainRequirements: JudgeToolchainRequirements = {
     cppSubmission: false,
+    cSubmission: false,
     pythonSubmission: false,
     cppChecker: false,
     pythonChecker: false,
@@ -70,6 +72,7 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
       const submission = findSubmission(contestantPath, targetProblem);
       submissions.set(targetProblem, submission);
       if (submission?.language === "cpp") toolchainRequirements.cppSubmission = true;
+      if (submission?.language === "c") toolchainRequirements.cSubmission = true;
       if (submission?.language === "python") toolchainRequirements.pythonSubmission = true;
     }
   }
@@ -103,6 +106,11 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
       snapshotDigest: pinnedToolchains.cpp.snapshotDigest,
       version: pinnedToolchains.cpp.version,
     },
+    c: {
+      source: pinnedToolchains.c.source,
+      certificateId: pinnedToolchains.c.certificateId,
+      version: pinnedToolchains.c.version,
+    },
     python: {
       source: pinnedToolchains.python.source,
       certificateId: pinnedToolchains.python.certificateId,
@@ -132,7 +140,7 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
       if (!submission) {
         const missingResult: ProblemResult = {
           problemName: targetProb,
-          language: "cpp",
+          language: "unknown",
           compileStatus: "SKIPPED",
           compileError: "not_found",
           testCases: [],
@@ -156,7 +164,7 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
       if (!testProblemDir) {
          const missingResult: ProblemResult = {
            problemName: targetProb,
-           language: "cpp",
+           language: "unknown",
            compileStatus: "SKIPPED",
            compileError: "not_found",
            testCases: [],
@@ -199,6 +207,7 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
         tempDirectory: tempDir,
         jobId,
         cppToolchain: pinnedToolchains.cpp,
+        cToolchain: pinnedToolchains.c,
         pythonToolchain: pinnedToolchains.python,
       });
       const executablePath = compilation.executablePath;

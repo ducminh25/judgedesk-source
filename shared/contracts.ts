@@ -1,7 +1,16 @@
 export type TestVerdict = "AC" | "WA" | "PE" | "TLE" | "RE" | "CE" | "MLE" | "OLE" | "JE" | "FAIL" | "PARTIAL";
 export type ProblemVerdict = TestVerdict | "PENDING";
 export type CompileStatus = "OK" | "CE" | "SKIPPED";
-export type SubmissionLanguage = "cpp" | "python";
+export type SubmissionLanguage =
+  | "cpp"
+  | "c"
+  | "python"
+  | "pascal"
+  | "go"
+  | "java"
+  | "rust"
+  | "javascript"
+  | "csharp";
 
 export interface TestExecutionDiagnostics {
   reason:

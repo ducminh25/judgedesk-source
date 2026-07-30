@@ -100,6 +100,7 @@ export function registerBatchJudgeRoute(app: Express): void {
       workspace = createRunWorkspace();
       const pinnedToolchains = Object.freeze({
         cpp: Object.freeze(await resolveCompilationToolchain("cpp")),
+        c: Object.freeze(await resolveCompilationToolchain("c")),
         python: Object.freeze(await resolveCompilationToolchain("python")),
       });
       sendEvent("metadata", createRunMetadata(pinnedToolchains));

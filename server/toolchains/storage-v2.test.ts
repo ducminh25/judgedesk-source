@@ -5,6 +5,7 @@ import path from "node:path";
 import test, { type TestContext } from "node:test";
 import {
   CPP_LANGUAGE_PROFILE_ID,
+  listRegisteredLanguageProfiles,
   PYTHON_LANGUAGE_PROFILE_ID,
 } from "../languages/registry.js";
 import {
@@ -28,7 +29,7 @@ function useTemporaryAppData(t: TestContext): string {
   return directory;
 }
 
-test("missing preferences initialize the two legacy profiles without future-profile fallback", (t) => {
+test("missing preferences keep legacy auto-detect and initialize new profiles to None", (t) => {
   useTemporaryAppData(t);
   const snapshot = loadToolchainPreferenceSnapshot();
   assert.equal(snapshot.status, "initialized");
@@ -39,10 +40,20 @@ test("missing preferences initialize the two legacy profiles without future-prof
   );
   const stored = JSON.parse(fs.readFileSync(getPreferencesFilePath(), "utf8"));
   assert.equal(stored.schemaVersion, 2);
-  assert.deepEqual(Object.keys(stored.profiles), [
-    CPP_LANGUAGE_PROFILE_ID,
-    PYTHON_LANGUAGE_PROFILE_ID,
-  ]);
+  assert.deepEqual(
+    new Set(Object.keys(stored.profiles)),
+    new Set(
+      listRegisteredLanguageProfiles().map((entry) => entry.profile.ref.id),
+    ),
+  );
+  for (const entry of listRegisteredLanguageProfiles()) {
+    if (
+      entry.profile.ref.id !== CPP_LANGUAGE_PROFILE_ID
+      && entry.profile.ref.id !== PYTHON_LANGUAGE_PROFILE_ID
+    ) {
+      assert.equal(stored.profiles[entry.profile.ref.id]?.mode, "none");
+    }
+  }
 });
 
 test("a fresh Full install selects supported Stable managed packs without changing migrations", (t) => {

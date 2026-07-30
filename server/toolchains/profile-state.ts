@@ -202,7 +202,7 @@ function provenanceFor(
   if (active.source === "managed") return "managed-package";
   if (
     os.platform() === "darwin"
-    && active.kind === "cpp"
+    && (active.kind === "cpp" || active.kind === "c")
     && (submissionReady || checkerReady)
   ) {
     return "platform-certified";
@@ -227,20 +227,20 @@ export function buildLanguageProfileState(
       profile.ref.id,
     );
     const selected = resolveToolchain(kind);
-    const active = kind === "cpp"
-      ? chooseNativeProtectedToolchain(
-          os.platform(),
-          kind,
-          resolveManagedToolchain(kind),
-          selected,
-        )
-      : selected;
+    const active = chooseNativeProtectedToolchain(
+      os.platform(),
+      kind,
+      resolveManagedToolchain(kind),
+      selected,
+    );
     let submissionReady = kind === "python"
       ? isPythonSubmissionReady(selected)
       : active.ready;
-    let checkerReady = kind === "python"
-      ? isPythonCheckerReady(selected)
-      : active.ready;
+    let checkerReady = !profile.roles.checker
+      ? false
+      : kind === "python"
+        ? isPythonCheckerReady(selected)
+        : active.ready;
     if (!supportedOnHost || preferences.status === "recovery") {
       submissionReady = false;
       checkerReady = false;

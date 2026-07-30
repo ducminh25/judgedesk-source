@@ -8,7 +8,7 @@ import type { JudgeEventWriter } from "./judge-event-writer.js";
 import { runJudgeSession } from "./judge-session.js";
 
 function pin(
-  kind: "cpp" | "python",
+  kind: "cpp" | "c" | "python",
   overrides: Partial<ResolvedToolchain> = {},
 ): ResolvedToolchain {
   return {
@@ -61,6 +61,7 @@ test("judge session preflight rejects a missing C++ capability before emitting r
           ready: false,
           diagnosticCode: "CERTIFICATION_REQUIRED",
         }),
+        c: pin("c"),
         python: pin("python"),
       },
     }),

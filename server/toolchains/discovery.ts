@@ -294,7 +294,7 @@ function collectPathCandidates(kind: ToolchainKind): string[] {
   const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path");
   const environmentPath = (pathKey && process.env[pathKey]) || "";
   const delimiter = os.platform() === "win32" ? ";" : ":";
-  const names = kind === "cpp" ? ["g++", "clang++"] : ["python3", "python"];
+  const names = executableNamesForKind(kind);
   const extensions = os.platform() === "win32" ? [".exe"] : [""];
   const candidates: string[] = [];
   for (const directory of environmentPath.split(delimiter).filter(Boolean)) {
@@ -310,9 +310,10 @@ function collectPathCandidates(kind: ToolchainKind): string[] {
 async function collectStandardCandidates(kind: ToolchainKind): Promise<string[]> {
   if (os.platform() === "win32") return collectWindowsCandidates(kind);
   if (os.platform() === "darwin") return collectDarwinCandidates(kind);
-  return kind === "cpp"
-    ? ["/usr/bin/g++", "/usr/bin/clang++", "/usr/local/bin/g++"]
-    : ["/usr/bin/python3", "/usr/local/bin/python3"];
+  return executableNamesForKind(kind).flatMap((name) => [
+    `/usr/bin/${name}`,
+    `/usr/local/bin/${name}`,
+  ]);
 }
 
 async function collectWindowsCandidates(kind: ToolchainKind): Promise<string[]> {
@@ -322,44 +323,81 @@ async function collectWindowsCandidates(kind: ToolchainKind): Promise<string[]> 
   const localAppData = process.env.LOCALAPPDATA
     || path.join(os.homedir(), "AppData", "Local");
   const userProfile = process.env.USERPROFILE || os.homedir();
-  if (kind === "cpp") {
+  if (kind === "cpp" || kind === "c") {
+    const executable = kind === "cpp" ? "g++.exe" : "gcc.exe";
     return [
-      path.join(programFiles, "Themis", "GCC", "bin", "g++.exe"),
-      path.join(programFilesX86, "Themis", "GCC", "bin", "g++.exe"),
-      String.raw`C:\Themis\GCC\bin\g++.exe`,
-      String.raw`C:\msys64\ucrt64\bin\g++.exe`,
-      String.raw`C:\msys64\mingw64\bin\g++.exe`,
-      path.join(programFiles, "CodeBlocks", "MinGW", "bin", "g++.exe"),
-      path.join(programFilesX86, "CodeBlocks", "MinGW", "bin", "g++.exe"),
-      path.join(localAppData, "Programs", "CodeBlocks", "MinGW", "bin", "g++.exe"),
-      String.raw`C:\MinGW\bin\g++.exe`,
-      path.join(userProfile, "scoop", "apps", "gcc", "current", "bin", "g++.exe"),
+      path.join(programFiles, "Themis", "GCC", "bin", executable),
+      path.join(programFilesX86, "Themis", "GCC", "bin", executable),
+      path.join(String.raw`C:\Themis\GCC\bin`, executable),
+      path.join(String.raw`C:\msys64\ucrt64\bin`, executable),
+      path.join(String.raw`C:\msys64\mingw64\bin`, executable),
+      path.join(programFiles, "CodeBlocks", "MinGW", "bin", executable),
+      path.join(programFilesX86, "CodeBlocks", "MinGW", "bin", executable),
+      path.join(localAppData, "Programs", "CodeBlocks", "MinGW", "bin", executable),
+      path.join(String.raw`C:\MinGW\bin`, executable),
+      path.join(userProfile, "scoop", "apps", "gcc", "current", "bin", executable),
     ];
   }
-
-  const candidates = [
-    String.raw`C:\Python313\python.exe`,
-    String.raw`C:\Python312\python.exe`,
-    String.raw`C:\Python311\python.exe`,
-    String.raw`C:\Python310\python.exe`,
-    path.join(userProfile, "scoop", "apps", "python", "current", "python.exe"),
-  ];
-  const pythonRoot = path.join(localAppData, "Programs", "Python");
-  for (const child of await listImmediateDirectories(pythonRoot)) {
-    candidates.push(path.join(child, "python.exe"));
+  if (kind === "python") {
+    const candidates = [
+      String.raw`C:\Python313\python.exe`,
+      String.raw`C:\Python312\python.exe`,
+      String.raw`C:\Python311\python.exe`,
+      String.raw`C:\Python310\python.exe`,
+      path.join(userProfile, "scoop", "apps", "python", "current", "python.exe"),
+    ];
+    const pythonRoot = path.join(localAppData, "Programs", "Python");
+    for (const child of await listImmediateDirectories(pythonRoot)) {
+      candidates.push(path.join(child, "python.exe"));
+    }
+    return candidates;
   }
-  return candidates;
+  const configuredHome = configuredToolchainHome(kind);
+  const standard: Record<
+    Exclude<ToolchainKind, "cpp" | "c" | "python">,
+    string[]
+  > = {
+    pascal: [
+      String.raw`C:\FPC\3.2.2\bin\x86_64-win64\fpc.exe`,
+      String.raw`C:\FPC\3.2.2\bin\i386-win32\fpc.exe`,
+      String.raw`C:\lazarus\fpc\3.2.2\bin\x86_64-win64\fpc.exe`,
+    ],
+    go: [
+      path.join(programFiles, "Go", "bin", "go.exe"),
+      path.join(userProfile, "scoop", "apps", "go", "current", "bin", "go.exe"),
+    ],
+    java: [
+      path.join(configuredHome || "", "bin", "javac.exe"),
+      String.raw`C:\jdk-25.0.3\bin\javac.exe`,
+      path.join(programFiles, "Java", "jdk-21", "bin", "javac.exe"),
+    ],
+    rust: [
+      path.join(userProfile, ".cargo", "bin", "rustc.exe"),
+      path.join(userProfile, "scoop", "apps", "rustup", "current", ".cargo", "bin", "rustc.exe"),
+    ],
+    javascript: [
+      path.join(programFiles, "nodejs", "node.exe"),
+      path.join(userProfile, ".volta", "bin", "node.exe"),
+      path.join(programFiles, "Volta", "node.exe"),
+    ],
+    csharp: [
+      path.join(configuredHome || programFiles, "dotnet.exe"),
+      path.join(programFiles, "dotnet", "dotnet.exe"),
+    ],
+  };
+  return standard[kind];
 }
 
 async function collectDarwinCandidates(kind: ToolchainKind): Promise<string[]> {
-  if (kind === "cpp") {
+  if (kind === "cpp" || kind === "c") {
     const candidates: string[] = [];
     try {
       // xcrun resolves the compiler belonging to the currently selected
       // Developer root. Do not add inactive Xcode/CLT installations beside
       // it: those are genuinely different toolchains and made every normal
       // Mac look ambiguous merely because both roots happened to be present.
-      const { stdout } = await execFile("/usr/bin/xcrun", ["--find", "clang++"], {
+      const compilerName = kind === "cpp" ? "clang++" : "clang";
+      const { stdout } = await execFile("/usr/bin/xcrun", ["--find", compilerName], {
         encoding: "utf8",
         timeout: 2_000,
         maxBuffer: 16 * 1024,
@@ -370,26 +408,98 @@ async function collectDarwinCandidates(kind: ToolchainKind): Promise<string[]> {
       // Command Line Tools are optional and absence is represented by no candidate.
     }
     candidates.push(
-      "/opt/homebrew/bin/clang++",
-      "/opt/homebrew/bin/g++",
-      "/usr/local/bin/clang++",
-      "/usr/local/bin/g++",
+      ...(kind === "cpp"
+        ? [
+            "/opt/homebrew/bin/clang++",
+            "/opt/homebrew/bin/g++",
+            "/usr/local/bin/clang++",
+            "/usr/local/bin/g++",
+          ]
+        : [
+            "/opt/homebrew/bin/clang",
+            "/opt/homebrew/bin/gcc",
+            "/usr/local/bin/clang",
+            "/usr/local/bin/gcc",
+          ]),
     );
     return candidates;
   }
 
-  const candidates = [
-    "/opt/homebrew/bin/python3",
-    "/usr/local/bin/python3",
-    "/usr/bin/python3",
-    "/opt/local/bin/python3",
-  ];
-  for (const child of await listImmediateDirectories(
-    "/Library/Frameworks/Python.framework/Versions",
-  )) {
-    candidates.push(path.join(child, "bin", "python3"));
+  if (kind === "python") {
+    const candidates = [
+      "/opt/homebrew/bin/python3",
+      "/usr/local/bin/python3",
+      "/usr/bin/python3",
+      "/opt/local/bin/python3",
+    ];
+    for (const child of await listImmediateDirectories(
+      "/Library/Frameworks/Python.framework/Versions",
+    )) {
+      candidates.push(path.join(child, "bin", "python3"));
+    }
+    return candidates;
   }
-  return candidates;
+  const home = os.homedir();
+  const configuredHome = configuredToolchainHome(kind);
+  const standard: Record<
+    Exclude<ToolchainKind, "cpp" | "c" | "python">,
+    string[]
+  > = {
+    pascal: [
+      "/opt/homebrew/bin/fpc",
+      "/usr/local/bin/fpc",
+      "/opt/local/bin/fpc",
+    ],
+    go: [
+      "/usr/local/go/bin/go",
+      "/opt/homebrew/bin/go",
+      "/usr/local/bin/go",
+    ],
+    java: [
+      path.join(configuredHome || "", "bin", "javac"),
+      "/opt/homebrew/opt/openjdk@21/bin/javac",
+      "/usr/local/opt/openjdk@21/bin/javac",
+      "/usr/bin/javac",
+    ],
+    rust: [
+      path.join(home, ".cargo", "bin", "rustc"),
+      "/opt/homebrew/bin/rustc",
+      "/usr/local/bin/rustc",
+    ],
+    javascript: [
+      path.join(home, ".volta", "bin", "node"),
+      "/opt/homebrew/bin/node",
+      "/usr/local/bin/node",
+    ],
+    csharp: [
+      path.join(configuredHome || "/usr/local/share/dotnet", "dotnet"),
+      "/opt/homebrew/bin/dotnet",
+      "/usr/local/bin/dotnet",
+    ],
+  };
+  return standard[kind];
+}
+
+function executableNamesForKind(kind: ToolchainKind): readonly string[] {
+  const names: Record<ToolchainKind, readonly string[]> = {
+    cpp: ["g++", "clang++"],
+    c: ["gcc", "clang"],
+    python: ["python3", "python"],
+    pascal: ["fpc"],
+    go: ["go"],
+    java: ["javac"],
+    rust: ["rustc"],
+    javascript: ["node"],
+    csharp: ["dotnet"],
+  };
+  return names[kind];
+}
+
+function configuredToolchainHome(kind: ToolchainKind): string | undefined {
+  if (kind === "java") return process.env.JAVA_HOME;
+  if (kind === "go") return process.env.GOROOT;
+  if (kind === "csharp") return process.env.DOTNET_ROOT;
+  return undefined;
 }
 
 async function listImmediateDirectories(root: string): Promise<string[]> {
@@ -414,8 +524,13 @@ async function canonicalExecutablePath(
     const canonicalPath = await fs.promises.realpath(candidatePath);
     if (
       os.platform() === "darwin"
-      && kind === "cpp"
-      && (canonicalPath === "/usr/bin/clang++" || canonicalPath === "/usr/bin/g++")
+      && (kind === "cpp" || kind === "c")
+      && (
+        canonicalPath === "/usr/bin/clang++"
+        || canonicalPath === "/usr/bin/g++"
+        || canonicalPath === "/usr/bin/clang"
+        || canonicalPath === "/usr/bin/gcc"
+      )
     ) {
       // These are Apple driver stubs, not a pinned compiler identity. The
       // selected platform compiler is represented by xcrun's resolved path.

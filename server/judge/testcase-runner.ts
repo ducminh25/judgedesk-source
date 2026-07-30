@@ -189,17 +189,20 @@ async function prepareSubmission(
   environment: Record<string, string>;
   toolchain?: import("../executor/protocol.js").ExecutorToolchainIdentity;
 }> {
-  if (options.language === "cpp") {
+  if (options.language === "cpp" || options.language === "c") {
     const artifact = await importExecutorArtifact(options.executablePath);
     return { executableId: artifact.executableId, args: [], environment: {} };
   }
 
-  return prepareIsolatedPythonScript(
-    workspace,
-    options.submissionPath,
-    "submission.py",
-    options.pythonCommand,
-  );
+  if (options.language === "python") {
+    return prepareIsolatedPythonScript(
+      workspace,
+      options.submissionPath,
+      "submission.py",
+      options.pythonCommand,
+    );
+  }
+  throw new Error(`LANGUAGE_ADAPTER_UNAVAILABLE: ${options.language}`);
 }
 
 function createResult(

@@ -1,5 +1,6 @@
 import type { ResolvedToolchain } from "../toolchains/types.js";
 import {
+  isManagedSubmissionToolchainReady,
   isPythonCheckerReady,
   isPythonSubmissionReady,
 } from "../toolchains/resolver.js";
@@ -7,6 +8,7 @@ import { isWindowsCppExecutionReady } from "./compiler.js";
 
 export interface JudgeToolchainRequirements {
   cppSubmission: boolean;
+  cSubmission: boolean;
   pythonSubmission: boolean;
   cppChecker: boolean;
   pythonChecker: boolean;
@@ -14,6 +16,7 @@ export interface JudgeToolchainRequirements {
 
 export interface PinnedJudgeToolchains {
   cpp: Readonly<ResolvedToolchain>;
+  c: Readonly<ResolvedToolchain>;
   python: Readonly<ResolvedToolchain>;
 }
 
@@ -41,6 +44,22 @@ export function assertJudgeToolchainPreflight(
   ].filter(Boolean);
   if (cppRoles.length > 0 && !cppReady(toolchains.cpp, platform)) {
     failures.push(`${cppRoles.join(" and ")}: ${diagnostic(toolchains.cpp)}`);
+  }
+  if (
+    requirements.cSubmission
+    && !(
+      toolchains.c.kind === "c"
+      && (
+        isManagedSubmissionToolchainReady(toolchains.c)
+        || (
+          platform === "darwin"
+          && toolchains.c.ready
+          && toolchains.c.provenance === "platform-certified"
+        )
+      )
+    )
+  ) {
+    failures.push(`C submissions: ${diagnostic(toolchains.c)}`);
   }
 
   if (requirements.pythonSubmission && !isPythonSubmissionReady(toolchains.python)) {
