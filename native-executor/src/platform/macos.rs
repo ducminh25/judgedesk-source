@@ -598,6 +598,13 @@ fn build_profile(spec: &RunSpec, paths: &ValidatedRun) -> Result<String, String>
                 read_rules.push(format!("(literal \"{executable}\")"));
                 process_exec_rules.push(format!("(literal \"{executable}\")"));
             }
+            for script_name in ["ppaslink.sh", "ppas.sh"] {
+                let script = canonical_workspace.join(script_name);
+                process_exec_rules.push(format!(
+                    "(literal \"{}\")",
+                    seatbelt_literal(&script.to_string_lossy())
+                ));
+            }
         }
     }
     let process_group_escape_denials = match spec.role {
