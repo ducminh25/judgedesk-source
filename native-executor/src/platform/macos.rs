@@ -570,6 +570,11 @@ fn build_profile(spec: &RunSpec, paths: &ValidatedRun) -> Result<String, String>
         if spec.toolchain.is_none() || platform_support_requested {
             let (toolchain_root, developer_root) = validated_compiler_roots(spec)?;
             for root in [&toolchain_root, &developer_root] {
+                // Apple developer tools can resolve paths lexically (for example,
+                // /Applications/Xcode.app/...) before opening files below the already
+                // approved read-only root. Grant metadata traversal only on those exact
+                // ancestors; this does not expose sibling directory contents.
+                add_metadata_ancestor_rules(&mut metadata_rules, root);
                 read_rules.push(format!(
                     "(subpath \"{}\")",
                     seatbelt_literal(&root.to_string_lossy())
