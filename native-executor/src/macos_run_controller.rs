@@ -810,10 +810,13 @@ mod imp {
                 self.group_proven = true;
                 self.cleanup_profiles_after_proof()?;
                 self.remove_active_record()?;
+                let diagnostic = self.diagnostic.clone().unwrap_or_else(|| {
+                    "guardian failed before any supervisor anchor was registered".into()
+                });
                 return Ok(crate::platform::failure(
                     self.spec,
                     RunReason::LaunchError,
-                    "guardian failed before any supervisor anchor was registered".into(),
+                    diagnostic,
                 ));
             }
 
