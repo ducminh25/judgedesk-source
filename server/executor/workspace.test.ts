@@ -6,6 +6,7 @@ import test from "node:test";
 import { getDescriptorForHost } from "../toolchains/manifest.js";
 import type { ResolvedToolchain } from "../toolchains/types.js";
 import {
+  cloneRegularDirectory,
   managedToolchainSourceRoot,
   prepareManagedToolchainExecutable,
 } from "./workspace.js";
@@ -107,4 +108,54 @@ test("a built-in managed toolchain is referenced directly without an executor-ca
     packageDigest: "a".repeat(64),
     componentId: entrypoint.componentId,
   });
+});
+
+test("workspace directory clones are isolated copies and preserve empty directories", (t) => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "judgedesk-directory-clone-"),
+  );
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const source = path.join(root, "source");
+  const destination = path.join(root, "destination");
+  fs.mkdirSync(path.join(source, "nested", "empty"), { recursive: true });
+  fs.writeFileSync(path.join(source, "nested", "cache.bin"), "original");
+
+  cloneRegularDirectory(source, destination);
+
+  assert.equal(
+    fs.readFileSync(path.join(destination, "nested", "cache.bin"), "utf8"),
+    "original",
+  );
+  assert.equal(
+    fs.statSync(path.join(destination, "nested", "empty")).isDirectory(),
+    true,
+  );
+  fs.writeFileSync(path.join(destination, "nested", "cache.bin"), "changed");
+  assert.equal(
+    fs.readFileSync(path.join(source, "nested", "cache.bin"), "utf8"),
+    "original",
+  );
+});
+
+test("workspace directory cloning rejects symlinks without leaving a partial copy", (t) => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "judgedesk-directory-clone-link-"),
+  );
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const source = path.join(root, "source");
+  const destination = path.join(root, "destination");
+  fs.mkdirSync(source);
+  fs.writeFileSync(path.join(source, "target"), "target");
+  try {
+    fs.symlinkSync("target", path.join(source, "link"), "file");
+  } catch {
+    t.skip("creating file symlinks requires additional privileges");
+    return;
+  }
+
+  assert.throws(
+    () => cloneRegularDirectory(source, destination),
+    /rejects symbolic links/,
+  );
+  assert.equal(fs.existsSync(destination), false);
 });
