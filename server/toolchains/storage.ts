@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { getJudgeDeskDistribution } from "../distribution.js";
 import {
   CPP_LANGUAGE_PROFILE_ID,
   listRegisteredLanguageProfiles,
@@ -11,6 +12,7 @@ import type {
   LanguageProfileId,
   StoredProfileToolchainPreference,
 } from "../languages/contracts.js";
+import { getDescriptorForHost } from "./manifest.js";
 import {
   decodeAndMigrateToolchainPreferences,
   decodeToolchainPreferencesBytes,
@@ -71,10 +73,19 @@ export function getAppDataDir(): string {
   return path.join(os.homedir(), ".themisv2-dev");
 }
 
-export function getToolchainsDir(): string {
+export function getDownloadedToolchainsDir(): string {
   const dir = path.join(getAppDataDir(), "toolchains");
   fs.mkdirSync(dir, { recursive: true });
   return dir;
+}
+
+/**
+ * Compatibility alias. New code should use getDownloadedToolchainsDir() so a
+ * per-user downloaded pack is never confused with a read-only pack bundled by
+ * the JudgeDesk Full installer.
+ */
+export function getToolchainsDir(): string {
+  return getDownloadedToolchainsDir();
 }
 
 export function getPreferencesFilePath(): string {
@@ -85,8 +96,21 @@ export function getPreferencesFilePath(): string {
 
 export function createInitialToolchainPreferences(): ToolchainPreferencesV2 {
   const profiles: Record<string, StoredProfileToolchainPreference> = {};
+  const distribution = getJudgeDeskDistribution();
   for (const entry of listRegisteredLanguageProfiles()) {
-    profiles[entry.profile.ref.id] = { mode: entry.freshInstallMode };
+    const managedSupported = !!getDescriptorForHost(
+      os.platform(),
+      os.arch(),
+      entry.toolchainKind,
+    );
+    profiles[entry.profile.ref.id] = {
+      mode:
+        distribution === "full"
+        && entry.profile.stability === "stable"
+        && managedSupported
+          ? "managed"
+          : entry.freshInstallMode,
+    };
   }
   return { schemaVersion: 2, profiles };
 }

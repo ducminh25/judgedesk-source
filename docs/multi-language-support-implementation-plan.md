@@ -1,6 +1,6 @@
 # JudgeDesk — Kế hoạch hỗ trợ đa ngôn ngữ
 
-Trạng thái: **Đã duyệt để triển khai Phase 0/1, có amendment D15**
+Trạng thái: **Đã duyệt triển khai toàn bộ roadmap, D15 Full-first**
 
 Ngày khảo sát: 2026-07-28
 
@@ -18,6 +18,10 @@ Ngày duyệt: 2026-07-28
 - D10: bỏ qua, không phải blocker và không tạo cam kết triển khai Ruby/Haskell/Cangjie trong roadmap hiện tại.
 - D11–D14: duyệt theo đề xuất trong tài liệu.
 - D15: duyệt với amendment: local compiler/runtime có thể trở thành Submission ready nếu version/target nằm trong policy được JudgeDesk hỗ trợ và vượt health + sandbox certification; UI/source selection theo mô hình ở D15 mới.
+- D15 Full-first (duyệt ngày 2026-07-30): bản `JudgeDesk Full` là artifact được khuyến nghị, tích hợp toàn bộ pack Stable của OS và chọn Managed mặc định; không có wizard chọn toolchain khi mở app lần đầu. `JudgeDesk Core/Judger Only` là artifact nâng cao, cho phép tải cùng các pack đó về sau hoặc dùng local.
+- Full certification/snapshot nhiều phút không còn là đường mặc định. Managed pack dùng receipt + manifest đã ký và quick health; local chỉ chạy bounded identity/version/target/helper/compile-link-run check. Snapshot toàn cây được giữ như thao tác nâng cao `Freeze for contest`, không tự chạy khi mở app, chọn radio hay bắt đầu batch.
+- Pack tích hợp và pack tải online là cùng một artifact/digest. Pack built-in nằm trong store read-only, không được Uninstall riêng; pack downloaded nằm trong store per-user và có thể Uninstall khi không có batch lease.
+- Windows Full chứa WebView2 offline. Installer chọn tất cả language pack Stable theo mặc định; trang Customize là tùy chọn và selection phải được giữ qua upgrade/repair/uninstall.
 - Sau D15: JudgeDesk là single-instance. Lần mở thứ hai không được spawn backend/executor hay chạy startup cleanup/mutation; nó phải gửi activation request có timeout cho primary, làm cửa sổ primary hiện lại, bỏ minimize và lấy focus rồi thoát sạch. Activation IPC và ownership lease phải dùng chung một authority, không ghép hai cơ chế có thể race.
 - Fast discovery lần đầu: chỉ auto-detect thụ động; không tự chạy full certification cho toolchain mới phát hiện.
 - Default source cho profile ngôn ngữ mới: đang chờ xác nhận sau khi giải thích UX; không tự suy diễn từ việc detect được compiler/runtime.
@@ -26,6 +30,7 @@ Ngày duyệt: 2026-07-28
 
 ### Execution checkpoint
 
+- D15 Full-first đang triển khai trên `judgedesk/managed-toolchain-distribution`, base `3ba6db6`. Checkpoint đầu tách built-in read-only store khỏi downloaded per-user store, dùng receipt chung và capability grant theo package/component/role để secure executor có thể chạy pack Full tại chỗ thay vì copy khoảng 1 GB ở lần dùng đầu.
 - Foundation đã push tại `b2e793c` trên `judgedesk/language-runtime-foundation`; checkpoint hiện tại đang làm trên `judgedesk/macos-run-guardian`.
 - Base: `main` / `b1ed52f` / `v1.2.7`.
 - Hoàn tất: audit/research/approval; characterization fixtures, typed foundation contracts và preferences v2 migration kernel fail-closed đã được commit và push trên branch foundation.
@@ -54,7 +59,7 @@ Việc thêm các ngôn ngữ trong hai ảnh là khả thi, nhưng không nên 
 1. Xây một lớp nền tảng `LanguageProfile` có phiên bản, giữ nguyên kết quả chấm của contest C++/Python hợp lệ và không mơ hồ; các thay đổi fail-closed/preflight có chủ ý phải được ghi riêng.
 2. Tổng quát hóa toolchain, artifact, sandbox capability, preflight và metadata.
 3. Phát hành theo nhóm nhỏ, mỗi nhóm chỉ được nâng lên “Ổn định” sau khi qua đủ Windows x64 và macOS ARM64 trên bản app đóng gói thật.
-4. Giữ toolchain dưới dạng gói tùy chọn, tải/cài trước kỳ thi và dùng hoàn toàn offline khi chấm.
+4. Phát hành `JudgeDesk Full` với toàn bộ pack Stable tích hợp sẵn và dùng hoàn toàn offline; `Core/Judger Only` cùng cơ chế pack là lựa chọn nâng cao.
 5. Chỉ nhận mã nguồn trong chế độ thi chính thức. `.exe` và `.class` là artifact đã biên dịch, không phải ngôn ngữ; đề xuất tiếp tục từ chối.
 
 Có hai trục ưu tiên cần tách rõ:
@@ -633,6 +638,15 @@ Cổng thoát tương tự Phase 4, cộng kiểm thử managed/JIT-specific và
 
 ## 12. Trải nghiệm cài đặt được đề xuất
 
+Luồng mặc định dành cho giáo viên là `JudgeDesk Full`:
+
+- Installer chọn sẵn JudgeDesk, WebView2 offline trên Windows và mọi language pack Stable hỗ trợ OS hiện tại.
+- Bấm cài xong là chấm; lần mở đầu không hiện wizard toolchain và không tải thêm thành phần.
+- Trang `Customize` chỉ dành cho người muốn giảm dung lượng cài. Bỏ chọn pack không làm profile biến mất: Manager vẫn hiển thị profile với nút tải về sau.
+- `JudgeDesk Core/Judger Only` là artifact nhỏ dành cho người dùng nâng cao. Khi thiếu nhiều pack, UI chỉ đưa một hành động chính `Cài bộ công cụ được khuyến nghị`; bảng chọn chi tiết nằm trong phần nâng cao.
+- Pack built-in và pack tải về dùng cùng archive, package ID, digest, receipt, license/SBOM và health probe. Full không duy trì một bản compiler riêng khác Core.
+- Pack built-in là thành phần read-only của app và không có nút `Uninstall` trong Manager. Muốn bỏ nó, người dùng dùng `Modify` của installer; pack downloaded mới có nút `Uninstall`.
+
 Toolchain Manager hiển thị theo nhu cầu contest:
 
 - Một hàng/card cho mỗi language profile được app hỗ trợ.
@@ -648,14 +662,14 @@ Luồng:
 
 1. Người dùng mở contest/thư mục.
 2. JudgeDesk discovery source và checker.
-3. Toolchain Manager hiển thị các local candidates đã phát hiện nhanh và tiến trình certification.
-4. Người dùng giữ local candidate đạt chuẩn hoặc tải/import managed package.
+3. Toolchain Manager hiển thị pack built-in/downloaded và các local candidates từ lần dò nhanh đầu tiên.
+4. Bản Full thường đã sẵn sàng; người dùng Core có thể tải pack hoặc chọn local candidate đạt quick verification.
 5. “Kiểm tra sẵn sàng” lập danh sách chính xác profile/capability còn thiếu.
-6. Health + sandbox probe compile-run bằng đúng recipe.
+6. Quick health/sandbox probe dùng đúng recipe và cache theo exact package/host/policy identity; không hash/copy toàn cây khi mở app.
 7. Judge session khóa managed digest hoặc certified-local/platform fingerprint cho toàn batch.
 8. Export ghi lại môi trường đã dùng.
 
-Không bắt người dùng cài JDK, Go, Rust, .NET, GHC cùng lúc nếu contest không dùng chúng.
+Full ưu tiên sự đơn giản nên cài toàn bộ profile Stable; `Customize`/Core là lối thoát cho máy thiếu dung lượng. Ruby, Haskell và Cangjie vẫn ngoài roadmap nên không bị kéo vào Full.
 
 ## 13. Migration, rollout và rollback
 
@@ -709,9 +723,9 @@ Phương án tương thích tên bài: class public theo problem ID; khó dùng 
 
 ### D5. Toolchain distribution
 
-**Đề xuất:** pack tùy chọn, signed/hashed, tải trước hoặc import offline; installer chính chỉ giữ thành phần cốt lõi hiện có.
+**Đã duyệt, Full-first:** phát hành `JudgeDesk Full` làm lựa chọn chính. Full tích hợp mọi pack Stable của OS, WebView2 offline trên Windows, không cần mạng sau khi tải installer và không hỏi người dùng chọn toolchain ở lần mở đầu.
 
-Bundle tất cả sẽ đơn giản hóa một lần click nhưng tăng mạnh download, disk, attack surface và thời gian update.
+Installer có trang `Customize`, tất cả pack Stable được chọn sẵn. `JudgeDesk Core/Judger Only` là artifact nâng cao; nó tải/import chính các archive và digest mà Full đã dùng. Việc pack lớn hơn 1 GB được chấp nhận. Release gate phải đo dung lượng installed, thời gian install/upgrade/repair và bảo đảm việc có nhiều pack không làm chậm hot path chấm khi các pack không được chọn.
 
 ### D6. TLE/MLE theo ngôn ngữ
 
@@ -765,18 +779,20 @@ FPC/GHC hoặc linker khác cần Command Line Tools phải báo prerequisite �
 
 ### D15. Toolchain nào được phép chấm và preflight chặn ở đâu
 
-**Amendment đã duyệt:** JudgeDesk cho phép dùng cả managed toolchain và local toolchain đạt chuẩn. `Local` không bị giới hạn vĩnh viễn ở Checker only; nó được nâng lên Submission ready khi thỏa toàn bộ policy của đúng language profile/OS/architecture.
+**Amendment Full-first đã duyệt ngày 2026-07-30:** JudgeDesk cho phép dùng cả managed toolchain và local toolchain đạt chuẩn, nhưng managed pack trong bản Full là happy path. `Local` không bị giới hạn vĩnh viễn ở Checker only; nó được nâng lên Submission ready khi exact version/target/support roots nằm trong allowlist và quick compile-link-run + secure-executor compatibility pass.
+
+Full certification/snapshot toàn cây đã triển khai ở checkpoint D15 được hạ thành công cụ nâng cao `Freeze for contest`. Nó không chạy khi mở app, chọn local path, auto-detect hay preflight thông thường. Quick verification có timeout ngắn, output cap và kiểm tra bounded; không recursive hash/copy hàng chục nghìn file.
 
 #### D15.1. Source selection
 
 Mỗi language profile có đúng một lựa chọn đang active:
 
 - `None`: tắt profile trên máy này. JudgeDesk không tự fallback sang source khác.
-- `Managed by toolchain`: package do JudgeDesk tải/import, verify và quản lý.
+- `Managed by toolchain`: package tích hợp sẵn trong Full hoặc do JudgeDesk tải/import; hai nguồn dùng cùng package ID/digest.
 - `Local (path)`: executable/root do người dùng chọn rõ.
 - `Local (auto-detect)`: candidate do JudgeDesk tìm từ PATH và các vị trí chuẩn.
 
-`Local (path)` và `Local (auto-detect)` dùng chung certification pipeline; khác nhau ở cách tìm candidate. UI dùng radio group như yêu cầu. Nếu một lựa chọn không tồn tại trên OS/profile, radio bị disable và hiển thị lý do.
+`Local (path)` và `Local (auto-detect)` dùng chung quick-verification pipeline; khác nhau ở cách tìm candidate. UI dùng radio group như yêu cầu. Nếu một lựa chọn không tồn tại trên OS/profile, radio bị disable và hiển thị lý do. Full chọn `Managed by toolchain` mặc định cho profile có pack built-in; Core chỉ chọn Managed tự động sau khi người dùng bấm cài bộ khuyến nghị.
 
 Radio là ý định cố định: resolver không fallback sang source khác. Candidate/path biến mất chỉ làm source đã chọn chuyển thành Not available và giữ nguyên lựa chọn để người dùng sửa hoặc rescan.
 
@@ -788,7 +804,7 @@ Backend lưu capability theo role; UI hiển thị trạng thái cao nhất cùn
 - `Checker only / Chỉ dùng để dịch máy chấm`: candidate đã có immutable snapshot/certification đủ cho checker role nhưng chưa đạt submission sandbox policy. Trạng thái này chỉ có ý nghĩa cho profile được phép viết checker trong D8; local/system runtime chỉ được auto-detect nhưng chưa snapshot/chứng nhận hiện phải là Not available, không được gắn nhãn Checker only.
 - `Submission ready / Sẵn sàng chấm`: đúng compiler/runtime identity, version policy, target/architecture, support roots, compile-run health probe và sandbox certification.
 
-`Submission ready` không được suy ra chỉ từ `--version`. Tương tự, local compiler không bị hạ xuống Checker only chỉ vì không phải managed; kết luận phụ thuộc bằng chứng certification.
+`Submission ready` không được suy ra chỉ từ `--version`. Với managed pack, receipt/manifest, entrypoint identity và quick health phải khớp. Với local, version/target/helper tối thiểu, compile-link-run và khả năng dùng đúng root trong secure executor phải pass. Local compiler không bị hạ xuống Checker only chỉ vì không phải managed.
 
 #### D15.3. Fast detection khi mở app
 
@@ -804,7 +820,7 @@ Detection chạy bất đồng bộ để không chặn cửa sổ chính:
 
 Fast discovery không tự chạy mọi binary vừa tìm thấy. UI có thể hiện `Detected — verify to use`; đây là phụ chú/transient state, còn readiness vẫn Not available cho đến khi candidate được người dùng chọn hoặc đã có certificate cũ để quick-revalidate. Identity/version probe có timeout/output cap và chạy bằng probe role; không chạy tùy ý trên host.
 
-Quyết định đã chốt: lần mở đầu chỉ chạy fast discovery nói trên. Full certification/snapshot cần thao tác rõ ràng của người dùng; certificate cũ chỉ được quick-revalidate theo identity/policy đã pin.
+Quyết định đã chốt: fast discovery chỉ tự chạy một lần ở nền trong lần mở đầu, không chặn main window và không hiện wizard. Full certification/snapshot không thuộc luồng thông thường; chỉ thao tác `Freeze for contest` trong Advanced mới được chạy nó. Những lần mở sau đọc snapshot discovery đã lưu; người dùng bấm `Quét lại` nếu muốn cập nhật PATH.
 
 Auto-detect fail-closed:
 
@@ -842,21 +858,22 @@ Policy snapshot sơ bộ ngày 2026-07-28 — đây là candidate để Phase 0 
 
 Nguồn policy chính: [Go release history](https://go.dev/doc/devel/release), [Python 3.12.13 release](https://www.python.org/downloads/release/python-31213/), [FPC stable downloads](https://docs.freepascal.org/download.html), [OpenJDK 25](https://openjdk.org/projects/jdk/25/), [`javac --release` JDK 21](https://docs.oracle.com/en/java/javase/21/docs/specs/man/javac.html), [Rust release announcements](https://blog.rust-lang.org/releases/), [Node 24.18.0 archive](https://nodejs.org/download/release/v24.18.0/), [Node 24.18.0 platform matrix](https://github.com/nodejs/node/blob/v24.18.0/BUILDING.md), [MSYS2 environments](https://www.msys2.org/docs/environments/), [.NET lifecycle](https://learn.microsoft.com/en-us/lifecycle/products/microsoft-net-and-net-core), [.NET `global.json`](https://learn.microsoft.com/en-us/dotnet/core/tools/global-json) và [.NET macOS support](https://learn.microsoft.com/en-us/dotnet/core/install/macos).
 
-Candidate chỉ là Submission ready khi:
+Candidate local chỉ là Submission ready khi:
 
 1. Canonical executable đúng family và host architecture.
 2. Version nằm trong range JudgeDesk đã chứng nhận; version mới hơn nhưng ngoài tested policy vẫn là detected/unsupported, không tự được nâng hạng.
 3. Target, linker, standard library/runtime và dynamic dependencies đầy đủ.
 4. Compile fixture và run fixture pass bằng đúng argv/env sẽ dùng khi chấm.
-5. Submission sandbox pass network/filesystem/process/resource probes cho exact executable/support roots.
+5. Secure executor có policy exact-root cho candidate đó và quick sandbox compile/run probe pass; nếu không thể cấp root hẹp, UI đề nghị managed pack.
 6. Fingerprint không đổi.
 
 Không dùng WOW64/Rosetta cho profile Stable. Managed package cũng phải qua health/sandbox probe; hash chỉ chứng minh identity, không chứng minh package chạy đúng trên máy.
 
-Local certification có hai deployment mode:
+Local deployment có ba mức:
 
-- `platform-certified direct`: chỉ dành cho platform toolchain có policy riêng, như Apple Clang + selected developer root + SDK identity.
-- `local-certified snapshot`: mặc định cho GCC/JDK/runtime và local toolchain khác. JudgeDesk tính dependency/support-root closure, hiển thị dung lượng, rồi import một snapshot immutable vào content-addressed executor cache. Radio/provenance vẫn là Local; app không giả nó là package đã tải.
+- `quick-verified direct`: dùng trực tiếp khi exact local root vượt allowlist và secure-executor root policy; đây là luồng local thông thường.
+- `platform-certified direct`: platform toolchain có policy riêng, như Apple Clang + selected developer root + SDK identity.
+- `local-certified snapshot`: chỉ khi người dùng chủ động chọn Advanced → `Freeze for contest`, hoặc profile không thể chạy direct nhưng policy snapshot đã được duyệt. UI phải báo dung lượng/thời gian trước khi chạy.
 
 Chỉ cho chạy trực tiếp từ local installation root khi profile chứng minh root/capability bất biến và exact sandbox closure pass. Nếu toolchain không relocatable/snapshot được hoặc sandbox probe fail, UI đề nghị managed pack; không mở ACL/Seatbelt cho cả installation tree để “làm cho chạy”.
 
@@ -864,7 +881,7 @@ Local snapshot chỉ dùng trên máy đã chứng nhận và không được ex
 
 Certificate tối thiểu gồm profile/role, canonical executable, file identity/SHA-256, family/version/build/architecture, helper executables, support roots/SDK/dynamic dependency closure, recipe digest, snapshot digest hoặc platform identity, executor/sandbox/probe-suite version và kết quả probe.
 
-Fingerprint tối thiểu gồm canonical path, file identity, size/mtime, executable hash khi khả thi, parsed version, target và support-root identity. JudgeDesk cache kết quả để mở nhanh nhưng revalidate ở startup, khi đổi radio/path, trước batch và khi fingerprint thay đổi. Batch pin certificate bằng lease; toolchain bị update/thay giữa batch làm fail-closed.
+Quick fingerprint tối thiểu gồm canonical path, file identity, size/mtime, executable hash, parsed version/target và bounded support-root markers. JudgeDesk cache kết quả; revalidate khi chọn/đổi path, khi người dùng Rescan và trước batch bằng bounded stat/hash của entrypoint/markers. Batch pin identity bằng lease; toolchain bị update/thay giữa batch làm fail-closed. Không hash toàn bộ support tree ở startup.
 
 Version floor cụ thể của từng ngôn ngữ được chốt trong Phase 0 bằng tài liệu upstream và corpus, không hard-code từ một chuỗi locale. Ví dụ `GCC >= 9.2` hiện có trong thông báo C++ chỉ là legacy policy cần audit, không tự trở thành chuẩn chung.
 
@@ -872,10 +889,11 @@ Version floor cụ thể của từng ngôn ngữ được chốt trong Phase 0 
 
 - `Download and apply for JudgeDesk`: đây là hành động kết hợp do người dùng chủ động yêu cầu; tải/import managed package, verify, chạy health probe và chỉ chọn `Managed by toolchain` sau khi thành công. Không đổi radio nếu install/probe thất bại.
 - Download/apply phải pin preference revision và intent lúc bắt đầu. Nếu người dùng đổi radio trong khi đang tải, package có thể hoàn tất cài đặt nhưng không được ghi đè lựa chọn mới; UI báo `Installed, not applied`.
-- `Uninstall`: chỉ hiện với managed package. Không bao giờ xóa local compiler/runtime.
+- `Uninstall`: chỉ hiện với managed package đã tải. Pack built-in của Full hiển thị `Included with JudgeDesk Full` và chỉ gỡ qua `Modify` của installer. Không bao giờ xóa local compiler/runtime.
 - Managed package đang được batch/contest pin không được uninstall. Với package không còn active, uninstall cần confirm; nếu radio đang là Managed thì giữ nguyên radio nhưng status chuyển thành Not available và hiện nút Download, tuyệt đối không fallback sang local.
 - `Browse… / Verify & use` chỉ áp dụng cho `Local (path)` và cập nhật path + selection atomically sau khi identity validation tối thiểu pass.
-- `Certify for judging` tính closure/snapshot nếu cần, hiển thị disk impact, rồi chạy full executor probe. Với local candidate chỉ cần checker, UI có thể dừng ở Checker only.
+- `Verify & use` chạy quick verification bounded rồi chọn local source atomically khi pass.
+- `Freeze for contest` nằm trong Advanced, tính closure/snapshot, hiển thị disk/time impact rồi mới chạy; không phải điều kiện bắt buộc cho mọi local source.
 - `Rescan` chạy lại detection có giới hạn cho `Local (auto-detect)`.
 - `Diagnostics` hiển thị path, version, target, capability theo role và bước certification nào fail.
 
@@ -883,7 +901,7 @@ Reason codes ổn định tối thiểu: `DISABLED_BY_USER`, `MANAGED_PACKAGE_UN
 
 #### D15.6. Preflight semantics
 
-Với selected scope còn thiếu Submission ready capability, nút bắt đầu batch bị chặn cho đến khi người dùng `Certify local`, cài managed pack hoặc bỏ chọn phần bị ảnh hưởng. Preflight không tin cache TTL: quick-verify certificate và chạy lightweight end-to-end sandbox probe trước batch đầu tiên của app session; full certification chạy lại khi identity/policy thay đổi.
+Với selected scope còn thiếu Submission ready capability, nút bắt đầu batch bị chặn cho đến khi người dùng quick-verify local, cài managed pack hoặc bỏ chọn phần bị ảnh hưởng. Preflight không chạy certification nhiều phút: nó kiểm receipt/entrypoint/identity markers có giới hạn và dùng health result đã pin theo package/host/policy; probe end-to-end chỉ chạy sau install/app update, khi identity thay đổi hoặc khi người dùng yêu cầu Diagnostics.
 
 PATH thay đổi chỉ tạo candidate mới, không thay source/certificate đã pin. Update/uninstall bị chặn trong batch lease. Drift trước batch là configuration/preflight error; drift giữa batch là JE cho phần bị ảnh hưởng, không phải CE của thí sinh. Checker dependency thiếu chỉ chặn/đánh dấu problem liên quan như mục 9.
 

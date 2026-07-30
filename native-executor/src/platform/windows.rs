@@ -155,6 +155,7 @@ impl WindowsPlatform {
                 stdout_file: "probe.stdout".into(),
                 stderr_file: "probe.stderr".into(),
                 environment: BTreeMap::new(),
+                toolchain: None,
                 limits: crate::protocol::RunLimits {
                     wall_time_ms: 5_000,
                     memory_bytes: 128 * 1024 * 1024,

@@ -72,6 +72,7 @@ export async function runCustomChecker(options: RunCustomCheckerOptions): Promis
         path.join(workspace.path, "expected.txt"),
       ],
       environment: launch.environment,
+      toolchain: launch.toolchain,
       runtimeBacked: options.checkerRuntime === "python",
       timeoutMs: CHECKER_TIMEOUT_MS,
       memoryBytes: CHECKER_MEMORY_BYTES,
@@ -122,7 +123,12 @@ function checkerResultFromExit(
 function prepareNativeChecker(
   workspace: Awaited<ReturnType<typeof createExecutorWorkspace>>,
   checkerPath: string,
-): { executableId: string; args: string[]; environment: Record<string, string> } {
+): {
+  executableId: string;
+  args: string[];
+  environment: Record<string, string>;
+  toolchain?: never;
+} {
   const checkerName = process.platform === "win32" ? "checker.exe" : "checker";
   workspace.stage(checkerPath, checkerName, true);
   return { executableId: workspace.relative(checkerName), args: [], environment: {} };

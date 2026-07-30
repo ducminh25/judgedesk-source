@@ -41,6 +41,7 @@ export async function validatePythonCheckerSource(
       executableId: runtime.executableId,
       args: ["-I", "-B", "-c", syntaxCheck, stagedChecker],
       environment: runtime.environment,
+      toolchain: runtime.toolchain,
       runtimeBacked: true,
       timeoutMs: CHECKER_TIMEOUT_MS,
       memoryBytes: CHECKER_MEMORY_BYTES,

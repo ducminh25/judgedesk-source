@@ -45,6 +45,27 @@ test("missing preferences initialize the two legacy profiles without future-prof
   ]);
 });
 
+test("a fresh Full install selects supported Stable managed packs without changing migrations", (t) => {
+  useTemporaryAppData(t);
+  const previous = process.env.JUDGEDESK_DISTRIBUTION;
+  process.env.JUDGEDESK_DISTRIBUTION = "full";
+  t.after(() => {
+    if (previous === undefined) delete process.env.JUDGEDESK_DISTRIBUTION;
+    else process.env.JUDGEDESK_DISTRIBUTION = previous;
+  });
+
+  const snapshot = loadToolchainPreferenceSnapshot();
+  assert.equal(snapshot.status, "initialized");
+  assert.equal(
+    snapshot.preferences.profiles[PYTHON_LANGUAGE_PROFILE_ID]?.mode,
+    "managed",
+  );
+  assert.equal(
+    snapshot.preferences.profiles[CPP_LANGUAGE_PROFILE_ID]?.mode,
+    process.platform === "win32" ? "managed" : "local_auto",
+  );
+});
+
 test("legacy preferences migrate once and preserve dormant local paths", (t) => {
   useTemporaryAppData(t);
   fs.writeFileSync(

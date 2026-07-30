@@ -3,11 +3,9 @@ import os from "os";
 import path from "path";
 import { execFileSync } from "child_process";
 import { ToolchainKind, ResolvedToolchain, ToolchainSource } from "./types.js";
-import {
-  getToolchainsDir,
-  loadToolchainPreferenceSnapshot,
-} from "./storage.js";
+import { loadToolchainPreferenceSnapshot } from "./storage.js";
 import { getDescriptorForHost } from "./manifest.js";
+import { inspectInstalledToolchainPackage } from "./package-store.js";
 import { sandbox } from "../sandbox.js";
 import { getRegisteredProfileForKind } from "../languages/registry.js";
 import { getStoredProfilePreference } from "./preferences-v2.js";
@@ -204,12 +202,9 @@ export function clearToolchainDetectionCache(): void {
 export function resolveManagedToolchain(kind: ToolchainKind): ResolvedToolchain {
   const descriptor = getDescriptorForHost(os.platform(), os.arch(), kind);
   if (descriptor) {
-    const executablePath = path.join(
-      getToolchainsDir(),
-      descriptor.id,
-      descriptor.executableRelativePath,
-    );
-    if (fs.existsSync(executablePath)) {
+    const installed = inspectInstalledToolchainPackage(descriptor);
+    if (installed.status === "installed") {
+      const executablePath = installed.package.executablePath;
       const version = getExecutableVersion(executablePath, kind);
       const ready = isSupportedExecutable(executablePath, kind);
       return {
@@ -218,12 +213,32 @@ export function resolveManagedToolchain(kind: ToolchainKind): ResolvedToolchain 
         executablePath,
         version,
         ready,
+        provenance: "managed-package",
+        packageOrigin: installed.package.origin,
+        packageRoot: installed.package.root,
+        packageComponentId: installed.package.componentId,
+        ...(installed.package.packageDigest
+          ? { packageDigest: installed.package.packageDigest }
+          : {}),
         ...(!ready
           ? {
               diagnostic: "Managed toolchain health check failed.",
               diagnosticCode: "HEALTH_CHECK_FAILED" as const,
             }
           : {}),
+      };
+    }
+    if (installed.status === "corrupt") {
+      return {
+        kind,
+        source: "managed",
+        executablePath: "",
+        version: descriptor.version,
+        ready: false,
+        packageOrigin: installed.origin,
+        packageRoot: installed.root,
+        diagnostic: installed.diagnostic,
+        diagnosticCode: "MANAGED_PACKAGE_CORRUPT",
       };
     }
   }

@@ -45,6 +45,23 @@ pub enum RunRole {
     SecurityProbe,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ToolchainGrantRole {
+    Compiler,
+    SubmissionRuntime,
+    CheckerRuntime,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolchainGrant {
+    pub package_id: String,
+    pub package_digest: String,
+    pub component_id: String,
+    pub role: ToolchainGrantRole,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RunSpec {
@@ -59,6 +76,8 @@ pub struct RunSpec {
     pub stderr_file: String,
     #[serde(default)]
     pub environment: BTreeMap<String, String>,
+    #[serde(default)]
+    pub toolchain: Option<ToolchainGrant>,
     pub limits: RunLimits,
 }
 
@@ -216,6 +235,7 @@ mod tests {
                 stdout_file: "stdout.txt".into(),
                 stderr_file: "stderr.txt".into(),
                 environment: BTreeMap::new(),
+                toolchain: None,
                 limits: RunLimits {
                     wall_time_ms: 1000,
                     memory_bytes: 64 * 1024 * 1024,

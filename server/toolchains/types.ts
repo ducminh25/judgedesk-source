@@ -1,4 +1,5 @@
 export type ToolchainKind = "cpp" | "python";
+export type ToolchainPackageOrigin = "built-in" | "downloaded";
 import type {
   ReadinessReasonCode,
   ToolchainProvenance,
@@ -124,6 +125,10 @@ export interface ResolvedToolchain {
   executionPath?: string;
   executionId?: string;
   executionRoot?: string;
+  packageOrigin?: ToolchainPackageOrigin;
+  packageDigest?: string;
+  packageRoot?: string;
+  packageComponentId?: string;
 }
 
 export interface InstallProgress {

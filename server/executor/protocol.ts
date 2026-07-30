@@ -16,6 +16,16 @@ export interface ExecutorLimits {
   createdFiles: number;
 }
 
+export interface ExecutorToolchainIdentity {
+  packageId: string;
+  packageDigest: string;
+  componentId: string;
+}
+
+export interface ExecutorToolchainGrant extends ExecutorToolchainIdentity {
+  role: "compiler" | "submission-runtime" | "checker-runtime";
+}
+
 export interface ExecutorRunSpec {
   runId: string;
   role: ExecutorRole;
@@ -26,6 +36,7 @@ export interface ExecutorRunSpec {
   stdoutFile: string;
   stderrFile: string;
   environment: Record<string, string>;
+  toolchain?: ExecutorToolchainGrant;
   limits: ExecutorLimits;
 }
 

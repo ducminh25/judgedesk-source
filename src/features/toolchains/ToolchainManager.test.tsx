@@ -116,6 +116,7 @@ describe("toolchain settings UI regressions", () => {
           id: "gcc-windows-x64",
           version: "14.2.0",
           installed: false,
+          uninstallable: false,
           downloadAvailable: true,
           progress: {
             id: "gcc-windows-x64",
@@ -160,6 +161,9 @@ describe("toolchain settings UI regressions", () => {
           id: "python-windows-x64",
           version: "3.12.13",
           installed: true,
+          origin: "downloaded" as const,
+          integrity: "verified-receipt" as const,
+          uninstallable: true,
           downloadAvailable: true,
           progress: {
             id: "python-windows-x64",
@@ -226,6 +230,15 @@ describe("toolchain settings UI regressions", () => {
       appSource.slice(modalStart, modalEnd),
       /handleFetchProblems/,
     );
+  });
+
+  it("does not force a toolchain wizard on first launch", () => {
+    const appSource = readFileSync(
+      new URL("../../App.tsx", import.meta.url),
+      "utf8",
+    );
+    assert.doesNotMatch(appSource, /ToolchainSetupModal/);
+    assert.doesNotMatch(appSource, /isToolchainSetupCompleted/);
   });
 
   it("refreshes host toolchain status every time the status menu is opened", () => {

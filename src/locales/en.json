@@ -431,6 +431,7 @@
       "verifyAndUse": "Verify & use",
       "downloadAndApply": "Download and apply for JudgeDesk",
       "applyManaged": "Apply managed package",
+      "includedWithJudgeDesk": "Included with JudgeDesk Full",
       "uninstallConfirm": "Uninstall this managed package? Local compilers and runtimes are never removed.",
       "mutationsBlocked": "Compiler and runtime choices are locked while judging is in progress. Cancel or finish the current judging session before changing them.",
       "managedUnavailable": "No managed package is available for this computer.",
