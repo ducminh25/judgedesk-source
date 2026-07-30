@@ -335,8 +335,15 @@
     "restarting": "Đang khởi động lại..."
   },
   "languages": {
+    "c": "C",
+    "csharp": "C#",
     "cpp": "C++",
-    "python": "Python"
+    "go": "Go",
+    "java": "Java",
+    "javascript": "JavaScript (Node.js)",
+    "pascal": "Pascal",
+    "python": "Python",
+    "rust": "Rust"
   },
   "toolchains": {
     "idle": "Đang chờ",

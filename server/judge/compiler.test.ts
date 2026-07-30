@@ -274,6 +274,21 @@ test("compiler flags retain Windows limits and avoid unsupported macOS flags", (
     linux.some((flag) => flag.includes("--stack")),
     false,
   );
+
+  const cWindows = buildSubmissionCompilerArgs(
+    "win32",
+    "main.c",
+    "main.exe",
+    "c",
+  );
+  assert.ok(cWindows.includes("-std=c11"));
+  assert.ok(cWindows.includes("-static"));
+  assert.ok(cWindows.includes("-Wl,--stack,66060288"));
+  assert.deepEqual(
+    cWindows.slice(cWindows.indexOf("-x"), cWindows.indexOf("-x") + 2),
+    ["-x", "c"],
+  );
+  assert.equal(cWindows.includes("-std=c++14"), false);
 });
 
 test("standard checkers use the cross-platform built-in implementation", async () => {

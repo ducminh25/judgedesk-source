@@ -1,14 +1,21 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  C_LANGUAGE_PROFILE_ID,
+  CSHARP_LANGUAGE_PROFILE_ID,
   CPP_LANGUAGE_PROFILE_ID,
+  GO_LANGUAGE_PROFILE_ID,
   getRegisteredLanguageProfile,
   getRegisteredProfileForKind,
+  JAVA_LANGUAGE_PROFILE_ID,
+  JAVASCRIPT_LANGUAGE_PROFILE_ID,
   listRegisteredLanguageProfiles,
+  PASCAL_LANGUAGE_PROFILE_ID,
   PYTHON_LANGUAGE_PROFILE_ID,
+  RUST_LANGUAGE_PROFILE_ID,
 } from "./registry.js";
 
-test("the live registry exposes stable C++ and Python profiles in UI order", () => {
+test("the live registry exposes approved profiles in deterministic UI order", () => {
   const registry = listRegisteredLanguageProfiles();
   assert.deepEqual(
     registry.map((entry) => ({
@@ -18,11 +25,22 @@ test("the live registry exposes stable C++ and Python profiles in UI order", () 
     })),
     [
       { id: CPP_LANGUAGE_PROFILE_ID, kind: "cpp", mode: "local_auto" },
+      { id: C_LANGUAGE_PROFILE_ID, kind: "c", mode: "none" },
       { id: PYTHON_LANGUAGE_PROFILE_ID, kind: "python", mode: "local_auto" },
+      { id: PASCAL_LANGUAGE_PROFILE_ID, kind: "pascal", mode: "none" },
+      { id: GO_LANGUAGE_PROFILE_ID, kind: "go", mode: "none" },
+      { id: JAVA_LANGUAGE_PROFILE_ID, kind: "java", mode: "none" },
+      { id: RUST_LANGUAGE_PROFILE_ID, kind: "rust", mode: "none" },
+      {
+        id: JAVASCRIPT_LANGUAGE_PROFILE_ID,
+        kind: "javascript",
+        mode: "none",
+      },
+      { id: CSHARP_LANGUAGE_PROFILE_ID, kind: "csharp", mode: "none" },
     ],
   );
   assert.equal(getRegisteredProfileForKind("cpp"), registry[0]);
-  assert.equal(getRegisteredProfileForKind("python"), registry[1]);
+  assert.equal(getRegisteredProfileForKind("python"), registry[2]);
   assert.equal(getRegisteredLanguageProfile("unknown-profile"), undefined);
   assert.equal(Object.isFrozen(registry), true);
   assert.equal(Object.isFrozen(registry[0]), true);

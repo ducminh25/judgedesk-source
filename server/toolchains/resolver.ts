@@ -17,6 +17,17 @@ import { resolveLocalCppCertificateReadiness } from "./certificate-readiness.js"
 
 export const MIN_GNU_CPP_VERSION = "9.2.0";
 export const MIN_GNU_GDB_VERSION = "7.6.1";
+const MIN_TOOLCHAIN_VERSIONS: Readonly<Record<ToolchainKind, string>> = {
+  cpp: MIN_GNU_CPP_VERSION,
+  c: MIN_GNU_CPP_VERSION,
+  python: "3.10.0",
+  pascal: "3.2.2",
+  go: "1.22.0",
+  java: "21.0.0",
+  rust: "1.75.0",
+  javascript: "20.0.0",
+  csharp: "8.0.0",
+};
 const DETECTION_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const detectionCache = new Map<
@@ -67,12 +78,16 @@ export function getExecutableVersion(
 ): string {
   try {
     if (!fs.existsSync(executablePath)) return "unknown";
-    const stdout = execFileSync(executablePath, ["--version"], {
-      encoding: "utf8",
-      timeout: 2000,
-      stdio: ["ignore", "pipe", "ignore"],
-      env: buildToolchainEnvironment(executablePath),
-    });
+    const stdout = execFileSync(
+      executablePath,
+      kind === "pascal" ? ["-iV"] : ["--version"],
+      {
+        encoding: "utf8",
+        timeout: 2000,
+        stdio: ["ignore", "pipe", "ignore"],
+        env: buildToolchainEnvironment(executablePath),
+      },
+    );
 
     if (kind === "python") {
       // "Python 3.12.8\n"
@@ -83,7 +98,7 @@ export function getExecutableVersion(
       const match = stdout.match(/(gcc|g\+\+|clang|version)\s+([0-9.]+)/i);
       if (match) return match[2];
 
-      const genericMatch = stdout.match(/([0-9]+\.[0-9]+\.[0-9]+)/);
+      const genericMatch = stdout.match(/([0-9]+\.[0-9]+(?:\.[0-9]+)?)/);
       return genericMatch ? genericMatch[1] : "unknown";
     }
   } catch (error) {
@@ -265,7 +280,7 @@ export function chooseNativeProtectedToolchain(
   // source, but it must never silently replace it with another installed source.
   if (selected.source === "managed") return managed;
   if (
-    kind === "cpp"
+    (kind === "cpp" || kind === "c")
     && platform === "win32"
     && selected.ready
     && (
@@ -279,7 +294,7 @@ export function chooseNativeProtectedToolchain(
       ...selected,
       ready: false,
       diagnostic:
-        "The selected local C++ compiler has not been certified for the Windows secure runner.",
+        `The selected local ${kind === "cpp" ? "C++" : "C"} compiler has not been certified for the Windows secure runner.`,
       diagnosticCode: "CERTIFICATION_REQUIRED",
     };
   }
@@ -304,6 +319,14 @@ export function isPythonCheckerReady(toolchain: ResolvedToolchain): boolean {
   return toolchain.kind === "python"
     && toolchain.ready
     && toolchain.source === "managed";
+}
+
+export function isManagedSubmissionToolchainReady(
+  toolchain: ResolvedToolchain,
+): boolean {
+  return toolchain.ready
+    && toolchain.source === "managed"
+    && toolchain.provenance === "managed-package";
 }
 
 // Searches environment PATH for binary
@@ -482,7 +505,11 @@ function isSupportedExecutable(
     supported = probePythonExecutable(executablePath);
   }
 
-  if (supported && kind === "cpp" && os.platform() === "darwin") {
+  if (
+    supported
+    && (kind === "cpp" || kind === "c")
+    && os.platform() === "darwin"
+  ) {
     // The macOS native executor intentionally grants compiler access only to
     // Apple's sealed Xcode/Command Line Tools roots. A Homebrew compiler can
     // compile during the discovery probe outside Seatbelt, but cannot be
@@ -492,10 +519,8 @@ function isSupportedExecutable(
 
   const basename = path.basename(executablePath).toLowerCase();
   if (
-    supported &&
-    kind === "cpp" &&
-    basename.includes("g++") &&
-    compareVersions(version, MIN_GNU_CPP_VERSION) < 0
+    supported
+    && compareVersions(version, MIN_TOOLCHAIN_VERSIONS[kind]) < 0
   ) {
     supported = false;
   }
@@ -515,7 +540,9 @@ function isSupportedExecutable(
     )
       supported = false;
   }
-  if (supported && kind === "cpp") supported = probeCppCompiler(executablePath);
+  if (supported && (kind === "cpp" || kind === "c")) {
+    supported = probeCppCompiler(executablePath);
+  }
   executableSupportCache.set(cacheKey, {
     value: supported,
     expiresAt: Date.now() + DETECTION_CACHE_TTL_MS,
@@ -737,10 +764,21 @@ function findPythonRegistryInstallations(): string[] {
 
 export function resolveToolchain(kind: ToolchainKind): ResolvedToolchain {
   if (sandbox.mode !== "none") {
+    const sandboxExecutables: Readonly<Record<ToolchainKind, string>> = {
+      cpp: "g++",
+      c: "gcc",
+      python: "python3",
+      pascal: "fpc",
+      go: "go",
+      java: "javac",
+      rust: "rustc",
+      javascript: "node",
+      csharp: "dotnet",
+    };
     return {
       kind,
       source: "sandbox",
-      executablePath: kind === "cpp" ? "g++" : "python3",
+      executablePath: sandboxExecutables[kind],
       version: "Inside sandbox",
       ready: true,
     };
@@ -909,6 +947,22 @@ function resolveSelectedLocalExecutable(
       ...(candidateId ? { candidateId } : {}),
     };
   }
+  if (
+    kind !== "cpp"
+    && !(kind === "c" && os.platform() === "darwin")
+  ) {
+    return {
+      kind,
+      source,
+      executablePath: canonicalExecutablePath,
+      version: getExecutableVersion(canonicalExecutablePath, kind),
+      ready: false,
+      diagnostic:
+        "Local/system toolchains require a sandbox-compatible certification before judging.",
+      diagnosticCode: "CERTIFICATION_REQUIRED",
+      ...(candidateId ? { candidateId } : {}),
+    };
+  }
   const version = getExecutableVersion(canonicalExecutablePath, kind);
   const ready = isSupportedExecutable(canonicalExecutablePath, kind);
   const diagnosticCode: NonNullable<ResolvedToolchain["diagnosticCode"]> =
@@ -917,7 +971,7 @@ function resolveSelectedLocalExecutable(
     kind,
     source,
     executablePath: canonicalExecutablePath,
-    ...(ready && kind === "cpp" && os.platform() === "darwin"
+    ...(ready && (kind === "cpp" || kind === "c") && os.platform() === "darwin"
       ? { provenance: "platform-certified" as const }
       : {}),
     version,

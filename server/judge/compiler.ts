@@ -16,7 +16,7 @@ import {
   detachExecutorRun,
   runReservedExecutor,
 } from "../jobs.js";
-import type { ProblemResult } from "../types.js";
+import type { ProblemResult, SubmissionLanguage } from "../types.js";
 import {
   findDarwinSdkDirectory,
   getExecutableVersion,
@@ -25,7 +25,10 @@ import {
   resolveToolchain,
 } from "../toolchains/resolver.js";
 import { getToolchainsDir } from "../toolchains/storage.js";
-import type { ResolvedToolchain } from "../toolchains/types.js";
+import type {
+  ResolvedToolchain,
+  ToolchainKind,
+} from "../toolchains/types.js";
 import {
   buildCertifiedWindowsCppCheckerArgs,
   buildCertifiedWindowsCppSubmissionArgs,
@@ -82,13 +85,14 @@ interface ResolveCheckerOptions {
 }
 
 interface CompileSubmissionOptions {
-  language: string;
+  language: SubmissionLanguage;
   contestantName: string;
   problemName: string;
   submissionPath: string;
   tempDirectory: string;
   jobId?: string;
   cppToolchain?: ResolvedToolchain;
+  cToolchain?: ResolvedToolchain;
   pythonToolchain?: ResolvedToolchain;
 }
 
@@ -175,7 +179,7 @@ export async function resolveChecker(options: ResolveCheckerOptions): Promise<Co
 export async function compileSubmission(options: CompileSubmissionOptions): Promise<CompilationResult> {
   const { language, contestantName, problemName, submissionPath, tempDirectory, jobId } = options;
   const compileStart = process.hrtime.bigint();
-  if (language !== "cpp") {
+  if (language === "python") {
     const python = options.pythonToolchain ?? await resolveCompilationToolchain("python");
     if (!python.ready) return compilationFailure("", "TOOLCHAIN_PYTHON_MISSING", compileStart);
     if (python.source !== "managed") {
@@ -188,21 +192,42 @@ export async function compileSubmission(options: CompileSubmissionOptions): Prom
       compileTime: 0,
     };
   }
+  if (language !== "cpp" && language !== "c") {
+    return compilationFailure(
+      "",
+      `LANGUAGE_ADAPTER_UNAVAILABLE: ${language}`,
+      compileStart,
+    );
+  }
 
   const executablePath = path.join(tempDirectory, `${safeName(contestantName)}_${safeName(problemName)}.out`);
   try {
-    const cpp = options.cppToolchain ?? await resolveCompilationToolchain("cpp");
-    if (!cpp.ready) throw new Error("TOOLCHAIN_CPP_MISSING");
-    if (process.platform === "win32" && !isWindowsCppExecutionReady(cpp)) {
+    const toolchain = language === "cpp"
+      ? options.cppToolchain ?? await resolveCompilationToolchain("cpp")
+      : options.cToolchain ?? await resolveCompilationToolchain("c");
+    if (!toolchain.ready) {
+      throw new Error(`TOOLCHAIN_${language.toUpperCase()}_MISSING`);
+    }
+    if (
+      process.platform === "win32"
+      && !isWindowsNativeCompilerExecutionReady(toolchain)
+    ) {
       throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
     }
-    const compilerPath = cpp.executionPath || cpp.executablePath;
+    const compilerPath = toolchain.executionPath || toolchain.executablePath;
     await runCompilerPipelineWithLimits(
       compilerPath,
-      buildSubmissionCompilerArgs(os.platform(), submissionPath, executablePath),
+      buildSubmissionCompilerArgs(
+        os.platform(),
+        submissionPath,
+        executablePath,
+        language,
+      ),
       tempDirectory,
       executablePath,
       jobId,
+      DEFAULT_COMPILE_LIMITS,
+      language,
     );
     return {
       executablePath,
@@ -259,7 +284,7 @@ async function compileCustomChecker(
 }
 
 export async function resolveCompilationToolchain(
-  kind: "cpp" | "python",
+  kind: ToolchainKind,
 ): Promise<ResolvedToolchain> {
   const selected = resolveNativeProtectedToolchain(kind);
   if (kind === "python") {
@@ -270,7 +295,7 @@ export async function resolveCompilationToolchain(
 }
 
 export function chooseCompilationToolchain(
-  kind: "cpp" | "python",
+  kind: ToolchainKind,
   selected: ResolvedToolchain,
   managed: ResolvedToolchain,
 ): ResolvedToolchain {
@@ -286,8 +311,16 @@ export function chooseCompilationToolchain(
 }
 
 export function isWindowsCppExecutionReady(toolchain: ResolvedToolchain): boolean {
+  return toolchain.kind === "cpp"
+    && isWindowsNativeCompilerExecutionReady(toolchain);
+}
+
+export function isWindowsNativeCompilerExecutionReady(
+  toolchain: ResolvedToolchain,
+): boolean {
   if (toolchain.source === "managed") return true;
-  return toolchain.provenance === "certified-local"
+  return toolchain.kind === "cpp"
+    && toolchain.provenance === "certified-local"
     && !!toolchain.certificateId
     && !!toolchain.executionPath
     && !!toolchain.executionId
@@ -300,11 +333,17 @@ export function buildSubmissionCompilerArgs(
   platform: NodeJS.Platform,
   sourcePath: string,
   outputPath: string,
+  language: "cpp" | "c" = "cpp",
 ): string[] {
-  if (platform === "win32") {
+  if (platform === "win32" && language === "cpp") {
     return buildCertifiedWindowsCppSubmissionArgs(sourcePath, outputPath);
   }
-  const args = ["-std=c++14", "-pipe", "-O2", "-fno-finite-loops"];
+  const args = [
+    language === "cpp" ? "-std=c++14" : "-std=c11",
+    "-pipe",
+    "-O2",
+  ];
+  if (language === "cpp") args.push("-fno-finite-loops");
   if (platform === "darwin") {
     // AArch64 integer division by zero does not trap in hardware like x86 IDIV.
     // Ask Apple Clang to emit a runtime trap so the affected testcase receives
@@ -313,10 +352,19 @@ export function buildSubmissionCompilerArgs(
       "-fsanitize=integer-divide-by-zero",
       "-fsanitize-trap=integer-divide-by-zero",
     );
-  } else args.push("-s", "-static", "-lm");
+  } else {
+    if (platform === "win32") {
+      args.push(
+        "-fsanitize=integer-divide-by-zero",
+        "-fsanitize-undefined-trap-on-error",
+      );
+    }
+    args.push("-s", "-static", "-lm");
+  }
   // Apple SDKs provide math symbols through libSystem rather than a separate
   // libm. Passing `-lm` fails on Xcode 17/macOS 26, while `-s` is obsolete.
-  args.push("-x", "c++");
+  args.push("-x", language === "cpp" ? "c++" : "c");
+  if (platform === "win32") args.push("-Wl,--stack,66060288");
   args.push(sourcePath, "-o", outputPath);
   return args;
 }
@@ -348,12 +396,13 @@ export async function runCompilerWithLimits(
   outputPath: string,
   jobId?: string,
   limits: CompileLimits = DEFAULT_COMPILE_LIMITS,
+  kind: Extract<ToolchainKind, "cpp" | "c"> = "cpp",
 ): Promise<void> {
   const workspace = await createExecutorWorkspace();
   const runId = `compile_${crypto.randomUUID().replaceAll("-", "_")}`;
   try {
     attachExecutorRun(jobId, runId);
-    const compiler = await prepareCompiler(workspace, compilerPath);
+    const compiler = await prepareCompiler(workspace, compilerPath, kind);
     if (compiler.compatibilityHeaderPath) {
       const stagedHeader = workspace.stage(
         compiler.compatibilityHeaderPath,
@@ -369,12 +418,15 @@ export async function runCompilerWithLimits(
       ...compiler.environment,
     };
     if (process.platform === "win32" && compiler.root) {
-      const programDirectory = findGccProgramDirectory(compiler.root);
+      const programDirectory = findGccProgramDirectory(compiler.root, kind);
       // A relocated GCC driver otherwise remembers the source installation prefix and reports
       // "cannot execute cc1plus" inside LPAC. -B and COMPILER_PATH keep every compiler child in
       // the verified read-only toolchain cache and the same Job Object.
       stagedArgs.unshift(`-B${programDirectory}${path.sep}`);
-      stagedArgs.unshift(...findGccIncludeDirectories(compiler.root).flatMap((directory) => ["-isystem", directory]));
+      stagedArgs.unshift(
+        ...findGccIncludeDirectories(compiler.root, kind === "cpp")
+          .flatMap((directory) => ["-isystem", directory]),
+      );
       environment.COMPILER_PATH = [programDirectory, path.dirname(compiler.executablePath)].join(path.delimiter);
       environment.LIBRARY_PATH = findGccLibraryDirectories(compiler.root).join(path.delimiter);
     }
@@ -407,9 +459,18 @@ async function runCompilerPipelineWithLimits(
   outputPath: string,
   jobId?: string,
   limits: CompileLimits = DEFAULT_COMPILE_LIMITS,
+  kind: Extract<ToolchainKind, "cpp" | "c"> = "cpp",
 ): Promise<void> {
   if (process.platform !== "darwin") {
-    await runCompilerWithLimits(compilerPath, args, cwd, outputPath, jobId, limits);
+    await runCompilerWithLimits(
+      compilerPath,
+      args,
+      cwd,
+      outputPath,
+      jobId,
+      limits,
+      kind,
+    );
     return;
   }
 
@@ -417,7 +478,15 @@ async function runCompilerPipelineWithLimits(
   const phases = buildDarwinCompilerPhases(args, outputPath, objectPath);
   const started = process.hrtime.bigint();
   try {
-    await runCompilerWithLimits(compilerPath, phases.compile, cwd, objectPath, jobId, limits);
+    await runCompilerWithLimits(
+      compilerPath,
+      phases.compile,
+      cwd,
+      objectPath,
+      jobId,
+      limits,
+      kind,
+    );
     const elapsed = elapsedMs(started);
     const remaining = Math.max(1, limits.timeoutMs - Math.ceil(elapsed));
     await runCompilerWithLimits(
@@ -427,6 +496,7 @@ async function runCompilerPipelineWithLimits(
       outputPath,
       jobId,
       { ...limits, timeoutMs: remaining },
+      kind,
     );
   } finally {
     fs.rmSync(objectPath, { force: true });
@@ -477,8 +547,9 @@ export function buildCompilerEnvironment(
 async function prepareCompiler(
   workspace: Awaited<ReturnType<typeof createExecutorWorkspace>>,
   compilerPath: string,
+  kind: Extract<ToolchainKind, "cpp" | "c">,
 ): Promise<PreparedCompiler> {
-  const cached = await findCachedManagedToolchain("cpp");
+  const cached = await findCachedManagedToolchain(kind);
   if (cached && sameFile(cached.executablePath, compilerPath)) {
     return {
       executableId: cached.executableId,
@@ -488,9 +559,9 @@ async function prepareCompiler(
       environment: {},
     };
   }
-  const resolved = resolveToolchain("cpp");
+  const resolved = resolveToolchain(kind);
   if (resolved.ready && resolved.source === "managed" && sameFile(resolved.executablePath, compilerPath)) {
-    const prepared = await prepareManagedToolchainExecutable("cpp", resolved);
+    const prepared = await prepareManagedToolchainExecutable(kind, resolved);
     return {
       ...prepared,
       argumentPrefix: [],
@@ -525,12 +596,18 @@ async function prepareCompiler(
   const managedRoot = fs.realpathSync(getToolchainsDir());
   if (isDescendant(managedRoot, realCompiler)) {
     return {
-      ...await importManagedToolchain("cpp", realCompiler, getExecutableVersion(realCompiler, "cpp")),
+      ...await importManagedToolchain(
+        kind,
+        realCompiler,
+        getExecutableVersion(realCompiler, kind),
+      ),
       argumentPrefix: [],
       environment: {},
     };
   }
-  const darwin = process.platform === "darwin" ? resolveDarwinCompilerSupport(realCompiler) : null;
+  const darwin = process.platform === "darwin"
+    ? resolveDarwinCompilerSupport(realCompiler, kind)
+    : null;
   const name = stagedCompilerName(realCompiler);
   const staged = workspace.stage(realCompiler, name, true);
   return {
@@ -538,7 +615,7 @@ async function prepareCompiler(
     executablePath: staged,
     argumentPrefix: darwin?.argumentPrefix ?? [],
     environment: darwin?.environment ?? {},
-    compatibilityHeaderPath: darwin
+    compatibilityHeaderPath: darwin && kind === "cpp"
       ? resolveDarwinCompatibilityHeader(RESOURCE_ROOT)
       : undefined,
   };
@@ -567,7 +644,10 @@ export function stagedCompilerName(
   return platform === "win32" ? "compiler.exe" : path.basename(compilerPath);
 }
 
-export function resolveDarwinCompilerSupport(compilerPath: string): {
+export function resolveDarwinCompilerSupport(
+  compilerPath: string,
+  kind: Extract<ToolchainKind, "cpp" | "c"> = "cpp",
+): {
   argumentPrefix: string[];
   environment: Record<string, string>;
 } {
@@ -598,7 +678,7 @@ export function resolveDarwinCompilerSupport(compilerPath: string): {
 
   return {
     argumentPrefix: [
-      "--driver-mode=g++",
+      kind === "cpp" ? "--driver-mode=g++" : "--driver-mode=gcc",
       "-fintegrated-cc1",
       // Seatbelt can prevent the driver from inferring this directory through realpath.
       // Pin it to the Apple toolchain path already validated by the native executor.
@@ -638,22 +718,29 @@ function isDescendant(root: string, candidate: string): boolean {
   return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
 }
 
-function findGccProgramDirectory(root: string): string {
-  const cached = gccProgramDirectoryCache.get(root);
+function findGccProgramDirectory(
+  root: string,
+  kind: Extract<ToolchainKind, "cpp" | "c"> = "cpp",
+): string {
+  const cacheKey = `${kind}:${root}`;
+  const cached = gccProgramDirectoryCache.get(cacheKey);
   if (cached) return cached;
+  const frontend = kind === "cpp" ? "cc1plus.exe" : "cc1.exe";
   const pending = [root];
   while (pending.length > 0) {
     const directory = pending.pop()!;
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
       const entryPath = path.join(directory, entry.name);
       if (entry.isDirectory()) pending.push(entryPath);
-      if (entry.isFile() && entry.name.toLowerCase() === "cc1plus.exe") {
-        gccProgramDirectoryCache.set(root, directory);
+      if (entry.isFile() && entry.name.toLowerCase() === frontend) {
+        gccProgramDirectoryCache.set(cacheKey, directory);
         return directory;
       }
     }
   }
-  throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE: cc1plus.exe was not found in the managed GCC cache");
+  throw new Error(
+    `TOOLCHAIN_NOT_SANDBOX_COMPATIBLE: ${frontend} was not found in the managed GCC cache`,
+  );
 }
 
 function findGccLibraryDirectories(root: string): string[] {
@@ -686,8 +773,12 @@ function findGccLibraryDirectories(root: string): string[] {
   return result;
 }
 
-export function findGccIncludeDirectories(root: string): string[] {
-  const cached = gccIncludeDirectoryCache.get(root);
+export function findGccIncludeDirectories(
+  root: string,
+  includeCpp = true,
+): string[] {
+  const cacheKey = `${includeCpp ? "cpp" : "c"}:${root}`;
+  const cached = gccIncludeDirectoryCache.get(cacheKey);
   if (cached) return cached;
   let cppRoot: string | undefined;
   const cppTargets = new Set<string>();
@@ -727,19 +818,23 @@ export function findGccIncludeDirectories(root: string): string[] {
       }
     }
   }
-  if (!cppRoot || gccIncludes.size === 0 || systemIncludes.size === 0) {
+  if (
+    (includeCpp && !cppRoot)
+    || gccIncludes.size === 0
+    || systemIncludes.size === 0
+  ) {
     throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE: managed GCC headers were not found");
   }
-  const backward = path.join(cppRoot, "backward");
+  const backward = cppRoot ? path.join(cppRoot, "backward") : "";
   const result = [
-    cppRoot,
-    ...cppTargets,
-    ...(fs.existsSync(backward) ? [backward] : []),
+    ...(cppRoot && includeCpp ? [cppRoot] : []),
+    ...(includeCpp ? [...cppTargets] : []),
+    ...(includeCpp && fs.existsSync(backward) ? [backward] : []),
     ...gccIncludes,
     ...fixedIncludes,
     ...systemIncludes,
   ];
-  gccIncludeDirectoryCache.set(root, result);
+  gccIncludeDirectoryCache.set(cacheKey, result);
   return result;
 }
 

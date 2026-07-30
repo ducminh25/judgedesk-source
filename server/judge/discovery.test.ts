@@ -82,6 +82,36 @@ test("discovery recognizes Python submissions independently of C++", (t) => {
   });
 });
 
+test("submission discovery maps every registered contest source extension", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-language-discovery-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const cases = [
+    ["C_TASK.c", "c"],
+    ["PASCAL_TASK.pp", "pascal"],
+    ["GO_TASK.go", "go"],
+    ["JAVA_TASK.java", "java"],
+    ["RUST_TASK.rs", "rust"],
+    ["JS_TASK.js", "javascript"],
+    ["CS_TASK.cs", "csharp"],
+  ] as const;
+  for (const [fileName, language] of cases) {
+    fs.writeFileSync(path.join(root, fileName), "");
+    const problem = path.parse(fileName).name;
+    assert.equal(findSubmission(root, problem)?.language, language);
+  }
+});
+
+test("submission discovery fails closed when one problem has multiple languages", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-ambiguous-submission-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(root, "SUM.cpp"), "");
+  fs.writeFileSync(path.join(root, "SUM.py"), "");
+  assert.throws(
+    () => findSubmission(root, "SUM"),
+    /AMBIGUOUS_SUBMISSION.*SUM\.cpp.*SUM\.py/,
+  );
+});
+
 test("submission discovery ignores candidates that are not an exact supported source file", (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-submission-filter-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
