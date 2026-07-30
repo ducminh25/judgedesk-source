@@ -62,7 +62,17 @@ test("a built-in managed toolchain is referenced directly without an executor-ca
     ...descriptor.executableRelativePath.split("/"),
   );
   fs.mkdirSync(path.dirname(executablePath), { recursive: true });
-  fs.writeFileSync(executablePath, "runtime");
+  let canonicalExecutablePath = executablePath;
+  if (process.platform === "darwin") {
+    canonicalExecutablePath = path.join(
+      path.dirname(executablePath),
+      "python3.12",
+    );
+    fs.writeFileSync(canonicalExecutablePath, "runtime");
+    fs.symlinkSync(path.basename(canonicalExecutablePath), executablePath);
+  } else {
+    fs.writeFileSync(executablePath, "runtime");
+  }
   const entrypoint = descriptor.entrypoints.find(
     (candidate) => candidate.kind === "python",
   );
@@ -99,7 +109,7 @@ test("a built-in managed toolchain is referenced directly without an executor-ca
   const prepared = await prepareManagedToolchainExecutable("python", resolved);
 
   assert.equal(prepared.root, fs.realpathSync(packageRoot));
-  assert.equal(prepared.executablePath, fs.realpathSync(executablePath));
+  assert.equal(prepared.executablePath, fs.realpathSync(canonicalExecutablePath));
   assert.equal(
     prepared.executableId,
     `builtin-toolchains/${descriptor.id}/${descriptor.executableRelativePath}`,

@@ -279,19 +279,24 @@ export async function prepareManagedToolchainComponent(
     resolved.packageOrigin === "built-in"
   ) {
     const canonicalRoot = installed.root;
+    const lexicalExecutable = path.join(
+      canonicalRoot,
+      ...component.relativePath.split("/"),
+    );
     const canonicalExecutable = fs.realpathSync(
-      path.join(canonicalRoot, ...component.relativePath.split("/")),
+      lexicalExecutable,
     );
     if (!isDescendant(canonicalRoot, canonicalExecutable)) {
       throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
     }
-    const relativeExecutable = path
-      .relative(canonicalRoot, canonicalExecutable)
-      .replaceAll("\\", "/");
     return {
       ...resolved,
       executablePath: canonicalExecutable,
-      executableId: `builtin-toolchains/${descriptor.id}/${relativeExecutable}`,
+      // The executor authenticates the signed receipt component path, then
+      // canonicalizes it independently. Keep that lexical identity even when
+      // an upstream package uses an internal entrypoint symlink.
+      executableId:
+        `builtin-toolchains/${descriptor.id}/${component.relativePath}`,
       root: canonicalRoot,
       toolchain: {
         packageId: descriptor.id,
@@ -330,12 +335,11 @@ export async function prepareManagedToolchainComponent(
   if (!cachedComponent) {
     throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
   }
-  const cachedExecutable = fs.realpathSync(
-    path.join(
-      cachedReceipt.root,
-      ...cachedComponent.relativePath.split("/"),
-    ),
+  const cachedLexicalExecutable = path.join(
+    cachedReceipt.root,
+    ...cachedComponent.relativePath.split("/"),
   );
+  const cachedExecutable = fs.realpathSync(cachedLexicalExecutable);
   if (!isDescendant(cachedReceipt.root, cachedExecutable)) {
     throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
   }
@@ -349,7 +353,7 @@ export async function prepareManagedToolchainComponent(
     ...resolved,
     executablePath: cachedExecutable,
     executableId: path
-      .relative(health.executorRoot, cachedExecutable)
+      .relative(health.executorRoot, cachedLexicalExecutable)
       .replaceAll("\\", "/"),
     root: cachedReceipt.root,
     toolchain: {
