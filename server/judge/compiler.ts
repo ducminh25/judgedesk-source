@@ -1224,7 +1224,15 @@ function decoratePreparedCompilerForPlatform(
     environment: {
       ...compiler.environment,
       ...support.environment,
-      PATH: path.dirname(support.compilerPath),
+      // FPC's Darwin linker script resolves cat/rm through PATH. Seatbelt still
+      // permits only the exact managed-FPC utilities declared by the native
+      // executor, so adding the immutable system directories does not broaden
+      // the process-exec allowlist.
+      PATH: kind === "pascal"
+        ? [path.dirname(support.compilerPath), "/usr/bin", "/bin"].join(
+            path.delimiter,
+          )
+        : path.dirname(support.compilerPath),
     },
   };
 }
