@@ -488,16 +488,12 @@ fn trusted_profile_directory(root: &Path) -> Result<PathBuf, String> {
 }
 
 fn build_profile(spec: &RunSpec, paths: &ValidatedRun) -> Result<String, String> {
-    let workspace = seatbelt_literal(
-        &fs::canonicalize(&paths.workspace)
-            .map_err(|error| error.to_string())?
-            .to_string_lossy(),
-    );
-    let executable = seatbelt_literal(
-        &fs::canonicalize(&paths.executable)
-            .map_err(|error| error.to_string())?
-            .to_string_lossy(),
-    );
+    let canonical_workspace =
+        fs::canonicalize(&paths.workspace).map_err(|error| error.to_string())?;
+    let canonical_executable =
+        fs::canonicalize(&paths.executable).map_err(|error| error.to_string())?;
+    let workspace = seatbelt_literal(&canonical_workspace.to_string_lossy());
+    let executable = seatbelt_literal(&canonical_executable.to_string_lossy());
     let mut read_rules = vec![
         format!("(literal \"{executable}\")"),
         format!("(subpath \"{workspace}\")"),
@@ -522,6 +518,27 @@ fn build_profile(spec: &RunSpec, paths: &ValidatedRun) -> Result<String, String>
         format!("(literal \"{executable}\")"),
         "(literal \"/usr/bin/sandbox-exec\")".into(),
     ];
+    // Some managed hosts (notably dotnet) resolve their own executable before loading the
+    // runtime. Seatbelt's subpath read grant does not implicitly grant metadata traversal on
+    // lexical ancestors such as /Users and /Users/<name>. Permit only exact, already-known
+    // ancestors; directory contents and sibling file data remain inaccessible.
+    let mut metadata_rules = std::collections::BTreeSet::from([
+        "(literal \"/\")".to_string(),
+        "(literal \"/etc\")".to_string(),
+        "(literal \"/tmp\")".to_string(),
+        "(literal \"/var\")".to_string(),
+        "(subpath \"/private/var\")".to_string(),
+        "(literal \"/System/Volumes\")".to_string(),
+        "(literal \"/System/Volumes/Data\")".to_string(),
+        "(literal \"/System/Volumes/Data/Users\")".to_string(),
+        "(literal \"/System/Volumes/Preboot\")".to_string(),
+        "(literal \"/System/Volumes/Preboot/Cryptexes\")".to_string(),
+        "(literal \"/System/Cryptexes\")".to_string(),
+        "(literal \"/dev\")".to_string(),
+        "(regex \"^/dev/.*$\")".to_string(),
+    ]);
+    add_metadata_ancestor_rules(&mut metadata_rules, &canonical_workspace);
+    add_metadata_ancestor_rules(&mut metadata_rules, &canonical_executable);
     let toolchain_package_root = paths.toolchain_package_root.as_deref().or_else(|| {
         paths.executable.ancestors().find(|path| {
             path.parent()
@@ -530,6 +547,7 @@ fn build_profile(spec: &RunSpec, paths: &ValidatedRun) -> Result<String, String>
         })
     });
     if let Some(toolchain_package_root) = toolchain_package_root {
+        add_metadata_ancestor_rules(&mut metadata_rules, toolchain_package_root);
         read_rules.push(format!(
             "(subpath \"{}\")",
             seatbelt_literal(&toolchain_package_root.to_string_lossy())
@@ -594,20 +612,7 @@ fn build_profile(spec: &RunSpec, paths: &ValidatedRun) -> Result<String, String>
 (deny network*)
 (allow file-read* file-test-existence {})
 (allow file-map-executable {})
-(allow file-read-metadata file-test-existence
-  (literal "/")
-  (literal "/etc")
-  (literal "/tmp")
-  (literal "/var")
-  (subpath "/private/var")
-  (literal "/System/Volumes")
-  (literal "/System/Volumes/Data")
-  (literal "/System/Volumes/Data/Users")
-  (literal "/System/Volumes/Preboot")
-  (literal "/System/Volumes/Preboot/Cryptexes")
-  (literal "/System/Cryptexes")
-  (literal "/dev")
-  (regex "^/dev/.*$"))
+(allow file-read-metadata file-test-existence {})
 (allow file-write* (subpath "{workspace}"))
 (allow sysctl-read)
 (allow mach-lookup)
@@ -623,8 +628,18 @@ fn build_profile(spec: &RunSpec, paths: &ValidatedRun) -> Result<String, String>
 "#,
         process_exec_rules.join(" "),
         read_rules.join(" "),
-        read_rules.join(" ")
+        read_rules.join(" "),
+        metadata_rules.into_iter().collect::<Vec<_>>().join(" ")
     ))
+}
+
+fn add_metadata_ancestor_rules(rules: &mut std::collections::BTreeSet<String>, path: &Path) {
+    for ancestor in path.ancestors().skip(1) {
+        rules.insert(format!(
+            "(literal \"{}\")",
+            seatbelt_literal(&ancestor.to_string_lossy())
+        ));
+    }
 }
 
 fn validated_compiler_roots(spec: &RunSpec) -> Result<(PathBuf, PathBuf), String> {
@@ -775,8 +790,8 @@ fn process_virtual_memory_bytes(pid: i32) -> u64 {
 #[cfg(test)]
 mod launcher_spec_tests {
     use super::{
-        cleanup_run_profiles, launcher_nproc_ceiling, minimal_environment, write_private_profile,
-        RunLimits, RunRole, RunSpec,
+        add_metadata_ancestor_rules, cleanup_run_profiles, launcher_nproc_ceiling,
+        minimal_environment, write_private_profile, RunLimits, RunRole, RunSpec,
     };
     use crate::workspace::initialize_root;
     use std::collections::BTreeMap;
@@ -838,6 +853,20 @@ mod launcher_spec_tests {
         assert_eq!(environment["TMPDIR"], "/private/workspace");
         assert_eq!(environment["PATH"], "/managed/python/bin:/usr/bin:/bin");
         assert_eq!(environment["PYTHONNOUSERSITE"], "1");
+    }
+
+    #[test]
+    fn metadata_traversal_grants_only_exact_known_ancestors() {
+        let mut rules = std::collections::BTreeSet::new();
+        add_metadata_ancestor_rules(
+            &mut rules,
+            std::path::Path::new("/Users/teacher/JudgeDesk/toolchains/dotnet/dotnet"),
+        );
+        assert!(rules.contains("(literal \"/Users\")"));
+        assert!(rules.contains("(literal \"/Users/teacher\")"));
+        assert!(rules.contains("(literal \"/Users/teacher/JudgeDesk/toolchains/dotnet\")"));
+        assert!(!rules.contains("(subpath \"/Users\")"));
+        assert!(!rules.contains("(literal \"/Users/student\")"));
     }
 
     #[test]
