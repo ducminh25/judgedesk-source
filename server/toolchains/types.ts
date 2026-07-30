@@ -1,4 +1,13 @@
-export type ToolchainKind = "cpp" | "python";
+export type ToolchainKind =
+  | "cpp"
+  | "c"
+  | "python"
+  | "pascal"
+  | "go"
+  | "java"
+  | "rust"
+  | "javascript"
+  | "csharp";
 export type ToolchainPackageOrigin = "built-in" | "downloaded";
 import type {
   ReadinessReasonCode,
@@ -13,8 +22,19 @@ export type ToolchainSource =
   | "system"
   | "sandbox";
 
+export interface ToolchainKindEntrypoint {
+  kind: ToolchainKind;
+  componentId: string;
+  executableRelativePath: string;
+}
+
 export interface ToolchainCatalogEntry {
   id: string;
+  provides: readonly [ToolchainKind, ...ToolchainKind[]];
+  entrypoints: readonly [
+    ToolchainKindEntrypoint,
+    ...ToolchainKindEntrypoint[],
+  ];
   kind: ToolchainKind;
   version: string;
   platform: "win32" | "darwin";
@@ -70,6 +90,11 @@ export interface ToolchainManifestV1Document {
 
 export interface ToolchainManifestV2Package {
   id: string;
+  provides: readonly [ToolchainKind, ...ToolchainKind[]];
+  entrypoints: readonly [
+    ToolchainKindEntrypoint,
+    ...ToolchainKindEntrypoint[],
+  ];
   kind: ToolchainKind;
   version: string;
   platform: "win32" | "darwin";
@@ -100,6 +125,14 @@ export interface ToolchainManifestV2Document {
     keyId: string;
     value: string;
   };
+}
+
+export interface ToolchainReleaseBlueprint
+  extends Omit<
+    ToolchainManifestV2Package,
+    "downloadUrl" | "sha256" | "sizeBytes" | "installedSizeBytes"
+  > {
+  archiveFilename: string;
 }
 
 export type ToolchainManifestDocument =

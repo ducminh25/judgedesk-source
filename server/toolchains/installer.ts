@@ -32,7 +32,7 @@ export function cancelInstallation(id: string): void {
   }
 }
 
-async function verifyChecksum(
+export async function verifyToolchainArchiveChecksum(
   filePath: string,
   expectedSha256: string,
 ): Promise<boolean> {
@@ -222,7 +222,7 @@ function listUnixArchive(archivePath: string, format: string): string[] {
   return result.stdout.split(/\r?\n/).filter(Boolean);
 }
 
-function extractArchive(
+export function extractToolchainArchive(
   archivePath: string,
   destination: string,
   format: string,
@@ -255,7 +255,7 @@ function extractArchive(
   }
 }
 
-function verifyExecutable(executablePath: string): void {
+export function verifyToolchainExecutable(executablePath: string): void {
   if (!fs.existsSync(executablePath) || !fs.statSync(executablePath).isFile()) {
     throw new Error(
       `Invalid package: executable '${executablePath}' was not found.`,
@@ -339,15 +339,15 @@ export async function installToolchain(
 
     progress.status = "verifying";
     progress.percent = 100;
-    if (!(await verifyChecksum(tempDownloadPath, descriptor.sha256))) {
+    if (!(await verifyToolchainArchiveChecksum(tempDownloadPath, descriptor.sha256))) {
       throw new Error(
         "SHA-256 checksum verification failed. The downloaded package was rejected.",
       );
     }
 
     progress.status = "extracting";
-    extractArchive(tempDownloadPath, tempExtractDir, descriptor.archiveFormat);
-    verifyExecutable(
+    extractToolchainArchive(tempDownloadPath, tempExtractDir, descriptor.archiveFormat);
+    verifyToolchainExecutable(
       path.join(tempExtractDir, descriptor.executableRelativePath),
     );
     // The archive cannot supply its own trust metadata. JudgeDesk writes the

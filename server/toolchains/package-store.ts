@@ -5,6 +5,8 @@ import { getDownloadedToolchainsDir } from "./storage.js";
 import type {
   ToolchainCatalogEntry,
   ToolchainDescriptor,
+  ToolchainKind,
+  ToolchainKindEntrypoint,
   ToolchainPackageComponent,
   ToolchainPackageOrigin,
 } from "./types.js";
@@ -114,8 +116,14 @@ export function inspectInstalledToolchainPackage(
   options: {
     builtInRoot?: string;
     downloadedRoot?: string;
+    kind?: ToolchainKind;
   } = {},
 ): InstalledToolchainPackageState {
+  const requestedKind = options.kind ?? entry.kind;
+  const requestedEntrypoint = entry.entrypoints.find(
+    (candidate) => candidate.kind === requestedKind,
+  );
+  if (!requestedEntrypoint) return { status: "not_installed" };
   const roots: readonly {
     origin: ToolchainPackageOrigin;
     root: string;
@@ -144,6 +152,7 @@ export function inspectInstalledToolchainPackage(
           packageRoot,
           candidate.origin,
           candidate.receiptRequired,
+          requestedEntrypoint,
         ),
       };
     } catch (error) {
@@ -163,6 +172,7 @@ function inspectPackageRoot(
   packageRoot: string,
   origin: ToolchainPackageOrigin,
   receiptRequired: boolean,
+  requestedEntrypoint: ToolchainKindEntrypoint,
 ): InstalledToolchainPackage {
   const rootMetadata = fs.lstatSync(packageRoot);
   if (!rootMetadata.isDirectory() || rootMetadata.isSymbolicLink()) {
@@ -172,11 +182,12 @@ function inspectPackageRoot(
   const receiptPath = path.join(canonicalRoot, TOOLCHAIN_PACKAGE_RECEIPT);
   const receipt = readReceipt(receiptPath, entry, receiptRequired);
   const executableRelativePath = normalizeRelativePath(
-    entry.executableRelativePath,
+    requestedEntrypoint.executableRelativePath,
     "toolchain executable",
   );
   const executableComponent = receipt?.components.find((component) =>
     component.kind === "executable"
+    && component.id === requestedEntrypoint.componentId
     && component.relativePath === executableRelativePath
   );
   if (receipt && !executableComponent) {

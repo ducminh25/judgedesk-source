@@ -1,4 +1,7 @@
 import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { RESOURCE_ROOT } from "../runtime.js";
 import {
   ToolchainCatalogEntry,
   ToolchainDescriptor,
@@ -6,10 +9,11 @@ import {
   ToolchainManifestV2Payload,
   ToolchainPackageComponent,
   ToolchainPackageLicense,
+  ToolchainReleaseBlueprint,
 } from "./types.js";
 
-const DEFAULT_MANIFEST_URL =
-  "https://github.com/ducminh25/judgedesk/releases/download/toolchains-v1/toolchains-manifest.json";
+export const DEFAULT_TOOLCHAIN_MANIFEST_URL =
+  "https://github.com/ducminh25/judgedesk/releases/download/toolchains-v2/toolchains-manifest.json";
 const MANIFEST_CACHE_MS = 5 * 60 * 1000;
 const MANIFEST_KEY_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/;
 const COMPONENT_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/;
@@ -22,15 +26,40 @@ const SHA256_PATTERN = /^[a-f0-9]{64}$/i;
  */
 export const OFFICIAL_TOOLCHAIN_MANIFEST_PUBLIC_KEYS: Readonly<
   Record<string, string>
-> = Object.freeze({});
+> = Object.freeze({
+  "judgedesk-toolchains-2026-07": [
+    "-----BEGIN PUBLIC KEY-----",
+    "MCowBQYDK2VwAyEAG8mGFjypSBqO2ssigjLN9noSJ+AMbhn6YAsoCfl6TW8=",
+    "-----END PUBLIC KEY-----",
+    "",
+  ].join("\n"),
+});
+export const REVOKED_TOOLCHAIN_MANIFEST_KEY_IDS: ReadonlySet<string> =
+  Object.freeze(new Set<string>());
+export const REVOKED_TOOLCHAIN_PACKAGE_DIGESTS: ReadonlySet<string> =
+  Object.freeze(new Set<string>());
 
 export interface ManifestValidationOptions {
   trustedPublicKeys?: Readonly<Record<string, string>>;
+  requireSignedV2?: boolean;
 }
 
 export const TOOLCHAIN_CATALOG: ToolchainCatalogEntry[] = [
   {
     id: "gcc-windows-x64",
+    provides: ["cpp", "c"],
+    entrypoints: [
+      {
+        kind: "cpp",
+        componentId: "gcc.cxx",
+        executableRelativePath: "bin/g++.exe",
+      },
+      {
+        kind: "c",
+        componentId: "gcc.c",
+        executableRelativePath: "bin/gcc.exe",
+      },
+    ],
     kind: "cpp",
     version: "14.2.0",
     platform: "win32",
@@ -41,6 +70,14 @@ export const TOOLCHAIN_CATALOG: ToolchainCatalogEntry[] = [
   },
   {
     id: "python-windows-x64",
+    provides: ["python"],
+    entrypoints: [
+      {
+        kind: "python",
+        componentId: "python.runtime",
+        executableRelativePath: "python.exe",
+      },
+    ],
     kind: "python",
     version: "3.12.13",
     platform: "win32",
@@ -51,6 +88,14 @@ export const TOOLCHAIN_CATALOG: ToolchainCatalogEntry[] = [
   },
   {
     id: "python-macos-x64",
+    provides: ["python"],
+    entrypoints: [
+      {
+        kind: "python",
+        componentId: "python.runtime",
+        executableRelativePath: "bin/python3",
+      },
+    ],
     kind: "python",
     version: "3.12.13",
     platform: "darwin",
@@ -61,6 +106,14 @@ export const TOOLCHAIN_CATALOG: ToolchainCatalogEntry[] = [
   },
   {
     id: "python-macos-arm64",
+    provides: ["python"],
+    entrypoints: [
+      {
+        kind: "python",
+        componentId: "python.runtime",
+        executableRelativePath: "bin/python3",
+      },
+    ],
     kind: "python",
     version: "3.12.13",
     platform: "darwin",
@@ -71,9 +124,189 @@ export const TOOLCHAIN_CATALOG: ToolchainCatalogEntry[] = [
   },
 ];
 
+export const TOOLCHAIN_RELEASE_BLUEPRINTS: Readonly<
+  Record<string, ToolchainReleaseBlueprint>
+> = Object.freeze({
+  "gcc-windows-x64": {
+    id: "gcc-windows-x64",
+    provides: ["cpp", "c"],
+    entrypoints: [
+      {
+        kind: "cpp",
+        componentId: "gcc.cxx",
+        executableRelativePath: "bin/g++.exe",
+      },
+      {
+        kind: "c",
+        componentId: "gcc.c",
+        executableRelativePath: "bin/gcc.exe",
+      },
+    ],
+    kind: "cpp",
+    version: "14.2.0",
+    platform: "win32",
+    arch: "x64",
+    minimumOs: "10.0",
+    archiveFormat: "zip",
+    archiveFilename: "judgedesk-gcc-windows-x64-14.2.0.zip",
+    entrypointComponentId: "gcc.cxx",
+    components: [
+      {
+        id: "gcc.cxx",
+        kind: "executable",
+        relativePath: "bin/g++.exe",
+        roles: ["compiler"],
+      },
+      {
+        id: "gcc.c",
+        kind: "executable",
+        relativePath: "bin/gcc.exe",
+        roles: ["compiler"],
+      },
+      {
+        id: "gcc.root",
+        kind: "support-root",
+        relativePath: ".",
+        roles: ["compiler"],
+      },
+    ],
+    healthProbeId: "gcc.ucrt.native-v1",
+    upstreamUrl: "https://github.com/brechtsanders/winlibs_mingw",
+    license: {
+      spdxExpression: "GPL-3.0-or-later WITH GCC-exception-3.1",
+      licenseFiles: ["COPYING3", "COPYING.RUNTIME", "SOURCE.txt"],
+      noticeFiles: ["THIRD-PARTY-NOTICES.txt"],
+      sbomPath: "SBOM.spdx.json",
+    },
+  },
+  "python-windows-x64": {
+    id: "python-windows-x64",
+    provides: ["python"],
+    entrypoints: [
+      {
+        kind: "python",
+        componentId: "python.runtime",
+        executableRelativePath: "python.exe",
+      },
+    ],
+    kind: "python",
+    version: "3.12.13",
+    platform: "win32",
+    arch: "x64",
+    minimumOs: "10.0",
+    archiveFormat: "zip",
+    archiveFilename: "judgedesk-python-windows-x64-3.12.13.zip",
+    entrypointComponentId: "python.runtime",
+    components: [
+      {
+        id: "python.runtime",
+        kind: "executable",
+        relativePath: "python.exe",
+        roles: ["submission-runtime", "checker-runtime"],
+      },
+      {
+        id: "python.root",
+        kind: "support-root",
+        relativePath: ".",
+        roles: ["submission-runtime", "checker-runtime"],
+      },
+    ],
+    healthProbeId: "cpython.isolated-v1",
+    upstreamUrl: "https://github.com/astral-sh/python-build-standalone",
+    license: {
+      spdxExpression: "Python-2.0",
+      licenseFiles: ["LICENSE.txt"],
+      noticeFiles: ["THIRD-PARTY-NOTICES.txt"],
+      sbomPath: "SBOM.spdx.json",
+    },
+  },
+  "python-macos-x64": {
+    id: "python-macos-x64",
+    provides: ["python"],
+    entrypoints: [
+      {
+        kind: "python",
+        componentId: "python.runtime",
+        executableRelativePath: "bin/python3",
+      },
+    ],
+    kind: "python",
+    version: "3.12.13",
+    platform: "darwin",
+    arch: "x64",
+    minimumOs: "11.0",
+    archiveFormat: "tar.gz",
+    archiveFilename: "judgedesk-python-macos-x64-3.12.13.tar.gz",
+    entrypointComponentId: "python.runtime",
+    components: [
+      {
+        id: "python.runtime",
+        kind: "executable",
+        relativePath: "bin/python3",
+        roles: ["submission-runtime", "checker-runtime"],
+      },
+      {
+        id: "python.root",
+        kind: "support-root",
+        relativePath: ".",
+        roles: ["submission-runtime", "checker-runtime"],
+      },
+    ],
+    healthProbeId: "cpython.isolated-v1",
+    upstreamUrl: "https://github.com/astral-sh/python-build-standalone",
+    license: {
+      spdxExpression: "Python-2.0",
+      licenseFiles: ["lib/python3.12/LICENSE.txt"],
+      noticeFiles: ["THIRD-PARTY-NOTICES.txt"],
+      sbomPath: "SBOM.spdx.json",
+    },
+  },
+  "python-macos-arm64": {
+    id: "python-macos-arm64",
+    provides: ["python"],
+    entrypoints: [
+      {
+        kind: "python",
+        componentId: "python.runtime",
+        executableRelativePath: "bin/python3",
+      },
+    ],
+    kind: "python",
+    version: "3.12.13",
+    platform: "darwin",
+    arch: "arm64",
+    minimumOs: "11.0",
+    archiveFormat: "tar.gz",
+    archiveFilename: "judgedesk-python-macos-arm64-3.12.13.tar.gz",
+    entrypointComponentId: "python.runtime",
+    components: [
+      {
+        id: "python.runtime",
+        kind: "executable",
+        relativePath: "bin/python3",
+        roles: ["submission-runtime", "checker-runtime"],
+      },
+      {
+        id: "python.root",
+        kind: "support-root",
+        relativePath: ".",
+        roles: ["submission-runtime", "checker-runtime"],
+      },
+    ],
+    healthProbeId: "cpython.isolated-v1",
+    upstreamUrl: "https://github.com/astral-sh/python-build-standalone",
+    license: {
+      spdxExpression: "Python-2.0",
+      licenseFiles: ["lib/python3.12/LICENSE.txt"],
+      noticeFiles: ["THIRD-PARTY-NOTICES.txt"],
+      sbomPath: "SBOM.spdx.json",
+    },
+  },
+});
+
 let cachedManifest: {
   expiresAt: number;
-  manifestUrl: string;
+  sourceKey: string;
   toolchains: ToolchainDescriptor[];
 } | null = null;
 
@@ -89,6 +322,14 @@ function catalogEntry(id: string): ToolchainCatalogEntry {
   const entry = TOOLCHAIN_CATALOG.find((candidate) => candidate.id === id);
   if (!entry) throw new Error(`Unknown toolchain package '${id}'.`);
   return entry;
+}
+
+function releaseBlueprint(id: string): ToolchainReleaseBlueprint {
+  const blueprint = TOOLCHAIN_RELEASE_BLUEPRINTS[id];
+  if (!blueprint) {
+    throw new Error(`Toolchain package '${id}' has no trusted release blueprint.`);
+  }
+  return blueprint;
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -256,6 +497,8 @@ function validateV2Package(value: unknown): ToolchainDescriptor {
     value,
     [
       "id",
+      "provides",
+      "entrypoints",
       "kind",
       "version",
       "platform",
@@ -275,10 +518,28 @@ function validateV2Package(value: unknown): ToolchainDescriptor {
     "Toolchain package",
   );
   const expected = catalogEntry(validateIdentifier(value.id, "Toolchain package ID"));
+  const blueprint = releaseBlueprint(expected.id);
   for (const field of ["kind", "version", "platform", "arch", "archiveFormat"] as const) {
     if (value[field] !== expected[field]) {
       throw new Error(`Toolchain '${expected.id}' has an invalid ${field}.`);
     }
+  }
+  if (
+    !Array.isArray(value.provides)
+    || value.provides.length === 0
+    || value.provides.some((kind) =>
+      typeof kind !== "string" || !expected.provides.includes(kind as never)
+    )
+    || value.provides.length !== expected.provides.length
+    || value.provides.some((kind, index) => kind !== expected.provides[index])
+  ) {
+    throw new Error(`Toolchain '${expected.id}' has invalid provided toolchain kinds.`);
+  }
+  if (
+    !Array.isArray(value.entrypoints)
+    || value.entrypoints.length !== expected.entrypoints.length
+  ) {
+    throw new Error(`Toolchain '${expected.id}' has invalid language entrypoints.`);
   }
   const minimumOs = validatePlainString(value.minimumOs, `Toolchain '${expected.id}' minimum OS`);
   const componentsRaw = value.components;
@@ -301,6 +562,50 @@ function validateV2Package(value: unknown): ToolchainDescriptor {
   ) {
     throw new Error(`Toolchain '${expected.id}' has an invalid entrypoint component.`);
   }
+  const entrypoints = value.entrypoints.map((candidate, index) => {
+    if (!isPlainRecord(candidate)) {
+      throw new Error(`Toolchain '${expected.id}' entrypoint ${index} is invalid.`);
+    }
+    assertExactKeys(
+      candidate,
+      ["kind", "componentId", "executableRelativePath"],
+      `Toolchain '${expected.id}' entrypoint ${index}`,
+    );
+    if (
+      typeof candidate.kind !== "string"
+      || !(value.provides as unknown[]).includes(candidate.kind)
+    ) {
+      throw new Error(`Toolchain '${expected.id}' entrypoint ${index} has an invalid kind.`);
+    }
+    const componentId = validateIdentifier(
+      candidate.componentId,
+      `Toolchain '${expected.id}' entrypoint ${index} component`,
+    );
+    const executableRelativePath = validateSafeRelativePath(
+      candidate.executableRelativePath,
+      `Toolchain '${expected.id}' entrypoint ${index} path`,
+    );
+    const component = components.find((entry) => entry.id === componentId);
+    if (
+      !component
+      || component.kind !== "executable"
+      || component.relativePath !== executableRelativePath
+    ) {
+      throw new Error(
+        `Toolchain '${expected.id}' entrypoint ${index} does not identify an executable component.`,
+      );
+    }
+    return {
+      kind: candidate.kind,
+      componentId,
+      executableRelativePath,
+    };
+  });
+  if (
+    new Set(entrypoints.map((entry) => entry.kind)).size !== entrypoints.length
+  ) {
+    throw new Error(`Toolchain '${expected.id}' contains duplicate language entrypoints.`);
+  }
   const license = validateLicense(value.license, expected.id);
   for (const requiredLicense of expected.licenseFiles) {
     if (!license.licenseFiles.includes(requiredLicense.replaceAll("\\", "/"))) {
@@ -310,6 +615,42 @@ function validateV2Package(value: unknown): ToolchainDescriptor {
   const sha256 = String(value.sha256 || "").toLowerCase();
   if (!SHA256_PATTERN.test(sha256)) {
     throw new Error(`Toolchain '${expected.id}' has an invalid SHA-256 digest.`);
+  }
+  if (REVOKED_TOOLCHAIN_PACKAGE_DIGESTS.has(sha256)) {
+    throw new Error(`Toolchain '${expected.id}' package digest has been revoked.`);
+  }
+  const healthProbeId = validateIdentifier(
+    value.healthProbeId,
+    `Toolchain '${expected.id}' health probe`,
+  );
+  const upstreamUrl = validateHttpsUrl(
+    value.upstreamUrl,
+    `Toolchain '${expected.id}' upstream URL`,
+  );
+  const signedPolicy = {
+    minimumOs,
+    provides: value.provides,
+    entrypoints,
+    entrypointComponentId,
+    components,
+    healthProbeId,
+    upstreamUrl,
+    license,
+  };
+  const trustedPolicy = {
+    minimumOs: blueprint.minimumOs,
+    provides: blueprint.provides,
+    entrypoints: blueprint.entrypoints,
+    entrypointComponentId: blueprint.entrypointComponentId,
+    components: blueprint.components,
+    healthProbeId: blueprint.healthProbeId,
+    upstreamUrl: new URL(blueprint.upstreamUrl).toString(),
+    license: blueprint.license,
+  };
+  if (canonicalizeValue(signedPolicy) !== canonicalizeValue(trustedPolicy)) {
+    throw new Error(
+      `Toolchain '${expected.id}' does not match the trusted release blueprint.`,
+    );
   }
   return {
     ...expected,
@@ -324,11 +665,8 @@ function validateV2Package(value: unknown): ToolchainDescriptor {
     ),
     entrypointComponentId,
     components,
-    healthProbeId: validateIdentifier(
-      value.healthProbeId,
-      `Toolchain '${expected.id}' health probe`,
-    ),
-    upstreamUrl: validateHttpsUrl(value.upstreamUrl, `Toolchain '${expected.id}' upstream URL`),
+    healthProbeId,
+    upstreamUrl,
     license,
   };
 }
@@ -375,6 +713,9 @@ function validateV2Manifest(
   const keyId = String(value.signature.keyId || "");
   if (!MANIFEST_KEY_ID_PATTERN.test(keyId)) {
     throw new Error("Toolchain manifest v2 has an invalid signing key ID.");
+  }
+  if (REVOKED_TOOLCHAIN_MANIFEST_KEY_IDS.has(keyId)) {
+    throw new Error(`Toolchain manifest v2 signing key '${keyId}' has been revoked.`);
   }
   const publicKey = (options.trustedPublicKeys ?? OFFICIAL_TOOLCHAIN_MANIFEST_PUBLIC_KEYS)[keyId];
   if (!publicKey) throw new Error(`Toolchain manifest v2 signing key '${keyId}' is not trusted.`);
@@ -461,6 +802,9 @@ export function validateManifestDocument(
     throw new Error("Toolchain manifest must be an object.");
   const document = value as unknown as ToolchainManifestDocument;
   if (document.schemaVersion === 2) return validateV2Manifest(value, options);
+  if (options.requireSignedV2) {
+    throw new Error("A signed toolchain manifest v2 is required.");
+  }
   if (document.schemaVersion !== 1) throw new Error("Unsupported toolchain manifest schema.");
   if (!Array.isArray(document.toolchains))
     throw new Error("Toolchain manifest contains no package list.");
@@ -478,37 +822,61 @@ export async function loadOfficialManifest(
     fetchImpl?: typeof fetch;
     manifestUrl?: string;
     trustedPublicKeys?: Readonly<Record<string, string>>;
+    bundledManifestPath?: string;
+    requireSignedV2?: boolean;
   } = {},
 ): Promise<ToolchainDescriptor[]> {
   const now = Date.now();
   const manifestUrl =
     options.manifestUrl ||
     process.env.THEMIS_TOOLCHAIN_MANIFEST_URL ||
-    DEFAULT_MANIFEST_URL;
+    DEFAULT_TOOLCHAIN_MANIFEST_URL;
+  const bundledManifestPath = options.bundledManifestPath
+    ?? path.join(RESOURCE_ROOT, "toolchains-manifest.json");
+  const useBundledManifest = !options.forceRefresh
+    && fs.statSync(bundledManifestPath, { throwIfNoEntry: false })?.isFile();
+  const sourceKey = useBundledManifest
+    ? `file:${path.resolve(bundledManifestPath)}`
+    : `url:${manifestUrl}`;
   if (
     !options.forceRefresh &&
     cachedManifest &&
-    cachedManifest.manifestUrl === manifestUrl &&
+    cachedManifest.sourceKey === sourceKey &&
     cachedManifest.expiresAt > now
   ) {
     return cachedManifest.toolchains;
   }
 
-  const fetchImpl = options.fetchImpl || fetch;
-  const response = await fetchImpl(manifestUrl, {
-    headers: { Accept: "application/json" },
-    redirect: "follow",
-    signal: AbortSignal.timeout(5_000),
-  });
-  if (!response.ok)
-    throw new Error(`Toolchain manifest request failed (${response.status}).`);
-
-  const toolchains = validateManifestDocument(await response.json(), {
+  let document: unknown;
+  if (useBundledManifest) {
+    const bytes = fs.readFileSync(bundledManifestPath);
+    if (bytes.byteLength === 0 || bytes.byteLength > 4 * 1024 * 1024) {
+      throw new Error("Bundled toolchain manifest has an invalid size.");
+    }
+    try {
+      document = JSON.parse(bytes.toString("utf8"));
+    } catch {
+      throw new Error("Bundled toolchain manifest is not valid JSON.");
+    }
+  } else {
+    const fetchImpl = options.fetchImpl || fetch;
+    const response = await fetchImpl(manifestUrl, {
+      headers: { Accept: "application/json" },
+      redirect: "follow",
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) {
+      throw new Error(`Toolchain manifest request failed (${response.status}).`);
+    }
+    document = await response.json();
+  }
+  const toolchains = validateManifestDocument(document, {
     trustedPublicKeys: options.trustedPublicKeys,
+    requireSignedV2: options.requireSignedV2 ?? true,
   });
   cachedManifest = {
     expiresAt: now + MANIFEST_CACHE_MS,
-    manifestUrl,
+    sourceKey,
     toolchains,
   };
   return toolchains;
@@ -524,6 +892,6 @@ export function getDescriptorForHost(
     (entry) =>
       entry.platform === platform &&
       entry.arch === mappedArch &&
-      entry.kind === kind,
+      entry.provides.includes(kind as never),
   );
 }

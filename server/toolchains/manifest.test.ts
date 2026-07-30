@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import {
   TOOLCHAIN_CATALOG,
+  TOOLCHAIN_RELEASE_BLUEPRINTS,
   canonicalizeManifestPayload,
   loadOfficialManifest,
   validateManifestDocument,
@@ -46,44 +50,14 @@ test("toolchain manifest accepts only catalog-matching packages with strict chec
 
 function validV2Package(index = 0): ToolchainManifestV2Package {
   const entry = TOOLCHAIN_CATALOG[index];
-  const roles = entry.kind === "cpp"
-    ? ["compiler"] as const
-    : ["submission-runtime", "checker-runtime"] as const;
+  const blueprint = TOOLCHAIN_RELEASE_BLUEPRINTS[entry.id];
+  const { archiveFilename: _archiveFilename, ...packagePolicy } = blueprint;
   return {
-    id: entry.id,
-    kind: entry.kind,
-    version: entry.version,
-    platform: entry.platform,
-    arch: entry.arch,
-    minimumOs: entry.platform === "win32" ? "10.0" : "11.0",
-    archiveFormat: entry.archiveFormat,
+    ...packagePolicy,
     downloadUrl: `https://downloads.example.invalid/${entry.id}.archive`,
     sha256: "b".repeat(64),
     sizeBytes: 1024,
     installedSizeBytes: 4096,
-    entrypointComponentId: `${entry.kind}.entrypoint`,
-    components: [
-      {
-        id: `${entry.kind}.entrypoint`,
-        kind: "executable",
-        relativePath: entry.executableRelativePath,
-        roles,
-      },
-      {
-        id: `${entry.kind}.support`,
-        kind: "support-root",
-        relativePath: ".",
-        roles,
-      },
-    ],
-    healthProbeId: `legacy.${entry.kind}.probes`,
-    upstreamUrl: "https://example.invalid/upstream",
-    license: {
-      spdxExpression: "NOASSERTION",
-      licenseFiles: entry.licenseFiles,
-      noticeFiles: [],
-      sbomPath: "SBOM.spdx.json",
-    },
   };
 }
 
@@ -123,10 +97,10 @@ test("manifest v2 verifies its signed payload and normalizes multi-component pac
   assert.equal(manifest.length, 1);
   assert.equal(manifest[0].manifestSchemaVersion, 2);
   assert.equal(manifest[0].signingKeyId, "test-toolchains-2026");
-  assert.equal(manifest[0].entrypointComponentId, "cpp.entrypoint");
+  assert.equal(manifest[0].entrypointComponentId, "gcc.cxx");
   assert.deepEqual(
     manifest[0].components?.map((component) => component.id),
-    ["cpp.entrypoint", "cpp.support"],
+    ["gcc.cxx", "gcc.c", "gcc.root"],
   );
   assert.equal(manifest[0].license?.sbomPath, "SBOM.spdx.json");
 });
@@ -189,9 +163,10 @@ test("manifest v2 rejects untrusted, tampered, ambiguous, and traversal metadata
 
 test("official manifest loader follows HTTP redirects through fetch and validates the response", async () => {
   let requestedUrl = "";
+  const signed = signedV2Manifest();
   const fetchImpl = (async (input: string | URL | Request) => {
     requestedUrl = String(input);
-    return new Response(JSON.stringify(validManifest()), {
+    return new Response(JSON.stringify(signed.document), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
@@ -201,10 +176,37 @@ test("official manifest loader follows HTTP redirects through fetch and validate
     forceRefresh: true,
     fetchImpl,
     manifestUrl: "https://example.invalid/toolchains-manifest.json",
+    bundledManifestPath: pathForMissingBundledManifest(),
+    trustedPublicKeys: { "test-toolchains-2026": signed.publicKey },
   });
   assert.equal(
     requestedUrl,
     "https://example.invalid/toolchains-manifest.json",
   );
-  assert.equal(manifest.length, TOOLCHAIN_CATALOG.length);
+  assert.equal(manifest.length, 1);
+});
+
+function pathForMissingBundledManifest(): string {
+  return path.join(process.cwd(), ".missing-toolchain-manifest-for-test.json");
+}
+
+test("bundled signed manifest is preferred without touching the network", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-manifest-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const signed = signedV2Manifest();
+  const bundledManifestPath = path.join(root, "toolchains-manifest.json");
+  fs.writeFileSync(bundledManifestPath, JSON.stringify(signed.document));
+  let fetched = false;
+  const manifest = await loadOfficialManifest({
+    forceRefresh: false,
+    bundledManifestPath,
+    manifestUrl: "https://example.invalid/should-not-be-requested.json",
+    trustedPublicKeys: { "test-toolchains-2026": signed.publicKey },
+    fetchImpl: (async () => {
+      fetched = true;
+      throw new Error("network should not be used");
+    }) as typeof fetch,
+  });
+  assert.equal(fetched, false);
+  assert.equal(manifest[0].id, signed.document.signed.packages[0].id);
 });
