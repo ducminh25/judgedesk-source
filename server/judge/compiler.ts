@@ -9,8 +9,10 @@ import {
   createExecutorWorkspace,
   findCachedManagedToolchain,
   importManagedToolchain,
+  inspectRegularDirectory,
   prepareManagedToolchainComponent,
   prepareManagedToolchainExecutable,
+  prepareManagedToolchainSupportRoot,
 } from "../executor/workspace.js";
 import {
   attachExecutorRun,
@@ -20,6 +22,7 @@ import {
 import type { ProblemResult, SubmissionLanguage } from "../types.js";
 import {
   findDarwinSdkDirectory,
+  findSelectedDarwinCompiler,
   getExecutableVersion,
   isManagedSubmissionToolchainReady,
   resolveManagedToolchain,
@@ -41,6 +44,7 @@ import { isBuiltInChecker } from "./standard-checkers.js";
 import { validatePythonCheckerSource } from "./python-checker.js";
 import {
   buildCompilerAdapterEnvironment,
+  buildManagedPascalSupportArgs,
   buildNativeCompilationRecipe,
   isNativeCompiledLanguage,
 } from "./language-adapters.js";
@@ -237,6 +241,9 @@ export async function compileSubmission(options: CompileSubmissionOptions): Prom
       },
     };
   }
+  if (language === "java" || language === "csharp") {
+    return compileManagedDirectorySubmission(options, compileStart);
+  }
   if (!isNativeCompiledLanguage(language)) {
     return compilationFailure(
       "",
@@ -281,7 +288,7 @@ export async function compileSubmission(options: CompileSubmissionOptions): Prom
       timeoutMs: recipe.timeoutMs,
       maxGeneratedFileBytes: recipe.maxGeneratedFileBytes,
     };
-    if (recipe.splitDarwinClangPhases) {
+    if (recipe.splitCompilerPhases) {
       await runCompilerPipelineWithLimits(
         compilerPath,
         recipe.args,
@@ -321,6 +328,403 @@ export async function compileSubmission(options: CompileSubmissionOptions): Prom
     return compilationFailure(executablePath, normalizeCompilerError(error), compileStart);
   }
 }
+
+async function compileManagedDirectorySubmission(
+  options: CompileSubmissionOptions,
+  compileStart: bigint,
+): Promise<CompilationResult> {
+  const language = options.language as "java" | "csharp";
+  const toolchain = options.toolchains?.[language]
+    ?? await resolveCompilationToolchain(language);
+  const artifactDirectory = path.join(
+    options.tempDirectory,
+    `${safeName(options.contestantName)}_${safeName(options.problemName)}_${language}`,
+  );
+  try {
+    if (!isManagedSubmissionToolchainReady(toolchain)) {
+      throw new Error(`TOOLCHAIN_${language.toUpperCase()}_MISSING`);
+    }
+    const compilerPath = toolchain.executionPath || toolchain.executablePath;
+    if (language === "java") {
+      await runDirectoryCompilerWithLimits({
+        kind: "java",
+        compilerPath,
+        sourcePath: options.submissionPath,
+        stagedSourceName: "Main.java",
+        outputPath: artifactDirectory,
+        jobId: options.jobId,
+        limits: {
+          timeoutMs: 30_000,
+          maxGeneratedFileBytes: 64 * 1024 * 1024,
+          memoryBytes: 768 * 1024 * 1024,
+        },
+        pinnedToolchain: toolchain,
+        buildArgs: ({ sourcePath, outputDirectory }) => [
+          "--release",
+          "21",
+          "-encoding",
+          "UTF-8",
+          "-g:none",
+          "-proc:none",
+          "-implicit:none",
+          "-d",
+          outputDirectory,
+          sourcePath,
+        ],
+        validateArtifact: validateJavaClassDirectory,
+      });
+      return {
+        executablePath: artifactDirectory,
+        compileStatus: "OK",
+        compileError: "",
+        compileTime: elapsedMs(compileStart),
+        program: {
+          kind: "directory-runtime",
+          language: "java",
+          artifactDirectory,
+          entrypoint: "Main",
+          runtimeKind: "java",
+          runtimeToolchain: toolchain,
+          runtimeComponentId: "java.runtime",
+        },
+      };
+    }
+
+    await runDirectoryCompilerWithLimits({
+      kind: "csharp",
+      compilerPath,
+      sourcePath: options.submissionPath,
+      stagedSourceName: "Submission.cs",
+      outputPath: artifactDirectory,
+      jobId: options.jobId,
+      limits: {
+        timeoutMs: 60_000,
+        maxGeneratedFileBytes: 64 * 1024 * 1024,
+        memoryBytes: 1024 * 1024 * 1024,
+      },
+      pinnedToolchain: toolchain,
+      generatedArtifactFiles: {
+        "JudgeDeskSubmission.deps.json": CSHARP_DEPS_FILE,
+        "JudgeDeskSubmission.runtimeconfig.json": CSHARP_RUNTIME_CONFIG,
+      },
+      buildArgs: prepareDotnetCscArgs,
+      validateArtifact: validateDotnetArtifactDirectory,
+    });
+    return {
+      executablePath: artifactDirectory,
+      compileStatus: "OK",
+      compileError: "",
+      compileTime: elapsedMs(compileStart),
+      program: {
+        kind: "directory-runtime",
+        language: "csharp",
+        artifactDirectory,
+        entrypoint: "JudgeDeskSubmission.dll",
+        runtimeKind: "csharp",
+        runtimeToolchain: toolchain,
+        runtimeComponentId: "dotnet.host",
+      },
+    };
+  } catch (error) {
+    fs.rmSync(artifactDirectory, { recursive: true, force: true });
+    return compilationFailure(
+      artifactDirectory,
+      normalizeCompilerError(error),
+      compileStart,
+    );
+  }
+}
+
+interface DirectoryCompilerContext {
+  workspacePath: string;
+  sourcePath: string;
+  outputDirectory: string;
+  toolchainRoot: string;
+}
+
+interface DirectoryCompilerOptions {
+  kind: Extract<ToolchainKind, "java" | "csharp">;
+  compilerPath: string;
+  sourcePath: string;
+  stagedSourceName: string;
+  outputPath: string;
+  jobId?: string;
+  limits: CompileLimits;
+  pinnedToolchain: Readonly<ResolvedToolchain>;
+  generatedFiles?: Readonly<Record<string, string>>;
+  generatedArtifactFiles?: Readonly<Record<string, string>>;
+  buildArgs(context: DirectoryCompilerContext): string[];
+  validateArtifact(directory: string): void;
+}
+
+async function runDirectoryCompilerWithLimits(
+  options: DirectoryCompilerOptions,
+): Promise<void> {
+  const workspace = await createExecutorWorkspace();
+  const runId = `compile_${crypto.randomUUID().replaceAll("-", "_")}`;
+  try {
+    attachExecutorRun(options.jobId, runId);
+    const compiler = await prepareCompiler(
+      workspace,
+      options.compilerPath,
+      options.kind,
+      options.pinnedToolchain,
+    );
+    const stagedSource = workspace.stage(
+      options.sourcePath,
+      path.join("inputs", options.stagedSourceName),
+    );
+    for (const [relativePath, contents] of Object.entries(
+      options.generatedFiles ?? {},
+    )) {
+      workspace.relative(relativePath);
+      const destination = path.join(workspace.path, relativePath);
+      fs.mkdirSync(path.dirname(destination), { recursive: true });
+      fs.writeFileSync(destination, contents, {
+        encoding: "utf8",
+        flag: "wx",
+      });
+    }
+    const stagedOutput = path.join(workspace.path, "compiled-output");
+    fs.mkdirSync(stagedOutput);
+    if (!compiler.root) {
+      throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+    }
+    const environment = {
+      ...buildCompilerEnvironment(compiler.executablePath),
+      ...buildCompilerAdapterEnvironment(
+        options.kind,
+        workspace.path,
+        compiler.root,
+        compiler.executablePath,
+      ),
+      ...compiler.environment,
+    };
+    const result = await runReservedExecutor(
+      options.jobId,
+      buildCompilerExecutorRunSpec({
+        runId,
+        workspaceId: workspace.id,
+        executableId: compiler.executableId,
+        args: [
+          ...compiler.argumentPrefix,
+          ...options.buildArgs({
+            workspacePath: workspace.path,
+            sourcePath: stagedSource,
+            outputDirectory: stagedOutput,
+            toolchainRoot: compiler.root,
+          }),
+        ],
+        environment,
+        toolchain: compiler.toolchain,
+        timeoutMs: options.limits.timeoutMs,
+        memoryBytes:
+          options.limits.memoryBytes ?? resolveCompilerMemoryLimitBytes(),
+        maxGeneratedFileBytes: options.limits.maxGeneratedFileBytes,
+      }),
+    );
+    const diagnostics = readCompilerDiagnostics(workspace.path);
+    assertCompilerSucceeded(result, diagnostics);
+    for (const [relativePath, contents] of Object.entries(
+      options.generatedArtifactFiles ?? {},
+    )) {
+      const normalized = path.join("compiled-output", relativePath);
+      workspace.relative(normalized);
+      fs.writeFileSync(path.join(workspace.path, normalized), contents, {
+        encoding: "utf8",
+        flag: "wx",
+      });
+    }
+    const artifact = inspectRegularDirectory(stagedOutput, {
+      maxFiles: 512,
+      maxBytes: options.limits.maxGeneratedFileBytes,
+    });
+    if (artifact.files === 0) {
+      throw new Error(
+        diagnostics.trim() || "Compilation did not produce an artifact.",
+      );
+    }
+    options.validateArtifact(stagedOutput);
+    if (fs.existsSync(options.outputPath)) {
+      throw new Error("Compiler artifact destination already exists.");
+    }
+    fs.cpSync(stagedOutput, options.outputPath, {
+      recursive: true,
+      dereference: false,
+      force: false,
+      errorOnExist: true,
+    });
+  } finally {
+    detachExecutorRun(options.jobId, runId);
+    workspace.dispose();
+  }
+}
+
+export function validateJavaClassDirectory(directory: string): void {
+  const entries = fs.readdirSync(directory, { withFileTypes: true });
+  if (
+    !entries.some((entry) => entry.isFile() && entry.name === "Main.class")
+  ) {
+    throw new Error(
+      "JAVA_ENTRYPOINT_INVALID: source must declare public class Main without a package",
+    );
+  }
+  if (
+    entries.some((entry) =>
+      !entry.isFile()
+      || !/^[A-Za-z_$][A-Za-z0-9_$]*\.class$/.test(entry.name)
+    )
+  ) {
+    throw new Error(
+      "JAVA_ARTIFACT_INVALID: packaged classes and nested output directories are not supported",
+    );
+  }
+}
+
+export function validateDotnetArtifactDirectory(directory: string): void {
+  const entries = fs.readdirSync(directory, { withFileTypes: true });
+  const files = new Set(
+    entries
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name),
+  );
+  if (
+    entries.some((entry) => !entry.isFile())
+    || !files.has("JudgeDeskSubmission.dll")
+    || !files.has("JudgeDeskSubmission.deps.json")
+    || !files.has("JudgeDeskSubmission.runtimeconfig.json")
+    || [...files].some((file) =>
+      !/^JudgeDeskSubmission\.(?:dll|deps\.json|runtimeconfig\.json)$/.test(
+        file,
+      )
+    )
+  ) {
+    throw new Error("DOTNET_ARTIFACT_INVALID");
+  }
+}
+
+const DOTNET_SDK_VERSION = "10.0.302";
+const DOTNET_RUNTIME_VERSION = "10.0.10";
+
+export function buildDotnetCscArgs(
+  context: DirectoryCompilerContext,
+): string[] {
+  const compilerAssembly = path.join(
+    context.toolchainRoot,
+    "sdk",
+    DOTNET_SDK_VERSION,
+    "Roslyn",
+    "bincore",
+    "csc.dll",
+  );
+  const referenceDirectory = path.join(
+    context.toolchainRoot,
+    "packs",
+    "Microsoft.NETCore.App.Ref",
+    DOTNET_RUNTIME_VERSION,
+    "ref",
+    "net10.0",
+  );
+  if (!fs.statSync(compilerAssembly, { throwIfNoEntry: false })?.isFile()) {
+    throw new Error("DOTNET_COMPILER_LAYOUT_INVALID");
+  }
+  if (
+    !fs.statSync(referenceDirectory, { throwIfNoEntry: false })?.isDirectory()
+  ) {
+    throw new Error("DOTNET_REFERENCE_PACK_INVALID");
+  }
+  const references = fs
+    .readdirSync(referenceDirectory, { withFileTypes: true })
+    .filter(
+      (entry) =>
+        entry.isFile() && /^[A-Za-z0-9_.-]+\.dll$/.test(entry.name),
+    )
+    .map((entry) => entry.name)
+    .sort((left, right) => left.localeCompare(right));
+  if (
+    references.length < 100
+    || references.length > 256
+    || !references.includes("System.Runtime.dll")
+    || !references.includes("System.Console.dll")
+  ) {
+    throw new Error("DOTNET_REFERENCE_PACK_INVALID");
+  }
+  return [
+    "exec",
+    compilerAssembly,
+    "/noconfig",
+    "/nostdlib+",
+    "/target:exe",
+    "/optimize+",
+    "/debug-",
+    "/deterministic+",
+    "/langversion:14.0",
+    "/nullable:disable",
+    "/utf8output",
+    `/pathmap:${context.workspacePath}=/_/`,
+    `/lib:${referenceDirectory}`,
+    `/out:${path.join(context.outputDirectory, "JudgeDeskSubmission.dll")}`,
+    ...references.map((reference) => `/reference:${reference}`),
+    context.sourcePath,
+  ];
+}
+
+function prepareDotnetCscArgs(
+  context: DirectoryCompilerContext,
+): string[] {
+  const [command, compilerAssembly, ...compilerArguments] =
+    buildDotnetCscArgs(context);
+  const responseFileName = "csc.rsp";
+  fs.writeFileSync(
+    path.join(context.workspacePath, responseFileName),
+    `${compilerArguments.map(encodeCscResponseArgument).join("\n")}\n`,
+    { encoding: "utf8", flag: "wx" },
+  );
+  return [command, compilerAssembly, `@${responseFileName}`];
+}
+
+function encodeCscResponseArgument(value: string): string {
+  if (!value.includes('"') && !/[\s#]/.test(value)) return value;
+  if (value.includes('"')) {
+    throw new Error("DOTNET_COMPILER_ARGUMENT_INVALID");
+  }
+  return `"${value}"`;
+}
+
+const CSHARP_RUNTIME_CONFIG = `${JSON.stringify({
+  runtimeOptions: {
+    tfm: "net10.0",
+    framework: {
+      name: "Microsoft.NETCore.App",
+      version: DOTNET_RUNTIME_VERSION,
+    },
+    rollForward: "Disable",
+  },
+}, null, 2)}\n`;
+
+const CSHARP_DEPS_FILE = `${JSON.stringify({
+  runtimeTarget: {
+    name: ".NETCoreApp,Version=v10.0",
+    signature: "",
+  },
+  compilationOptions: {},
+  targets: {
+    ".NETCoreApp,Version=v10.0": {
+      "JudgeDeskSubmission/1.0.0": {
+        runtime: {
+          "JudgeDeskSubmission.dll": {},
+        },
+      },
+    },
+  },
+  libraries: {
+    "JudgeDeskSubmission/1.0.0": {
+      type: "project",
+      serviceable: false,
+      sha512: "",
+    },
+  },
+}, null, 2)}\n`;
 
 async function compileCustomChecker(
   checkerType: string,
@@ -469,6 +873,30 @@ export async function runCompilerWithLimits(
       kind,
       pinnedToolchain,
     );
+    if (kind === "go") {
+      if (!pinnedToolchain) {
+        throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+      }
+      const buildCache = await prepareManagedToolchainSupportRoot(
+        "go",
+        pinnedToolchain,
+        "go.build-cache",
+        "compiler",
+      );
+      workspace.stageDirectory(buildCache.path, "go-cache", {
+        maxFiles: 50_000,
+        maxBytes: 512 * 1024 * 1024,
+      });
+      fs.mkdirSync(path.join(workspace.path, "go-tmp"));
+    }
+    if (kind === "pascal") {
+      if (!compiler.root) {
+        throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+      }
+      compiler.argumentPrefix.push(
+        ...buildManagedPascalSupportArgs(process.platform, compiler.root),
+      );
+    }
     if (compiler.compatibilityHeaderPath) {
       const stagedHeader = workspace.stage(
         compiler.compatibilityHeaderPath,
@@ -481,7 +909,12 @@ export async function runCompilerWithLimits(
     stagedArgs.unshift(...compiler.argumentPrefix);
     const environment = {
       ...buildCompilerEnvironment(compiler.executablePath),
-      ...buildCompilerAdapterEnvironment(kind, workspace.path),
+      ...buildCompilerAdapterEnvironment(
+        kind,
+        workspace.path,
+        compiler.root,
+        compiler.executablePath,
+      ),
       ...adapterEnvironment,
       ...compiler.environment,
     };
@@ -513,9 +946,9 @@ export async function runCompilerWithLimits(
       memoryBytes: limits.memoryBytes ?? resolveCompilerMemoryLimitBytes(),
       maxGeneratedFileBytes: limits.maxGeneratedFileBytes,
     }));
-    const stderr = readPreview(path.join(workspace.path, "compiler.stderr"), MAX_COMPILER_DIAGNOSTIC_BYTES);
-    assertCompilerSucceeded(result, stderr);
-    if (!fs.existsSync(stagedOutput)) throw new Error(stderr.trim() || "Compilation did not produce an output file.");
+    const diagnostics = readCompilerDiagnostics(workspace.path);
+    assertCompilerSucceeded(result, diagnostics);
+    if (!fs.existsSync(stagedOutput)) throw new Error(diagnostics.trim() || "Compilation did not produce an output file.");
     if (fs.statSync(stagedOutput).size > limits.maxGeneratedFileBytes) throw new Error("GENERATED_FILE_TOO_LARGE");
     fs.copyFileSync(stagedOutput, outputPath);
   } finally {
@@ -535,7 +968,7 @@ async function runCompilerPipelineWithLimits(
   adapterEnvironment: Readonly<Record<string, string>> = {},
   pinnedToolchain?: Readonly<ResolvedToolchain>,
 ): Promise<void> {
-  if (process.platform !== "darwin") {
+  if (process.platform !== "darwin" && process.platform !== "win32") {
     await runCompilerWithLimits(
       compilerPath,
       args,
@@ -551,7 +984,7 @@ async function runCompilerPipelineWithLimits(
   }
 
   const objectPath = `${outputPath}.${crypto.randomUUID()}.o`;
-  const phases = buildDarwinCompilerPhases(args, outputPath, objectPath);
+  const phases = buildCompilerPhases(args, outputPath, objectPath);
   const started = process.hrtime.bigint();
   try {
     await runCompilerWithLimits(
@@ -583,7 +1016,7 @@ async function runCompilerPipelineWithLimits(
   }
 }
 
-export function buildDarwinCompilerPhases(
+export function buildCompilerPhases(
   args: string[],
   outputPath: string,
   objectPath: string,
@@ -598,7 +1031,14 @@ export function buildDarwinCompilerPhases(
       index += 1;
       continue;
     }
-    if (argument === "-s" || argument === "-lm" || argument.startsWith("-Wl,")) {
+    if (
+      argument === "-s"
+      || argument === "-static"
+      || argument === "-static-libgcc"
+      || argument === "-static-libstdc++"
+      || argument === "-lm"
+      || argument.startsWith("-Wl,")
+    ) {
       linkerFlags.push(argument);
       continue;
     }
@@ -620,7 +1060,14 @@ export function buildCompilerEnvironment(
   // process.env here is both unnecessary and unsafe: Visual Studio Developer
   // PowerShell commonly contains more than the protocol's 128-entry limit.
   return platform === "win32"
-    ? { Path: path.win32.dirname(compilerPath) }
+    ? {
+        PATH: path.win32.dirname(compilerPath),
+        // GCC's Windows temp-path conversion does not understand the extended
+        // AppContainer LocalState prefix. A relative TMPDIR resolves to the
+        // already isolated executor workspace and avoids falling back to the
+        // drive root.
+        TMPDIR: ".",
+      }
     : {};
 }
 
@@ -650,22 +1097,23 @@ async function prepareCompiler(
             "compiler",
           )
         : await prepareManagedToolchainExecutable(kind, pinnedToolchain);
-      return {
+      return decoratePreparedCompilerForPlatform(kind, {
         ...prepared,
         argumentPrefix: [],
         environment: {},
-      };
+      });
     }
   }
   const cached = await findCachedManagedToolchain(kind);
   if (cached && sameFile(cached.executablePath, compilerPath)) {
-    return {
+    return decoratePreparedCompilerForPlatform(kind, {
       executableId: cached.executableId,
       executablePath: cached.executablePath,
       root: cached.root,
       argumentPrefix: [],
       environment: {},
-    };
+      ...(cached.toolchain ? { toolchain: cached.toolchain } : {}),
+    });
   }
   const resolved = resolveToolchain(kind);
   if (resolved.ready && resolved.source === "managed" && sameFile(resolved.executablePath, compilerPath)) {
@@ -677,11 +1125,11 @@ async function prepareCompiler(
           "compiler",
         )
       : await prepareManagedToolchainExecutable(kind, resolved);
-    return {
+    return decoratePreparedCompilerForPlatform(kind, {
       ...prepared,
       argumentPrefix: [],
       environment: {},
-    };
+    });
   }
   const realCompiler = fs.realpathSync(compilerPath);
   const health = await executorClient.start();
@@ -699,18 +1147,18 @@ async function prepareCompiler(
         && isDescendantOrEqual(payloadRoot, realCompiler)
         ? fs.realpathSync(payloadRoot)
         : packageRoot;
-      return {
+      return decoratePreparedCompilerForPlatform(kind, {
         executableId: path.relative(executorRoot, realCompiler).replaceAll("\\", "/"),
         executablePath: realCompiler,
         root: compilerRoot,
         argumentPrefix: [],
         environment: {},
-      };
+      });
     }
   }
   const managedRoot = fs.realpathSync(getToolchainsDir());
   if (isDescendant(managedRoot, realCompiler)) {
-    return {
+    return decoratePreparedCompilerForPlatform(kind, {
       ...await importManagedToolchain(
         kind,
         realCompiler,
@@ -718,7 +1166,7 @@ async function prepareCompiler(
       ),
       argumentPrefix: [],
       environment: {},
-    };
+    });
   }
   const darwin = process.platform === "darwin"
     && (kind === "cpp" || kind === "c")
@@ -742,6 +1190,67 @@ async function prepareCompiler(
     compatibilityHeaderPath: darwin && kind === "cpp"
       ? resolveDarwinCompatibilityHeader(RESOURCE_ROOT)
       : undefined,
+  };
+}
+
+function decoratePreparedCompilerForPlatform(
+  kind: ToolchainKind,
+  compiler: PreparedCompiler,
+): PreparedCompiler {
+  if (
+    process.platform !== "darwin"
+    || (kind !== "rust" && kind !== "pascal")
+  ) {
+    return compiler;
+  }
+  const support = resolveDarwinManagedLinkerSupport();
+  return {
+    ...compiler,
+    argumentPrefix: kind === "rust"
+      ? [
+          "-C",
+          `linker=${support.compilerPath}`,
+          "-C",
+          "link-arg=-isysroot",
+          "-C",
+          `link-arg=${support.sdkDirectory}`,
+          ...compiler.argumentPrefix,
+        ]
+      : [
+          `-XR${support.sdkDirectory}`,
+          `-FD${path.dirname(support.compilerPath)}`,
+          ...compiler.argumentPrefix,
+        ],
+    environment: {
+      ...compiler.environment,
+      ...support.environment,
+      PATH: path.dirname(support.compilerPath),
+    },
+  };
+}
+
+function resolveDarwinManagedLinkerSupport(): {
+  compilerPath: string;
+  sdkDirectory: string;
+  environment: Record<string, string>;
+} {
+  const compilerPath = findSelectedDarwinCompiler("c");
+  if (!compilerPath) {
+    throw new Error(
+      "PLATFORM_LINKER_UNAVAILABLE: install Apple Command Line Tools",
+    );
+  }
+  const sdkDirectory = findDarwinSdkDirectory(compilerPath);
+  if (!sdkDirectory) {
+    throw new Error(
+      "PLATFORM_LINKER_UNAVAILABLE: the selected macOS SDK was not found",
+    );
+  }
+  const support = resolveDarwinCompilerSupport(compilerPath, "c");
+  return {
+    compilerPath: fs.realpathSync(compilerPath),
+    sdkDirectory,
+    environment: support.environment,
   };
 }
 
@@ -1040,6 +1549,24 @@ function readPreview(filePath: string, maxBytes: number): string {
   } finally {
     fs.closeSync(handle);
   }
+}
+
+function readCompilerDiagnostics(workspacePath: string): string {
+  const stderr = readPreview(
+    path.join(workspacePath, "compiler.stderr"),
+    MAX_COMPILER_DIAGNOSTIC_BYTES,
+  ).trim();
+  const remainingBytes = Math.max(
+    0,
+    MAX_COMPILER_DIAGNOSTIC_BYTES - Buffer.byteLength(stderr),
+  );
+  const stdout = remainingBytes > 0
+    ? readPreview(
+        path.join(workspacePath, "compiler.stdout"),
+        remainingBytes,
+      ).trim()
+    : "";
+  return [stderr, stdout].filter(Boolean).join("\n");
 }
 
 function compilationFailure(executablePath: string, error: string, started: bigint): CompilationResult {

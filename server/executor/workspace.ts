@@ -18,7 +18,17 @@ export interface ExecutorWorkspace {
   path: string;
   relative(fileName: string): string;
   stage(sourcePath: string, fileName: string, executable?: boolean): string;
+  stageDirectory(
+    sourcePath: string,
+    directoryName: string,
+    limits?: ExecutorDirectoryLimits,
+  ): string;
   dispose(): void;
+}
+
+export interface ExecutorDirectoryLimits {
+  maxFiles: number;
+  maxBytes: number;
 }
 
 export interface ExecutorArtifact {
@@ -30,6 +40,12 @@ export interface CachedManagedToolchain extends ResolvedToolchain {
   executableId: string;
   root: string;
   toolchain?: ExecutorToolchainIdentity;
+}
+
+export interface CachedManagedSupportRoot {
+  path: string;
+  root: string;
+  componentId: string;
 }
 
 const artifactCache = new Map<string, { fingerprint: string; artifact: ExecutorArtifact }>();
@@ -108,6 +124,25 @@ export async function createExecutorWorkspace(): Promise<ExecutorWorkspace> {
       fs.mkdirSync(path.dirname(destination), { recursive: true });
       fs.copyFileSync(sourcePath, destination);
       if (executable && process.platform !== "win32") fs.chmodSync(destination, 0o700);
+      return destination;
+    },
+    stageDirectory(
+      sourcePath: string,
+      directoryName: string,
+      limits: ExecutorDirectoryLimits = {
+        maxFiles: 1_024,
+        maxBytes: 128 * 1024 * 1024,
+      },
+    ) {
+      assertSafeRelative(directoryName);
+      inspectRegularDirectory(sourcePath, limits);
+      const destination = path.join(workspacePath, directoryName);
+      fs.cpSync(sourcePath, destination, {
+        recursive: true,
+        dereference: false,
+        force: false,
+        errorOnExist: true,
+      });
       return destination;
     },
     dispose() {
@@ -326,6 +361,62 @@ export async function prepareManagedToolchainComponent(
   };
 }
 
+export async function prepareManagedToolchainSupportRoot(
+  kind: ToolchainKind,
+  resolved: ResolvedToolchain,
+  requestedComponentId: string,
+  expectedRole: ToolchainPackageRole,
+): Promise<CachedManagedSupportRoot> {
+  const prepared = await prepareManagedToolchainComponent(
+    kind,
+    resolved,
+    resolved.packageComponentId,
+    expectedRole,
+  );
+  const descriptor = getDescriptorForHost(os.platform(), os.arch(), kind);
+  if (!descriptor) {
+    throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+  }
+  const installed = readVerifiedToolchainPackageReceipt(
+    descriptor,
+    prepared.root,
+  );
+  if (installed.receipt.archiveSha256 !== resolved.packageDigest) {
+    throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+  }
+  const component = installed.receipt.components.find(
+    (candidate) =>
+      candidate.id === requestedComponentId
+      && candidate.kind === "support-root"
+      && candidate.roles.includes(expectedRole),
+  );
+  if (!component) {
+    throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+  }
+  const componentPath = fs.realpathSync(
+    component.relativePath === "."
+      ? installed.root
+      : path.join(
+          installed.root,
+          ...component.relativePath.split("/"),
+        ),
+  );
+  if (
+    componentPath !== installed.root
+    && !isDescendant(installed.root, componentPath)
+  ) {
+    throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+  }
+  if (!fs.statSync(componentPath).isDirectory()) {
+    throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+  }
+  return {
+    path: componentPath,
+    root: installed.root,
+    componentId: component.id,
+  };
+}
+
 export function rewriteManagedToolchainSymlinks(
   sourceRoot: string,
   destinationRoot: string,
@@ -462,6 +553,52 @@ export function isDescendant(root: string, candidate: string): boolean {
     && relative !== ".."
     && !relative.startsWith(`..${path.sep}`)
     && !path.isAbsolute(relative);
+}
+
+export function inspectRegularDirectory(
+  sourcePath: string,
+  limits: ExecutorDirectoryLimits,
+): { files: number; bytes: number } {
+  if (
+    !Number.isSafeInteger(limits.maxFiles)
+    || limits.maxFiles < 1
+    || !Number.isSafeInteger(limits.maxBytes)
+    || limits.maxBytes < 1
+  ) {
+    throw new Error("Directory staging limits are invalid.");
+  }
+  const rootMetadata = fs.lstatSync(sourcePath);
+  if (!rootMetadata.isDirectory() || rootMetadata.isSymbolicLink()) {
+    throw new Error(
+      "Executor directory staging accepts a regular non-symlink directory only.",
+    );
+  }
+  let files = 0;
+  let bytes = 0;
+  const pending = [sourcePath];
+  while (pending.length > 0) {
+    const directory = pending.pop()!;
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const entryPath = path.join(directory, entry.name);
+      const metadata = fs.lstatSync(entryPath);
+      if (metadata.isSymbolicLink()) {
+        throw new Error("Executor directory staging rejects symbolic links.");
+      }
+      if (metadata.isDirectory()) {
+        pending.push(entryPath);
+        continue;
+      }
+      if (!metadata.isFile()) {
+        throw new Error("Executor directory staging accepts regular files only.");
+      }
+      files += 1;
+      bytes += metadata.size;
+      if (files > limits.maxFiles || bytes > limits.maxBytes) {
+        throw new Error("Executor directory staging limits were exceeded.");
+      }
+    }
+  }
+  return { files, bytes };
 }
 
 function isLexicalDescendant(root: string, candidate: string): boolean {

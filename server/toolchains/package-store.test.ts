@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
 import {
+  assertToolchainPackageReceiptMatchesDescriptor,
+  createToolchainPackageReceipt,
   inspectInstalledToolchainPackage,
   TOOLCHAIN_PACKAGE_RECEIPT,
   writeToolchainPackageReceipt,
@@ -149,6 +151,35 @@ test("package receipts are deterministic and cannot overwrite archive content", 
   assert.throws(
     () => writeToolchainPackageReceipt(packageRoot, DESCRIPTOR),
     /EEXIST/,
+  );
+});
+
+test("production receipt trust pins digest, components, paths, and roles", () => {
+  const receipt = createToolchainPackageReceipt(DESCRIPTOR);
+  assert.doesNotThrow(() =>
+    assertToolchainPackageReceiptMatchesDescriptor(receipt, DESCRIPTOR)
+  );
+  assert.throws(
+    () =>
+      assertToolchainPackageReceiptMatchesDescriptor(
+        {
+          ...receipt,
+          components: receipt.components.map((component) => ({
+            ...component,
+            roles: ["compiler"],
+          })),
+        },
+        DESCRIPTOR,
+      ),
+    /bundled signed manifest/i,
+  );
+  assert.throws(
+    () =>
+      assertToolchainPackageReceiptMatchesDescriptor(
+        { ...receipt, archiveSha256: "b".repeat(64) },
+        DESCRIPTOR,
+      ),
+    /bundled signed manifest/i,
   );
 });
 

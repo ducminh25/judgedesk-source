@@ -14,7 +14,9 @@ import {
 } from "../toolchains/storage.js";
 import {
   CPP_LANGUAGE_PROFILE_ID,
+  LANGUAGE_REGISTRY_REVISION,
   PYTHON_LANGUAGE_PROFILE_ID,
+  listRegisteredLanguageProfiles,
 } from "../languages/registry.js";
 import { getStoredProfilePreference } from "../toolchains/preferences-v2.js";
 import { serverLifecycle } from "../platform/server-lifecycle.js";
@@ -126,8 +128,11 @@ test("GET exposes registry state without waiting for the remote package catalog"
     mutationsBlocked?: unknown;
   };
   assert.equal(payload.manifestStatus, "loading");
-  assert.equal(payload.registryRevision, 1);
-  assert.equal(payload.profiles?.length, 2);
+  assert.equal(payload.registryRevision, LANGUAGE_REGISTRY_REVISION);
+  assert.equal(
+    payload.profiles?.length,
+    listRegisteredLanguageProfiles().length,
+  );
   assert.equal(payload.mutationsBlocked, false);
 });
 

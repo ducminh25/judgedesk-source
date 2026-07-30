@@ -108,7 +108,13 @@ function checkerResultFromExit(
   if (exitCode === 0) return { status: "AC", score: maxScore, message };
   if (exitCode === 1) return { status: "WA", score: 0, message };
   if (exitCode === 2) return { status: "PE", score: 0, message };
-  if (exitCode !== 7) return { status: "JE", score: 0, message };
+  if (exitCode !== 7) {
+    return {
+      status: "JE",
+      score: 0,
+      message: message || `Checker exited with code ${exitCode}.`,
+    };
+  }
   const multiplier = parsePartialScore(message, stdout, maxScore);
   if (multiplier === null || multiplier < 0 || multiplier > 1) {
     return { status: "JE", score: 0, message: message || "Checker returned an invalid partial score." };

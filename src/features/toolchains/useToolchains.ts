@@ -7,6 +7,17 @@ export type ToolchainSourceMode =
   | "local_path"
   | "local_auto";
 
+export type ToolchainKind =
+  | "cpp"
+  | "c"
+  | "python"
+  | "pascal"
+  | "go"
+  | "java"
+  | "rust"
+  | "javascript"
+  | "csharp";
+
 export interface ToolchainProgress {
   id: string;
   status:
@@ -24,7 +35,7 @@ export interface ToolchainProgress {
 
 export interface ToolchainDescriptor {
   id: string;
-  kind: "cpp" | "python";
+  kind: ToolchainKind;
   version: string;
   platform: string;
   arch: string;
@@ -43,7 +54,7 @@ export interface ToolchainDescriptor {
 }
 
 export interface ResolvedToolchain {
-  kind: "cpp" | "python";
+  kind: ToolchainKind;
   source: "none" | "managed" | "custom" | "system" | "sandbox";
   executablePath: string;
   version: string;
@@ -74,7 +85,7 @@ export interface ToolchainCertificationPlan {
 export interface DiscoveredToolchainCandidate {
   candidateId: string;
   profileId: string;
-  kind: "cpp" | "python";
+  kind: ToolchainKind;
   canonicalPath: string;
   displayPath: string;
   origin: "path" | "standard-location";
@@ -86,7 +97,7 @@ export interface LanguageProfileView {
   displayNameKey: string;
   stability: "stable" | "experimental";
   extensions: string[];
-  kind: "cpp" | "python";
+  kind: ToolchainKind;
   supportedOnHost: boolean;
   selection: { mode: ToolchainSourceMode; localPath?: string };
   status: "not_available" | "checker_only" | "submission_ready";

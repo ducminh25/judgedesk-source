@@ -404,7 +404,7 @@ function ProfileRow({
                 setLocalPath(event.target.value);
                 setPathDirty(true);
               }}
-              placeholder={profile.kind === "cpp" ? "g++ / clang++" : "python / python3"}
+              placeholder={localExecutablePlaceholder(profile.kind)}
               className="w-full rounded border border-surface-border-strong bg-input-bg px-2.5 py-1.5 font-mono text-2xs text-text-primary outline-none focus:border-indigo-500"
             />
             <div className="flex flex-wrap gap-2">
@@ -584,6 +584,23 @@ function CandidateList({
       ))}
     </div>
   );
+}
+
+function localExecutablePlaceholder(
+  kind: LanguageProfileView["kind"],
+): string {
+  const placeholders: Record<LanguageProfileView["kind"], string> = {
+    cpp: "g++ / clang++",
+    c: "gcc / clang",
+    python: "python / python3",
+    pascal: "fpc",
+    go: "go",
+    java: "javac",
+    rust: "rustc",
+    javascript: "node",
+    csharp: "dotnet",
+  };
+  return placeholders[kind];
 }
 
 function StatusBadge({

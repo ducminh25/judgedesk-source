@@ -43,7 +43,7 @@ const ownedMacosTreeGuard = provisionMacosTreeGuard();
 const [{ executorClient }, {
   buildCompilerEnvironment,
   buildCustomCheckerCompilerArgs,
-  buildDarwinCompilerPhases,
+  buildCompilerPhases,
   buildSubmissionCompilerArgs,
   CHECKER_COMPILE_MEMORY_LIMIT_BYTES,
   CHECKER_COMPILE_TIMEOUT_MS,
@@ -70,7 +70,7 @@ after(async () => {
 test("compiler request uses a minimal environment independent of the parent shell", () => {
   assert.deepEqual(
     buildCompilerEnvironment("D:\\Managed GCC\\bin\\g++.exe", "win32"),
-    { Path: "D:\\Managed GCC\\bin" },
+    { PATH: "D:\\Managed GCC\\bin", TMPDIR: "." },
   );
   assert.deepEqual(buildCompilerEnvironment("/usr/bin/clang++", "darwin"), {});
 });
@@ -95,17 +95,18 @@ test("macOS resolves only a regular packaged bits/stdc++.h compatibility header"
   );
 });
 
-test("macOS compilation separates the integrated frontend from the linker", () => {
+test("native compilation separates the compiler frontend from the linker", () => {
   const output = path.resolve("program.out");
   const object = path.resolve("program.o");
   const source = path.resolve("main.cpp");
-  const phases = buildDarwinCompilerPhases(
+  const phases = buildCompilerPhases(
     [
       "-std=c++14",
       "-O2",
       "-fsanitize=integer-divide-by-zero",
       "-fsanitize-trap=integer-divide-by-zero",
       "-s",
+      "-static",
       "-lm",
       "-x",
       "c++",
@@ -131,7 +132,10 @@ test("macOS compilation separates the integrated frontend from the linker", () =
       object,
     ],
   );
-  assert.deepEqual(phases.link, [object, "-o", output, "-s", "-lm"]);
+  assert.deepEqual(
+    phases.link,
+    [object, "-o", output, "-s", "-static", "-lm"],
+  );
 });
 
 test("relocated managed GCC discovers only cache-contained system include directories", (t) => {
@@ -358,7 +362,7 @@ test("custom checker resolution accepts source files and rejects executables", a
         expectedOutputPath,
         maxScore: 10,
       });
-      assert.equal(result.status, "AC", result.message);
+      assert.equal(result.status, "AC", JSON.stringify(result));
       assert.equal(result.score, 10);
     }
   }

@@ -542,7 +542,14 @@ fn build_profile(spec: &RunSpec, paths: &ValidatedRun) -> Result<String, String>
         }
     }
     if matches!(spec.role, RunRole::Compiler) {
-        if spec.toolchain.is_none() {
+        let platform_support_requested = [
+            "JUDGEDESK_COMPILER_TOOLCHAIN_ROOT",
+            "JUDGEDESK_COMPILER_DEVELOPER_ROOT",
+            "JUDGEDESK_COMPILER_EXECUTABLE",
+        ]
+        .iter()
+        .any(|key| spec.environment.contains_key(*key));
+        if spec.toolchain.is_none() || platform_support_requested {
             let (toolchain_root, developer_root) = validated_compiler_roots(spec)?;
             for root in [&toolchain_root, &developer_root] {
                 read_rules.push(format!(

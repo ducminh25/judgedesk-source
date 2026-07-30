@@ -392,6 +392,7 @@
       "customInvalid": "The custom executable path does not exist or is invalid.",
       "DISABLED_BY_USER": "This language is disabled on this computer.",
       "PROFILE_UNSUPPORTED_ON_HOST": "This language profile is not supported on this operating system or architecture.",
+      "MINIMUM_OS_UNSUPPORTED": "This language pack requires a newer operating-system version.",
       "MANAGED_PACKAGE_UNSUPPORTED": "JudgeDesk does not publish a managed package for this profile and computer.",
       "MANAGED_PACKAGE_NOT_INSTALLED": "The managed compiler/runtime is not installed.",
       "MANAGED_PACKAGE_CORRUPT": "The managed package failed integrity validation.",

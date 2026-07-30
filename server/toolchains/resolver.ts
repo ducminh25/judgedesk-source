@@ -4,7 +4,10 @@ import path from "path";
 import { execFileSync } from "child_process";
 import { ToolchainKind, ResolvedToolchain, ToolchainSource } from "./types.js";
 import { loadToolchainPreferenceSnapshot } from "./storage.js";
-import { getDescriptorForHost } from "./manifest.js";
+import {
+  getDescriptorForHost,
+  TOOLCHAIN_RELEASE_BLUEPRINTS,
+} from "./manifest.js";
 import { inspectInstalledToolchainPackage } from "./package-store.js";
 import { sandbox } from "../sandbox.js";
 import { getRegisteredProfileForKind } from "../languages/registry.js";
@@ -14,6 +17,10 @@ import {
   getToolchainDiscoverySnapshot,
 } from "./discovery.js";
 import { resolveLocalCppCertificateReadiness } from "./certificate-readiness.js";
+import {
+  getHostProductVersion,
+  isMinimumOsSupported,
+} from "./host-compatibility.js";
 
 export const MIN_GNU_CPP_VERSION = "9.2.0";
 export const MIN_GNU_GDB_VERSION = "7.6.1";
@@ -136,7 +143,15 @@ export function isDarwinAppleToolchainLocation(
 export function buildSelectedDarwinCppCandidates(
   developerRoot: string | null,
 ): string[] {
+  return buildSelectedDarwinCompilerCandidates(developerRoot, "cpp");
+}
+
+export function buildSelectedDarwinCompilerCandidates(
+  developerRoot: string | null,
+  kind: "cpp" | "c",
+): string[] {
   if (!developerRoot) return [];
+  const executable = kind === "cpp" ? "clang++" : "clang";
   return [
     path.posix.join(
       developerRoot,
@@ -144,10 +159,24 @@ export function buildSelectedDarwinCppCandidates(
       "XcodeDefault.xctoolchain",
       "usr",
       "bin",
-      "clang++",
+      executable,
     ),
-    path.posix.join(developerRoot, "usr", "bin", "clang++"),
+    path.posix.join(developerRoot, "usr", "bin", executable),
   ];
+}
+
+export function findSelectedDarwinCompiler(
+  kind: "cpp" | "c",
+): string | null {
+  if (os.platform() !== "darwin") return null;
+  const developerRoot = findWithCommand("/usr/bin/xcode-select", ["-p"]);
+  const compiler = buildSelectedDarwinCompilerCandidates(
+    developerRoot,
+    kind,
+  ).find((candidate) =>
+    fs.statSync(candidate, { throwIfNoEntry: false })?.isFile()
+  );
+  return compiler ? fs.realpathSync(compiler) : null;
 }
 
 export function inferDarwinDeveloperRoot(
@@ -217,11 +246,36 @@ export function clearToolchainDetectionCache(): void {
 export function resolveManagedToolchain(kind: ToolchainKind): ResolvedToolchain {
   const descriptor = getDescriptorForHost(os.platform(), os.arch(), kind);
   if (descriptor) {
+    const minimumOs = TOOLCHAIN_RELEASE_BLUEPRINTS[descriptor.id]?.minimumOs;
+    if (
+      minimumOs
+      && !isMinimumOsSupported(minimumOs, getHostProductVersion())
+    ) {
+      return {
+        kind,
+        source: "managed",
+        executablePath: "",
+        version: descriptor.version,
+        ready: false,
+        diagnostic:
+          `Managed package requires ${os.platform()} ${minimumOs} or newer.`,
+        diagnosticCode: "MINIMUM_OS_UNSUPPORTED",
+      };
+    }
     const installed = inspectInstalledToolchainPackage(descriptor, { kind });
     if (installed.status === "installed") {
       const executablePath = installed.package.executablePath;
-      const version = getExecutableVersion(executablePath, kind);
-      const ready = isSupportedExecutable(executablePath, kind);
+      // A receipt-backed package was already checksum-verified against the
+      // signed release descriptor before installation. Startup only checks its
+      // small, typed component closure; launching every compiler/runtime here
+      // would make first-run detection scale by seconds per language.
+      const receiptBacked =
+        installed.package.integrity === "verified-receipt";
+      const version = receiptBacked
+        ? descriptor.version
+        : getExecutableVersion(executablePath, kind);
+      const ready = receiptBacked
+        || isSupportedExecutable(executablePath, kind);
       return {
         kind,
         source: "managed",
@@ -268,6 +322,18 @@ export function resolveManagedToolchain(kind: ToolchainKind): ResolvedToolchain 
       ? "MANAGED_PACKAGE_NOT_INSTALLED"
       : "MANAGED_PACKAGE_UNSUPPORTED",
   };
+}
+
+export function managedPackageVersionMatches(
+  kind: ToolchainKind,
+  detectedVersion: string,
+  catalogVersion: string,
+): boolean {
+  if (detectedVersion === "unknown") return false;
+  const expected = kind === "java"
+    ? catalogVersion.split("+", 1)[0]
+    : catalogVersion;
+  return detectedVersion === expected;
 }
 
 export function chooseNativeProtectedToolchain(

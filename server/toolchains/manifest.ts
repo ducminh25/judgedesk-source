@@ -186,6 +186,118 @@ export const TOOLCHAIN_CATALOG: ToolchainCatalogEntry[] = [
     executableRelativePath: "bin/node",
     licenseFiles: ["LICENSE"],
   },
+  {
+    id: "fpc-windows-x64",
+    provides: ["pascal"],
+    entrypoints: [{
+      kind: "pascal",
+      componentId: "fpc.compiler",
+      executableRelativePath: "bin/fpc.exe",
+    }],
+    kind: "pascal",
+    version: "3.2.2",
+    platform: "win32",
+    arch: "x64",
+    archiveFormat: "zip",
+    executableRelativePath: "bin/fpc.exe",
+    licenseFiles: ["LICENSE.txt", "SOURCE.txt"],
+  },
+  {
+    id: "fpc-macos-arm64",
+    provides: ["pascal"],
+    entrypoints: [{
+      kind: "pascal",
+      componentId: "fpc.compiler",
+      executableRelativePath: "bin/fpc",
+    }],
+    kind: "pascal",
+    version: "3.2.2",
+    platform: "darwin",
+    arch: "arm64",
+    archiveFormat: "tar.gz",
+    executableRelativePath: "bin/fpc",
+    licenseFiles: ["LICENSE.txt", "SOURCE.txt"],
+  },
+  {
+    id: "temurin21-macos-arm64",
+    provides: ["java"],
+    entrypoints: [{
+      kind: "java",
+      componentId: "java.compiler",
+      executableRelativePath: "bin/javac",
+    }],
+    kind: "java",
+    version: "21.0.12+8",
+    platform: "darwin",
+    arch: "arm64",
+    archiveFormat: "tar.gz",
+    executableRelativePath: "bin/javac",
+    licenseFiles: ["legal/java.base/LICENSE"],
+  },
+  {
+    id: "rust-windows-x64-gnu",
+    provides: ["rust"],
+    entrypoints: [{
+      kind: "rust",
+      componentId: "rust.compiler",
+      executableRelativePath: "bin/rustc.exe",
+    }],
+    kind: "rust",
+    version: "1.97.1",
+    platform: "win32",
+    arch: "x64",
+    archiveFormat: "zip",
+    executableRelativePath: "bin/rustc.exe",
+    licenseFiles: ["LICENSE-APACHE", "LICENSE-MIT"],
+  },
+  {
+    id: "rust-macos-arm64",
+    provides: ["rust"],
+    entrypoints: [{
+      kind: "rust",
+      componentId: "rust.compiler",
+      executableRelativePath: "bin/rustc",
+    }],
+    kind: "rust",
+    version: "1.97.1",
+    platform: "darwin",
+    arch: "arm64",
+    archiveFormat: "tar.gz",
+    executableRelativePath: "bin/rustc",
+    licenseFiles: ["LICENSE-APACHE", "LICENSE-MIT"],
+  },
+  {
+    id: "dotnet10-windows-x64",
+    provides: ["csharp"],
+    entrypoints: [{
+      kind: "csharp",
+      componentId: "dotnet.host",
+      executableRelativePath: "dotnet.exe",
+    }],
+    kind: "csharp",
+    version: "10.0.302",
+    platform: "win32",
+    arch: "x64",
+    archiveFormat: "zip",
+    executableRelativePath: "dotnet.exe",
+    licenseFiles: ["LICENSE.txt", "ThirdPartyNotices.txt"],
+  },
+  {
+    id: "dotnet10-macos-arm64",
+    provides: ["csharp"],
+    entrypoints: [{
+      kind: "csharp",
+      componentId: "dotnet.host",
+      executableRelativePath: "dotnet",
+    }],
+    kind: "csharp",
+    version: "10.0.302",
+    platform: "darwin",
+    arch: "arm64",
+    archiveFormat: "tar.gz",
+    executableRelativePath: "dotnet",
+    licenseFiles: ["LICENSE.txt", "ThirdPartyNotices.txt"],
+  },
 ];
 
 export const TOOLCHAIN_RELEASE_BLUEPRINTS: Readonly<
@@ -395,6 +507,12 @@ export const TOOLCHAIN_RELEASE_BLUEPRINTS: Readonly<
         relativePath: ".",
         roles: ["compiler"],
       },
+      {
+        id: "go.build-cache",
+        kind: "support-root",
+        relativePath: "judgedesk-build-cache",
+        roles: ["compiler"],
+      },
     ],
     healthProbeId: "go.cgo-disabled-v1",
     upstreamUrl: "https://go.dev/dl/",
@@ -417,7 +535,7 @@ export const TOOLCHAIN_RELEASE_BLUEPRINTS: Readonly<
     version: "1.26.5",
     platform: "darwin",
     arch: "arm64",
-    minimumOs: "11.0",
+    minimumOs: "12.0",
     archiveFormat: "tar.gz",
     archiveFilename: "judgedesk-go-macos-arm64-1.26.5.tar.gz",
     entrypointComponentId: "go.compiler",
@@ -432,6 +550,12 @@ export const TOOLCHAIN_RELEASE_BLUEPRINTS: Readonly<
         id: "go.root",
         kind: "support-root",
         relativePath: ".",
+        roles: ["compiler"],
+      },
+      {
+        id: "go.build-cache",
+        kind: "support-root",
+        relativePath: "judgedesk-build-cache",
         roles: ["compiler"],
       },
     ],
@@ -495,7 +619,7 @@ export const TOOLCHAIN_RELEASE_BLUEPRINTS: Readonly<
     version: "24.18.1",
     platform: "darwin",
     arch: "arm64",
-    minimumOs: "11.0",
+    minimumOs: "13.5",
     archiveFormat: "tar.gz",
     archiveFilename: "judgedesk-node-macos-arm64-24.18.1.tar.gz",
     entrypointComponentId: "node.runtime",
@@ -522,11 +646,298 @@ export const TOOLCHAIN_RELEASE_BLUEPRINTS: Readonly<
       sbomPath: "SBOM.spdx.json",
     },
   },
+  "fpc-windows-x64": {
+    id: "fpc-windows-x64",
+    provides: ["pascal"],
+    entrypoints: [{
+      kind: "pascal",
+      componentId: "fpc.compiler",
+      executableRelativePath: "bin/fpc.exe",
+    }],
+    kind: "pascal",
+    version: "3.2.2",
+    platform: "win32",
+    arch: "x64",
+    minimumOs: "10.0",
+    archiveFormat: "zip",
+    archiveFilename: "judgedesk-fpc-windows-x64-3.2.2.zip",
+    entrypointComponentId: "fpc.compiler",
+    components: [
+      {
+        id: "fpc.compiler",
+        kind: "executable",
+        relativePath: "bin/fpc.exe",
+        roles: ["compiler"],
+      },
+      {
+        id: "fpc.root",
+        kind: "support-root",
+        relativePath: ".",
+        roles: ["compiler"],
+      },
+    ],
+    healthProbeId: "fpc.single-file-v1",
+    upstreamUrl: "https://www.freepascal.org/download.html",
+    license: {
+      spdxExpression:
+        "GPL-2.0-or-later AND LGPL-2.1-or-later WITH FPC-exception-2.0",
+      licenseFiles: ["LICENSE.txt", "SOURCE.txt"],
+      noticeFiles: ["THIRD-PARTY-NOTICES.txt"],
+      sbomPath: "SBOM.spdx.json",
+    },
+  },
+  "fpc-macos-arm64": {
+    id: "fpc-macos-arm64",
+    provides: ["pascal"],
+    entrypoints: [{
+      kind: "pascal",
+      componentId: "fpc.compiler",
+      executableRelativePath: "bin/fpc",
+    }],
+    kind: "pascal",
+    version: "3.2.2",
+    platform: "darwin",
+    arch: "arm64",
+    minimumOs: "11.0",
+    archiveFormat: "tar.gz",
+    archiveFilename: "judgedesk-fpc-macos-arm64-3.2.2.tar.gz",
+    entrypointComponentId: "fpc.compiler",
+    components: [
+      {
+        id: "fpc.compiler",
+        kind: "executable",
+        relativePath: "bin/fpc",
+        roles: ["compiler"],
+      },
+      {
+        id: "fpc.root",
+        kind: "support-root",
+        relativePath: ".",
+        roles: ["compiler"],
+      },
+    ],
+    healthProbeId: "fpc.single-file-v1",
+    upstreamUrl: "https://www.freepascal.org/download.html",
+    license: {
+      spdxExpression:
+        "GPL-2.0-or-later AND LGPL-2.1-or-later WITH FPC-exception-2.0",
+      licenseFiles: ["LICENSE.txt", "SOURCE.txt"],
+      noticeFiles: ["THIRD-PARTY-NOTICES.txt"],
+      sbomPath: "SBOM.spdx.json",
+    },
+  },
+  "temurin21-macos-arm64": {
+    id: "temurin21-macos-arm64",
+    provides: ["java"],
+    entrypoints: [{
+      kind: "java",
+      componentId: "java.compiler",
+      executableRelativePath: "bin/javac",
+    }],
+    kind: "java",
+    version: "21.0.12+8",
+    platform: "darwin",
+    arch: "arm64",
+    minimumOs: "11.0",
+    archiveFormat: "tar.gz",
+    archiveFilename: "judgedesk-temurin21-macos-arm64-21.0.12_8.tar.gz",
+    entrypointComponentId: "java.compiler",
+    components: [
+      {
+        id: "java.compiler",
+        kind: "executable",
+        relativePath: "bin/javac",
+        roles: ["compiler"],
+      },
+      {
+        id: "java.runtime",
+        kind: "executable",
+        relativePath: "bin/java",
+        roles: ["submission-runtime"],
+      },
+      {
+        id: "java.root",
+        kind: "support-root",
+        relativePath: ".",
+        roles: ["compiler", "submission-runtime"],
+      },
+    ],
+    healthProbeId: "temurin21.main-class-v1",
+    upstreamUrl: "https://adoptium.net/temurin/releases/",
+    license: {
+      spdxExpression: "GPL-2.0-only WITH Classpath-exception-2.0",
+      licenseFiles: ["legal/java.base/LICENSE"],
+      noticeFiles: ["NOTICE", "THIRD-PARTY-NOTICES.txt"],
+      sbomPath: "SBOM.spdx.json",
+    },
+  },
+  "rust-windows-x64-gnu": {
+    id: "rust-windows-x64-gnu",
+    provides: ["rust"],
+    entrypoints: [{
+      kind: "rust",
+      componentId: "rust.compiler",
+      executableRelativePath: "bin/rustc.exe",
+    }],
+    kind: "rust",
+    version: "1.97.1",
+    platform: "win32",
+    arch: "x64",
+    minimumOs: "10.0",
+    archiveFormat: "zip",
+    archiveFilename: "judgedesk-rust-windows-x64-gnu-1.97.1.zip",
+    entrypointComponentId: "rust.compiler",
+    components: [
+      {
+        id: "rust.compiler",
+        kind: "executable",
+        relativePath: "bin/rustc.exe",
+        roles: ["compiler"],
+      },
+      {
+        id: "rust.root",
+        kind: "support-root",
+        relativePath: ".",
+        roles: ["compiler"],
+      },
+    ],
+    healthProbeId: "rustc.single-file-gnu-v1",
+    upstreamUrl: "https://static.rust-lang.org/dist/",
+    license: {
+      spdxExpression: "Apache-2.0 OR MIT",
+      licenseFiles: ["LICENSE-APACHE", "LICENSE-MIT"],
+      noticeFiles: ["COPYRIGHT", "THIRD-PARTY-NOTICES.txt"],
+      sbomPath: "SBOM.spdx.json",
+    },
+  },
+  "rust-macos-arm64": {
+    id: "rust-macos-arm64",
+    provides: ["rust"],
+    entrypoints: [{
+      kind: "rust",
+      componentId: "rust.compiler",
+      executableRelativePath: "bin/rustc",
+    }],
+    kind: "rust",
+    version: "1.97.1",
+    platform: "darwin",
+    arch: "arm64",
+    minimumOs: "11.0",
+    archiveFormat: "tar.gz",
+    archiveFilename: "judgedesk-rust-macos-arm64-1.97.1.tar.gz",
+    entrypointComponentId: "rust.compiler",
+    components: [
+      {
+        id: "rust.compiler",
+        kind: "executable",
+        relativePath: "bin/rustc",
+        roles: ["compiler"],
+      },
+      {
+        id: "rust.root",
+        kind: "support-root",
+        relativePath: ".",
+        roles: ["compiler"],
+      },
+    ],
+    healthProbeId: "rustc.single-file-apple-linker-v1",
+    upstreamUrl: "https://static.rust-lang.org/dist/",
+    license: {
+      spdxExpression: "Apache-2.0 OR MIT",
+      licenseFiles: ["LICENSE-APACHE", "LICENSE-MIT"],
+      noticeFiles: ["COPYRIGHT", "THIRD-PARTY-NOTICES.txt"],
+      sbomPath: "SBOM.spdx.json",
+    },
+  },
+  "dotnet10-windows-x64": {
+    id: "dotnet10-windows-x64",
+    provides: ["csharp"],
+    entrypoints: [{
+      kind: "csharp",
+      componentId: "dotnet.host",
+      executableRelativePath: "dotnet.exe",
+    }],
+    kind: "csharp",
+    version: "10.0.302",
+    platform: "win32",
+    arch: "x64",
+    minimumOs: "10.0",
+    archiveFormat: "zip",
+    archiveFilename: "judgedesk-dotnet10-windows-x64-10.0.302.zip",
+    entrypointComponentId: "dotnet.host",
+    components: [
+      {
+        id: "dotnet.host",
+        kind: "executable",
+        relativePath: "dotnet.exe",
+        roles: ["compiler", "submission-runtime"],
+      },
+      {
+        id: "dotnet.root",
+        kind: "support-root",
+        relativePath: ".",
+        roles: ["compiler", "submission-runtime"],
+      },
+    ],
+    healthProbeId: "dotnet10.offline-console-v1",
+    upstreamUrl: "https://dotnet.microsoft.com/download/dotnet/10.0",
+    license: {
+      spdxExpression: "MIT",
+      licenseFiles: ["LICENSE.txt", "ThirdPartyNotices.txt"],
+      noticeFiles: ["THIRD-PARTY-NOTICES.txt"],
+      sbomPath: "SBOM.spdx.json",
+    },
+  },
+  "dotnet10-macos-arm64": {
+    id: "dotnet10-macos-arm64",
+    provides: ["csharp"],
+    entrypoints: [{
+      kind: "csharp",
+      componentId: "dotnet.host",
+      executableRelativePath: "dotnet",
+    }],
+    kind: "csharp",
+    version: "10.0.302",
+    platform: "darwin",
+    arch: "arm64",
+    minimumOs: "14.0",
+    archiveFormat: "tar.gz",
+    archiveFilename: "judgedesk-dotnet10-macos-arm64-10.0.302.tar.gz",
+    entrypointComponentId: "dotnet.host",
+    components: [
+      {
+        id: "dotnet.host",
+        kind: "executable",
+        relativePath: "dotnet",
+        roles: ["compiler", "submission-runtime"],
+      },
+      {
+        id: "dotnet.root",
+        kind: "support-root",
+        relativePath: ".",
+        roles: ["compiler", "submission-runtime"],
+      },
+    ],
+    healthProbeId: "dotnet10.offline-console-v1",
+    upstreamUrl: "https://dotnet.microsoft.com/download/dotnet/10.0",
+    license: {
+      spdxExpression: "MIT",
+      licenseFiles: ["LICENSE.txt", "ThirdPartyNotices.txt"],
+      noticeFiles: ["THIRD-PARTY-NOTICES.txt"],
+      sbomPath: "SBOM.spdx.json",
+    },
+  },
 });
 
 let cachedManifest: {
   expiresAt: number;
   sourceKey: string;
+  toolchains: ToolchainDescriptor[];
+} | null = null;
+let cachedBundledManifest: {
+  filePath: string;
+  size: number;
+  modifiedMs: number;
   toolchains: ToolchainDescriptor[];
 } | null = null;
 
@@ -1099,6 +1510,55 @@ export async function loadOfficialManifest(
     sourceKey,
     toolchains,
   };
+  return toolchains;
+}
+
+export function loadBundledOfficialManifestSync(
+  options: {
+    bundledManifestPath?: string;
+    trustedPublicKeys?: Readonly<Record<string, string>>;
+  } = {},
+): ToolchainDescriptor[] {
+  const filePath = path.resolve(
+    options.bundledManifestPath
+      ?? path.join(RESOURCE_ROOT, "toolchains-manifest.json"),
+  );
+  const metadata = fs.statSync(filePath, { throwIfNoEntry: false });
+  if (
+    !metadata?.isFile()
+    || metadata.size <= 0
+    || metadata.size > 4 * 1024 * 1024
+  ) {
+    throw new Error("Bundled toolchain manifest has an invalid size.");
+  }
+  if (
+    !options.trustedPublicKeys
+    && cachedBundledManifest
+    && cachedBundledManifest.filePath === filePath
+    && cachedBundledManifest.size === metadata.size
+    && cachedBundledManifest.modifiedMs === metadata.mtimeMs
+  ) {
+    return cachedBundledManifest.toolchains;
+  }
+  let document: unknown;
+  try {
+    document = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch {
+    throw new Error("Bundled toolchain manifest is not valid JSON.");
+  }
+  const toolchains = validateManifestDocument(document, {
+    trustedPublicKeys:
+      options.trustedPublicKeys ?? OFFICIAL_TOOLCHAIN_MANIFEST_PUBLIC_KEYS,
+    requireSignedV2: true,
+  });
+  if (!options.trustedPublicKeys) {
+    cachedBundledManifest = {
+      filePath,
+      size: metadata.size,
+      modifiedMs: metadata.mtimeMs,
+      toolchains,
+    };
+  }
   return toolchains;
 }
 
