@@ -133,7 +133,7 @@ function managedPackageState(
   const catalogEntry = getDescriptorForHost(os.platform(), os.arch(), kind);
   if (!catalogEntry) return undefined;
   const manifestEntry = manifest.find((entry) => entry.id === catalogEntry.id);
-  const installedState = inspectInstalledToolchainPackage(catalogEntry);
+  const installedState = inspectInstalledToolchainPackage(catalogEntry, { kind });
   const installed = installedState.status === "installed"
     ? installedState.package
     : undefined;

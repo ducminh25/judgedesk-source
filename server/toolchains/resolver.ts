@@ -202,7 +202,7 @@ export function clearToolchainDetectionCache(): void {
 export function resolveManagedToolchain(kind: ToolchainKind): ResolvedToolchain {
   const descriptor = getDescriptorForHost(os.platform(), os.arch(), kind);
   if (descriptor) {
-    const installed = inspectInstalledToolchainPackage(descriptor);
+    const installed = inspectInstalledToolchainPackage(descriptor, { kind });
     if (installed.status === "installed") {
       const executablePath = installed.package.executablePath;
       const version = getExecutableVersion(executablePath, kind);

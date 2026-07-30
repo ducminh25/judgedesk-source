@@ -15,6 +15,15 @@ import type {
 
 const ENTRY: ToolchainCatalogEntry = {
   id: "test-runtime",
+  provides: ["python"],
+  entrypoints: [
+    {
+      kind: "python",
+      componentId: "entrypoint",
+      executableRelativePath:
+        process.platform === "win32" ? "bin/runtime.exe" : "bin/runtime",
+    },
+  ],
   kind: "python",
   version: "1.2.3",
   platform: process.platform === "darwin" ? "darwin" : "win32",
@@ -146,7 +155,7 @@ test("package receipts are deterministic and cannot overwrite archive content", 
 test("a signed support-root component may explicitly grant the package root", (t) => {
   const stores = temporaryStores(t);
   const packageRoot = createPackage(stores.builtIn);
-  writeToolchainPackageReceipt(packageRoot, {
+  const descriptor: ToolchainDescriptor = {
     ...DESCRIPTOR,
     entrypointComponentId: "runtime",
     components: [
@@ -163,9 +172,16 @@ test("a signed support-root component may explicitly grant the package root", (t
         roles: ["submission-runtime", "checker-runtime"],
       },
     ],
-  });
+  };
+  writeToolchainPackageReceipt(packageRoot, descriptor);
 
-  const state = inspectInstalledToolchainPackage(ENTRY, {
+  const state = inspectInstalledToolchainPackage({
+    ...ENTRY,
+    entrypoints: [{
+      ...ENTRY.entrypoints[0],
+      componentId: "runtime",
+    }],
+  }, {
     builtInRoot: stores.builtIn,
     downloadedRoot: stores.downloaded,
   });

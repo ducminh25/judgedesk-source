@@ -1,0 +1,18 @@
+{
+  "bundle": {
+    "targets": ["msi"],
+    "resources": {
+      "../build/distribution-resources/": ""
+    },
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
+      "wix": {
+        "upgradeCode": "4ac645a9-f719-5210-85be-f03f49c33869",
+        "language": "en-US"
+      }
+    }
+  }
+}

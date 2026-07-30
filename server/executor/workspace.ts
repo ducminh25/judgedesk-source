@@ -3,7 +3,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { getDescriptorForHost } from "../toolchains/manifest.js";
-import type { ResolvedToolchain, ToolchainKind } from "../toolchains/types.js";
+import type {
+  ResolvedToolchain,
+  ToolchainCatalogEntry,
+  ToolchainKind,
+} from "../toolchains/types.js";
 import type { ExecutorToolchainIdentity } from "./protocol.js";
 import { executorClient } from "./client.js";
 
@@ -36,11 +40,12 @@ export async function findCachedManagedToolchain(
   if (!descriptor) return null;
   const health = await executorClient.start();
   if (!health.ready) return null;
-  const cacheId = managedCacheId(kind, descriptor.version);
+  const entrypoint = descriptorEntrypoint(descriptor, kind);
+  const cacheId = managedCacheId(descriptor.id, descriptor.version);
   const root = path.join(health.executorRoot, "toolchains", cacheId);
   const marker = path.join(root, ".judgedesk-import-complete");
-  const executablePath = path.join(root, descriptor.executableRelativePath);
-  const expectedMarker = `${MANAGED_CACHE_SCHEMA}\n${kind}\n${descriptor.version}\n`;
+  const executablePath = path.join(root, entrypoint.executableRelativePath);
+  const expectedMarker = `${MANAGED_CACHE_SCHEMA}\n${descriptor.id}\n${descriptor.version}\n`;
   try {
     const executableStat = fs.statSync(executablePath);
     if (!executableStat.isFile()) return null;
@@ -73,7 +78,7 @@ export async function purgeCachedManagedToolchain(
   const toolchainsRoot = path.join(health.executorRoot, "toolchains");
   const cacheRoot = path.join(
     toolchainsRoot,
-    managedCacheId(kind, descriptor.version),
+    managedCacheId(descriptor.id, descriptor.version),
   );
   if (!isDescendant(toolchainsRoot, cacheRoot)) {
     throw new Error("Refusing to purge a toolchain cache outside the executor root.");
@@ -116,7 +121,7 @@ export async function createExecutorWorkspace(): Promise<ExecutorWorkspace> {
 }
 
 export async function importManagedToolchain(
-  kind: "cpp" | "python",
+  kind: ToolchainKind,
   executablePath: string,
   version: string,
 ): Promise<{ executableId: string; executablePath: string; root: string }> {
@@ -128,19 +133,20 @@ export async function importManagedToolchain(
   }
   const descriptor = getDescriptorForHost(os.platform(), os.arch(), kind);
   if (!descriptor) throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+  const entrypoint = descriptorEntrypoint(descriptor, kind);
   const sourceRoot = managedToolchainSourceRoot(
     path.resolve(executablePath),
-    descriptor.executableRelativePath,
+    entrypoint.executableRelativePath,
   );
   const canonicalSourceRoot = fs.realpathSync(sourceRoot);
   const executableWithinSource = path.relative(canonicalSourceRoot, canonicalExecutable);
   if (executableWithinSource.startsWith("..") || path.isAbsolute(executableWithinSource)) {
     throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
   }
-  const cacheId = managedCacheId(kind, version);
+  const cacheId = managedCacheId(descriptor.id, version);
   const destinationRoot = path.join(health.executorRoot, "toolchains", cacheId);
   const marker = path.join(destinationRoot, ".judgedesk-import-complete");
-  const expectedMarker = `${MANAGED_CACHE_SCHEMA}\n${kind}\n${version}\n`;
+  const expectedMarker = `${MANAGED_CACHE_SCHEMA}\n${descriptor.id}\n${version}\n`;
   if (!fs.existsSync(marker) || fs.readFileSync(marker, "utf8") !== expectedMarker) {
     const staging = `${destinationRoot}.staging.${process.pid}`;
     fs.rmSync(staging, { recursive: true, force: true });
@@ -150,7 +156,7 @@ export async function importManagedToolchain(
     fs.rmSync(destinationRoot, { recursive: true, force: true });
     fs.renameSync(staging, destinationRoot);
   }
-  const relativeExecutable = descriptor.executableRelativePath;
+  const relativeExecutable = entrypoint.executableRelativePath;
   const cachedExecutable = path.join(destinationRoot, relativeExecutable);
   if (!fs.existsSync(cachedExecutable)) throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
   if (!isDescendant(destinationRoot, fs.realpathSync(cachedExecutable))) {
@@ -164,7 +170,7 @@ export async function importManagedToolchain(
 }
 
 export async function prepareManagedToolchainExecutable(
-  kind: "cpp" | "python",
+  kind: ToolchainKind,
   resolved: ResolvedToolchain,
 ): Promise<CachedManagedToolchain> {
   if (
@@ -374,8 +380,19 @@ function canonicalizeForContainment(value: string): string {
   return path.resolve(canonicalExistingPath, ...missingComponents);
 }
 
-function managedCacheId(kind: ToolchainKind, version: string): string {
-  return `${kind}_${version.replaceAll(/[^A-Za-z0-9_.-]/g, "_")}`;
+function managedCacheId(packageId: string, version: string): string {
+  return `${packageId}_${version.replaceAll(/[^A-Za-z0-9_.-]/g, "_")}`;
+}
+
+function descriptorEntrypoint(
+  descriptor: ToolchainCatalogEntry,
+  kind: ToolchainKind,
+) {
+  const entrypoint = descriptor.entrypoints.find(
+    (candidate) => candidate.kind === kind,
+  );
+  if (!entrypoint) throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+  return entrypoint;
 }
 
 function sameFilePath(left: string, right: string): boolean {
