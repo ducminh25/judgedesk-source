@@ -5,12 +5,9 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { execFileSync } from "node:child_process";
-import { executorClient } from "../executor/client.js";
 import type { NormalizedProblemConfig } from "../types.js";
 import type { ResolvedToolchain } from "../toolchains/types.js";
 import { getToolchainsDir } from "../toolchains/storage.js";
-import { compileSubmission } from "./compiler.js";
-import { runTestCase } from "./testcase-runner.js";
 
 const enabled =
   (process.platform === "win32" || process.platform === "darwin")
@@ -45,6 +42,12 @@ test(
       : "set JUDGEDESK_REAL_TOOLCHAIN_GATES=1 on Windows or macOS",
   },
   async (t) => {
+    const [{ executorClient }, { compileSubmission }, { runTestCase }] =
+      await Promise.all([
+        import("../executor/client.js"),
+        import("./compiler.js"),
+        import("./testcase-runner.js"),
+      ]);
     const compiler = process.platform === "win32"
       ? path.join(
           getToolchainsDir(),
