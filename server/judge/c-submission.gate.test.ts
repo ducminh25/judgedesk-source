@@ -19,7 +19,7 @@ function provisionMacosTreeGuard(): string | null {
   const directory = fs.mkdtempSync(
     path.join(os.tmpdir(), "judgedesk-c-gate-tree-guard-"),
   );
-  const generation = crypto.randomUUID().replaceAll("-", "");
+  const generation = crypto.randomBytes(32).toString("hex");
   const guardPath = path.join(directory, "process-tree.generation");
   fs.writeFileSync(
     guardPath,
