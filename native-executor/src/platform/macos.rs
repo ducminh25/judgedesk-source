@@ -587,6 +587,16 @@ fn build_profile(spec: &RunSpec, paths: &ValidatedRun) -> Result<String, String>
             process_exec_rules.push("(literal \"/usr/bin/ld\")".into());
             process_exec_rules.push("(literal \"/usr/bin/as\")".into());
         }
+        if is_managed_fpc_compiler(spec) {
+            // FPC 3.2.2 generates a workspace-local ppas.sh for its Darwin link phase.
+            // The script uses only these immutable system utilities plus /usr/bin/ld,
+            // which is already granted above. Seatbelt still confines every read/write
+            // performed by the shell and keeps network access denied.
+            for executable in ["/bin/sh", "/bin/cat", "/bin/rm"] {
+                read_rules.push(format!("(literal \"{executable}\")"));
+                process_exec_rules.push(format!("(literal \"{executable}\")"));
+            }
+        }
     }
     let process_group_escape_denials = match spec.role {
         // Apple Clang is a trusted launcher and requires posix_spawn for cc1, as, and ld.
@@ -645,6 +655,15 @@ fn add_metadata_ancestor_rules(rules: &mut std::collections::BTreeSet<String>, p
             seatbelt_literal(&ancestor.to_string_lossy())
         ));
     }
+}
+
+fn is_managed_fpc_compiler(spec: &RunSpec) -> bool {
+    matches!(spec.role, RunRole::Compiler)
+        && spec.toolchain.as_ref().is_some_and(|grant| {
+            grant.package_id == "fpc-macos-arm64"
+                && grant.component_id == "fpc.compiler"
+                && matches!(grant.role, crate::protocol::ToolchainGrantRole::Compiler)
+        })
 }
 
 fn validated_compiler_roots(spec: &RunSpec) -> Result<(PathBuf, PathBuf), String> {
@@ -795,9 +814,11 @@ fn process_virtual_memory_bytes(pid: i32) -> u64 {
 #[cfg(test)]
 mod launcher_spec_tests {
     use super::{
-        add_metadata_ancestor_rules, cleanup_run_profiles, launcher_nproc_ceiling,
-        minimal_environment, write_private_profile, RunLimits, RunRole, RunSpec,
+        add_metadata_ancestor_rules, cleanup_run_profiles, is_managed_fpc_compiler,
+        launcher_nproc_ceiling, minimal_environment, write_private_profile, RunLimits, RunRole,
+        RunSpec,
     };
+    use crate::protocol::{ToolchainGrant, ToolchainGrantRole};
     use crate::workspace::initialize_root;
     use std::collections::BTreeMap;
     use std::fs;
@@ -872,6 +893,25 @@ mod launcher_spec_tests {
         assert!(rules.contains("(literal \"/Users/teacher/JudgeDesk/toolchains/dotnet\")"));
         assert!(!rules.contains("(subpath \"/Users\")"));
         assert!(!rules.contains("(literal \"/Users/student\")"));
+    }
+
+    #[test]
+    fn fpc_link_script_tools_require_the_exact_managed_compiler_grant() {
+        let mut spec = sample_spec("fpc-link-script");
+        spec.role = RunRole::Compiler;
+        spec.toolchain = Some(ToolchainGrant {
+            package_id: "fpc-macos-arm64".into(),
+            package_digest: "a".repeat(64),
+            component_id: "fpc.compiler".into(),
+            role: ToolchainGrantRole::Compiler,
+        });
+        assert!(is_managed_fpc_compiler(&spec));
+
+        spec.toolchain.as_mut().unwrap().component_id = "other.compiler".into();
+        assert!(!is_managed_fpc_compiler(&spec));
+        spec.toolchain.as_mut().unwrap().component_id = "fpc.compiler".into();
+        spec.toolchain.as_mut().unwrap().package_id = "untrusted-fpc".into();
+        assert!(!is_managed_fpc_compiler(&spec));
     }
 
     #[test]
