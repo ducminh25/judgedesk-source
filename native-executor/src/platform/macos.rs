@@ -592,7 +592,9 @@ fn build_profile(spec: &RunSpec, paths: &ValidatedRun) -> Result<String, String>
             // The script uses only these immutable system utilities plus /usr/bin/ld,
             // which is already granted above. Seatbelt still confines every read/write
             // performed by the shell and keeps network access denied.
-            for executable in ["/bin/sh", "/bin/cat", "/bin/rm"] {
+            // macOS dispatches /bin/sh through its signed /bin/bash variant, so both
+            // exact executable identities are required by process-exec.
+            for executable in ["/bin/sh", "/bin/bash", "/bin/cat", "/bin/rm"] {
                 read_rules.push(format!("(literal \"{executable}\")"));
                 process_exec_rules.push(format!("(literal \"{executable}\")"));
             }
