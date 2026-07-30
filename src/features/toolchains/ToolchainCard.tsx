@@ -118,6 +118,12 @@ export function ToolchainCard({
           </div>
         )}
 
+        {toolchain.installed && toolchain.origin === "built-in" && (
+          <div className="text-2xs font-semibold text-emerald-600 dark:text-emerald-400">
+            {t("toolchains.registry.includedWithJudgeDesk")}
+          </div>
+        )}
+
         <div className="text-[10px] text-text-muted">
           <span className="font-bold">{t("toolchains.checksum")}:</span>{" "}
           <span className="font-mono">
@@ -134,21 +140,21 @@ export function ToolchainCard({
           >
             <XCircle className="w-3.5 h-3.5" /> {t("toolchains.cancel")}
           </button>
-        ) : toolchain.installed ? (
+        ) : toolchain.installed && toolchain.uninstallable ? (
           <button
             onClick={() => onUninstall(toolchain.id)}
             className="flex items-center gap-1 px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 text-2xs font-bold uppercase tracking-wider rounded transition cursor-pointer"
           >
             <Trash2 className="w-3.5 h-3.5" /> {t("toolchains.uninstall")}
           </button>
-        ) : (
+        ) : !toolchain.installed ? (
           <button
             onClick={() => onInstall(toolchain.id)}
             className="flex items-center gap-1 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-2xs font-bold uppercase tracking-wider rounded transition cursor-pointer shadow"
           >
             <Download className="w-3.5 h-3.5" /> {t("toolchains.install")}
           </button>
-        )}
+        ) : null}
       </div>
     </div>
   );

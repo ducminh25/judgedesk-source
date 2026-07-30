@@ -105,6 +105,7 @@ impl MacosPlatform {
                 stdout_file: "probe.stdout".into(),
                 stderr_file: "probe.stderr".into(),
                 environment: Default::default(),
+                toolchain: None,
                 limits: RunLimits {
                     wall_time_ms: 5_000,
                     memory_bytes: 128 * 1024 * 1024,
@@ -304,11 +305,12 @@ pub(crate) fn prepare_launcher_spec(
     let profile_path = write_private_profile(root, &spec.run_id, &profile)?;
 
     let result = (|| {
-        let launch_executable = if matches!(spec.role, RunRole::Compiler) {
-            validated_compiler_executable(spec)?
-        } else {
-            paths.executable.clone()
-        };
+        let launch_executable =
+            if matches!(spec.role, RunRole::Compiler) && spec.toolchain.is_none() {
+                validated_compiler_executable(spec)?
+            } else {
+                paths.executable.clone()
+            };
 
         let address_space_slack = spec
             .limits
@@ -520,30 +522,41 @@ fn build_profile(spec: &RunSpec, paths: &ValidatedRun) -> Result<String, String>
         format!("(literal \"{executable}\")"),
         "(literal \"/usr/bin/sandbox-exec\")".into(),
     ];
-    if let Some(toolchain_package_root) = paths.executable.ancestors().find(|path| {
-        path.parent()
-            .and_then(Path::file_name)
-            .is_some_and(|name| name == "toolchains")
-    }) {
+    let toolchain_package_root = paths.toolchain_package_root.as_deref().or_else(|| {
+        paths.executable.ancestors().find(|path| {
+            path.parent()
+                .and_then(Path::file_name)
+                .is_some_and(|name| name == "toolchains")
+        })
+    });
+    if let Some(toolchain_package_root) = toolchain_package_root {
         read_rules.push(format!(
             "(subpath \"{}\")",
             seatbelt_literal(&toolchain_package_root.to_string_lossy())
         ));
-    }
-    if matches!(spec.role, RunRole::Compiler) {
-        let (toolchain_root, developer_root) = validated_compiler_roots(spec)?;
-        for root in [&toolchain_root, &developer_root] {
-            read_rules.push(format!(
+        if matches!(spec.role, RunRole::Compiler) {
+            process_exec_rules.push(format!(
                 "(subpath \"{}\")",
-                seatbelt_literal(&root.to_string_lossy())
+                seatbelt_literal(&toolchain_package_root.to_string_lossy())
             ));
         }
-        process_exec_rules.push(format!(
-            "(subpath \"{}\")",
-            seatbelt_literal(&toolchain_root.to_string_lossy())
-        ));
-        process_exec_rules.push("(literal \"/usr/bin/ld\")".into());
-        process_exec_rules.push("(literal \"/usr/bin/as\")".into());
+    }
+    if matches!(spec.role, RunRole::Compiler) {
+        if spec.toolchain.is_none() {
+            let (toolchain_root, developer_root) = validated_compiler_roots(spec)?;
+            for root in [&toolchain_root, &developer_root] {
+                read_rules.push(format!(
+                    "(subpath \"{}\")",
+                    seatbelt_literal(&root.to_string_lossy())
+                ));
+            }
+            process_exec_rules.push(format!(
+                "(subpath \"{}\")",
+                seatbelt_literal(&toolchain_root.to_string_lossy())
+            ));
+            process_exec_rules.push("(literal \"/usr/bin/ld\")".into());
+            process_exec_rules.push("(literal \"/usr/bin/as\")".into());
+        }
     }
     let process_group_escape_denials = match spec.role {
         // Apple Clang is a trusted launcher and requires posix_spawn for cc1, as, and ld.
@@ -852,6 +865,7 @@ mod launcher_spec_tests {
             stdout_file: "stdout.txt".into(),
             stderr_file: "stderr.txt".into(),
             environment: BTreeMap::new(),
+            toolchain: None,
             limits: RunLimits {
                 wall_time_ms: 1_000,
                 memory_bytes: 64 * 1024 * 1024,

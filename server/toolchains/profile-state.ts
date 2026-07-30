@@ -1,6 +1,4 @@
-import fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
 import type {
   LanguageStability,
   ReadinessReasonCode,
@@ -20,6 +18,7 @@ import {
 } from "./discovery.js";
 import { getInstallProgress } from "./installer.js";
 import { getDescriptorForHost } from "./manifest.js";
+import { inspectInstalledToolchainPackage } from "./package-store.js";
 import { getStoredProfilePreference } from "./preferences-v2.js";
 import {
   isPythonCheckerReady,
@@ -29,7 +28,6 @@ import {
   resolveToolchain,
 } from "./resolver.js";
 import {
-  getToolchainsDir,
   loadToolchainPreferenceSnapshot,
   type ToolchainPreferenceSnapshot,
 } from "./storage.js";
@@ -49,6 +47,9 @@ export interface ProfileManagedPackage {
   id: string;
   version: string;
   installed: boolean;
+  origin?: "built-in" | "downloaded";
+  integrity?: "verified-receipt" | "legacy-entrypoint";
+  uninstallable: boolean;
   downloadAvailable: boolean;
   progress: InstallProgress;
 }
@@ -132,15 +133,21 @@ function managedPackageState(
   const catalogEntry = getDescriptorForHost(os.platform(), os.arch(), kind);
   if (!catalogEntry) return undefined;
   const manifestEntry = manifest.find((entry) => entry.id === catalogEntry.id);
-  const executablePath = path.join(
-    getToolchainsDir(),
-    catalogEntry.id,
-    catalogEntry.executableRelativePath,
-  );
+  const installedState = inspectInstalledToolchainPackage(catalogEntry);
+  const installed = installedState.status === "installed"
+    ? installedState.package
+    : undefined;
   return {
     id: catalogEntry.id,
     version: catalogEntry.version,
-    installed: fs.existsSync(executablePath),
+    installed: !!installed,
+    ...(installed
+      ? {
+          origin: installed.origin,
+          integrity: installed.integrity,
+        }
+      : {}),
+    uninstallable: installed?.uninstallable ?? false,
     downloadAvailable: !!manifestEntry,
     progress: getInstallProgress(catalogEntry.id) || defaultProgress(catalogEntry.id),
   };

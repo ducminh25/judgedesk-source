@@ -75,6 +75,7 @@ export async function runTestCase(options: TestCaseRunnerOptions): Promise<TestC
       args: launch.args,
       stdinFile,
       environment: launch.environment,
+      toolchain: launch.toolchain,
       timeLimitMs: options.timeLimitMs,
       memoryBytes,
     }));
@@ -182,7 +183,12 @@ export async function runTestCase(options: TestCaseRunnerOptions): Promise<TestC
 async function prepareSubmission(
   workspace: Awaited<ReturnType<typeof createExecutorWorkspace>>,
   options: TestCaseRunnerOptions,
-): Promise<{ executableId: string; args: string[]; environment: Record<string, string> }> {
+): Promise<{
+  executableId: string;
+  args: string[];
+  environment: Record<string, string>;
+  toolchain?: import("../executor/protocol.js").ExecutorToolchainIdentity;
+}> {
   if (options.language === "cpp") {
     const artifact = await importExecutorArtifact(options.executablePath);
     return { executableId: artifact.executableId, args: [], environment: {} };

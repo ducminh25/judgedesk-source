@@ -3,11 +3,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { ExecutorRunResult } from "../executor/protocol.js";
+import type { ExecutorToolchainIdentity } from "../executor/protocol.js";
 import { executorClient } from "../executor/client.js";
 import {
   createExecutorWorkspace,
   findCachedManagedToolchain,
   importManagedToolchain,
+  prepareManagedToolchainExecutable,
 } from "../executor/workspace.js";
 import {
   attachExecutorRun,
@@ -104,6 +106,7 @@ interface PreparedCompiler {
   argumentPrefix: string[];
   environment: Record<string, string>;
   compatibilityHeaderPath?: string;
+  toolchain?: ExecutorToolchainIdentity;
 }
 
 export function getBundledTestlibSource(): string {
@@ -381,6 +384,7 @@ export async function runCompilerWithLimits(
       executableId: compiler.executableId,
       args: stagedArgs,
       environment,
+      toolchain: compiler.toolchain,
       timeoutMs: limits.timeoutMs,
       memoryBytes: limits.memoryBytes ?? resolveCompilerMemoryLimitBytes(),
       maxGeneratedFileBytes: limits.maxGeneratedFileBytes,
@@ -486,8 +490,9 @@ async function prepareCompiler(
   }
   const resolved = resolveToolchain("cpp");
   if (resolved.ready && resolved.source === "managed" && sameFile(resolved.executablePath, compilerPath)) {
+    const prepared = await prepareManagedToolchainExecutable("cpp", resolved);
     return {
-      ...await importManagedToolchain("cpp", resolved.executablePath, resolved.version),
+      ...prepared,
       argumentPrefix: [],
       environment: {},
     };

@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { APP_ROOT, IS_PRODUCTION } from "../runtime.js";
+import { APP_ROOT, IS_PRODUCTION, RESOURCE_ROOT } from "../runtime.js";
 import type {
   ExecutorHealth,
   ExecutorRequest,
@@ -472,7 +472,15 @@ function minimalExecutorEnvironment(environment: NodeJS.ProcessEnv): NodeJS.Proc
   // The executor is trusted and needs the user's AppContainer/profile variables during its
   // startup self-test. It constructs a separate allowlisted environment for every untrusted
   // child, so credentials and proxy variables are never forwarded to submissions.
-  return { ...environment };
+  const result = { ...environment };
+  const builtInToolchains = environment.JUDGEDESK_BUILTIN_TOOLCHAINS_DIR
+    || path.join(environment.THEMIS_RESOURCE_DIR || RESOURCE_ROOT, "toolchains");
+  if (fs.existsSync(builtInToolchains)) {
+    result.JUDGEDESK_BUILTIN_TOOLCHAINS_DIR = path.resolve(builtInToolchains);
+  } else {
+    delete result.JUDGEDESK_BUILTIN_TOOLCHAINS_DIR;
+  }
+  return result;
 }
 
 export function isTransientExecutorStartupFailure(health: ExecutorHealth): boolean {

@@ -1,21 +1,23 @@
 import path from "node:path";
 import type { ExecutorWorkspace } from "../executor/workspace.js";
 import {
-  findCachedManagedToolchain,
-  importManagedToolchain,
+  prepareManagedToolchainExecutable,
 } from "../executor/workspace.js";
+import type { ExecutorToolchainIdentity } from "../executor/protocol.js";
 import { resolveCompilationToolchain } from "./compiler.js";
 
 export interface PythonLaunch {
   executableId: string;
   args: string[];
   environment: Record<string, string>;
+  toolchain?: ExecutorToolchainIdentity;
 }
 
 export interface IsolatedPythonRuntime {
   executableId: string;
   executablePath: string;
   environment: Record<string, string>;
+  toolchain?: ExecutorToolchainIdentity;
 }
 
 interface IsolatedPythonLaunchOptions {
@@ -63,6 +65,7 @@ export async function prepareIsolatedPythonScript(
     executableId: runtime.executableId,
     args: ["-I", "-B", path.join(workspace.path, stagedName)],
     environment: runtime.environment,
+    ...(runtime.toolchain ? { toolchain: runtime.toolchain } : {}),
   };
 }
 
@@ -76,9 +79,7 @@ export async function prepareIsolatedPythonRuntime(
   }
   if (python.source !== "managed") throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
 
-  const existingCache = await findCachedManagedToolchain("python");
-  const cached = existingCache
-    ?? await importManagedToolchain("python", python.executablePath, python.version);
+  const cached = await prepareManagedToolchainExecutable("python", python);
   return {
     executableId: cached.executableId,
     executablePath: cached.executablePath,
@@ -86,5 +87,6 @@ export async function prepareIsolatedPythonRuntime(
       cached.root,
       path.dirname(cached.executablePath),
     ),
+    ...(cached.toolchain ? { toolchain: cached.toolchain } : {}),
   };
 }

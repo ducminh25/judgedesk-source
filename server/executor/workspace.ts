@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { getDescriptorForHost } from "../toolchains/manifest.js";
 import type { ResolvedToolchain, ToolchainKind } from "../toolchains/types.js";
+import type { ExecutorToolchainIdentity } from "./protocol.js";
 import { executorClient } from "./client.js";
 
 export interface ExecutorWorkspace {
@@ -22,6 +23,7 @@ export interface ExecutorArtifact {
 export interface CachedManagedToolchain extends ResolvedToolchain {
   executableId: string;
   root: string;
+  toolchain?: ExecutorToolchainIdentity;
 }
 
 const artifactCache = new Map<string, { fingerprint: string; artifact: ExecutorArtifact }>();
@@ -158,6 +160,56 @@ export async function importManagedToolchain(
     executableId: path.relative(health.executorRoot, cachedExecutable).replaceAll("\\", "/"),
     executablePath: cachedExecutable,
     root: destinationRoot,
+  };
+}
+
+export async function prepareManagedToolchainExecutable(
+  kind: "cpp" | "python",
+  resolved: ResolvedToolchain,
+): Promise<CachedManagedToolchain> {
+  if (
+    resolved.source === "managed"
+    && resolved.packageOrigin === "built-in"
+    && resolved.packageRoot
+    && resolved.packageDigest
+    && resolved.packageComponentId
+  ) {
+    const descriptor = getDescriptorForHost(os.platform(), os.arch(), kind);
+    if (!descriptor || descriptor.id !== path.basename(resolved.packageRoot)) {
+      throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+    }
+    const canonicalRoot = fs.realpathSync(resolved.packageRoot);
+    const canonicalExecutable = fs.realpathSync(resolved.executablePath);
+    if (!isDescendant(canonicalRoot, canonicalExecutable)) {
+      throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+    }
+    const relativeExecutable = path
+      .relative(canonicalRoot, canonicalExecutable)
+      .replaceAll("\\", "/");
+    return {
+      ...resolved,
+      executablePath: canonicalExecutable,
+      executableId: `builtin-toolchains/${descriptor.id}/${relativeExecutable}`,
+      root: canonicalRoot,
+      toolchain: {
+        packageId: descriptor.id,
+        packageDigest: resolved.packageDigest,
+        componentId: resolved.packageComponentId,
+      },
+    };
+  }
+
+  const cached = await findCachedManagedToolchain(kind);
+  if (cached && sameFilePath(cached.executablePath, resolved.executablePath)) {
+    return cached;
+  }
+  return {
+    ...resolved,
+    ...await importManagedToolchain(
+      kind,
+      resolved.executablePath,
+      resolved.version,
+    ),
   };
 }
 
@@ -324,4 +376,13 @@ function canonicalizeForContainment(value: string): string {
 
 function managedCacheId(kind: ToolchainKind, version: string): string {
   return `${kind}_${version.replaceAll(/[^A-Za-z0-9_.-]/g, "_")}`;
+}
+
+function sameFilePath(left: string, right: string): boolean {
+  try {
+    return fs.realpathSync(left).toLowerCase()
+      === fs.realpathSync(right).toLowerCase();
+  } catch {
+    return false;
+  }
 }

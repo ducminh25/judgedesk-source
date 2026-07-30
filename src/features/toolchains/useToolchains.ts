@@ -35,6 +35,10 @@ export interface ToolchainDescriptor {
   licenseFiles: string[];
   sizeBytes?: number;
   installed: boolean;
+  origin?: "built-in" | "downloaded";
+  integrity?: "verified-receipt" | "legacy-entrypoint";
+  uninstallable: boolean;
+  packageDiagnostic?: string;
   progress: ToolchainProgress;
 }
 
@@ -51,6 +55,9 @@ export interface ResolvedToolchain {
   certificateId?: string;
   certificateIssuedAt?: string;
   snapshotDigest?: string;
+  packageOrigin?: "built-in" | "downloaded";
+  packageDigest?: string;
+  packageRoot?: string;
 }
 
 export interface ToolchainCertificationPlan {
@@ -96,6 +103,9 @@ export interface LanguageProfileView {
     id: string;
     version: string;
     installed: boolean;
+    origin?: "built-in" | "downloaded";
+    integrity?: "verified-receipt" | "legacy-entrypoint";
+    uninstallable: boolean;
     downloadAvailable: boolean;
     progress: ToolchainProgress;
   };
@@ -110,6 +120,7 @@ export interface LanguageProfileView {
 }
 
 export interface ToolchainState {
+  distribution: "full" | "core" | "development";
   platform: string;
   arch: string;
   mutationsBlocked: boolean;

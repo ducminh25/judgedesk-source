@@ -163,3 +163,55 @@ test("native and runtime-backed checkers use distinct typed roles with the same 
     assert.equal(request.limits.memoryBytes, 256 * MiB);
   }
 });
+
+test("built-in toolchain identities become role-scoped grants on the wire", () => {
+  const identity = {
+    packageId: "python-windows-x64",
+    packageDigest: "a".repeat(64),
+    componentId: "python",
+  };
+  const submission = buildSubmissionExecutorRunSpec({
+    runId: "submission_builtin",
+    workspaceId: "workspace_builtin",
+    executableId: "builtin-toolchains/python-windows-x64/python.exe",
+    args: ["-I", "submission.py"],
+    environment: {},
+    toolchain: identity,
+    timeLimitMs: 1_000,
+    memoryBytes: 256 * MiB,
+  });
+  const checker = buildCheckerExecutorRunSpec({
+    runId: "checker_builtin",
+    workspaceId: "workspace_builtin",
+    executableId: "builtin-toolchains/python-windows-x64/python.exe",
+    args: ["checker.py"],
+    environment: {},
+    toolchain: identity,
+    runtimeBacked: true,
+    timeoutMs: 5_000,
+    memoryBytes: 256 * MiB,
+  });
+  const compiler = buildCompilerExecutorRunSpec({
+    runId: "compiler_builtin",
+    workspaceId: "workspace_builtin",
+    executableId: "builtin-toolchains/gcc-windows-x64/bin/g++.exe",
+    args: ["submission.cpp"],
+    environment: {},
+    toolchain: {
+      packageId: "gcc-windows-x64",
+      packageDigest: "b".repeat(64),
+      componentId: "gpp",
+    },
+    timeoutMs: 15_000,
+    memoryBytes: 512 * MiB,
+    maxGeneratedFileBytes: 32 * MiB,
+  });
+
+  assert.equal(submission.toolchain?.role, "submission-runtime");
+  assert.equal(checker.toolchain?.role, "checker-runtime");
+  assert.equal(compiler.toolchain?.role, "compiler");
+  assert.deepEqual(
+    { ...submission.toolchain, role: undefined },
+    { ...identity, role: undefined },
+  );
+});

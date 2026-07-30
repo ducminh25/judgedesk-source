@@ -431,6 +431,7 @@
       "verifyAndUse": "Kiểm tra và sử dụng",
       "downloadAndApply": "Tải về và áp dụng cho JudgeDesk",
       "applyManaged": "Áp dụng gói managed",
+      "includedWithJudgeDesk": "Đã tích hợp trong JudgeDesk Full",
       "uninstallConfirm": "Gỡ gói do JudgeDesk quản lý này? Trình biên dịch và runtime cục bộ sẽ không bao giờ bị xóa.",
       "mutationsBlocked": "Các lựa chọn trình biên dịch và runtime được khóa trong khi đang chấm. Hãy hủy hoặc chờ lượt chấm hiện tại kết thúc trước khi thay đổi.",
       "managedUnavailable": "Không có gói managed dành cho máy tính này.",

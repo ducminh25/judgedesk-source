@@ -6,8 +6,12 @@ import { spawnSync } from "child_process";
 import { once } from "events";
 import { purgeCachedManagedToolchain } from "../executor/workspace.js";
 import { TOOLCHAIN_CATALOG } from "./manifest.js";
+import {
+  getBuiltInToolchainsDir,
+  writeToolchainPackageReceipt,
+} from "./package-store.js";
 import { InstallProgress, ToolchainDescriptor } from "./types.js";
-import { getToolchainsDir } from "./storage.js";
+import { getDownloadedToolchainsDir } from "./storage.js";
 
 export const installProgressMap = new Map<string, InstallProgress>();
 const abortControllers = new Map<string, AbortController>();
@@ -300,7 +304,7 @@ export async function installToolchain(
   const controller = new AbortController();
   abortControllers.set(descriptor.id, controller);
 
-  const toolchainsDir = getToolchainsDir();
+  const toolchainsDir = getDownloadedToolchainsDir();
   const operationId = `${process.pid}-${crypto.randomUUID()}`;
   const tempDownloadPath = path.join(
     toolchainsDir,
@@ -346,6 +350,9 @@ export async function installToolchain(
     verifyExecutable(
       path.join(tempExtractDir, descriptor.executableRelativePath),
     );
+    // The archive cannot supply its own trust metadata. JudgeDesk writes the
+    // receipt only after the signed catalog digest and executable probe pass.
+    writeToolchainPackageReceipt(tempExtractDir, descriptor);
     options.beforeCommit?.();
 
     if (fs.existsSync(finalInstallDir)) {
@@ -394,7 +401,13 @@ export async function uninstallToolchain(id: string): Promise<void> {
   if (!descriptor) {
     throw new Error(`Unknown toolchain package '${id}'.`);
   }
-  const installDir = path.join(getToolchainsDir(), id);
+  const builtInDirectory = path.join(getBuiltInToolchainsDir(), id);
+  if (fs.existsSync(builtInDirectory)) {
+    throw new Error(
+      `Toolchain package '${id}' is included with JudgeDesk and cannot be uninstalled separately.`,
+    );
+  }
+  const installDir = path.join(getDownloadedToolchainsDir(), id);
   try {
     fs.rmSync(installDir, { recursive: true, force: true });
     installProgressMap.delete(id);

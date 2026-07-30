@@ -1,5 +1,6 @@
 import {
   DEFAULT_EXECUTOR_LIMITS,
+  type ExecutorToolchainIdentity,
   type ExecutorRunSpec,
 } from "../executor/protocol.js";
 
@@ -15,6 +16,7 @@ interface CompilerExecutorRunSpecOptions {
   timeoutMs: number;
   memoryBytes: number;
   maxGeneratedFileBytes: number;
+  toolchain?: ExecutorToolchainIdentity;
 }
 
 export function buildCompilerExecutorRunSpec(
@@ -29,6 +31,9 @@ export function buildCompilerExecutorRunSpec(
     stdoutFile: "compiler.stdout",
     stderrFile: "compiler.stderr",
     environment: options.environment,
+    ...(options.toolchain
+      ? { toolchain: { ...options.toolchain, role: "compiler" as const } }
+      : {}),
     limits: {
       ...DEFAULT_EXECUTOR_LIMITS.compiler,
       wallTimeMs: options.timeoutMs,
@@ -48,6 +53,7 @@ interface SubmissionExecutorRunSpecOptions {
   environment: Record<string, string>;
   timeLimitMs: number;
   memoryBytes: number;
+  toolchain?: ExecutorToolchainIdentity;
 }
 
 export function buildSubmissionExecutorRunSpec(
@@ -63,6 +69,14 @@ export function buildSubmissionExecutorRunSpec(
     stdoutFile: "stdout.txt",
     stderrFile: "stderr.txt",
     environment: options.environment,
+    ...(options.toolchain
+      ? {
+          toolchain: {
+            ...options.toolchain,
+            role: "submission-runtime" as const,
+          },
+        }
+      : {}),
     limits: {
       ...DEFAULT_EXECUTOR_LIMITS.submission,
       wallTimeMs: Math.max(1, options.timeLimitMs),
@@ -82,6 +96,7 @@ interface CheckerExecutorRunSpecOptions {
   memoryBytes: number;
   stdoutFile?: string;
   stderrFile?: string;
+  toolchain?: ExecutorToolchainIdentity;
 }
 
 /**
@@ -102,6 +117,14 @@ export function buildCheckerExecutorRunSpec(
     stdoutFile: options.stdoutFile ?? "checker.stdout",
     stderrFile: options.stderrFile ?? "checker.stderr",
     environment: options.environment,
+    ...(options.toolchain
+      ? {
+          toolchain: {
+            ...options.toolchain,
+            role: "checker-runtime" as const,
+          },
+        }
+      : {}),
     limits: {
       ...DEFAULT_EXECUTOR_LIMITS.checker,
       wallTimeMs: options.timeoutMs,

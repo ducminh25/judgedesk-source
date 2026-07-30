@@ -29,8 +29,6 @@ import DirectoryPickerModal from "./components/DirectoryPickerModal";
 import EntityActionMenu from "./components/EntityActionMenu";
 import AppToolbar from "./components/AppToolbar";
 import { useTranslation } from "react-i18next";
-import { ToolchainSetupModal } from "./features/toolchains/ToolchainSetupModal.js";
-import { preferencesStorage } from "./features/preferences/storage.js";
 import ToolchainManager from "./features/toolchains/ToolchainManager.js";
 import { useAppUpdater } from "./features/updates/useAppUpdater.js";
 import UnsavedContestDialog from "./components/UnsavedContestDialog";
@@ -104,7 +102,6 @@ export default function App() {
   );
   const [modalPath, setModalPath] = useState<string>("");
   const [openToolchains, setOpenToolchains] = useState(false);
-  const [openToolchainSetup, setOpenToolchainSetup] = useState(false);
   const [showInstallUpdate, setShowInstallUpdate] = useState(false);
   const [isInstallingUpdate, setIsInstallingUpdate] = useState(false);
   const [updateRestartError, setUpdateRestartError] = useState("");
@@ -142,12 +139,6 @@ export default function App() {
     contestants: contestantsList.length,
     problems: problemsList.length,
   };
-
-  useEffect(() => {
-    if (!preferencesStorage.isToolchainSetupCompleted()) {
-      setOpenToolchainSetup(true);
-    }
-  }, []);
 
   const [hostStatus, setHostStatus] = useState<HostStatus | null>(null);
   const [backendErrorMessage, setBackendErrorMessage] = useState("");
@@ -843,13 +834,6 @@ export default function App() {
       {openToolchains && (
         <ToolchainManager
           onClose={() => setOpenToolchains(false)}
-        />
-      )}
-
-      {openToolchainSetup && (
-        <ToolchainSetupModal
-          isOpen={openToolchainSetup}
-          onClose={() => setOpenToolchainSetup(false)}
         />
       )}
 

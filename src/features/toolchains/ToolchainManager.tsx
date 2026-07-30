@@ -480,6 +480,12 @@ function ProfileRow({
               {t("toolchains.registry.applyManaged")}
             </button>
           )}
+          {managed?.installed && managed.origin === "built-in" && (
+            <span className="inline-flex items-center gap-1.5 rounded border border-emerald-300 bg-emerald-500/10 px-2.5 py-1.5 text-2xs font-bold text-emerald-700 dark:border-emerald-900/60 dark:text-emerald-300">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              {t("toolchains.registry.includedWithJudgeDesk")}
+            </span>
+          )}
           {installing && managed && (
             <>
               <div className="w-full max-w-44">
@@ -503,7 +509,7 @@ function ProfileRow({
               </button>
             </>
           )}
-          {managed?.installed && !installing && (
+          {managed?.installed && managed.uninstallable && !installing && (
             <button
               type="button"
               disabled={controlsDisabled}

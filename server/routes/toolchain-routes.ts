@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import fs from "node:fs";
+import { getJudgeDeskDistribution } from "../distribution.js";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -27,6 +27,7 @@ import {
   loadOfficialManifest,
   TOOLCHAIN_CATALOG,
 } from "../toolchains/manifest.js";
+import { inspectInstalledToolchainPackage } from "../toolchains/package-store.js";
 import {
   getStoredProfilePreference,
   isValidToolchainLocalPath,
@@ -38,7 +39,6 @@ import {
   verifyLocalToolchainCandidate,
 } from "../toolchains/resolver.js";
 import {
-  getToolchainsDir,
   loadPreferences,
   loadToolchainPreferenceSnapshot,
   tryUpdateProfileToolchainPreferenceAtRevision,
@@ -183,16 +183,25 @@ export function registerToolchainRoutes(app: Express): void {
     const manifest = manifestState.entries;
     const toolchainsList = manifest.map((descriptor) => {
       const progress = getInstallProgress(descriptor.id);
-      const installed = fs.existsSync(
-        path.join(
-          getToolchainsDir(),
-          descriptor.id,
-          descriptor.executableRelativePath,
-        ),
-      );
+      const installedState = inspectInstalledToolchainPackage(descriptor);
+      const installed = installedState.status === "installed"
+        ? installedState.package
+        : undefined;
       return {
         ...descriptor,
-        installed,
+        installed: !!installed,
+        ...(installed
+          ? {
+              origin: installed.origin,
+              integrity: installed.integrity,
+              uninstallable: installed.uninstallable,
+            }
+          : {
+              uninstallable: false,
+              ...(installedState.status === "corrupt"
+                ? { packageDiagnostic: installedState.diagnostic }
+                : {}),
+            }),
         progress: progress || {
           id: descriptor.id,
           status: "idle" as const,
@@ -211,6 +220,7 @@ export function registerToolchainRoutes(app: Express): void {
     const managedPython = resolveManagedToolchain("python");
 
     res.json({
+      distribution: getJudgeDeskDistribution(),
       platform,
       arch,
       preferences: prefs,
@@ -443,7 +453,9 @@ export function registerToolchainRoutes(app: Express): void {
         message: `Toolchain '${id}' uninstalled successfully.`,
       });
     } catch (error: any) {
-      return res.status(500).json({ success: false, message: error.message });
+      const message = error.message || String(error);
+      const status = message.includes("included with JudgeDesk") ? 409 : 500;
+      return res.status(status).json({ success: false, message });
     }
   });
 
