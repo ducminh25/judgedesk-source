@@ -15,6 +15,9 @@ import {
   TOOLCHAIN_PACKAGE_RECEIPT,
   writeToolchainPackageReceipt,
 } from "./package-store.js";
+import {
+  TOOLCHAIN_SOURCE_PROVENANCE_FILENAME,
+} from "./release-metadata.js";
 import type {
   ToolchainDescriptor,
   ToolchainManifestDocument,
@@ -223,6 +226,7 @@ function inspectExtractedPackage(
     ...(descriptor.license?.licenseFiles ?? []),
     ...(descriptor.license?.noticeFiles ?? []),
     ...(descriptor.license ? [descriptor.license.sbomPath] : []),
+    TOOLCHAIN_SOURCE_PROVENANCE_FILENAME,
   ]) {
     if (
       !fs.statSync(
@@ -274,4 +278,3 @@ function assertOutputRootIsBuildDirectory(outputRoot: string): void {
 function sha256Bytes(value: Uint8Array): string {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
-

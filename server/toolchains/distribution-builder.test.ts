@@ -40,6 +40,7 @@ function fixture(): {
     "python.exe": "runtime",
     "LICENSE.txt": "license",
     "THIRD-PARTY-NOTICES.txt": "notice",
+    "SOURCE-PROVENANCE.json": "provenance",
     "SBOM.spdx.json": JSON.stringify({ spdxVersion: "SPDX-2.3" }),
   };
   const archive = Buffer.from("fake signed archive");
