@@ -258,7 +258,18 @@ export async function smokeTestSidecar(
           deadline,
         );
         if (response.ok) {
-          healthy = { baseUrl, status };
+          const cppDetectionPending =
+            requireCpp
+            && !status.gpp?.installed
+            && status.gpp?.diagnostic
+              === "Toolchain detection is still in progress.";
+          if (cppDetectionPending) {
+            lastHealthError = new Error(
+              "Apple Clang detection is still in progress.",
+            );
+          } else {
+            healthy = { baseUrl, status };
+          }
         }
       } catch (error) {
         // The server has not started listening yet.
