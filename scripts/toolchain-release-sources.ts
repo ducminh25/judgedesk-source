@@ -6,6 +6,11 @@ import type {
   HostArchitecture,
   HostPlatform,
 } from "../server/languages/contracts.js";
+import {
+  TOOLCHAIN_SOURCE_PROVENANCE_FILENAME,
+} from "../server/toolchains/release-metadata.js";
+
+export { TOOLCHAIN_SOURCE_PROVENANCE_FILENAME };
 
 export type ToolchainPackagingRecipe =
   | {
@@ -38,7 +43,7 @@ export interface ToolchainUpstreamInput {
    * JudgeDesk verifies both hashes when it is available.
    */
   sha512?: string;
-  role: "primary" | "license";
+  role: "primary" | "license" | "source";
   destinationRelativePath?: string;
 }
 
@@ -52,6 +57,22 @@ export interface ToolchainReleaseSource {
     ...ToolchainUpstreamInput[],
   ];
   packagingDescription: string;
+}
+
+export interface ToolchainSourceProvenanceV1 {
+  schemaVersion: 1;
+  packageId: string;
+  packageVersion: string;
+  createdAt: string;
+  packagingDescription: string;
+  inputs: readonly {
+    id: string;
+    fileName: string;
+    url: string;
+    sha256: string;
+    sha512?: string;
+    role: ToolchainUpstreamInput["role"];
+  }[];
 }
 
 const PYTHON_RELEASE =
@@ -240,15 +261,26 @@ export const TOOLCHAIN_RELEASE_SOURCES: Readonly<
     recipe: {
       kind: "fpc-windows-installer",
     },
-    inputs: [{
-      id: "fpc",
-      fileName: "fpc-3.2.2.win32.and.win64.exe",
-      url:
-        `${FPC_SOURCEFORGE}/Win32/3.2.2/fpc-3.2.2.win32.and.win64.exe`,
-      sha256:
-        "8c255390544b051388b577eb61c6191a04883264afe0e3369b3600a56daf7bde",
-      role: "primary",
-    }],
+    inputs: [
+      {
+        id: "fpc",
+        fileName: "fpc-3.2.2.win32.and.win64.exe",
+        url:
+          `${FPC_SOURCEFORGE}/Win32/3.2.2/fpc-3.2.2.win32.and.win64.exe`,
+        sha256:
+          "8c255390544b051388b577eb61c6191a04883264afe0e3369b3600a56daf7bde",
+        role: "primary",
+      },
+      {
+        id: "fpc-source",
+        fileName: "fpc-3.2.2.source.tar.gz",
+        url:
+          `${FPC_SOURCEFORGE}/Source/3.2.2/fpc-3.2.2.source.tar.gz`,
+        sha256:
+          "d542e349de246843d4f164829953d1f5b864126c5b62fd17c9b45b33e23d2f44",
+        role: "source",
+      },
+    ],
     packagingDescription:
       "Runs the official combined Win32/Win64 installer in an isolated build root, then keeps the x86_64 compiler, binutils, units, and upstream license texts.",
   },
@@ -259,15 +291,26 @@ export const TOOLCHAIN_RELEASE_SOURCES: Readonly<
     recipe: {
       kind: "fpc-macos-dmg",
     },
-    inputs: [{
-      id: "fpc",
-      fileName: "fpc-3.2.2.intelarm64-macosx.dmg",
-      url:
-        `${FPC_SOURCEFORGE}/Mac%20OS%20X/3.2.2/fpc-3.2.2.intelarm64-macosx.dmg`,
-      sha256:
-        "05d4510c8c887e3c68de20272abf62171aa5b2ef1eba6bce25e4c0bc41ba8b7d",
-      role: "primary",
-    }],
+    inputs: [
+      {
+        id: "fpc",
+        fileName: "fpc-3.2.2.intelarm64-macosx.dmg",
+        url:
+          `${FPC_SOURCEFORGE}/Mac%20OS%20X/3.2.2/fpc-3.2.2.intelarm64-macosx.dmg`,
+        sha256:
+          "05d4510c8c887e3c68de20272abf62171aa5b2ef1eba6bce25e4c0bc41ba8b7d",
+        role: "primary",
+      },
+      {
+        id: "fpc-source",
+        fileName: "fpc-3.2.2.source.tar.gz",
+        url:
+          `${FPC_SOURCEFORGE}/Source/3.2.2/fpc-3.2.2.source.tar.gz`,
+        sha256:
+          "d542e349de246843d4f164829953d1f5b864126c5b62fd17c9b45b33e23d2f44",
+        role: "source",
+      },
+    ],
     packagingDescription:
       "Expands the official package read-only and keeps the ARM64 driver, compiler, units, and upstream license texts.",
   },
@@ -469,6 +512,78 @@ export function validateToolchainReleaseSources(): void {
       throw new Error(`Release source '${packageId}' has an invalid archive root.`);
     }
   }
+}
+
+export function buildToolchainSourceProvenance(
+  packageId: string,
+  createdAt: string,
+): ToolchainSourceProvenanceV1 {
+  const release = TOOLCHAIN_RELEASE_SOURCES[packageId];
+  const blueprint = TOOLCHAIN_RELEASE_BLUEPRINTS[packageId];
+  if (!release || !blueprint) {
+    throw new Error(`Unknown toolchain release package '${packageId}'.`);
+  }
+  if (
+    !Number.isFinite(Date.parse(createdAt))
+    || new Date(createdAt).toISOString() !== createdAt
+  ) {
+    throw new Error("Toolchain provenance timestamp must be canonical ISO.");
+  }
+  return {
+    schemaVersion: 1,
+    packageId,
+    packageVersion: blueprint.version,
+    createdAt,
+    packagingDescription: release.packagingDescription,
+    inputs: release.inputs.map((input) => ({
+      id: input.id,
+      fileName: input.fileName,
+      url: input.url,
+      sha256: input.sha256,
+      ...(input.sha512 ? { sha512: input.sha512 } : {}),
+      role: input.role,
+    })),
+  };
+}
+
+export function validateToolchainSourceProvenance(
+  value: unknown,
+  packageId: string,
+): ToolchainSourceProvenanceV1 {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`Package '${packageId}' has invalid source provenance.`);
+  }
+  const candidate = value as Partial<ToolchainSourceProvenanceV1>;
+  if (typeof candidate.createdAt !== "string") {
+    throw new Error(`Package '${packageId}' has no provenance timestamp.`);
+  }
+  const expected = buildToolchainSourceProvenance(
+    packageId,
+    candidate.createdAt,
+  );
+  const normalized: ToolchainSourceProvenanceV1 = {
+    schemaVersion: candidate.schemaVersion as 1,
+    packageId: String(candidate.packageId || ""),
+    packageVersion: String(candidate.packageVersion || ""),
+    createdAt: candidate.createdAt,
+    packagingDescription: String(candidate.packagingDescription || ""),
+    inputs: Array.isArray(candidate.inputs)
+      ? candidate.inputs.map((input) => ({
+          id: String(input?.id || ""),
+          fileName: String(input?.fileName || ""),
+          url: String(input?.url || ""),
+          sha256: String(input?.sha256 || ""),
+          ...(input?.sha512 ? { sha512: String(input.sha512) } : {}),
+          role: input?.role as ToolchainUpstreamInput["role"],
+        }))
+      : [],
+  };
+  if (JSON.stringify(normalized) !== JSON.stringify(expected)) {
+    throw new Error(
+      `Package '${packageId}' source provenance does not match the pinned release catalog.`,
+    );
+  }
+  return expected;
 }
 
 validateToolchainReleaseSources();

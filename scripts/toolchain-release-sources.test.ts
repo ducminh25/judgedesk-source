@@ -1,12 +1,20 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import {
   TOOLCHAIN_RELEASE_BLUEPRINTS,
 } from "../server/toolchains/manifest.js";
 import {
+  buildToolchainSourceProvenance,
   TOOLCHAIN_RELEASE_SOURCES,
+  validateToolchainSourceProvenance,
   validateToolchainReleaseSources,
 } from "./toolchain-release-sources.js";
+import {
+  writeToolchainPackageMetadata,
+} from "./write-toolchain-package-metadata.js";
 
 test("release sources cover every signed package blueprint exactly once", () => {
   assert.doesNotThrow(validateToolchainReleaseSources);
@@ -59,4 +67,51 @@ test("all release inputs are immutable checksum-pinned HTTPS resources", () => {
       if (input.sha512) assert.match(input.sha512, /^[a-f0-9]{128}$/);
     }
   }
+});
+
+test("source provenance rejects catalog drift and metadata records exact inputs", (t) => {
+  const createdAt = "2026-07-31T00:00:00.000Z";
+  const provenance = buildToolchainSourceProvenance(
+    "python-windows-x64",
+    createdAt,
+  );
+  assert.equal(
+    validateToolchainSourceProvenance(
+      provenance,
+      "python-windows-x64",
+    ).inputs[0].sha256,
+    TOOLCHAIN_RELEASE_SOURCES["python-windows-x64"].inputs[0].sha256,
+  );
+  assert.throws(
+    () => validateToolchainSourceProvenance(
+      {
+        ...provenance,
+        inputs: [{ ...provenance.inputs[0], sha256: "0".repeat(64) }],
+      },
+      "python-windows-x64",
+    ),
+    /does not match the pinned release catalog/,
+  );
+
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "judgedesk-package-metadata-"),
+  );
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(root, "LICENSE.txt"), "Python license\n");
+  writeToolchainPackageMetadata(root, "python-windows-x64", { createdAt });
+
+  const notice = fs.readFileSync(
+    path.join(root, "THIRD-PARTY-NOTICES.txt"),
+    "utf8",
+  );
+  assert.match(notice, /checksum-pinned upstream release inputs/);
+  assert.doesNotMatch(notice, /unmodified upstream binary distribution/);
+  const sbom = JSON.parse(
+    fs.readFileSync(path.join(root, "SBOM.spdx.json"), "utf8"),
+  );
+  assert.equal(sbom.spdxVersion, "SPDX-2.3");
+  assert.match(
+    sbom.packages[0].externalRefs[0].referenceLocator,
+    /#sha256=[a-f0-9]{64}$/,
+  );
 });

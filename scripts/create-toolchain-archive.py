@@ -50,6 +50,8 @@ def package_entries(root: Path) -> list[tuple[Path, str]]:
             relative = entry.relative_to(root).as_posix()
             entries.append((entry, relative))
             if entry.is_symlink():
+                if Path(os.readlink(entry)).is_absolute():
+                    fail(f"Package contains an absolute symbolic link: {relative}")
                 try:
                     target = entry.resolve(strict=True)
                 except FileNotFoundError:
@@ -63,6 +65,8 @@ def package_entries(root: Path) -> list[tuple[Path, str]]:
             entry = current_path / name
             relative = entry.relative_to(root).as_posix()
             if entry.is_symlink():
+                if Path(os.readlink(entry)).is_absolute():
+                    fail(f"Package contains an absolute symbolic link: {relative}")
                 try:
                     target = entry.resolve(strict=True)
                 except FileNotFoundError:

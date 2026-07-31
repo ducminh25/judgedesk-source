@@ -18,6 +18,10 @@ import type {
   ToolchainManifestV2Payload,
   ToolchainReleaseBlueprint,
 } from "../server/toolchains/types.js";
+import {
+  TOOLCHAIN_SOURCE_PROVENANCE_FILENAME,
+  validateToolchainSourceProvenance,
+} from "./toolchain-release-sources.js";
 
 const MAX_PACKAGE_FILES = 500_000;
 const MAX_INSTALLED_BYTES = 8 * 1024 * 1024 * 1024;
@@ -143,6 +147,19 @@ function inspectPackageTree(
       `Archive '${blueprint.archiveFilename}' must contain an SPDX 2.3 SBOM.`,
     );
   }
+  const provenancePath = path.join(
+    root,
+    TOOLCHAIN_SOURCE_PROVENANCE_FILENAME,
+  );
+  let provenance: unknown;
+  try {
+    provenance = JSON.parse(fs.readFileSync(provenancePath, "utf8"));
+  } catch {
+    throw new Error(
+      `Archive '${blueprint.archiveFilename}' has invalid source provenance.`,
+    );
+  }
+  validateToolchainSourceProvenance(provenance, blueprint.id);
 
   let fileCount = 0;
   let totalBytes = 0;

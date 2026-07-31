@@ -6,121 +6,86 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: judgedesk-toolchains-v2
+  cancel-in-progress: false
+
 env:
   TOOLCHAIN_RELEASE_TAG: toolchains-v2
   TOOLCHAIN_MANIFEST_SIGNING_KEY_ID: judgedesk-toolchains-2026-07
 
 jobs:
   bundle-windows:
+    name: Package Windows x64 toolchains
     runs-on: windows-2022
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - run: npm ci
       - name: Pin reproducible package timestamp
         shell: pwsh
         run: |
-          "SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)" | Out-File -FilePath $env:GITHUB_ENV -Append
-      - name: Download, verify and package GCC
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force temp-toolchains | Out-Null
-          curl.exe --fail --location --retry 3 --output temp-toolchains/gcc.zip "https://github.com/brechtsanders/winlibs_mingw/releases/download/14.2.0posix-19.1.1-12.0.0-ucrt-r2/winlibs-x86_64-posix-seh-gcc-14.2.0-mingw-w64ucrt-12.0.0-r2.zip"
-          if ((Get-FileHash temp-toolchains/gcc.zip -Algorithm SHA256).Hash.ToLowerInvariant() -ne "d41933cef13113018418d7b596319c2ed59a567395bbb87afe27a171e111d553") { throw "GCC source checksum mismatch" }
-          Expand-Archive temp-toolchains/gcc.zip temp-toolchains/gcc
-          curl.exe --fail --location --retry 3 --output temp-toolchains/gcc/mingw64/COPYING3 "https://gcc.gnu.org/git/?p=gcc.git;a=blob_plain;f=COPYING3;hb=releases/gcc-14.2.0"
-          curl.exe --fail --location --retry 3 --output temp-toolchains/gcc/mingw64/COPYING.RUNTIME "https://gcc.gnu.org/git/?p=gcc.git;a=blob_plain;f=COPYING.RUNTIME;hb=releases/gcc-14.2.0"
-          if ((Get-FileHash temp-toolchains/gcc/mingw64/COPYING3 -Algorithm SHA256).Hash.ToLowerInvariant() -ne "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903") { throw "GCC license checksum mismatch" }
-          if ((Get-FileHash temp-toolchains/gcc/mingw64/COPYING.RUNTIME -Algorithm SHA256).Hash.ToLowerInvariant() -ne "9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74") { throw "GCC runtime license checksum mismatch" }
-          @("GCC 14.2.0 source: https://gcc.gnu.org/pub/gcc/releases/gcc-14.2.0/", "WinLibs build scripts: https://github.com/brechtsanders/winlibs_mingw") | Set-Content -Encoding utf8 temp-toolchains/gcc/mingw64/SOURCE.txt
-          npx tsx scripts/write-toolchain-package-metadata.ts temp-toolchains/gcc/mingw64 gcc-windows-x64
-          & temp-toolchains/gcc/mingw64/bin/g++.exe --version
-          'int main() { return 0; }' | Set-Content -Encoding ascii temp-toolchains/hello.cpp
-          & temp-toolchains/gcc/mingw64/bin/g++.exe temp-toolchains/hello.cpp -O2 -std=c++14 -o temp-toolchains/hello.exe
-          & temp-toolchains/hello.exe
-          Compress-Archive -Path temp-toolchains/gcc/mingw64/* -DestinationPath judgedesk-gcc-windows-x64-14.2.0.zip
-      - name: Download, verify and package Python
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force temp-toolchains/python | Out-Null
-          curl.exe --fail --location --retry 3 --output temp-toolchains/python.tar.gz "https://github.com/astral-sh/python-build-standalone/releases/download/20260623/cpython-3.12.13%2B20260623-x86_64-pc-windows-msvc-install_only.tar.gz"
-          if ((Get-FileHash temp-toolchains/python.tar.gz -Algorithm SHA256).Hash.ToLowerInvariant() -ne "c6af85bb83d5158c9ff71f50dfad467853d1cd236f932b144e87e26e2ea2a83e") { throw "Python source checksum mismatch" }
-          tar -xzf temp-toolchains/python.tar.gz -C temp-toolchains/python
-          if (-not (Test-Path temp-toolchains/python/python/LICENSE.txt)) { throw "Python license file is missing" }
-          npx tsx scripts/write-toolchain-package-metadata.ts temp-toolchains/python/python python-windows-x64
-          & temp-toolchains/python/python/python.exe -c "print('Python verified')"
-          Compress-Archive -Path temp-toolchains/python/python/* -DestinationPath judgedesk-python-windows-x64-3.12.13.zip
+          "SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)" |
+            Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Restore verified upstream source cache
+        uses: actions/cache@v4
+        with:
+          path: build/toolchain-source-cache
+          key: toolchain-sources-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/toolchain-release-sources.ts') }}
+      - name: Download, verify, smoke-test and package all Windows toolchains
+        run: npm run toolchains:package:host -- dist-toolchains
       - uses: actions/upload-artifact@v4
         with:
-          name: toolchains-windows
+          name: toolchains-windows-x64
           if-no-files-found: error
           retention-days: 7
-          path: |
-            judgedesk-gcc-windows-x64-14.2.0.zip
-            judgedesk-python-windows-x64-3.12.13.zip
-
-  bundle-macos-x64:
-    runs-on: macos-15-intel
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Pin reproducible package timestamp
-        run: echo "SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
-      - name: Download, verify and package Python x64
-        run: |
-          mkdir -p temp-toolchains/python
-          curl --fail --location --retry 3 --output temp-toolchains/python.tar.gz "https://github.com/astral-sh/python-build-standalone/releases/download/20260623/cpython-3.12.13%2B20260623-x86_64-apple-darwin-install_only.tar.gz"
-          echo "7c57fdd1fa675190093700eb0d8e7117e1f9eae7c30a46dea5f8d5266bcfc791  temp-toolchains/python.tar.gz" | shasum -a 256 -c -
-          tar -xzf temp-toolchains/python.tar.gz -C temp-toolchains/python
-          test -f temp-toolchains/python/python/lib/python3.12/LICENSE.txt
-          npx tsx scripts/write-toolchain-package-metadata.ts temp-toolchains/python/python python-macos-x64
-          temp-toolchains/python/python/bin/python3 -c "print('Python macOS x64 verified')"
-          tar -czf judgedesk-python-macos-x64-3.12.13.tar.gz -C temp-toolchains/python/python .
-      - uses: actions/upload-artifact@v4
-        with:
-          name: toolchains-macos-x64
-          if-no-files-found: error
-          retention-days: 7
-          path: judgedesk-python-macos-x64-3.12.13.tar.gz
+          compression-level: 0
+          path: dist-toolchains/*
 
   bundle-macos-arm64:
+    name: Package macOS Apple Silicon toolchains
     runs-on: macos-15
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
       - run: npm ci
+      - name: Require an Apple Silicon runner
+        run: test "$(uname -m)" = "arm64"
       - name: Pin reproducible package timestamp
         run: echo "SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
-      - name: Download, verify and package Python arm64
-        run: |
-          mkdir -p temp-toolchains/python
-          curl --fail --location --retry 3 --output temp-toolchains/python.tar.gz "https://github.com/astral-sh/python-build-standalone/releases/download/20260623/cpython-3.12.13%2B20260623-aarch64-apple-darwin-install_only.tar.gz"
-          echo "3724aa4dafb5f7b6c2cf98e89914e4248dc6bd2fe40407df4a2d73de99615f16  temp-toolchains/python.tar.gz" | shasum -a 256 -c -
-          tar -xzf temp-toolchains/python.tar.gz -C temp-toolchains/python
-          test -f temp-toolchains/python/python/lib/python3.12/LICENSE.txt
-          npx tsx scripts/write-toolchain-package-metadata.ts temp-toolchains/python/python python-macos-arm64
-          temp-toolchains/python/python/bin/python3 -c "print('Python macOS arm64 verified')"
-          tar -czf judgedesk-python-macos-arm64-3.12.13.tar.gz -C temp-toolchains/python/python .
+      - name: Restore verified upstream source cache
+        uses: actions/cache@v4
+        with:
+          path: build/toolchain-source-cache
+          key: toolchain-sources-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/toolchain-release-sources.ts') }}
+      - name: Download, verify, smoke-test and package all Apple Silicon toolchains
+        run: npm run toolchains:package:host -- dist-toolchains
       - uses: actions/upload-artifact@v4
         with:
           name: toolchains-macos-arm64
           if-no-files-found: error
           retention-days: 7
-          path: judgedesk-python-macos-arm64-3.12.13.tar.gz
+          compression-level: 0
+          path: dist-toolchains/*
 
   publish:
-    needs: [bundle-windows, bundle-macos-x64, bundle-macos-arm64]
+    needs: [bundle-windows, bundle-macos-arm64]
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: write
     steps:
@@ -136,16 +101,22 @@ jobs:
         with:
           path: dist-toolchains
           merge-multiple: true
-      - name: Generate strict manifest and checksums
+      - name: Generate signed strict manifest and checksums
         env:
           TOOLCHAIN_RELEASE_BASE_URL: https://github.com/${{ github.repository }}/releases/download/${{ env.TOOLCHAIN_RELEASE_TAG }}
           TOOLCHAIN_MANIFEST_SIGNING_PRIVATE_KEY_B64: ${{ secrets.TOOLCHAIN_MANIFEST_SIGNING_PRIVATE_KEY_B64 }}
-        run: npx tsx scripts/generate-toolchain-manifest.ts dist-toolchains
+        run: npm run toolchains:manifest -- dist-toolchains
       - name: Create or update toolchain release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if ! gh release view "$TOOLCHAIN_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create "$TOOLCHAIN_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --title "JudgeDesk managed toolchains v2" --notes "Signed compiler/runtime packages consumed by JudgeDesk Full and Core. Integrity, license metadata, and SPDX SBOM presence are enforced by toolchains-manifest.json." --latest=false
+            gh release create "$TOOLCHAIN_RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "JudgeDesk managed toolchains v2" \
+              --notes "Signed compiler/runtime packages for JudgeDesk Full and Core on Windows x64 and macOS Apple Silicon." \
+              --latest=false
           fi
-          gh release upload "$TOOLCHAIN_RELEASE_TAG" dist-toolchains/* --clobber --repo "$GITHUB_REPOSITORY"
+          gh release upload "$TOOLCHAIN_RELEASE_TAG" dist-toolchains/* \
+            --clobber \
+            --repo "$GITHUB_REPOSITORY"

@@ -182,7 +182,12 @@ export const TOOLCHAIN_CATALOG: ToolchainCatalogEntry[] = [
     arch: "x64",
     archiveFormat: "zip",
     executableRelativePath: "bin/fpc.exe",
-    licenseFiles: ["LICENSE.txt", "SOURCE.txt"],
+    licenseFiles: [
+      "licenses/COPYING",
+      "licenses/COPYING.v2",
+      "licenses/copying.fpc",
+      "SOURCE.txt",
+    ],
   },
   {
     id: "fpc-macos-arm64",
@@ -198,7 +203,12 @@ export const TOOLCHAIN_CATALOG: ToolchainCatalogEntry[] = [
     arch: "arm64",
     archiveFormat: "tar.gz",
     executableRelativePath: "bin/fpc",
-    licenseFiles: ["LICENSE.txt", "SOURCE.txt"],
+    licenseFiles: [
+      "licenses/COPYING",
+      "licenses/COPYING.v2",
+      "licenses/copying.fpc",
+      "SOURCE.txt",
+    ],
   },
   {
     id: "temurin21-macos-arm64",
@@ -622,7 +632,12 @@ export const TOOLCHAIN_RELEASE_BLUEPRINTS: Readonly<
     license: {
       spdxExpression:
         "GPL-2.0-or-later AND LGPL-2.1-or-later WITH FPC-exception-2.0",
-      licenseFiles: ["LICENSE.txt", "SOURCE.txt"],
+      licenseFiles: [
+        "licenses/COPYING",
+        "licenses/COPYING.v2",
+        "licenses/copying.fpc",
+        "SOURCE.txt",
+      ],
       noticeFiles: ["THIRD-PARTY-NOTICES.txt"],
       sbomPath: "SBOM.spdx.json",
     },
@@ -662,7 +677,12 @@ export const TOOLCHAIN_RELEASE_BLUEPRINTS: Readonly<
     license: {
       spdxExpression:
         "GPL-2.0-or-later AND LGPL-2.1-or-later WITH FPC-exception-2.0",
-      licenseFiles: ["LICENSE.txt", "SOURCE.txt"],
+      licenseFiles: [
+        "licenses/COPYING",
+        "licenses/COPYING.v2",
+        "licenses/copying.fpc",
+        "SOURCE.txt",
+      ],
       noticeFiles: ["THIRD-PARTY-NOTICES.txt"],
       sbomPath: "SBOM.spdx.json",
     },
