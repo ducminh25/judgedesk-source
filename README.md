@@ -2,12 +2,14 @@
 
 JudgeDesk là ứng dụng desktop chấm bài lập trình dành cho kỳ thi và lớp học. Ứng dụng chạy cục bộ trên Windows x64 và macOS Apple Silicon, tích hợp sẵn bảng điểm, cấu hình nhóm test, giao diện sáng/tối và hỗ trợ tiếng Việt/tiếng Anh.
 
-Trang tải xuống, hướng dẫn cài đặt, hỗ trợ người dùng và mã nguồn chính thức được duy trì tại repository [`ducminh25/judgedesk`](https://github.com/ducminh25/judgedesk).
+Repository này chứa mã nguồn nội bộ của JudgeDesk. Trang công khai dành cho tải
+ứng dụng, hướng dẫn cài đặt, release notes và hỗ trợ người dùng được duy trì tại
+[`ducminh25/judgedesk`](https://github.com/ducminh25/judgedesk).
 
 ## Tài liệu
 
 - **[INSTALL.md](INSTALL.md)**: Hướng dẫn tải và cài đặt cho Windows/macOS.
-- **[TOOLCHAINS.md](TOOLCHAINS.md)**: Danh sách và nguồn gốc bộ dịch (GCC, Python) do ứng dụng quản lý.
+- **[TOOLCHAINS.md](TOOLCHAINS.md)**: Danh sách và nguồn gốc GCC, Python, Free Pascal và Java do ứng dụng quản lý.
 - **[SECURITY.md](SECURITY.md)**: Chính sách bảo mật và cách báo lỗi an toàn.
 - **[SUPPORT.md](SUPPORT.md)**: Hướng dẫn báo lỗi và hỗ trợ người dùng.
 - **[CHANGELOG.md](CHANGELOG.md)**: Lịch sử cập nhật qua các phiên bản.
@@ -27,7 +29,9 @@ Trang tải xuống, hướng dẫn cài đặt, hỗ trợ người dùng và m
 - **Windows**: Visual Studio Build Tools với workload **Desktop development with C++**.
 - **macOS**: Xcode Command Line Tools.
 
-G++ và Python trên hệ thống là tùy chọn; khi sử dụng, người dùng có thể chọn compiler có sẵn trên máy hoặc để ứng dụng tải bộ toolchain độc lập.
+Compiler/runtime trên hệ thống là tùy chọn; người dùng có thể dùng bản Full với
+toolchain đi kèm, tải gói được quản lý từ repository công khai hoặc chọn đường
+dẫn cục bộ phù hợp.
 
 ## Các lệnh kiểm thử và build
 

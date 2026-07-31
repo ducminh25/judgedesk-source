@@ -4,13 +4,14 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: judgedesk-toolchains-v2
   cancel-in-progress: false
 
 env:
+  PUBLIC_RELEASE_REPOSITORY: ducminh25/judgedesk
   TOOLCHAIN_RELEASE_TAG: toolchains-v2
   TOOLCHAIN_MANIFEST_SIGNING_KEY_ID: judgedesk-toolchains-2026-07
 
@@ -136,20 +137,24 @@ jobs:
           merge-multiple: true
       - name: Generate signed strict manifest and checksums
         env:
-          TOOLCHAIN_RELEASE_BASE_URL: https://github.com/${{ github.repository }}/releases/download/${{ env.TOOLCHAIN_RELEASE_TAG }}
+          TOOLCHAIN_RELEASE_BASE_URL: https://github.com/${{ env.PUBLIC_RELEASE_REPOSITORY }}/releases/download/${{ env.TOOLCHAIN_RELEASE_TAG }}
           TOOLCHAIN_MANIFEST_SIGNING_PRIVATE_KEY_B64: ${{ secrets.TOOLCHAIN_MANIFEST_SIGNING_PRIVATE_KEY_B64 }}
         run: npm run toolchains:manifest -- dist-toolchains
       - name: Create or update toolchain release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN }}
         run: |
-          if ! gh release view "$TOOLCHAIN_RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          if [ -z "$GH_TOKEN" ]; then
+            echo "PUBLIC_RELEASE_TOKEN is required to publish toolchains to $PUBLIC_RELEASE_REPOSITORY." >&2
+            exit 1
+          fi
+          if ! gh release view "$TOOLCHAIN_RELEASE_TAG" --repo "$PUBLIC_RELEASE_REPOSITORY" >/dev/null 2>&1; then
             gh release create "$TOOLCHAIN_RELEASE_TAG" \
-              --repo "$GITHUB_REPOSITORY" \
+              --repo "$PUBLIC_RELEASE_REPOSITORY" \
               --title "JudgeDesk managed toolchains v2" \
               --notes "Signed compiler/runtime packages for JudgeDesk Full and Core on Windows x64 and macOS Apple Silicon." \
               --latest=false
           fi
           gh release upload "$TOOLCHAIN_RELEASE_TAG" dist-toolchains/* \
             --clobber \
-            --repo "$GITHUB_REPOSITORY"
+            --repo "$PUBLIC_RELEASE_REPOSITORY"
