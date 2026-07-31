@@ -3,7 +3,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { APP_ROOT, IS_PRODUCTION, RESOURCE_ROOT } from "../runtime.js";
+import {
+  APP_ROOT,
+  IS_PRODUCTION,
+  normalizeWindowsVerbatimPath,
+  RESOURCE_ROOT,
+} from "../runtime.js";
 import type {
   ExecutorHealth,
   ExecutorRequest,
@@ -473,8 +478,16 @@ function minimalExecutorEnvironment(environment: NodeJS.ProcessEnv): NodeJS.Proc
   // startup self-test. It constructs a separate allowlisted environment for every untrusted
   // child, so credentials and proxy variables are never forwarded to submissions.
   const result = { ...environment };
-  const builtInToolchains = environment.JUDGEDESK_BUILTIN_TOOLCHAINS_DIR
-    || path.join(environment.THEMIS_RESOURCE_DIR || RESOURCE_ROOT, "toolchains");
+  const resourceRoot = normalizeWindowsVerbatimPath(
+    environment.THEMIS_RESOURCE_DIR || RESOURCE_ROOT,
+  );
+  if (environment.THEMIS_RESOURCE_DIR) {
+    result.THEMIS_RESOURCE_DIR = resourceRoot;
+  }
+  const builtInToolchains = normalizeWindowsVerbatimPath(
+    environment.JUDGEDESK_BUILTIN_TOOLCHAINS_DIR
+      || path.join(resourceRoot, "toolchains"),
+  );
   if (fs.existsSync(builtInToolchains)) {
     result.JUDGEDESK_BUILTIN_TOOLCHAINS_DIR = path.resolve(builtInToolchains);
   } else {

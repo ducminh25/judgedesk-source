@@ -1,7 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
 import { getJudgeDeskDistribution } from "../distribution.js";
-import { RESOURCE_ROOT } from "../runtime.js";
+import {
+  normalizeWindowsVerbatimPath,
+  RESOURCE_ROOT,
+} from "../runtime.js";
 import { loadBundledOfficialManifestSync } from "./manifest.js";
 import { getDownloadedToolchainsDir } from "./storage.js";
 import type {
@@ -64,7 +67,9 @@ export function getBuiltInToolchainsDir(
   resourceRoot: string = RESOURCE_ROOT,
 ): string {
   const override = process.env.JUDGEDESK_BUILTIN_TOOLCHAINS_DIR;
-  return override ? path.resolve(override) : path.join(resourceRoot, "toolchains");
+  return normalizeWindowsVerbatimPath(
+    override ? path.resolve(override) : path.join(resourceRoot, "toolchains"),
+  );
 }
 
 export function createToolchainPackageReceipt(
@@ -159,12 +164,16 @@ export function inspectInstalledToolchainPackage(
   }[] = [
     {
       origin: "built-in",
-      root: options.builtInRoot ?? getBuiltInToolchainsDir(),
+      root: normalizeWindowsVerbatimPath(
+        options.builtInRoot ?? getBuiltInToolchainsDir(),
+      ),
       receiptRequired: true,
     },
     {
       origin: "downloaded",
-      root: options.downloadedRoot ?? getDownloadedToolchainsDir(),
+      root: normalizeWindowsVerbatimPath(
+        options.downloadedRoot ?? getDownloadedToolchainsDir(),
+      ),
       receiptRequired: false,
     },
   ];

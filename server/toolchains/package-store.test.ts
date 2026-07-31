@@ -94,6 +94,28 @@ test("a built-in pack requires a matching receipt and wins over a downloaded cop
   assert.equal(state.package.uninstallable, false);
 });
 
+test("a Tauri Windows verbatim resource path resolves a built-in pack", {
+  skip: process.platform !== "win32",
+}, (t) => {
+  const stores = temporaryStores(t);
+  const packageRoot = createPackage(stores.builtIn, {
+    receipt: true,
+    contents: "built-in",
+  });
+  const verbatimBuiltInRoot = `\\\\?\\${stores.builtIn}`;
+
+  const state = inspectInstalledToolchainPackage(ENTRY, {
+    builtInRoot: verbatimBuiltInRoot,
+    downloadedRoot: stores.downloaded,
+  });
+
+  assert.equal(state.status, "installed");
+  if (state.status !== "installed") return;
+  assert.equal(state.package.origin, "built-in");
+  assert.equal(state.package.root, fs.realpathSync(packageRoot));
+  assert.equal(state.package.integrity, "verified-receipt");
+});
+
 test("a corrupt built-in pack fails closed instead of falling back to downloaded", (t) => {
   const stores = temporaryStores(t);
   createPackage(stores.builtIn);

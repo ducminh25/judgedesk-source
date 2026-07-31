@@ -115,6 +115,31 @@ export function createInitialToolchainPreferences(): ToolchainPreferencesV2 {
   return { schemaVersion: 2, profiles };
 }
 
+function addMissingRegisteredProfilePreferences(
+  preferences: ToolchainPreferencesV2,
+): {
+  preferences: ToolchainPreferencesV2;
+  changed: boolean;
+} {
+  const defaults = createInitialToolchainPreferences();
+  const profiles = { ...preferences.profiles };
+  let changed = false;
+  for (const entry of listRegisteredLanguageProfiles()) {
+    const profileId = entry.profile.ref.id;
+    if (Object.hasOwn(profiles, profileId)) continue;
+    profiles[profileId] = defaults.profiles[profileId] || { mode: "none" };
+    changed = true;
+  }
+  if (!changed) return { preferences, changed: false };
+  return {
+    preferences: {
+      ...preferences,
+      profiles,
+    },
+    changed: true,
+  };
+}
+
 function createFailClosedToolchainPreferences(): ToolchainPreferencesV2 {
   const profiles: Record<string, StoredProfileToolchainPreference> = {};
   for (const entry of listRegisteredLanguageProfiles()) {
@@ -212,13 +237,18 @@ export function loadToolchainPreferenceSnapshot(): ToolchainPreferenceSnapshot {
     };
   }
 
-  if (decoded.status === "migrated-v1") {
+  const completed = addMissingRegisteredProfilePreferences(decoded.preferences);
+  if (decoded.status === "migrated-v1" || completed.changed) {
+    const canonicalJson = encodeToolchainPreferencesV2(
+      completed.preferences,
+      LEGACY_PROFILE_MAPPING,
+    );
     const revision = writeCanonicalPreferences(
-      decoded.canonicalJson,
+      canonicalJson,
       contentRevision(bytes),
     );
     return {
-      preferences: decoded.preferences,
+      preferences: completed.preferences,
       revision,
       status: "migrated",
       recoveryDiagnostics: [],
@@ -226,7 +256,7 @@ export function loadToolchainPreferenceSnapshot(): ToolchainPreferenceSnapshot {
   }
 
   return {
-    preferences: decoded.preferences,
+    preferences: completed.preferences,
     revision: contentRevision(bytes),
     status: "ready",
     recoveryDiagnostics: [],
