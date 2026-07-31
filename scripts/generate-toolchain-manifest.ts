@@ -9,9 +9,8 @@ import {
   validateManifestDocument,
 } from "../server/toolchains/manifest.js";
 import {
-  extractToolchainArchive,
-} from "../server/toolchains/installer.js";
-import { TOOLCHAIN_PACKAGE_RECEIPT } from "../server/toolchains/package-store.js";
+  TOOLCHAIN_PACKAGE_RECEIPT,
+} from "../server/toolchains/package-store.js";
 import type {
   ToolchainManifestV2Document,
   ToolchainManifestV2Package,
@@ -25,6 +24,10 @@ import {
 import {
   listCurrentReleaseManagedPackageIds,
 } from "../server/toolchains/release-scope.js";
+import {
+  extractToolchainReleaseArchive,
+  type ReleaseArchiveExtractionSummary,
+} from "./release-archive-extractor.js";
 
 const MAX_PACKAGE_FILES = 500_000;
 const MAX_INSTALLED_BYTES = 8 * 1024 * 1024 * 1024;
@@ -96,6 +99,7 @@ function loadSigningKey(): {
 function inspectPackageTree(
   root: string,
   blueprint: ToolchainReleaseBlueprint,
+  extraction: ReleaseArchiveExtractionSummary,
 ): number {
   if (fs.existsSync(path.join(root, TOOLCHAIN_PACKAGE_RECEIPT))) {
     throw new Error(
@@ -185,7 +189,15 @@ function inspectPackageTree(
       }
     }
   }
-  return Math.max(1, totalBytes);
+  if (
+    fileCount !== extraction.fileCount
+    || totalBytes !== extraction.materializedSizeBytes
+  ) {
+    throw new Error(
+      `Archive '${blueprint.archiveFilename}' extraction summary did not match its materialized tree.`,
+    );
+  }
+  return Math.max(1, extraction.installedSizeBytes);
 }
 
 async function buildPackage(
@@ -203,12 +215,24 @@ async function buildPackage(
   );
   let installedSizeBytes: number;
   try {
-    extractToolchainArchive(
+    if (
+      blueprint.archiveFormat !== "zip"
+      && blueprint.archiveFormat !== "tar.gz"
+    ) {
+      throw new Error(
+        `Unsupported release inspection format '${blueprint.archiveFormat}'.`,
+      );
+    }
+    const extraction = extractToolchainReleaseArchive(
       archivePath,
       inspectionRoot,
       blueprint.archiveFormat,
     );
-    installedSizeBytes = inspectPackageTree(inspectionRoot, blueprint);
+    installedSizeBytes = inspectPackageTree(
+      inspectionRoot,
+      blueprint,
+      extraction,
+    );
   } finally {
     fs.rmSync(inspectionRoot, { recursive: true, force: true });
   }
