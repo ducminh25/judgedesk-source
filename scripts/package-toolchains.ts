@@ -25,6 +25,9 @@ import type {
   ToolchainReleaseBlueprint,
 } from "../server/toolchains/types.js";
 import {
+  listCurrentReleaseManagedPackageIds,
+} from "../server/toolchains/release-scope.js";
+import {
   TOOLCHAIN_RELEASE_SOURCES,
   type ToolchainReleaseSource,
   type ToolchainUpstreamInput,
@@ -97,15 +100,27 @@ export function selectHostToolchainReleases(
       );
     }
   }
+  const releasePackageIds = new Set(
+    listCurrentReleaseManagedPackageIds(host.platform, host.arch),
+  );
   const selected = Object.values(TOOLCHAIN_RELEASE_SOURCES)
     .filter((release) =>
       release.platform === host.platform
       && release.arch === host.arch
-      && (requested.size === 0 || requested.has(release.packageId))
+      && (
+        requested.size > 0
+          ? requested.has(release.packageId)
+          : releasePackageIds.has(release.packageId)
+      )
     )
     .sort((left, right) => left.packageId.localeCompare(right.packageId));
   if (selected.length === 0) {
     throw new Error(`No toolchain release packages exist for ${host.platform}/${host.arch}.`);
+  }
+  if (requested.size === 0 && selected.length !== releasePackageIds.size) {
+    throw new Error(
+      `The current release package set is incomplete for ${host.platform}/${host.arch}.`,
+    );
   }
   return selected;
 }

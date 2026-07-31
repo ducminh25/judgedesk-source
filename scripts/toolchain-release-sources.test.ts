@@ -24,7 +24,7 @@ test("release sources cover every signed package blueprint exactly once", () => 
   );
 });
 
-test("Full host sets include every managed language on each supported host", () => {
+test("source catalog retains deferred packages for later release waves", () => {
   const hostPackages = (platform: "win32" | "darwin", arch: "x64" | "arm64") =>
     Object.values(TOOLCHAIN_RELEASE_SOURCES)
       .filter((entry) => entry.platform === platform && entry.arch === arch)

@@ -6,10 +6,14 @@ import {
 } from "./contracts.js";
 import type { ToolchainKind } from "../toolchains/types.js";
 import {
+  CURRENT_RELEASE_TOOLCHAIN_KINDS,
+  isCurrentReleaseToolchainKind,
+} from "../toolchains/release-scope.js";
+import {
   validateToolchainVersionPolicy,
 } from "./version-policy.js";
 
-export const LANGUAGE_REGISTRY_REVISION = 3;
+export const LANGUAGE_REGISTRY_REVISION = 4;
 export const CPP_LANGUAGE_PROFILE_ID = "cpp-legacy-v1";
 export const C_LANGUAGE_PROFILE_ID = "c-gcc14";
 export const PYTHON_LANGUAGE_PROFILE_ID = "python-cpython312";
@@ -36,9 +40,8 @@ export interface RegisteredLanguageProfile {
     mode: LocalExecutionMode;
   }[];
   /**
-   * Compatibility default for the two profiles that existed before the
-   * registry. Future profiles must default to `none` until product policy is
-   * explicitly approved.
+   * First-launch source selection. Only profiles with an approved direct local
+   * execution path may opt into automatic local selection.
    */
   freshInstallMode: "local_auto" | "none";
 }
@@ -185,7 +188,7 @@ const LOCAL_VERSION_POLICIES = {
   },
 } as const satisfies Readonly<Record<ToolchainKind, ToolchainVersionPolicy>>;
 
-const LANGUAGE_REGISTRY = [
+const LANGUAGE_CATALOG = [
   {
     profile: {
       ref: { id: CPP_LANGUAGE_PROFILE_ID, version: 1 },
@@ -236,7 +239,7 @@ const LANGUAGE_REGISTRY = [
     profile: {
       ref: { id: C_LANGUAGE_PROFILE_ID, version: 1 },
       displayNameKey: "languages.c",
-      stability: "experimental",
+      stability: "stable",
       extensions: [".c"],
       supportedHosts: [
         { platform: "win32", arch: "x64", minimumOs: "10.0" },
@@ -269,7 +272,7 @@ const LANGUAGE_REGISTRY = [
         mode: "platform_certified_direct",
       },
     ],
-    freshInstallMode: "none",
+    freshInstallMode: "local_auto",
   },
   {
     profile: {
@@ -315,7 +318,7 @@ const LANGUAGE_REGISTRY = [
     profile: {
       ref: { id: PASCAL_LANGUAGE_PROFILE_ID, version: 1 },
       displayNameKey: "languages.pascal",
-      stability: "experimental",
+      stability: "stable",
       extensions: [".pas", ".pp"],
       supportedHosts: [
         { platform: "win32", arch: "x64", minimumOs: "10.0" },
@@ -385,7 +388,7 @@ const LANGUAGE_REGISTRY = [
     profile: {
       ref: { id: JAVA_LANGUAGE_PROFILE_ID, version: 1 },
       displayNameKey: "languages.java",
-      stability: "experimental",
+      stability: "stable",
       extensions: [".java"],
       supportedHosts: [
         { platform: "win32", arch: "x64", minimumOs: "10.0" },
@@ -542,6 +545,7 @@ function validateRegistry(
     }
     if (
       id !== CPP_LANGUAGE_PROFILE_ID
+      && id !== C_LANGUAGE_PROFILE_ID
       && id !== PYTHON_LANGUAGE_PROFILE_ID
       && entry.freshInstallMode !== "none"
     ) {
@@ -639,8 +643,17 @@ function freezeRegistry(registry: readonly RegisteredLanguageProfile[]): void {
   Object.freeze(registry);
 }
 
-validateRegistry(LANGUAGE_REGISTRY);
-freezeRegistry(LANGUAGE_REGISTRY);
+validateRegistry(LANGUAGE_CATALOG);
+freezeRegistry(LANGUAGE_CATALOG);
+
+const LANGUAGE_REGISTRY = Object.freeze(
+  LANGUAGE_CATALOG.filter((entry) =>
+    isCurrentReleaseToolchainKind(entry.toolchainKind)
+  ),
+);
+if (LANGUAGE_REGISTRY.length !== CURRENT_RELEASE_TOOLCHAIN_KINDS.length) {
+  throw new Error("The current release language registry is incomplete.");
+}
 
 export function listRegisteredLanguageProfiles(): readonly RegisteredLanguageProfile[] {
   return LANGUAGE_REGISTRY;

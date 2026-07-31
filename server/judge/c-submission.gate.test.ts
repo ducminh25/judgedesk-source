@@ -39,7 +39,7 @@ function provisionMacosTreeGuard(): string | null {
 const macosTreeGuard = enabled ? provisionMacosTreeGuard() : null;
 
 test(
-  "the selected C compiler builds and executes C11 inside the secure runner",
+  "the selected C++14 and C11 compilers build and execute inside the secure runner",
   {
     skip: enabled
       ? false
@@ -58,17 +58,6 @@ test(
         import("./testcase-runner.js"),
         import("../toolchains/resolver.js"),
       ]);
-    const compiler = process.platform === "win32"
-      ? path.join(
-          path.resolve(builtInRoot!),
-          "gcc-windows-x64",
-          "bin",
-          "gcc.exe",
-        )
-      : execFileSync("/usr/bin/xcrun", ["--find", "clang"], {
-          encoding: "utf8",
-        }).trim();
-    assert.ok(fs.existsSync(compiler), `C compiler is missing at ${compiler}`);
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-c-gate-"));
     t.after(async () => {
       await executorClient.shutdown();
@@ -77,49 +66,10 @@ test(
         fs.rmSync(macosTreeGuard, { recursive: true, force: true });
       }
     });
-    const source = path.join(root, "SUM.c");
     const input = path.join(root, "input.txt");
     const expected = path.join(root, "expected.txt");
-    fs.writeFileSync(
-      source,
-      [
-        "#include <stdio.h>",
-        "int main(void) {",
-        "  long long a, b;",
-        "  if (scanf(\"%lld%lld\", &a, &b) != 2) return 1;",
-        "  printf(\"%lld\\n\", a + b);",
-        "  return 0;",
-        "}",
-        "",
-      ].join("\n"),
-      "utf8",
-    );
     fs.writeFileSync(input, "19 23\n", "utf8");
     fs.writeFileSync(expected, "42\n", "utf8");
-    const cToolchain: ResolvedToolchain = process.platform === "win32"
-      ? resolveManagedToolchain("c")
-      : {
-          kind: "c",
-          source: "system",
-          executablePath: compiler,
-          version: "17.0.0",
-          ready: true,
-          provenance: "platform-certified",
-        };
-    assert.equal(
-      cToolchain.ready,
-      true,
-      cToolchain.diagnostic || "managed C compiler is not ready",
-    );
-    const compiled = await compileSubmission({
-      language: "c",
-      contestantName: "student",
-      problemName: "SUM",
-      submissionPath: source,
-      tempDirectory: root,
-      cToolchain,
-    });
-    assert.equal(compiled.compileStatus, "OK", compiled.compileError);
     const config: NormalizedProblemConfig = {
       useStdIO: true,
       useStdIn: true,
@@ -137,26 +87,106 @@ test(
         groups: {},
       },
     };
-    const result = await runTestCase({
-      contestant: "student",
-      problemName: "SUM",
-      testName: "1",
-      language: "c",
-      submissionPath: source,
-      executablePath: compiled.executablePath,
-      inputPath: input,
-      expectedOutputPath: expected,
-      expectedOutput: "42\n",
-      testRoot: root,
-      contestantsRoot: root,
-      tempDirectory: root,
-      pythonCommand: "",
-      timeLimitMs: 1_000,
-      score: 1,
-      config,
-      checker: undefined,
-    });
-    assert.equal(result.status, "AC", result.errorDetail);
-    assert.equal(result.score, 1);
+    const cases = [
+      {
+        language: "cpp",
+        extension: ".cpp",
+        compilerName: "clang++",
+        source: [
+          "#include <iostream>",
+          "int main() {",
+          "  long long a, b;",
+          "  if (!(std::cin >> a >> b)) return 1;",
+          "  std::cout << a + b << '\\n';",
+          "  return 0;",
+          "}",
+          "",
+        ].join("\n"),
+      },
+      {
+        language: "c",
+        extension: ".c",
+        compilerName: "clang",
+        source: [
+          "#include <stdio.h>",
+          "int main(void) {",
+          "  long long a, b;",
+          "  if (scanf(\"%lld%lld\", &a, &b) != 2) return 1;",
+          "  printf(\"%lld\\n\", a + b);",
+          "  return 0;",
+          "}",
+          "",
+        ].join("\n"),
+      },
+    ] as const;
+    for (const gate of cases) {
+      await t.test(gate.language, async () => {
+        const compiler = process.platform === "win32"
+          ? path.join(
+              path.resolve(builtInRoot!),
+              "gcc-windows-x64",
+              "bin",
+              gate.language === "cpp" ? "g++.exe" : "gcc.exe",
+            )
+          : execFileSync(
+              "/usr/bin/xcrun",
+              ["--find", gate.compilerName],
+              { encoding: "utf8" },
+            ).trim();
+        assert.ok(
+          fs.existsSync(compiler),
+          `${gate.language} compiler is missing at ${compiler}`,
+        );
+        const source = path.join(root, `SUM${gate.extension}`);
+        fs.writeFileSync(source, gate.source, "utf8");
+        const toolchain: ResolvedToolchain = process.platform === "win32"
+          ? resolveManagedToolchain(gate.language)
+          : {
+              kind: gate.language,
+              source: "system",
+              executablePath: compiler,
+              version: "17.0.0",
+              ready: true,
+              provenance: "platform-certified",
+            };
+        assert.equal(
+          toolchain.ready,
+          true,
+          toolchain.diagnostic
+            || `managed ${gate.language} compiler is not ready`,
+        );
+        const compiled = await compileSubmission({
+          language: gate.language,
+          contestantName: "student",
+          problemName: "SUM",
+          submissionPath: source,
+          tempDirectory: root,
+          toolchains: { [gate.language]: toolchain },
+        });
+        assert.equal(compiled.compileStatus, "OK", compiled.compileError);
+        const result = await runTestCase({
+          contestant: "student",
+          problemName: "SUM",
+          testName: "1",
+          language: gate.language,
+          submissionPath: source,
+          executablePath: compiled.executablePath,
+          inputPath: input,
+          expectedOutputPath: expected,
+          expectedOutput: "42\n",
+          testRoot: root,
+          contestantsRoot: root,
+          tempDirectory: root,
+          pythonCommand: "",
+          timeLimitMs: 1_000,
+          score: 1,
+          config,
+          checker: undefined,
+          program: compiled.program,
+        });
+        assert.equal(result.status, "AC", result.errorDetail);
+        assert.equal(result.score, 1);
+      });
+    }
   },
 );

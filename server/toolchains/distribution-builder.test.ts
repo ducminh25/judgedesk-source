@@ -7,6 +7,7 @@ import test, { type TestContext } from "node:test";
 import { canonicalizeManifestPayload, TOOLCHAIN_RELEASE_BLUEPRINTS } from "./manifest.js";
 import { TOOLCHAIN_PACKAGE_RECEIPT } from "./package-store.js";
 import { prepareDistributionResources } from "./distribution-builder.js";
+import { listCurrentReleaseManagedPackageIds } from "./release-scope.js";
 import type {
   ToolchainManifestV2Document,
   ToolchainManifestV2Package,
@@ -29,21 +30,34 @@ function testPaths(t: TestContext): { input: string; output: string } {
   return { input, output };
 }
 
-function fixture(): {
+function fixture(packageId: string): {
   archive: Buffer;
   files: Readonly<Record<string, string>>;
   package: ToolchainManifestV2Package;
 } {
-  const blueprint = TOOLCHAIN_RELEASE_BLUEPRINTS["python-windows-x64"];
+  const blueprint = TOOLCHAIN_RELEASE_BLUEPRINTS[packageId];
+  assert.ok(blueprint, `missing blueprint for ${packageId}`);
+  const entrypoint = blueprint.entrypoints.find(
+    (candidate) =>
+      candidate.componentId === blueprint.entrypointComponentId,
+  );
+  assert.ok(entrypoint, `missing entrypoint for ${packageId}`);
   const { archiveFilename: _archiveFilename, ...signedBlueprint } = blueprint;
-  const files = {
-    "python.exe": "runtime",
-    "LICENSE.txt": "license",
-    "THIRD-PARTY-NOTICES.txt": "notice",
-    "SOURCE-PROVENANCE.json": "provenance",
-    "SBOM.spdx.json": JSON.stringify({ spdxVersion: "SPDX-2.3" }),
+  const files: Record<string, string> = {
+    [entrypoint.executableRelativePath]: `runtime:${packageId}`,
+    "SOURCE-PROVENANCE.json": `provenance:${packageId}`,
+    [blueprint.license.sbomPath]: JSON.stringify({
+      spdxVersion: "SPDX-2.3",
+      name: packageId,
+    }),
   };
-  const archive = Buffer.from("fake signed archive");
+  for (const relativePath of [
+    ...blueprint.license.licenseFiles,
+    ...blueprint.license.noticeFiles,
+  ]) {
+    files[relativePath] = `metadata:${packageId}:${relativePath}`;
+  }
+  const archive = Buffer.from(`fake signed archive:${packageId}`);
   return {
     archive,
     files,
@@ -62,12 +76,12 @@ function fixture(): {
 
 function writeSignedManifest(
   inputRoot: string,
-  packageEntry: ToolchainManifestV2Package,
+  packageEntries: readonly ToolchainManifestV2Package[],
 ): string {
   const { privateKey, publicKey } = crypto.generateKeyPairSync("ed25519");
   const payload: ToolchainManifestV2Payload = {
     generatedAt: "2026-07-30T00:00:00.000Z",
-    packages: [packageEntry],
+    packages: [...packageEntries],
   };
   const document: ToolchainManifestV2Document = {
     schemaVersion: 2,
@@ -91,16 +105,27 @@ function writeSignedManifest(
 
 test("Full materializes only signed host packs and Core carries only the catalog", async (t) => {
   const { input, output } = testPaths(t);
-  const data = fixture();
-  const blueprint = TOOLCHAIN_RELEASE_BLUEPRINTS[data.package.id];
-  fs.writeFileSync(path.join(input, blueprint.archiveFilename), data.archive);
-  const publicKey = writeSignedManifest(input, data.package);
+  const data = listCurrentReleaseManagedPackageIds("win32", "x64")
+    .map((packageId) => fixture(packageId));
+  for (const entry of data) {
+    const blueprint = TOOLCHAIN_RELEASE_BLUEPRINTS[entry.package.id];
+    fs.writeFileSync(path.join(input, blueprint.archiveFilename), entry.archive);
+  }
+  const publicKey = writeSignedManifest(
+    input,
+    data.map((entry) => entry.package),
+  );
   const extractArchive = (
-    _archivePath: string,
+    archivePath: string,
     destination: string,
   ): void => {
+    const entry = data.find((candidate) =>
+      TOOLCHAIN_RELEASE_BLUEPRINTS[candidate.package.id].archiveFilename
+        === path.basename(archivePath)
+    );
+    assert.ok(entry, `unexpected archive ${archivePath}`);
     fs.mkdirSync(destination, { recursive: true });
-    for (const [relativePath, contents] of Object.entries(data.files)) {
+    for (const [relativePath, contents] of Object.entries(entry.files)) {
       const filePath = path.join(destination, ...relativePath.split("/"));
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
       fs.writeFileSync(filePath, contents);
@@ -117,13 +142,23 @@ test("Full materializes only signed host packs and Core carries only the catalog
     extractArchive,
     verifyExecutable: () => {},
   });
-  assert.deepEqual(full.packages.map((entry) => entry.id), [data.package.id]);
-  assert.equal(
-    fs.existsSync(
-      path.join(output, "toolchains", data.package.id, TOOLCHAIN_PACKAGE_RECEIPT),
-    ),
-    true,
+  assert.deepEqual(
+    full.packages.map((entry) => entry.id),
+    data.map((entry) => entry.package.id).sort(),
   );
+  for (const entry of data) {
+    assert.equal(
+      fs.existsSync(
+        path.join(
+          output,
+          "toolchains",
+          entry.package.id,
+          TOOLCHAIN_PACKAGE_RECEIPT,
+        ),
+      ),
+      true,
+    );
+  }
 
   const core = await prepareDistributionResources({
     variant: "core",
@@ -145,17 +180,55 @@ test("Full materializes only signed host packs and Core carries only the catalog
   );
 });
 
+test("Full fails closed when the signed catalog omits a release package", async (t) => {
+  const { input, output } = testPaths(t);
+  const data = listCurrentReleaseManagedPackageIds("win32", "x64")
+    .slice(1)
+    .map((packageId) => fixture(packageId));
+  const publicKey = writeSignedManifest(
+    input,
+    data.map((entry) => entry.package),
+  );
+
+  await assert.rejects(
+    prepareDistributionResources({
+      variant: "full",
+      inputRoot: input,
+      outputRoot: output,
+      platform: "win32",
+      arch: "x64",
+      trustedPublicKeys: { [TEST_KEY_ID]: publicKey },
+      extractArchive: () => {
+        throw new Error("must not extract an incomplete distribution");
+      },
+      verifyExecutable: () => {},
+    }),
+    /complete current release package set/,
+  );
+});
+
 test("a failed Full rebuild preserves the previously committed resources", async (t) => {
   const { input, output } = testPaths(t);
-  const data = fixture();
-  const blueprint = TOOLCHAIN_RELEASE_BLUEPRINTS[data.package.id];
+  const data = listCurrentReleaseManagedPackageIds("win32", "x64")
+    .map((packageId) => fixture(packageId));
   fs.mkdirSync(output, { recursive: true });
   fs.writeFileSync(path.join(output, "sentinel.txt"), "previous");
-  fs.writeFileSync(
-    path.join(input, blueprint.archiveFilename),
-    Buffer.from("tampered archive"),
+  const tamperedId = data
+    .map((entry) => entry.package.id)
+    .sort()[0];
+  for (const entry of data) {
+    const blueprint = TOOLCHAIN_RELEASE_BLUEPRINTS[entry.package.id];
+    fs.writeFileSync(
+      path.join(input, blueprint.archiveFilename),
+      entry.package.id === tamperedId
+        ? Buffer.from("tampered archive")
+        : entry.archive,
+    );
+  }
+  const publicKey = writeSignedManifest(
+    input,
+    data.map((entry) => entry.package),
   );
-  const publicKey = writeSignedManifest(input, data.package);
 
   await assert.rejects(
     prepareDistributionResources({

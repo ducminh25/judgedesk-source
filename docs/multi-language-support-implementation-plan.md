@@ -1,6 +1,6 @@
 # JudgeDesk — Kế hoạch hỗ trợ đa ngôn ngữ
 
-Trạng thái: **Đã duyệt triển khai toàn bộ roadmap, D15 Full-first**
+Trạng thái: **Đang triển khai D15 Full-first theo phạm vi release Themis**
 
 Ngày khảo sát: 2026-07-28
 
@@ -19,18 +19,21 @@ Ngày duyệt: 2026-07-28
 - D11–D14: duyệt theo đề xuất trong tài liệu.
 - D15: duyệt với amendment: local compiler/runtime có thể trở thành Submission ready nếu version/target nằm trong policy được JudgeDesk hỗ trợ và vượt health + sandbox certification; UI/source selection theo mô hình ở D15 mới.
 - D15 Full-first (duyệt ngày 2026-07-30): bản `JudgeDesk Full` là artifact được khuyến nghị, tích hợp toàn bộ pack Stable của OS và chọn Managed mặc định; không có wizard chọn toolchain khi mở app lần đầu. `JudgeDesk Core/Judger Only` là artifact nâng cao, cho phép tải cùng các pack đó về sau hoặc dùng local.
+- Phạm vi release chốt ngày 2026-07-31: chỉ công bố **C++, C, Python, Pascal/FPC (`.pas`, `.pp`) và Java**. Go, Rust, JavaScript/Node.js và C#/.NET không xuất hiện trong registry/UI, không được nhận là submission và không đi vào Full/manifest mặc định; source catalog cùng adapter thử nghiệm được giữ dormant để phát hành ở wave sau.
+- Full Windows x64 chứa đúng bốn pack: GCC dùng chung cho C++/C, CPython, FPC và Temurin. Full macOS chỉ phát hành Apple Silicon và chứa CPython, FPC, Temurin; C++/C dùng Apple Clang được chọn bởi hệ điều hành, không có gói macOS Intel.
 - Full certification/snapshot nhiều phút không còn là đường mặc định. Managed pack dùng receipt + manifest đã ký và quick health; local chỉ chạy bounded identity/version/target/helper/compile-link-run check. Snapshot toàn cây được giữ như thao tác nâng cao `Freeze for contest`, không tự chạy khi mở app, chọn radio hay bắt đầu batch.
 - Pack tích hợp và pack tải online là cùng một artifact/digest. Pack built-in nằm trong store read-only, không được Uninstall riêng; pack downloaded nằm trong store per-user và có thể Uninstall khi không có batch lease.
 - Windows Full chứa WebView2 offline. Installer chọn tất cả language pack Stable theo mặc định; trang Customize là tùy chọn và selection phải được giữ qua upgrade/repair/uninstall.
 - Sau D15: JudgeDesk là single-instance. Lần mở thứ hai không được spawn backend/executor hay chạy startup cleanup/mutation; nó phải gửi activation request có timeout cho primary, làm cửa sổ primary hiện lại, bỏ minimize và lấy focus rồi thoát sạch. Activation IPC và ownership lease phải dùng chung một authority, không ghép hai cơ chế có thể race.
 - Fast discovery lần đầu: chỉ auto-detect thụ động; không tự chạy full certification cho toolchain mới phát hiện.
-- Default source cho profile ngôn ngữ mới: đang chờ xác nhận sau khi giải thích UX; không tự suy diễn từ việc detect được compiler/runtime.
+- Default source đã chốt: Full tự chọn Managed cho pack Stable có sẵn; Core/development auto-select local chỉ cho C++, C và Python ở lần khởi tạo đầu. Pascal/Java mặc định None ngoài Full và hướng người dùng tới managed pack; discovery vẫn chỉ chạy thụ động một lần và Rescan là thao tác thủ công.
 - Branch namespace: dùng `judgedesk/…` theo lựa chọn của chủ dự án; branch nền tảng là `judgedesk/language-runtime-foundation`.
 - Cách làm: từng bước nhỏ; không phụ thuộc việc luôn có máy Mac. Mỗi thay đổi macOS phải có test có thể chuẩn bị trước, nhưng chỉ được xác nhận runtime khi đã chạy trên Apple Silicon thật.
 
 ### Execution checkpoint
 
 - D15 Full-first đang triển khai trên `judgedesk/managed-toolchain-distribution`, base `3ba6db6`. Checkpoint đầu tách built-in read-only store khỏi downloaded per-user store, dùng receipt chung và capability grant theo package/component/role để secure executor có thể chạy pack Full tại chỗ thay vì copy khoảng 1 GB ở lần dùng đầu.
+- Toolchain/runtime checkpoint gần nhất đã push tại `c9991b1`; Windows và macOS Apple Silicon đã vượt gate thật cho C/C++, Python, FPC, Java cùng checker C++/Python. Slice tiếp theo đang khóa registry, manifest và Full distribution vào đúng phạm vi release 2026-07-31 trước khi build MSI/DMG Core + Full.
 - Foundation đã push tại `b2e793c` trên `judgedesk/language-runtime-foundation`; checkpoint hiện tại đang làm trên `judgedesk/macos-run-guardian`.
 - Base: `main` / `b1ed52f` / `v1.2.7`.
 - Hoàn tất: audit/research/approval; characterization fixtures, typed foundation contracts và preferences v2 migration kernel fail-closed đã được commit và push trên branch foundation.
@@ -963,6 +966,6 @@ Một ngôn ngữ chỉ được ghi là hỗ trợ ổn định khi:
 6. [x] Hoàn tất preferences v2 storage và strict manifest v2 validation contract trước khi sửa adapter; production v2 signing key/catalog publication vẫn là release-security checkpoint riêng.
 7. [ ] Tạo corpus/gates Phase 0 và pending Mac evidence checklist.
 8. [ ] Refactor C++/Python theo Phase 1 và chứng minh giữ nguyên executor request/verdict cho corpus hợp lệ, không mơ hồ.
-9. [ ] Chỉ sau khi foundation/Phase 2A qua gate mới bắt đầu branch C; Pascal và Go theo gate độc lập đã mô tả.
+9. [x] Bật C, Pascal/FPC và Java sau gate Windows/macOS; khóa release đầu ở C++, C, Python, FPC, Java và hoãn Go cùng các runtime mở rộng.
 
-Không tải toolchain, đổi sandbox hay bật extension mới trước khi current-behavior fixtures và typed contract được review.
+Mọi profile hoãn lại chỉ được đưa trở lại live registry bằng một release-scope change có test, package manifest và gate đóng gói riêng.

@@ -23,7 +23,7 @@ test("release packaging supports Windows x64 and Apple Silicon only", () => {
   );
 });
 
-test("Full packaging selects every package for each release host", () => {
+test("Full packaging selects only the approved Themis-language package set", () => {
   const windows = selectHostToolchainReleases({
     platform: "win32",
     arch: "x64",
@@ -33,9 +33,34 @@ test("Full packaging selects every package for each release host", () => {
     arch: "arm64",
   });
 
-  assert.equal(windows.length, 8);
-  assert.equal(macos.length, 7);
+  assert.deepEqual(
+    windows.map((release) => release.packageId),
+    [
+      "fpc-windows-x64",
+      "gcc-windows-x64",
+      "python-windows-x64",
+      "temurin21-windows-x64",
+    ],
+  );
+  assert.deepEqual(
+    macos.map((release) => release.packageId),
+    [
+      "fpc-macos-arm64",
+      "python-macos-arm64",
+      "temurin21-macos-arm64",
+    ],
+  );
   assert.equal(macos.every((release) => release.arch === "arm64"), true);
+});
+
+test("deferred packages remain explicitly buildable without entering Full", () => {
+  assert.deepEqual(
+    selectHostToolchainReleases(
+      { platform: "win32", arch: "x64" },
+      ["go-windows-x64"],
+    ).map((release) => release.packageId),
+    ["go-windows-x64"],
+  );
 });
 
 test("packaging rejects a requested package from another host", () => {
@@ -106,6 +131,14 @@ test("toolchain publishing workflow has no Intel macOS release path", () => {
   assert.equal(
     workflow.match(/server\/judge\/custom-checker\.gate\.test\.ts/g)?.length,
     2,
+  );
+  assert.equal(
+    workflow.match(/JUDGEDESK_REAL_LANGUAGE_GATES: pascal,java,python/g)?.length,
+    2,
+  );
+  assert.doesNotMatch(
+    workflow,
+    /package all (?:Windows|Apple Silicon) toolchains/i,
   );
   assert.doesNotMatch(
     workflow,

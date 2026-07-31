@@ -136,6 +136,31 @@ test("GET exposes registry state without waiting for the remote package catalog"
   assert.equal(payload.mutationsBlocked, false);
 });
 
+test("deferred toolchain packages cannot be installed through the release API", async (t) => {
+  useTemporaryAppData(t);
+  const handler = captureToolchainHandlers().get(
+    "POST /api/toolchains/:id/install",
+  );
+  assert.ok(handler);
+  const response = createResponse();
+  await handler(
+    {
+      body: undefined,
+      params: {
+        id: process.platform === "darwin"
+          ? "go-macos-arm64"
+          : "go-windows-x64",
+      },
+    },
+    response,
+  );
+  assert.equal(response.statusCode, 404);
+  assert.match(
+    String((response.payload as { message?: unknown }).message),
+    /not enabled in this release/,
+  );
+});
+
 test("toolchain mutations fail closed while a judging session is active", async (t) => {
   useTemporaryAppData(t);
   loadToolchainPreferenceSnapshot();

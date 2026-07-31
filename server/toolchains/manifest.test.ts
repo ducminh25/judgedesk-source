@@ -16,6 +16,43 @@ import type {
   ToolchainManifestV2Package,
   ToolchainManifestV2Payload,
 } from "./types.js";
+import {
+  CURRENT_RELEASE_TOOLCHAIN_KINDS,
+  isCurrentReleaseToolchainKind,
+  listCurrentReleaseManagedPackageIds,
+} from "./release-scope.js";
+
+test("current release scope contains only Themis languages and complete host packages", () => {
+  assert.deepEqual(CURRENT_RELEASE_TOOLCHAIN_KINDS, [
+    "cpp",
+    "c",
+    "python",
+    "pascal",
+    "java",
+  ]);
+  for (const [platform, arch] of [
+    ["win32", "x64"],
+    ["darwin", "arm64"],
+  ] as const) {
+    const packageIds = listCurrentReleaseManagedPackageIds(platform, arch);
+    assert.equal(new Set(packageIds).size, packageIds.length);
+    for (const packageId of packageIds) {
+      const catalog = TOOLCHAIN_CATALOG.find((entry) => entry.id === packageId);
+      const blueprint = TOOLCHAIN_RELEASE_BLUEPRINTS[packageId];
+      assert.ok(catalog, `missing catalog entry for ${packageId}`);
+      assert.ok(blueprint, `missing release blueprint for ${packageId}`);
+      assert.equal(catalog.platform, platform);
+      assert.equal(catalog.arch, arch);
+      assert.equal(
+        catalog.provides.every(isCurrentReleaseToolchainKind),
+        true,
+      );
+    }
+  }
+  for (const deferred of ["go", "rust", "javascript", "csharp"] as const) {
+    assert.equal(isCurrentReleaseToolchainKind(deferred), false);
+  }
+});
 
 function validManifest() {
   return {

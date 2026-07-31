@@ -54,13 +54,13 @@ before provisioning. Never print the secret or attach it to an evidence bundle.
 
 ## Release procedure
 
-1. Update the trusted catalog and package blueprints in one reviewed change.
+1. Update the trusted catalog, current release scope and package blueprints in one reviewed change. The current scope is C++, C, Python, FPC and Java only; dormant package sources are not published by the default workflow.
 2. Pin every upstream URL and SHA-256 in the build workflow.
 3. Build each OS/architecture package on its native runner. Execute its
    entrypoint and a compile/run probe before uploading the artifact.
 4. Add the required upstream license files, JudgeDesk notice and SPDX 2.3 SBOM
    before creating the archive.
-5. The publish job re-extracts every archive, validates bounded contents and
+5. The publish job re-extracts every current-release archive, validates bounded contents and
    metadata, computes sizes/digests, signs the canonical manifest, and then
    validates its own output with the public trust store.
 6. Upload the manifest, archives and `SHA256SUMS` to the dedicated toolchain

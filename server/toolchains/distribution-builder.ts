@@ -22,6 +22,9 @@ import type {
   ToolchainDescriptor,
   ToolchainManifestDocument,
 } from "./types.js";
+import {
+  listCurrentReleaseManagedPackageIds,
+} from "./release-scope.js";
 
 export type DistributionVariant = "full" | "core";
 
@@ -53,6 +56,7 @@ interface DistributionLockV1 {
 const MAX_MANIFEST_BYTES = 4 * 1024 * 1024;
 const MAX_PACKAGE_FILES = 500_000;
 const MAX_INSTALLED_BYTES = 8 * 1024 * 1024 * 1024;
+const RENAME_RETRY_DELAYS_MS = [25, 50, 100, 200] as const;
 
 export async function prepareDistributionResources(
   options: DistributionBuildOptions,
@@ -79,13 +83,23 @@ export async function prepareDistributionResources(
       options.trustedPublicKeys ?? OFFICIAL_TOOLCHAIN_MANIFEST_PUBLIC_KEYS,
     requireSignedV2: true,
   });
+  const requiredPackageIds = new Set(
+    listCurrentReleaseManagedPackageIds(options.platform, options.arch),
+  );
   const selected = descriptors
     .filter((descriptor) =>
-      descriptor.platform === options.platform && descriptor.arch === options.arch
+      descriptor.platform === options.platform
+      && descriptor.arch === options.arch
+      && requiredPackageIds.has(descriptor.id)
     )
     .sort((left, right) => left.id.localeCompare(right.id));
-  if (options.variant === "full" && selected.length === 0) {
-    throw new Error("Full distribution has no toolchain packages for this host.");
+  if (
+    options.variant === "full"
+    && selected.length !== requiredPackageIds.size
+  ) {
+    throw new Error(
+      "Full distribution does not contain the complete current release package set.",
+    );
   }
 
   const parent = path.dirname(outputRoot);
@@ -145,10 +159,10 @@ export async function prepareDistributionResources(
       { encoding: "utf8", flag: "wx" },
     );
     if (fs.existsSync(outputRoot)) {
-      fs.renameSync(outputRoot, backupRoot);
+      await renameDirectoryWithRetry(outputRoot, backupRoot);
       backupCreated = true;
     }
-    fs.renameSync(stagingRoot, outputRoot);
+    await renameDirectoryWithRetry(stagingRoot, outputRoot);
     outputCommitted = true;
     if (backupCreated) {
       fs.rmSync(backupRoot, { recursive: true, force: true });
@@ -161,15 +175,46 @@ export async function prepareDistributionResources(
       outputCommitted = false;
     }
     if (backupCreated && fs.existsSync(backupRoot)) {
-      fs.renameSync(backupRoot, outputRoot);
-      backupCreated = false;
+      try {
+        await renameDirectoryWithRetry(backupRoot, outputRoot);
+        backupCreated = false;
+      } catch (rollbackError) {
+        throw new AggregateError(
+          [error, rollbackError],
+          `Distribution rebuild failed and the previous resources remain at '${backupRoot}'.`,
+        );
+      }
     }
     throw error;
   } finally {
-    for (const candidate of [stagingRoot, backupRoot]) {
-      if (fs.existsSync(candidate)) {
-        fs.rmSync(candidate, { recursive: true, force: true });
-      }
+    if (fs.existsSync(stagingRoot)) {
+      fs.rmSync(stagingRoot, { recursive: true, force: true });
+    }
+    // If rollback itself failed, preserve the only known-good resource tree.
+    if (!backupCreated && fs.existsSync(backupRoot)) {
+      fs.rmSync(backupRoot, { recursive: true, force: true });
+    }
+  }
+}
+
+async function renameDirectoryWithRetry(
+  source: string,
+  destination: string,
+): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await fs.promises.rename(source, destination);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      const retryable =
+        code === "EPERM"
+        || code === "EACCES"
+        || code === "EBUSY";
+      if (!retryable || attempt >= RENAME_RETRY_DELAYS_MS.length) throw error;
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, RENAME_RETRY_DELAYS_MS[attempt]);
+      });
     }
   }
 }

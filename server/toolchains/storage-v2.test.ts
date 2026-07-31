@@ -4,8 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
 import {
+  C_LANGUAGE_PROFILE_ID,
   CPP_LANGUAGE_PROFILE_ID,
+  JAVA_LANGUAGE_PROFILE_ID,
   listRegisteredLanguageProfiles,
+  PASCAL_LANGUAGE_PROFILE_ID,
   PYTHON_LANGUAGE_PROFILE_ID,
 } from "../languages/registry.js";
 import {
@@ -38,6 +41,10 @@ test("missing preferences keep legacy auto-detect and initialize new profiles to
     snapshot.preferences.profiles[PYTHON_LANGUAGE_PROFILE_ID]?.mode,
     "local_auto",
   );
+  assert.equal(
+    snapshot.preferences.profiles[C_LANGUAGE_PROFILE_ID]?.mode,
+    "local_auto",
+  );
   const stored = JSON.parse(fs.readFileSync(getPreferencesFilePath(), "utf8"));
   assert.equal(stored.schemaVersion, 2);
   assert.deepEqual(
@@ -49,6 +56,7 @@ test("missing preferences keep legacy auto-detect and initialize new profiles to
   for (const entry of listRegisteredLanguageProfiles()) {
     if (
       entry.profile.ref.id !== CPP_LANGUAGE_PROFILE_ID
+      && entry.profile.ref.id !== C_LANGUAGE_PROFILE_ID
       && entry.profile.ref.id !== PYTHON_LANGUAGE_PROFILE_ID
     ) {
       assert.equal(stored.profiles[entry.profile.ref.id]?.mode, "none");
@@ -75,6 +83,16 @@ test("a fresh Full install selects supported Stable managed packs without changi
     snapshot.preferences.profiles[CPP_LANGUAGE_PROFILE_ID]?.mode,
     process.platform === "win32" ? "managed" : "local_auto",
   );
+  assert.equal(
+    snapshot.preferences.profiles[C_LANGUAGE_PROFILE_ID]?.mode,
+    process.platform === "win32" ? "managed" : "local_auto",
+  );
+  for (const profileId of [
+    PASCAL_LANGUAGE_PROFILE_ID,
+    JAVA_LANGUAGE_PROFILE_ID,
+  ]) {
+    assert.equal(snapshot.preferences.profiles[profileId]?.mode, "managed");
+  }
 });
 
 test("legacy preferences migrate once and preserve dormant local paths", (t) => {
