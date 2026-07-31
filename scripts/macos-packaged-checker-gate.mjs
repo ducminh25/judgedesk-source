@@ -84,10 +84,16 @@ try {
   assert.equal(status.build?.gitCommit, await currentCommit());
 
   const initialToolchains = await requestJson("GET", "/api/toolchains");
-  assert.equal(initialToolchains.registryRevision, 1);
+  assert.equal(initialToolchains.registryRevision, 4);
   assert.deepEqual(
     initialToolchains.profiles?.map((profile) => profile.id),
-    ["cpp-legacy-v1", "python-cpython312"],
+    [
+      "cpp-legacy-v1",
+      "c-gcc14",
+      "python-cpython312",
+      "pascal-fpc322",
+      "java-temurin21",
+    ],
   );
   for (const profile of initialToolchains.profiles || []) {
     assert.deepEqual(
