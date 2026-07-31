@@ -46,6 +46,9 @@ import {
 } from "../toolchains/storage.js";
 import type { ToolchainKind } from "../toolchains/types.js";
 import type { ToolchainDescriptor } from "../toolchains/types.js";
+import {
+  isCurrentReleaseToolchainKind,
+} from "../toolchains/release-scope.js";
 import { serverLifecycle } from "../platform/server-lifecycle.js";
 import { toolchainMaintenanceGate } from "../toolchains/maintenance-gate.js";
 
@@ -326,6 +329,12 @@ export function registerToolchainRoutes(app: Express): void {
       return res.status(404).json({
         success: false,
         message: `Toolchain descriptor with ID '${id}' not found.`,
+      });
+    }
+    if (!isCurrentReleaseToolchainKind(catalogEntry.kind)) {
+      return res.status(404).json({
+        success: false,
+        message: `Toolchain descriptor with ID '${id}' is not enabled in this release.`,
       });
     }
     if (catalogEntry.platform !== os.platform() || catalogEntry.arch !== mappedArchitecture()) {

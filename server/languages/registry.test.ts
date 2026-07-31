@@ -2,17 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   C_LANGUAGE_PROFILE_ID,
-  CSHARP_LANGUAGE_PROFILE_ID,
   CPP_LANGUAGE_PROFILE_ID,
-  GO_LANGUAGE_PROFILE_ID,
   getRegisteredLanguageProfile,
+  getRegisteredProfileForExtension,
   getRegisteredProfileForKind,
   JAVA_LANGUAGE_PROFILE_ID,
-  JAVASCRIPT_LANGUAGE_PROFILE_ID,
   listRegisteredLanguageProfiles,
   PASCAL_LANGUAGE_PROFILE_ID,
   PYTHON_LANGUAGE_PROFILE_ID,
-  RUST_LANGUAGE_PROFILE_ID,
 } from "./registry.js";
 import { isToolchainVersionAllowed } from "./version-policy.js";
 
@@ -26,23 +23,22 @@ test("the live registry exposes approved profiles in deterministic UI order", ()
     })),
     [
       { id: CPP_LANGUAGE_PROFILE_ID, kind: "cpp", mode: "local_auto" },
-      { id: C_LANGUAGE_PROFILE_ID, kind: "c", mode: "none" },
+      { id: C_LANGUAGE_PROFILE_ID, kind: "c", mode: "local_auto" },
       { id: PYTHON_LANGUAGE_PROFILE_ID, kind: "python", mode: "local_auto" },
       { id: PASCAL_LANGUAGE_PROFILE_ID, kind: "pascal", mode: "none" },
-      { id: GO_LANGUAGE_PROFILE_ID, kind: "go", mode: "none" },
       { id: JAVA_LANGUAGE_PROFILE_ID, kind: "java", mode: "none" },
-      { id: RUST_LANGUAGE_PROFILE_ID, kind: "rust", mode: "none" },
-      {
-        id: JAVASCRIPT_LANGUAGE_PROFILE_ID,
-        kind: "javascript",
-        mode: "none",
-      },
-      { id: CSHARP_LANGUAGE_PROFILE_ID, kind: "csharp", mode: "none" },
     ],
   );
   assert.equal(getRegisteredProfileForKind("cpp"), registry[0]);
   assert.equal(getRegisteredProfileForKind("python"), registry[2]);
   assert.equal(getRegisteredLanguageProfile("unknown-profile"), undefined);
+  assert.throws(
+    () => getRegisteredProfileForKind("go"),
+    /No language profile is registered/,
+  );
+  for (const extension of [".go", ".rs", ".js", ".cs"]) {
+    assert.equal(getRegisteredProfileForExtension(extension), undefined);
+  }
   assert.equal(Object.isFrozen(registry), true);
   assert.equal(Object.isFrozen(registry[0]), true);
   assert.equal(Object.isFrozen(registry[0].profile), true);
@@ -67,11 +63,7 @@ test("local version policies pin tested versions instead of accepting any future
   };
 
   assert.deepEqual(versions("pascal"), ["3.2.2"]);
-  assert.deepEqual(versions("go"), ["1.26.5"]);
   assert.deepEqual(versions("java"), ["21.0.12"]);
-  assert.deepEqual(versions("rust"), ["1.97.1"]);
-  assert.deepEqual(versions("javascript"), ["24.18.1"]);
-  assert.deepEqual(versions("csharp"), ["10.0.302"]);
 
   const cppPolicy = getRegisteredProfileForKind("cpp").localVersionPolicy;
   assert.equal(

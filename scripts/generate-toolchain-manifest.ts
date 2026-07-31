@@ -22,6 +22,9 @@ import {
   TOOLCHAIN_SOURCE_PROVENANCE_FILENAME,
   validateToolchainSourceProvenance,
 } from "./toolchain-release-sources.js";
+import {
+  listCurrentReleaseManagedPackageIds,
+} from "../server/toolchains/release-scope.js";
 
 const MAX_PACKAGE_FILES = 500_000;
 const MAX_INSTALLED_BYTES = 8 * 1024 * 1024 * 1024;
@@ -225,7 +228,19 @@ const releaseBaseUrl = (
   || "https://github.com/ducminh25/judgedesk/releases/download/toolchains-v2"
 ).replace(/\/$/, "");
 const { keyId, privateKey } = loadSigningKey();
-const blueprints = Object.values(TOOLCHAIN_RELEASE_BLUEPRINTS)
+const blueprints = [
+  ...listCurrentReleaseManagedPackageIds("win32", "x64"),
+  ...listCurrentReleaseManagedPackageIds("darwin", "arm64"),
+]
+  .map((packageId) => {
+    const blueprint = TOOLCHAIN_RELEASE_BLUEPRINTS[packageId];
+    if (!blueprint) {
+      throw new Error(
+        `Current release package '${packageId}' has no trusted blueprint.`,
+      );
+    }
+    return blueprint;
+  })
   .sort((left, right) => left.id.localeCompare(right.id));
 const packages: ToolchainManifestV2Package[] = [];
 for (const blueprint of blueprints) {

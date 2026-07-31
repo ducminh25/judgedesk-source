@@ -9,6 +9,9 @@ import {
   TOOLCHAIN_RELEASE_BLUEPRINTS,
   validateManifestDocument,
 } from "../server/toolchains/manifest.js";
+import {
+  listCurrentReleaseManagedPackageIds,
+} from "../server/toolchains/release-scope.js";
 
 const MAX_MANIFEST_BYTES = 4 * 1024 * 1024;
 
@@ -127,13 +130,20 @@ const descriptors = validateManifestDocument(document, {
   requireSignedV2: true,
 });
 const host = mappedHost();
+const requiredPackageIds = new Set(
+  listCurrentReleaseManagedPackageIds(host.platform, host.arch),
+);
 const selected = mode === "full"
   ? descriptors.filter((descriptor) =>
-      descriptor.platform === host.platform && descriptor.arch === host.arch
+      descriptor.platform === host.platform
+      && descriptor.arch === host.arch
+      && requiredPackageIds.has(descriptor.id)
     )
   : [];
-if (mode === "full" && selected.length === 0) {
-  throw new Error("Signed catalog contains no Full packages for this host.");
+if (mode === "full" && selected.length !== requiredPackageIds.size) {
+  throw new Error(
+    "Signed catalog does not contain the complete current Full package set for this host.",
+  );
 }
 
 const operationId = `${process.pid}-${crypto.randomUUID()}`;

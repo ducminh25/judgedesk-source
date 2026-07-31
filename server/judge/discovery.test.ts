@@ -88,16 +88,16 @@ test("submission discovery maps every registered contest source extension", (t) 
   const cases = [
     ["C_TASK.c", "c"],
     ["PASCAL_TASK.pp", "pascal"],
-    ["GO_TASK.go", "go"],
     ["JAVA_TASK.java", "java"],
-    ["RUST_TASK.rs", "rust"],
-    ["JS_TASK.js", "javascript"],
-    ["CS_TASK.cs", "csharp"],
   ] as const;
   for (const [fileName, language] of cases) {
     fs.writeFileSync(path.join(root, fileName), "");
     const problem = path.parse(fileName).name;
     assert.equal(findSubmission(root, problem)?.language, language);
+  }
+  for (const deferred of ["GO_TASK.go", "RUST_TASK.rs", "JS_TASK.js", "CS_TASK.cs"]) {
+    fs.writeFileSync(path.join(root, deferred), "");
+    assert.equal(findSubmission(root, path.parse(deferred).name), null);
   }
 });
 

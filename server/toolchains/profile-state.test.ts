@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
 import {
+  C_LANGUAGE_PROFILE_ID,
   CPP_LANGUAGE_PROFILE_ID,
   LANGUAGE_REGISTRY_REVISION,
   listRegisteredLanguageProfiles,
@@ -40,6 +41,7 @@ test("profile state is registry ordered and reports first-run detection without 
   for (const profile of state.profiles.slice(0, 3).filter(
     (candidate) =>
       candidate.id === CPP_LANGUAGE_PROFILE_ID
+      || candidate.id === C_LANGUAGE_PROFILE_ID
       || candidate.id === PYTHON_LANGUAGE_PROFILE_ID,
   )) {
     assert.equal(profile.selection.mode, "local_auto");
@@ -51,6 +53,7 @@ test("profile state is registry ordered and reports first-run detection without 
   for (const profile of state.profiles.filter(
     (candidate) =>
       candidate.id !== CPP_LANGUAGE_PROFILE_ID
+      && candidate.id !== C_LANGUAGE_PROFILE_ID
       && candidate.id !== PYTHON_LANGUAGE_PROFILE_ID,
   )) {
     assert.equal(profile.selection.mode, "none");

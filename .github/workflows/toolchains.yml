@@ -39,7 +39,7 @@ jobs:
         with:
           path: build/toolchain-source-cache
           key: toolchain-sources-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/toolchain-release-sources.ts') }}
-      - name: Download, verify, smoke-test and package all Windows toolchains
+      - name: Download, verify, smoke-test and package release Windows toolchains
         run: npm run toolchains:package:host -- dist-toolchains
       - name: Prepare isolated Windows gate root
         run: npm run toolchains:prepare:gate -- dist-toolchains build/toolchain-gate-root
@@ -53,6 +53,7 @@ jobs:
         env:
           JUDGEDESK_REAL_TOOLCHAIN_GATES: "1"
           JUDGEDESK_REAL_TOOLCHAIN_GATE_ROOT: ${{ github.workspace }}\build\toolchain-gate-root
+          JUDGEDESK_REAL_LANGUAGE_GATES: pascal,java,python
         run: |
           npx tsx --test server/judge/c-submission.gate.test.ts
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -91,7 +92,7 @@ jobs:
         with:
           path: build/toolchain-source-cache
           key: toolchain-sources-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/toolchain-release-sources.ts') }}
-      - name: Download, verify, smoke-test and package all Apple Silicon toolchains
+      - name: Download, verify, smoke-test and package release Apple Silicon toolchains
         run: npm run toolchains:package:host -- dist-toolchains
       - name: Prepare isolated Apple Silicon gate root
         run: npm run toolchains:prepare:gate -- dist-toolchains build/toolchain-gate-root
@@ -101,6 +102,7 @@ jobs:
         env:
           JUDGEDESK_REAL_TOOLCHAIN_GATES: "1"
           JUDGEDESK_REAL_TOOLCHAIN_GATE_ROOT: ${{ github.workspace }}/build/toolchain-gate-root
+          JUDGEDESK_REAL_LANGUAGE_GATES: pascal,java,python
         run: |
           npx tsx --test server/judge/c-submission.gate.test.ts
           npx tsx --test server/judge/multi-language.gate.test.ts

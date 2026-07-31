@@ -315,7 +315,7 @@ test("version probes use each toolchain's real non-shell CLI contract", () => {
 
 test("quick verification rejects a real but untested local runtime version", () => {
   const result = verifyLocalToolchainCandidate(
-    "javascript",
+    "java",
     process.execPath,
   );
   assert.equal(result.ready, false);

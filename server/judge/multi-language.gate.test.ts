@@ -278,7 +278,7 @@ if (enabled) {
 
 const requestedGateNames = (
   process.env.JUDGEDESK_REAL_LANGUAGE_GATES
-  || Object.keys(languageGates).join(",")
+  || "pascal,java,python"
 )
   .split(",")
   .map((value) => value.trim().toLowerCase())
