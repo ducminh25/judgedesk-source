@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import {
+  buildPackagingPascalSupportArgs,
   resolvePackagingHost,
   selectHostToolchainReleases,
 } from "./package-toolchains.js";
@@ -44,6 +45,27 @@ test("packaging rejects a requested package from another host", () => {
       ["gcc-windows-x64"],
     ),
     /not built on darwin\/arm64/,
+  );
+});
+
+test("macOS FPC packaging pins the selected SDK before managed unit roots", (t) => {
+  const sdk = path.resolve("build", "packager-test-sdk");
+  fs.mkdirSync(sdk, { recursive: true });
+  t.after(() => fs.rmSync(sdk, { recursive: true, force: true }));
+
+  const args = buildPackagingPascalSupportArgs(
+    "darwin",
+    path.resolve("managed-fpc"),
+    sdk,
+  );
+  assert.equal(args[0], `-XR${fs.realpathSync(sdk)}`);
+  assert.ok(args.some((argument) => argument.startsWith("-Fu")));
+  assert.throws(
+    () => buildPackagingPascalSupportArgs(
+      "darwin",
+      path.resolve("managed-fpc"),
+    ),
+    /macOS SDK is required/,
   );
 });
 

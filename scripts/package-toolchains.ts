@@ -110,6 +110,27 @@ export function selectHostToolchainReleases(
   return selected;
 }
 
+export function buildPackagingPascalSupportArgs(
+  platform: NodeJS.Platform,
+  packageRoot: string,
+  macosSdkDirectory?: string,
+): string[] {
+  if (platform === "darwin") {
+    if (
+      !macosSdkDirectory
+      || !path.isAbsolute(macosSdkDirectory)
+      || !fs.statSync(macosSdkDirectory, { throwIfNoEntry: false })?.isDirectory()
+    ) {
+      throw new Error("The macOS SDK is required to smoke-test packaged FPC.");
+    }
+    return [
+      `-XR${fs.realpathSync(macosSdkDirectory)}`,
+      ...buildManagedPascalSupportArgs(platform, packageRoot),
+    ];
+  }
+  return buildManagedPascalSupportArgs(platform, packageRoot);
+}
+
 interface RunOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
@@ -689,6 +710,20 @@ function smokeOutput(commandOutput: string, packageId: string): void {
   }
 }
 
+function resolveMacosPackagingSdk(): string {
+  const sdkDirectory = run(
+    "/usr/bin/xcrun",
+    ["--sdk", "macosx", "--show-sdk-path"],
+  ).trim();
+  if (
+    !path.isAbsolute(sdkDirectory)
+    || !fs.statSync(sdkDirectory, { throwIfNoEntry: false })?.isDirectory()
+  ) {
+    throw new Error("xcrun did not return a usable macOS SDK directory.");
+  }
+  return fs.realpathSync(sdkDirectory);
+}
+
 function smokeDotnet(
   executable: string,
   packageRoot: string,
@@ -887,7 +922,13 @@ function smokePackage(
     run(
       executable,
       [
-        ...buildManagedPascalSupportArgs(process.platform, packageRoot),
+        ...buildPackagingPascalSupportArgs(
+          process.platform,
+          packageRoot,
+          process.platform === "darwin"
+            ? resolveMacosPackagingSdk()
+            : undefined,
+        ),
         ...recipe.args,
       ],
       {
