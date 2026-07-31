@@ -241,7 +241,7 @@ export default function AppToolbar({
   );
 }
 
-function UpdateButton({ state, disabled, onCheck, onDownload, onInstall }: {
+export function UpdateButton({ state, disabled, onCheck, onDownload, onInstall }: {
   state: AppUpdateState;
   disabled: boolean;
   onCheck: () => void;
@@ -265,14 +265,16 @@ function UpdateButton({ state, disabled, onCheck, onDownload, onInstall }: {
       default: return t("updates.check");
     }
   })();
+  const visibleLabel = state.status === "error" ? t("updates.retry") : label;
+  const accessibleLabel = state.status === "error" ? `${label}. ${visibleLabel}` : label;
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled || isBusy}
       title={label}
-      aria-label={label}
-      className={`flex h-9 w-9 flex-none items-center justify-center rounded border transition-colors disabled:cursor-wait ${
+      aria-label={accessibleLabel}
+      className={`flex h-10 max-w-56 flex-none items-center justify-center gap-2 whitespace-nowrap rounded border px-3 text-xs font-bold transition-colors disabled:cursor-wait ${
         state.status === "available" || state.status === "downloaded"
           ? "border-indigo-500 bg-indigo-600 text-white hover:bg-indigo-500"
           : state.status === "error"
@@ -280,7 +282,16 @@ function UpdateButton({ state, disabled, onCheck, onDownload, onInstall }: {
             : "border-surface-border bg-surface-elevated text-text-primary hover:bg-surface-hover"
       }`}
     >
-      {isBusy ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+      {isBusy ? (
+        <RefreshCw className="h-4 w-4 shrink-0 animate-spin" />
+      ) : state.status === "current" ? (
+        <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+      ) : state.status === "error" ? (
+        <XCircle className="h-4 w-4 shrink-0" />
+      ) : (
+        <Download className="h-4 w-4 shrink-0" />
+      )}
+      <span className="min-w-0 truncate">{visibleLabel}</span>
     </button>
   );
 }
