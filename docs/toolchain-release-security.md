@@ -60,9 +60,13 @@ before provisioning. Never print the secret or attach it to an evidence bundle.
    entrypoint and a compile/run probe before uploading the artifact.
 4. Add the required upstream license files, JudgeDesk notice and SPDX 2.3 SBOM
    before creating the archive.
-5. The publish job re-extracts every current-release archive, validates bounded contents and
-   metadata, computes sizes/digests, signs the canonical manifest, and then
-   validates its own output with the public trust store.
+5. The publish job re-extracts every current-release archive with the
+   release-only cross-host inspector, validates bounded portable contents,
+   internal link targets and metadata, computes logical target-host
+   sizes/digests, signs the canonical manifest, and then validates its own
+   output with the public trust store. Do not replace this with the runtime
+   installer extractor: the publishing host must inspect both Windows ZIP and
+   macOS TAR.GZ inputs.
 6. Upload the manifest, archives and `SHA256SUMS` to the dedicated toolchain
    release. Record the workflow run, commit SHA, manifest SHA-256 and package
    digests in the release evidence.

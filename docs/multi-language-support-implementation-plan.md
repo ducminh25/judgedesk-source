@@ -967,5 +967,6 @@ Một ngôn ngữ chỉ được ghi là hỗ trợ ổn định khi:
 7. [ ] Tạo corpus/gates Phase 0 và pending Mac evidence checklist.
 8. [ ] Refactor C++/Python theo Phase 1 và chứng minh giữ nguyên executor request/verdict cho corpus hợp lệ, không mơ hồ.
 9. [x] Bật C, Pascal/FPC và Java sau gate Windows/macOS; khóa release đầu ở C++, C, Python, FPC, Java và hoãn Go cùng các runtime mở rộng.
+10. [x] Build và gate local Core/Full trên Windows x64 + macOS Apple Silicon; manifest, artifact hash, packaged correctness/security matrix và giới hạn còn lại được ghi tại `docs/managed-toolchain-distribution-checkpoint.md`.
 
 Mọi profile hoãn lại chỉ được đưa trở lại live registry bằng một release-scope change có test, package manifest và gate đóng gói riêng.
