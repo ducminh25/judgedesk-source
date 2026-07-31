@@ -55,9 +55,10 @@ export function buildNativeCompilationRecipe(
       // Windows this also prevents GCC's legacy temp-path conversion from
       // attempting to write an intermediate object at the drive root. The
       // budget covers two separately sandboxed compiler processes (compile
-      // and link), including their executor startup overhead.
+      // and link), including their executor startup overhead and a possible
+      // first-run antivirus scan of a freshly installed managed compiler.
       splitCompilerPhases: platform === "darwin" || platform === "win32",
-      timeoutMs: 30_000,
+      timeoutMs: 60_000,
       maxGeneratedFileBytes: 32 * MIB,
     };
   }
@@ -79,7 +80,9 @@ export function buildNativeCompilationRecipe(
       ],
       environment: {},
       splitCompilerPhases: false,
-      timeoutMs: 20_000,
+      // FPC itself is fast, but its first managed invocation can overlap the
+      // installer/antivirus scan on lower-end classroom machines.
+      timeoutMs: 45_000,
       maxGeneratedFileBytes: 32 * MIB,
     };
   }

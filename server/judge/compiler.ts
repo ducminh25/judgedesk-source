@@ -54,7 +54,11 @@ declare const __JUDGEDESK_TESTLIB__: string;
 
 export const COMPILE_TIMEOUT_MS = 15_000;
 export const MAX_GENERATED_FILE_BYTES = 32 * 1024 * 1024;
-export const CHECKER_COMPILE_TIMEOUT_MS = 30_000;
+// A freshly installed Full distribution can still be under antivirus scan when
+// the first static C++ checker is compiled. This watchdog is not a contestant
+// runtime limit; keep it bounded but leave enough headroom for modest school
+// hardware and cold managed-toolchain files.
+export const CHECKER_COMPILE_TIMEOUT_MS = 60_000;
 export const CHECKER_COMPILE_MEMORY_LIMIT_BYTES = 768 * 1024 * 1024;
 const MAX_COMPILER_DIAGNOSTIC_BYTES = 256 * 1024;
 const gccProgramDirectoryCache = new Map<string, string>();

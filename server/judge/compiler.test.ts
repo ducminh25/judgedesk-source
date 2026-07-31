@@ -202,7 +202,7 @@ const fakeCompilerHarnessSkip = process.platform === "win32"
 test("submission and custom-checker compiler limits are explicit", () => {
   assert.equal(COMPILE_TIMEOUT_MS, 15_000);
   assert.equal(MAX_GENERATED_FILE_BYTES, 32 * 1024 * 1024);
-  assert.equal(CHECKER_COMPILE_TIMEOUT_MS, 30_000);
+  assert.equal(CHECKER_COMPILE_TIMEOUT_MS, 60_000);
   assert.equal(CHECKER_COMPILE_MEMORY_LIMIT_BYTES, 768 * 1024 * 1024);
 });
 
