@@ -10,7 +10,10 @@ import {
   resolveBuildMetadata,
   resolveTarget,
 } from "./build-server-lib.js";
-import { smokeTestSidecar } from "./smoke-test-sidecar.js";
+import {
+  smokeTestSidecar,
+  toTauriResourceDirectory,
+} from "./smoke-test-sidecar.js";
 
 test("sidecar target names match Tauri target triples", () => {
   assert.equal(targetTripleForHost("win32", "x64"), "x86_64-pc-windows-msvc");
@@ -232,6 +235,21 @@ test("sidecar smoke test verifies a real child process over HTTP", async () => {
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test("sidecar smoke tests reproduce Tauri resource path spelling on Windows", () => {
+  assert.equal(
+    toTauriResourceDirectory(String.raw`C:\Program Files\JudgeDesk`, "win32"),
+    String.raw`\\?\C:\Program Files\JudgeDesk`,
+  );
+  assert.equal(
+    toTauriResourceDirectory(String.raw`\\server\share\JudgeDesk`, "win32"),
+    String.raw`\\?\UNC\server\share\JudgeDesk`,
+  );
+  assert.equal(
+    toTauriResourceDirectory("/Applications/JudgeDesk.app/Contents/Resources", "darwin"),
+    path.resolve("/Applications/JudgeDesk.app/Contents/Resources"),
+  );
 });
 
 test("GitHub release workflow builds Apple Silicon only", () => {

@@ -95,6 +95,49 @@ test("a fresh Full install selects supported Stable managed packs without changi
   }
 });
 
+test("a Full upgrade fills newly registered profiles without overwriting existing choices", (t) => {
+  useTemporaryAppData(t);
+  const previous = process.env.JUDGEDESK_DISTRIBUTION;
+  process.env.JUDGEDESK_DISTRIBUTION = "full";
+  t.after(() => {
+    if (previous === undefined) delete process.env.JUDGEDESK_DISTRIBUTION;
+    else process.env.JUDGEDESK_DISTRIBUTION = previous;
+  });
+  fs.writeFileSync(
+    getPreferencesFilePath(),
+    JSON.stringify({
+      schemaVersion: 2,
+      profiles: {
+        [CPP_LANGUAGE_PROFILE_ID]: { mode: "none" },
+        [PYTHON_LANGUAGE_PROFILE_ID]: { mode: "local_auto" },
+      },
+    }),
+  );
+
+  const migrated = loadToolchainPreferenceSnapshot();
+
+  assert.equal(migrated.status, "migrated");
+  assert.equal(
+    migrated.preferences.profiles[CPP_LANGUAGE_PROFILE_ID]?.mode,
+    "none",
+  );
+  assert.equal(
+    migrated.preferences.profiles[PYTHON_LANGUAGE_PROFILE_ID]?.mode,
+    "local_auto",
+  );
+  assert.equal(
+    migrated.preferences.profiles[C_LANGUAGE_PROFILE_ID]?.mode,
+    process.platform === "win32" ? "managed" : "local_auto",
+  );
+  for (const profileId of [
+    PASCAL_LANGUAGE_PROFILE_ID,
+    JAVA_LANGUAGE_PROFILE_ID,
+  ]) {
+    assert.equal(migrated.preferences.profiles[profileId]?.mode, "managed");
+  }
+  assert.equal(loadToolchainPreferenceSnapshot().status, "ready");
+});
+
 test("legacy preferences migrate once and preserve dormant local paths", (t) => {
   useTemporaryAppData(t);
   fs.writeFileSync(

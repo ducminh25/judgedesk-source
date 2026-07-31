@@ -16,6 +16,13 @@ const POLL_INTERVAL_MS = 250;
 const HTTP_REQUEST_TIMEOUT_MS = 5_000;
 const EXPECTED_CONTESTANTS = ["Contestant 2", "Contestant 10"];
 const EXPECTED_PROBLEMS = ["Problem A", "Problem B"];
+const EXPECTED_RELEASE_LANGUAGE_KINDS = [
+  "cpp",
+  "c",
+  "python",
+  "pascal",
+  "java",
+];
 
 function delay(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -92,6 +99,64 @@ async function fetchJsonWithinDeadline(url, deadline) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+export function toTauriResourceDirectory(
+  resourceDirectory,
+  platform = process.platform,
+) {
+  const resolved = path.resolve(resourceDirectory);
+  if (platform !== "win32" || resolved.startsWith("\\\\?\\")) return resolved;
+  if (/^[a-z]:\\/i.test(resolved)) return `\\\\?\\${resolved}`;
+  if (resolved.startsWith("\\\\")) {
+    return `\\\\?\\UNC\\${resolved.slice(2)}`;
+  }
+  return resolved;
+}
+
+function isFullDistribution(resourceDirectory) {
+  if (!resourceDirectory) return false;
+  try {
+    const document = JSON.parse(
+      fs.readFileSync(
+        path.join(path.resolve(resourceDirectory), "judgedesk-distribution.json"),
+        "utf8",
+      ),
+    );
+    return document?.schemaVersion === 1 && document?.distribution === "full";
+  } catch {
+    return false;
+  }
+}
+
+async function verifyReleaseLanguageProfiles(baseUrl, deadline) {
+  let lastProfiles = [];
+  while (Date.now() < deadline) {
+    const { response, body } = await fetchJsonWithinDeadline(
+      `${baseUrl}/api/toolchains`,
+      deadline,
+    );
+    if (response.ok && Array.isArray(body.profiles)) {
+      lastProfiles = body.profiles;
+      const profilesByKind = new Map(
+        body.profiles.map((profile) => [profile.kind, profile]),
+      );
+      if (EXPECTED_RELEASE_LANGUAGE_KINDS.every((kind) => {
+        const profile = profilesByKind.get(kind);
+        return profile?.status === "submission_ready"
+          && profile?.active?.ready === true;
+      })) {
+        console.log(
+          `Full distribution language profiles passed: ${EXPECTED_RELEASE_LANGUAGE_KINDS.join(", ")}.`,
+        );
+        return;
+      }
+    }
+    await delay(POLL_INTERVAL_MS);
+  }
+  throw new Error(
+    `Full distribution language profiles did not become submission-ready: ${JSON.stringify(lastProfiles)}`,
+  );
 }
 
 export async function verifyStartupGateRejectsMissingToken(
@@ -190,6 +255,7 @@ export async function smokeTestSidecar(
     resourceDirectory,
     timeoutMs = STARTUP_TIMEOUT_MS,
     requireCpp = false,
+    requireReleaseLanguages = isFullDistribution(resourceDirectory),
   } = {},
 ) {
   const resolvedExecutable = path.resolve(executablePath);
@@ -223,7 +289,7 @@ export async function smokeTestSidecar(
       PORT: String(port),
       THEMIS_APP_DATA_DIR: path.join(temporaryRoot, "app-data"),
       THEMIS_RESOURCE_DIR: resourceDirectory
-        ? path.resolve(resourceDirectory)
+        ? toTauriResourceDirectory(resourceDirectory)
         : temporaryRoot,
       JUDGEDESK_BOOTSTRAP_TOKEN: startupToken,
     },
@@ -281,6 +347,9 @@ export async function smokeTestSidecar(
           throw new Error(
             `Packaged sidecar did not detect Apple Clang: ${JSON.stringify(status.gpp)}`,
           );
+        }
+        if (requireReleaseLanguages) {
+          await verifyReleaseLanguageProfiles(baseUrl, deadline);
         }
         await verifyWorkspaceRoutes(baseUrl, temporaryRoot, deadline);
         await new Promise((resolve, reject) => {
