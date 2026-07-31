@@ -8,6 +8,9 @@
   `native-executor/Cargo.lock`, must use the same version.
 - Keep `com.themisv2.judge`, the updater public key and the public endpoint
   unchanged. Existing `1.x` installations depend on this identity.
+- Source tags and workflows live in the private
+  `ducminh25/judgedesk-source` repository. Public installers, updater manifests,
+  checksums and managed toolchains live in `ducminh25/judgedesk`.
 - Keep Windows MSI UpgradeCode `4ac645a9-f719-5210-85be-f03f49c33869`
   unchanged so JudgeDesk replaces ThemisV2 instead of installing beside it.
 - A public release is update-capable only when it contains `latest.json` plus
@@ -109,7 +112,8 @@ Official setup references:
 
 ## Publish
 
-1. Create annotated source tag `v<version>` in `ducminh25/judgedesk`.
+1. Create annotated source tag `v<version>` in the private
+   `ducminh25/judgedesk-source` repository.
 2. Collect the Windows MSI that passed the accepted Windows gates, its CodeMagic
    updater signature, and all artifacts from `macos-arm64-release`. Record
    Authenticode status separately; the updater `.sig` is not Authenticode.
@@ -121,3 +125,9 @@ Official setup references:
    be present before the release becomes the public `latest` release.
 6. Remove the temporary `v<version>-staging` release after the signed Windows
    artifacts have been collected.
+
+The private source repository must provide `PUBLIC_RELEASE_TOKEN` to both the
+application-release and toolchain workflows. The token must be authorized to
+create releases and upload assets in the public `ducminh25/judgedesk`
+repository. CodeMagic must also be connected to `judgedesk-source`; do not let
+an old integration follow the reused `judgedesk` name.

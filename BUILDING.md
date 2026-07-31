@@ -112,9 +112,18 @@ does not consume a packaging attempt.
 
 ## Managed compiler packages
 
-The app downloads `toolchains-manifest.json` from the `toolchains-v1` GitHub Release. Every package is accepted only when its catalog metadata matches and its SHA-256 digest is valid.
+The app downloads the signed `toolchains-manifest.json` from the
+`toolchains-v2` release in the public `ducminh25/judgedesk` distribution
+repository. A package is accepted only when the manifest signature, catalog
+metadata, pinned archive SHA-256 and required runtime files all validate.
 
-The MSI and DMG contain the judger itself, not the large compiler archives. On first launch, the setup wizard offers Judger only, C/C++, Python, or the full package; selected managed toolchains are then downloaded into the user's application-data directory. This keeps one deterministic installer per operating system while preserving the requested installation choices.
+The Full MSI/app bundle embeds every managed package supported on that host.
+The Core distribution contains the judger and can download the same packages
+later from the public release. Windows packages cover GCC for C/C++, CPython,
+Free Pascal and Temurin Java. The Apple Silicon packages cover CPython, Free
+Pascal and Temurin Java; C/C++ uses the compatible Apple Clang installation.
+First-launch discovery is deliberately quick and does not run the historical
+multi-minute certification suite.
 
 Installed packages are stored in:
 
@@ -125,4 +134,6 @@ The legacy `ThemisV2` data directory and application identifier are retained
 for this rename so existing managed toolchains, preferences, and updater
 identity continue to work.
 
-Set `THEMIS_TOOLCHAIN_MANIFEST_URL` only when testing a private or pre-release manifest.
+Set `THEMIS_TOOLCHAIN_MANIFEST_URL` only when testing a private or pre-release
+manifest. Production URLs must continue to target the public distribution
+repository, not the private source repository.

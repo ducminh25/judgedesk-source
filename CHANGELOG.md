@@ -3,6 +3,18 @@
 Tất cả thay đổi đáng chú ý của JudgeDesk được ghi tại đây. Dự án dùng Semantic
 Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng dụng hiện có.
 
+## [Unreleased]
+
+### Repository và phân phối
+
+- Chuyển mã nguồn sang repository private `ducminh25/judgedesk-source`; giữ
+  `ducminh25/judgedesk` làm repository công khai cho bộ cài, hướng dẫn, hỗ trợ,
+  updater manifest và managed toolchain.
+- Workflow toolchain v2 trong source private phát hành chéo sang repository
+  công khai bằng credential riêng, không dùng nhầm `github.repository`.
+- Nút kiểm tra/tải bản cập nhật trên toolbar có nhãn tiếng Việt/tiếng Anh hiển
+  thị trực tiếp và vùng bấm lớn hơn.
+
 ## [1.2.7] - 2026-07-27
 
 ### Ổn định Python được quản lý trên macOS
