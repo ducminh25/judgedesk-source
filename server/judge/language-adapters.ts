@@ -18,6 +18,8 @@ export interface NativeCompilationRecipe {
   splitCompilerPhases: boolean;
   timeoutMs: number;
   maxGeneratedFileBytes: number;
+  maxWorkspaceWriteBytes?: number;
+  maxCreatedFiles?: number;
 }
 
 const MIB = 1024 * 1024;
@@ -51,9 +53,11 @@ export function buildNativeCompilationRecipe(
       environment: {},
       // Both Apple clang and MinGW GCC need an explicit object path. On
       // Windows this also prevents GCC's legacy temp-path conversion from
-      // attempting to write an intermediate object at the drive root.
+      // attempting to write an intermediate object at the drive root. The
+      // budget covers two separately sandboxed compiler processes (compile
+      // and link), including their executor startup overhead.
       splitCompilerPhases: platform === "darwin" || platform === "win32",
-      timeoutMs: 15_000,
+      timeoutMs: 30_000,
       maxGeneratedFileBytes: 32 * MIB,
     };
   }
@@ -63,7 +67,7 @@ export function buildNativeCompilationRecipe(
       toolchainKind: "pascal",
       args: [
         "-O2",
-        "-Xs",
+        "-XS",
         "-Sg",
         // Windows AppContainer maps system DLLs at randomized addresses. FPC
         // otherwise emits a fixed-base executable with stripped relocations,
@@ -85,7 +89,7 @@ export function buildNativeCompilationRecipe(
       toolchainKind: "go",
       args: [
         "build",
-        "-p=2",
+        "-p=4",
         "-trimpath",
         "-buildvcs=false",
         "-ldflags=-s -w",
@@ -99,8 +103,16 @@ export function buildNativeCompilationRecipe(
         GOTOOLCHAIN: "local",
       },
       splitCompilerPhases: false,
-      timeoutMs: 30_000,
+      // A cold, isolated standard-library cache is intentional. The larger
+      // watchdog avoids rejecting a healthy first compile on modest hardware;
+      // it is a compiler limit, not the contestant's runtime limit.
+      timeoutMs: 60_000,
       maxGeneratedFileBytes: 64 * MIB,
+      // Go 1.26 compiles portions of its standard library into GOCACHE on the
+      // first isolated build. Bound that ephemeral cache independently from
+      // the much smaller executable artifact.
+      maxWorkspaceWriteBytes: 256 * MIB,
+      maxCreatedFiles: 4_096,
     };
   }
   return {
@@ -138,7 +150,7 @@ export function buildCompilerAdapterEnvironment(
       GOCACHE: path.join(workspacePath, "go-cache"),
       GOMODCACHE: path.join(workspacePath, "go-mod-cache"),
       GOTMPDIR: path.join(workspacePath, "go-tmp"),
-      GOMAXPROCS: "2",
+      GOMAXPROCS: "4",
       ...(toolchainRoot ? { GOROOT: toolchainRoot } : {}),
       ...(executablePath ? { PATH: path.dirname(executablePath) } : {}),
     };
@@ -168,6 +180,16 @@ export function buildCompilerAdapterEnvironment(
     };
   }
   return {};
+}
+
+export function buildJavaCompilationArgs(
+  sourcePath: string,
+  outputDirectory: string,
+): string[] {
+  // Themis invokes javac with only the source file. JudgeDesk additionally
+  // directs class artifacts into its protected output directory so they can
+  // be validated and moved atomically without exposing compiler work files.
+  return ["-d", outputDirectory, sourcePath];
 }
 
 export function buildManagedPascalSupportArgs(
@@ -203,19 +225,9 @@ function buildGnuOrAppleClangArgs(
     "-pipe",
     "-O2",
   ];
-  if (language === "cpp") args.push("-fno-finite-loops");
   if (platform === "darwin") {
-    args.push(
-      "-fsanitize=integer-divide-by-zero",
-      "-fsanitize-trap=integer-divide-by-zero",
-    );
+    // Apple Clang cannot link the Windows-only static/stack flags below.
   } else {
-    if (platform === "win32") {
-      args.push(
-        "-fsanitize=integer-divide-by-zero",
-        "-fsanitize-undefined-trap-on-error",
-      );
-    }
     args.push("-s", "-static", "-lm");
   }
   args.push("-x", language === "cpp" ? "c++" : "c");

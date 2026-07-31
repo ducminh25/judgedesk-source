@@ -14,6 +14,7 @@ import {
   PYTHON_LANGUAGE_PROFILE_ID,
   RUST_LANGUAGE_PROFILE_ID,
 } from "./registry.js";
+import { isToolchainVersionAllowed } from "./version-policy.js";
 
 test("the live registry exposes approved profiles in deterministic UI order", () => {
   const registry = listRegisteredLanguageProfiles();
@@ -46,6 +47,57 @@ test("the live registry exposes approved profiles in deterministic UI order", ()
   assert.equal(Object.isFrozen(registry[0]), true);
   assert.equal(Object.isFrozen(registry[0].profile), true);
   assert.equal(Object.isFrozen(registry[0].profile.extensions), true);
+  assert.equal(Object.isFrozen(registry[0].localVersionPolicy), true);
+  assert.equal(Object.isFrozen(registry[0].localExecution), true);
+  assert.equal(
+    registry.every((entry) =>
+      entry.localExecution.length === entry.profile.supportedHosts.length
+    ),
+    true,
+  );
+});
+
+test("local version policies pin tested versions instead of accepting any future release", () => {
+  const versions = (kind: Parameters<typeof getRegisteredProfileForKind>[0]) => {
+    const policy = getRegisteredProfileForKind(kind).localVersionPolicy;
+    assert.equal(policy.kind, "exact_allowlist");
+    return policy.kind === "exact_allowlist"
+      ? policy.entries.map((entry) => entry.version)
+      : [];
+  };
+
+  assert.deepEqual(versions("pascal"), ["3.2.2"]);
+  assert.deepEqual(versions("go"), ["1.26.5"]);
+  assert.deepEqual(versions("java"), ["21.0.12"]);
+  assert.deepEqual(versions("rust"), ["1.97.1"]);
+  assert.deepEqual(versions("javascript"), ["24.18.1"]);
+  assert.deepEqual(versions("csharp"), ["10.0.302"]);
+
+  const cppPolicy = getRegisteredProfileForKind("cpp").localVersionPolicy;
+  assert.equal(
+    isToolchainVersionAllowed(
+      "14.2.0",
+      cppPolicy,
+      { platform: "win32", arch: "x64" },
+    ),
+    true,
+  );
+  assert.equal(
+    isToolchainVersionAllowed(
+      "14.2.0",
+      cppPolicy,
+      { platform: "darwin", arch: "arm64" },
+    ),
+    false,
+  );
+  assert.equal(
+    isToolchainVersionAllowed(
+      "17.0.0",
+      cppPolicy,
+      { platform: "darwin", arch: "arm64" },
+    ),
+    true,
+  );
 });
 
 test("registered profiles preserve current submission and checker adapters", () => {

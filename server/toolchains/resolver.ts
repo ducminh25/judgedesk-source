@@ -11,6 +11,10 @@ import {
 import { inspectInstalledToolchainPackage } from "./package-store.js";
 import { sandbox } from "../sandbox.js";
 import { getRegisteredProfileForKind } from "../languages/registry.js";
+import {
+  isToolchainVersionAllowed,
+  type ToolchainVersionHost,
+} from "../languages/version-policy.js";
 import { getStoredProfilePreference } from "./preferences-v2.js";
 import {
   getDiscoveredCandidates,
@@ -24,17 +28,6 @@ import {
 
 export const MIN_GNU_CPP_VERSION = "9.2.0";
 export const MIN_GNU_GDB_VERSION = "7.6.1";
-const MIN_TOOLCHAIN_VERSIONS: Readonly<Record<ToolchainKind, string>> = {
-  cpp: MIN_GNU_CPP_VERSION,
-  c: MIN_GNU_CPP_VERSION,
-  python: "3.10.0",
-  pascal: "3.2.2",
-  go: "1.22.0",
-  java: "21.0.0",
-  rust: "1.75.0",
-  javascript: "20.0.0",
-  csharp: "8.0.0",
-};
 const DETECTION_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const detectionCache = new Map<
@@ -45,6 +38,18 @@ const executableSupportCache = new Map<
   string,
   { value: boolean; expiresAt: number }
 >();
+
+function currentVersionPolicyHost(): ToolchainVersionHost | null {
+  const platform = os.platform();
+  const arch = os.arch();
+  if (
+    (platform !== "win32" && platform !== "darwin")
+    || (arch !== "x64" && arch !== "arm64")
+  ) {
+    return null;
+  }
+  return { platform, arch };
+}
 
 export function buildToolchainEnvironment(
   executablePath: string,
@@ -87,7 +92,7 @@ export function getExecutableVersion(
     if (!fs.existsSync(executablePath)) return "unknown";
     const stdout = execFileSync(
       executablePath,
-      kind === "pascal" ? ["-iV"] : ["--version"],
+      executableVersionArguments(kind),
       {
         encoding: "utf8",
         timeout: 2000,
@@ -111,6 +116,12 @@ export function getExecutableVersion(
   } catch (error) {
     return "unknown";
   }
+}
+
+export function executableVersionArguments(kind: ToolchainKind): string[] {
+  if (kind === "pascal") return ["-iV"];
+  if (kind === "go") return ["version"];
+  return ["--version"];
 }
 
 export function isDarwinSandboxCompatibleCpp(
@@ -584,11 +595,14 @@ function isSupportedExecutable(
   }
 
   const basename = path.basename(executablePath).toLowerCase();
-  if (
-    supported
-    && compareVersions(version, MIN_TOOLCHAIN_VERSIONS[kind]) < 0
-  ) {
-    supported = false;
+  if (supported) {
+    const host = currentVersionPolicyHost();
+    supported = isToolchainVersionAllowed(
+      version,
+      getRegisteredProfileForKind(kind).localVersionPolicy,
+      host || undefined,
+    );
+    if (!host) supported = false;
   }
   if (supported && kind === "cpp" && os.platform() === "win32" && basename.includes("g++")) {
     const binDirectory = path.dirname(executablePath);
@@ -675,12 +689,6 @@ export function buildCompilerProbeArgs(
 ): string[] {
   const args = ["-std=c++14", "-pipe", "-O2"];
   if (platform !== "darwin") {
-    if (platform === "win32") {
-      args.push(
-        "-fsanitize=integer-divide-by-zero",
-        "-fsanitize-undefined-trap-on-error",
-      );
-    }
     args.push("-s", "-static", "-lm");
   } else {
     if (!darwinSdkDirectory) {
@@ -965,9 +973,65 @@ function resolveSelectedLocalExecutable(
     };
   }
   const canonicalExecutablePath = fs.realpathSync(executablePath);
+  const registered = getRegisteredProfileForKind(kind);
+  const versionPolicyHost = currentVersionPolicyHost();
+  const version = getExecutableVersion(canonicalExecutablePath, kind);
+  if (version === "unknown") {
+    return {
+      ...unavailableToolchain(
+        kind,
+        source,
+        "The selected executable did not report a supported version identity.",
+        "LOCAL_EXECUTABLE_INVALID",
+      ),
+      executablePath: canonicalExecutablePath,
+      version,
+      ...(candidateId ? { candidateId } : {}),
+    };
+  }
+  if (
+    !versionPolicyHost
+    || !isToolchainVersionAllowed(
+      version,
+      registered.localVersionPolicy,
+      versionPolicyHost,
+    )
+  ) {
+    return {
+      ...unavailableToolchain(
+        kind,
+        source,
+        `Local ${kind} version ${version} is outside the tested JudgeDesk policy.`,
+        "LOCAL_VERSION_UNSUPPORTED",
+      ),
+      executablePath: canonicalExecutablePath,
+      version,
+      ...(candidateId ? { candidateId } : {}),
+    };
+  }
   if (kind === "cpp" && os.platform() === "win32") {
     const certificate = resolveLocalCppCertificateReadiness(canonicalExecutablePath);
     if (certificate.state === "ready") {
+      if (
+        !isToolchainVersionAllowed(
+          certificate.certificate.toolchain.version,
+          registered.localVersionPolicy,
+          versionPolicyHost,
+        )
+      ) {
+        return {
+          ...unavailableToolchain(
+            kind,
+            source,
+            "The local C++ certificate uses a version outside the current policy.",
+            "LOCAL_VERSION_UNSUPPORTED",
+          ),
+          executablePath: canonicalExecutablePath,
+          version: certificate.certificate.toolchain.version,
+          certificateId: certificate.certificate.certificateId,
+          ...(candidateId ? { candidateId } : {}),
+        };
+      }
       return {
         kind,
         source,
@@ -992,7 +1056,7 @@ function resolveSelectedLocalExecutable(
       kind,
       source,
       executablePath: canonicalExecutablePath,
-      version: "",
+      version,
       ready: false,
       diagnostic: certificate.diagnostic,
       diagnosticCode: certificate.code,
@@ -1005,11 +1069,11 @@ function resolveSelectedLocalExecutable(
       kind,
       source,
       executablePath: canonicalExecutablePath,
-      version: "",
+      version,
       ready: false,
       diagnostic:
-        "Local/system Python must be certified and snapshotted before judging.",
-      diagnosticCode: "CERTIFICATION_REQUIRED",
+        "Use the managed Python package; direct local Python is not permitted by the secure runner.",
+      diagnosticCode: "LOCAL_NOT_SANDBOX_COMPATIBLE",
       ...(candidateId ? { candidateId } : {}),
     };
   }
@@ -1021,15 +1085,14 @@ function resolveSelectedLocalExecutable(
       kind,
       source,
       executablePath: canonicalExecutablePath,
-      version: getExecutableVersion(canonicalExecutablePath, kind),
+      version,
       ready: false,
       diagnostic:
-        "Local/system toolchains require a sandbox-compatible certification before judging.",
-      diagnosticCode: "CERTIFICATION_REQUIRED",
+        "Use the managed package; this local installation has no approved direct secure-runner policy.",
+      diagnosticCode: "LOCAL_NOT_SANDBOX_COMPATIBLE",
       ...(candidateId ? { candidateId } : {}),
     };
   }
-  const version = getExecutableVersion(canonicalExecutablePath, kind);
   const ready = isSupportedExecutable(canonicalExecutablePath, kind);
   const diagnosticCode: NonNullable<ResolvedToolchain["diagnosticCode"]> =
     version === "unknown" ? "LOCAL_EXECUTABLE_INVALID" : "HEALTH_CHECK_FAILED";

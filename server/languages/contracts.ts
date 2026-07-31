@@ -65,6 +65,10 @@ export interface ExactToolchainVersionIdentity {
   version: string;
   build: string;
   identityPolicyId: string;
+  hosts: NonEmptyReadonlyArray<{
+    platform: HostPlatform;
+    arch: HostArchitecture;
+  }>;
 }
 
 export type ToolchainVersionPolicy =

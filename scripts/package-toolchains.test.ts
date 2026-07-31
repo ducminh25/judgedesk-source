@@ -22,7 +22,7 @@ test("release packaging supports Windows x64 and Apple Silicon only", () => {
   );
 });
 
-test("Full packaging selects seven packages for each release host", () => {
+test("Full packaging selects every package for each release host", () => {
   const windows = selectHostToolchainReleases({
     platform: "win32",
     arch: "x64",
@@ -32,7 +32,7 @@ test("Full packaging selects seven packages for each release host", () => {
     arch: "arm64",
   });
 
-  assert.equal(windows.length, 7);
+  assert.equal(windows.length, 8);
   assert.equal(macos.length, 7);
   assert.equal(macos.every((release) => release.arch === "arm64"), true);
 });
@@ -62,6 +62,28 @@ test("toolchain publishing workflow has no Intel macOS release path", () => {
   assert.match(
     workflow,
     /npm run toolchains:package:host -- dist-toolchains/g,
+  );
+  assert.equal(
+    workflow.match(
+      /npm run toolchains:prepare:gate -- dist-toolchains build\/toolchain-gate-root/g,
+    )?.length,
+    2,
+  );
+  assert.match(
+    workflow,
+    /\.\/scripts\/prepare-windows-toolchain-gate-acl\.ps1 build\/toolchain-gate-root/,
+  );
+  assert.equal(
+    workflow.match(/server\/judge\/c-submission\.gate\.test\.ts/g)?.length,
+    2,
+  );
+  assert.equal(
+    workflow.match(/server\/judge\/multi-language\.gate\.test\.ts/g)?.length,
+    2,
+  );
+  assert.equal(
+    workflow.match(/server\/judge\/custom-checker\.gate\.test\.ts/g)?.length,
+    2,
   );
   assert.doesNotMatch(
     workflow,

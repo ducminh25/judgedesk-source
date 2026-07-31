@@ -4,7 +4,7 @@ import {
   getRegisteredLanguageProfile,
 } from "../languages/registry.js";
 
-export const LOCAL_CPP_RECIPE_VERSION = "local-cpp-windows-recipe-v1";
+export const LOCAL_CPP_RECIPE_VERSION = "local-cpp-windows-recipe-v2";
 export const LOCAL_CPP_PROBE_SUITE_VERSION = "legacy.cpp.probes.v1";
 
 export function buildCertifiedWindowsCppSubmissionArgs(
@@ -15,9 +15,6 @@ export function buildCertifiedWindowsCppSubmissionArgs(
     "-std=c++14",
     "-pipe",
     "-O2",
-    "-fno-finite-loops",
-    "-fsanitize=integer-divide-by-zero",
-    "-fsanitize-undefined-trap-on-error",
     "-s",
     "-static",
     "-lm",

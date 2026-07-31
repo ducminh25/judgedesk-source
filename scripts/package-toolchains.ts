@@ -416,6 +416,7 @@ function isolatedInstallerEnvironment(workRoot: string): NodeJS.ProcessEnv {
 
 function packageFpcWindows(
   installer: string,
+  sourceArchive: string,
   workRoot: string,
   packageRoot: string,
 ): void {
@@ -444,6 +445,47 @@ function packageFpcWindows(
       path.join(installed, "units", "x86_64-win64"),
       path.join(packageRoot, "units", "x86_64-win64"),
     );
+    const extractedSource = path.join(workRoot, "fpc-source");
+    extractArchive(sourceArchive, extractedSource);
+    const sourceRoot = path.join(extractedSource, "fpc-3.2.2");
+    const bootstrapBin = path.join(installed, "bin", "i386-win32");
+    const bootstrapDriver = path.join(bootstrapBin, "fpc.exe");
+    run(
+      path.join(bootstrapBin, "make.exe"),
+      [
+        "-C",
+        sourceRoot,
+        "compiler_cycle",
+        "OS_TARGET=win64",
+        "CPU_TARGET=x86_64",
+        `FPC=${bootstrapDriver}`,
+        "OPT=-WR",
+      ],
+      {
+        env: {
+          ...process.env,
+          PATH: `${bootstrapBin}${path.delimiter}${process.env.PATH || ""}`,
+        },
+        timeoutMs: COMMAND_TIMEOUT_MS,
+      },
+    );
+    const nativeCompiler = path.join(sourceRoot, "compiler", "ppcx64.exe");
+    const peHeader = run(
+      path.join(bootstrapBin, "x86_64-win64-objdump.exe"),
+      ["-f", nativeCompiler],
+    );
+    if (
+      !peHeader.includes("file format pei-x86-64")
+      || !peHeader.includes("HAS_RELOC")
+    ) {
+      throw new Error(
+        "Rebuilt FPC compiler is not a relocatable native Windows x64 executable.",
+      );
+    }
+    if (!run(nativeCompiler, ["-iV"]).split(/\r?\n/).includes("3.2.2")) {
+      throw new Error("Rebuilt FPC compiler returned an unexpected version.");
+    }
+    copyFile(nativeCompiler, path.join(packageRoot, "bin", "ppcx64.exe"));
     const upstreamLicenses = path.join(installed, "doc", "fpc");
     const packageLicenses = path.join(packageRoot, "licenses");
     for (const license of ["COPYING", "COPYING.v2", "copying.fpc"]) {
@@ -611,41 +653,6 @@ function packageRust(
   }
 }
 
-function prewarmGoCache(
-  packageRoot: string,
-  workRoot: string,
-  blueprint: ToolchainReleaseBlueprint,
-): void {
-  const executable = path.join(
-    packageRoot,
-    ...primaryExecutableRelativePath(blueprint).split("/"),
-  );
-  const cacheRoot = path.join(packageRoot, "judgedesk-build-cache");
-  const tempRoot = path.join(workRoot, "go-prewarm");
-  fs.mkdirSync(cacheRoot);
-  fs.mkdirSync(path.join(tempRoot, "mod"), { recursive: true });
-  fs.mkdirSync(path.join(tempRoot, "tmp"), { recursive: true });
-  run(executable, ["install", "-trimpath", "std"], {
-    cwd: tempRoot,
-    env: {
-      ...process.env,
-      GOROOT: packageRoot,
-      GOCACHE: cacheRoot,
-      GOMODCACHE: path.join(tempRoot, "mod"),
-      GOTMPDIR: path.join(tempRoot, "tmp"),
-      GO111MODULE: "off",
-      GOTOOLCHAIN: "local",
-      CGO_ENABLED: "0",
-      GOMAXPROCS: "2",
-      PATH: `${path.dirname(executable)}${path.delimiter}${process.env.PATH || ""}`,
-    },
-    timeoutMs: COMMAND_TIMEOUT_MS,
-  });
-  if (fs.readdirSync(cacheRoot).length < 16) {
-    throw new Error("Go standard-library cache prewarm produced an incomplete cache.");
-  }
-}
-
 function packageTreeForRelease(
   release: ToolchainReleaseSource,
   inputs: ReadonlyMap<string, string>,
@@ -653,13 +660,14 @@ function packageTreeForRelease(
   packageRoot: string,
 ): void {
   const primary = primaryInputPath(release, inputs);
-  if (
-    release.recipe.kind === "archive-root"
-    || release.recipe.kind === "go-with-prewarmed-cache"
-  ) {
+  if (release.recipe.kind === "archive-root") {
     normalizeArchiveRoot(release, primary, workRoot, packageRoot);
   } else if (release.recipe.kind === "fpc-windows-installer") {
-    packageFpcWindows(primary, workRoot, packageRoot);
+    const sourceArchive = inputs.get("fpc-source");
+    if (!sourceArchive) {
+      throw new Error("FPC Windows source archive is missing.");
+    }
+    packageFpcWindows(primary, sourceArchive, workRoot, packageRoot);
   } else if (release.recipe.kind === "fpc-macos-dmg") {
     fs.mkdirSync(packageRoot);
     packageFpcMacos(primary, workRoot, packageRoot);
@@ -672,9 +680,6 @@ function packageTreeForRelease(
   copyAdditionalInputs(release, inputs, packageRoot);
   const blueprint = TOOLCHAIN_RELEASE_BLUEPRINTS[release.packageId];
   writeSourceNotice(release, blueprint, packageRoot);
-  if (release.recipe.kind === "go-with-prewarmed-cache") {
-    prewarmGoCache(packageRoot, workRoot, blueprint);
-  }
   validateExtractedLinks(packageRoot);
 }
 
@@ -791,6 +796,18 @@ function smokePackage(
     return;
   }
   if (blueprint.kind === "java") {
+    const runtimeComponent = blueprint.components.find(
+      (component) => component.id === "java.runtime",
+    );
+    if (!runtimeComponent || runtimeComponent.kind !== "executable") {
+      throw new Error(
+        `Package '${release.packageId}' has no Java runtime component.`,
+      );
+    }
+    const runtimeExecutable = path.join(
+      packageRoot,
+      ...runtimeComponent.relativePath.split("/"),
+    );
     const source = path.join(workspace, "Main.java");
     const classes = path.join(workspace, "classes");
     fs.mkdirSync(classes);
@@ -812,7 +829,7 @@ function smokePackage(
     );
     smokeOutput(
       run(
-        path.join(packageRoot, "bin", "java"),
+        runtimeExecutable,
         ["-cp", classes, "Main"],
         {
           cwd: workspace,
@@ -893,12 +910,7 @@ function smokePackage(
       output,
     );
     const goCache = path.join(workspace, "go-cache");
-    fs.cpSync(
-      path.join(packageRoot, "judgedesk-build-cache"),
-      goCache,
-      { recursive: true, mode: COPY_MODE },
-    );
-    for (const directory of ["go-mod-cache", "go-tmp"]) {
+    for (const directory of ["go-cache", "go-mod-cache", "go-tmp"]) {
       fs.mkdirSync(path.join(workspace, directory));
     }
     run(executable, recipe.args, {
@@ -910,7 +922,7 @@ function smokePackage(
         GOCACHE: goCache,
         GOMODCACHE: path.join(workspace, "go-mod-cache"),
         GOTMPDIR: path.join(workspace, "go-tmp"),
-        GOMAXPROCS: "2",
+        GOMAXPROCS: "4",
         PATH: `${path.dirname(executable)}${path.delimiter}${process.env.PATH || ""}`,
       },
     });

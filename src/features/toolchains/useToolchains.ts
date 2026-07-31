@@ -99,6 +99,15 @@ export interface LanguageProfileView {
   extensions: string[];
   kind: ToolchainKind;
   supportedOnHost: boolean;
+  localPolicy: {
+    supportedVersions: string[];
+    executionMode:
+      | "quick_verified_direct"
+      | "platform_certified_direct"
+      | "freeze_required"
+      | "managed_only"
+      | "unsupported";
+  };
   selection: { mode: ToolchainSourceMode; localPath?: string };
   status: "not_available" | "checker_only" | "submission_ready";
   roles: { submissionReady: boolean; checkerReady: boolean };

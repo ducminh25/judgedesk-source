@@ -250,22 +250,26 @@ test("compiler flags retain Windows limits and avoid unsupported macOS flags", (
     "source file.cpp",
     "output file.exe",
   );
-  assert.ok(windows.includes("-static"));
-  assert.ok(windows.includes("-fno-finite-loops"));
-  assert.ok(windows.includes("-fsanitize=integer-divide-by-zero"));
-  assert.ok(windows.includes("-fsanitize-undefined-trap-on-error"));
-  assert.ok(windows.includes("-s"));
-  assert.ok(windows.includes("-Wl,--stack,66060288"));
-  assert.equal(windows.includes('"source file.cpp"'), false);
-  assert.ok(windows.includes("source file.cpp"));
+  assert.deepEqual(windows, [
+    "-std=c++14",
+    "-pipe",
+    "-O2",
+    "-s",
+    "-static",
+    "-lm",
+    "-x",
+    "c++",
+    "-Wl,--stack,66060288",
+    "source file.cpp",
+    "-o",
+    "output file.exe",
+  ]);
 
   const mac = buildSubmissionCompilerArgs("darwin", "main.cpp", "main");
   assert.equal(mac.includes("-static"), false);
   assert.equal(mac.includes("-lm"), false);
   assert.equal(mac.includes("-s"), false);
-  assert.ok(mac.includes("-fno-finite-loops"));
-  assert.ok(mac.includes("-fsanitize=integer-divide-by-zero"));
-  assert.ok(mac.includes("-fsanitize-trap=integer-divide-by-zero"));
+  assert.equal(mac.some((flag) => flag.startsWith("-fsanitize")), false);
   assert.equal(
     mac.some((flag) => flag.includes("--stack")),
     false,
@@ -285,14 +289,20 @@ test("compiler flags retain Windows limits and avoid unsupported macOS flags", (
     "main.exe",
     "c",
   );
-  assert.ok(cWindows.includes("-std=c11"));
-  assert.ok(cWindows.includes("-static"));
-  assert.ok(cWindows.includes("-Wl,--stack,66060288"));
-  assert.deepEqual(
-    cWindows.slice(cWindows.indexOf("-x"), cWindows.indexOf("-x") + 2),
-    ["-x", "c"],
-  );
-  assert.equal(cWindows.includes("-std=c++14"), false);
+  assert.deepEqual(cWindows, [
+    "-std=c11",
+    "-pipe",
+    "-O2",
+    "-s",
+    "-static",
+    "-lm",
+    "-x",
+    "c",
+    "-Wl,--stack,66060288",
+    "main.c",
+    "-o",
+    "main.exe",
+  ]);
 });
 
 test("standard checkers use the cross-platform built-in implementation", async () => {
@@ -377,7 +387,7 @@ test("custom checker resolution accepts source files and rejects executables", a
     assert.ok(
       pythonChecker.error ===
         "CHECKER_TOOLCHAIN_UNAVAILABLE: cannot compile Python checker; Python is missing"
-        || pythonChecker.error.startsWith("CHECKER_TOOLCHAIN_CERTIFICATION_REQUIRED:"),
+        || pythonChecker.error.startsWith("CHECKER_TOOLCHAIN_MANAGED_REQUIRED:"),
       pythonChecker.error,
     );
   } else {

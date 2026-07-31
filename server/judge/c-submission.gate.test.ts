@@ -7,11 +7,15 @@ import test from "node:test";
 import { execFileSync } from "node:child_process";
 import type { NormalizedProblemConfig } from "../types.js";
 import type { ResolvedToolchain } from "../toolchains/types.js";
-import { getToolchainsDir } from "../toolchains/storage.js";
 
+const builtInRoot = process.env.JUDGEDESK_REAL_TOOLCHAIN_GATE_ROOT;
 const enabled =
   (process.platform === "win32" || process.platform === "darwin")
-  && process.env.JUDGEDESK_REAL_TOOLCHAIN_GATES === "1";
+  && process.env.JUDGEDESK_REAL_TOOLCHAIN_GATES === "1"
+  && !!builtInRoot;
+if (enabled) {
+  process.env.JUDGEDESK_BUILTIN_TOOLCHAINS_DIR = path.resolve(builtInRoot!);
+}
 
 function provisionMacosTreeGuard(): string | null {
   if (process.platform !== "darwin") return null;
@@ -39,7 +43,7 @@ test(
   {
     skip: enabled
       ? false
-      : "set JUDGEDESK_REAL_TOOLCHAIN_GATES=1 on Windows or macOS",
+      : "set JUDGEDESK_REAL_TOOLCHAIN_GATES=1 and JUDGEDESK_REAL_TOOLCHAIN_GATE_ROOT",
   },
   async (t) => {
     const [
@@ -56,7 +60,7 @@ test(
       ]);
     const compiler = process.platform === "win32"
       ? path.join(
-          getToolchainsDir(),
+          path.resolve(builtInRoot!),
           "gcc-windows-x64",
           "bin",
           "gcc.exe",

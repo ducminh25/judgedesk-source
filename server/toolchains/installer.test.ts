@@ -4,9 +4,25 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
+  toolchainExecutableProbeArgs,
   uninstallToolchain,
   validateExtractedLinks,
 } from "./installer.js";
+
+test("toolchain executable probes use each CLI's supported version syntax", () => {
+  assert.deepEqual(
+    toolchainExecutableProbeArgs("fpc.single-file-v1"),
+    ["-iV"],
+  );
+  assert.deepEqual(
+    toolchainExecutableProbeArgs("go.cgo-disabled-v1"),
+    ["version"],
+  );
+  assert.deepEqual(
+    toolchainExecutableProbeArgs("dotnet10.offline-console-v1"),
+    ["--version"],
+  );
+});
 
 test("uninstall rejects unknown and traversal-like toolchain IDs", async () => {
   await assert.rejects(

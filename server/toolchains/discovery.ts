@@ -353,8 +353,24 @@ async function collectWindowsCandidates(kind: ToolchainKind): Promise<string[]> 
     return candidates;
   }
   const configuredHome = configuredToolchainHome(kind);
+  if (kind === "java") {
+    const candidates: string[] = [];
+    if (configuredHome) {
+      candidates.push(path.join(configuredHome, "bin", "javac.exe"));
+    }
+    for (const vendorRoot of [
+      path.join(programFiles, "Eclipse Adoptium"),
+      path.join(programFiles, "Java"),
+      path.join(programFiles, "Microsoft"),
+    ]) {
+      for (const child of await listImmediateDirectories(vendorRoot)) {
+        candidates.push(path.join(child, "bin", "javac.exe"));
+      }
+    }
+    return candidates;
+  }
   const standard: Record<
-    Exclude<ToolchainKind, "cpp" | "c" | "python">,
+    Exclude<ToolchainKind, "cpp" | "c" | "python" | "java">,
     string[]
   > = {
     pascal: [
@@ -365,11 +381,6 @@ async function collectWindowsCandidates(kind: ToolchainKind): Promise<string[]> 
     go: [
       path.join(programFiles, "Go", "bin", "go.exe"),
       path.join(userProfile, "scoop", "apps", "go", "current", "bin", "go.exe"),
-    ],
-    java: [
-      path.join(configuredHome || "", "bin", "javac.exe"),
-      String.raw`C:\jdk-25.0.3\bin\javac.exe`,
-      path.join(programFiles, "Java", "jdk-21", "bin", "javac.exe"),
     ],
     rust: [
       path.join(userProfile, ".cargo", "bin", "rustc.exe"),
@@ -441,8 +452,24 @@ async function collectDarwinCandidates(kind: ToolchainKind): Promise<string[]> {
   }
   const home = os.homedir();
   const configuredHome = configuredToolchainHome(kind);
+  if (kind === "java") {
+    const candidates = [
+      "/opt/homebrew/opt/openjdk@21/bin/javac",
+      "/usr/local/opt/openjdk@21/bin/javac",
+      "/usr/bin/javac",
+    ];
+    if (configuredHome) {
+      candidates.unshift(path.join(configuredHome, "bin", "javac"));
+    }
+    for (const bundle of await listImmediateDirectories(
+      "/Library/Java/JavaVirtualMachines",
+    )) {
+      candidates.push(path.join(bundle, "Contents", "Home", "bin", "javac"));
+    }
+    return candidates;
+  }
   const standard: Record<
-    Exclude<ToolchainKind, "cpp" | "c" | "python">,
+    Exclude<ToolchainKind, "cpp" | "c" | "python" | "java">,
     string[]
   > = {
     pascal: [
@@ -454,12 +481,6 @@ async function collectDarwinCandidates(kind: ToolchainKind): Promise<string[]> {
       "/usr/local/go/bin/go",
       "/opt/homebrew/bin/go",
       "/usr/local/bin/go",
-    ],
-    java: [
-      path.join(configuredHome || "", "bin", "javac"),
-      "/opt/homebrew/opt/openjdk@21/bin/javac",
-      "/usr/local/opt/openjdk@21/bin/javac",
-      "/usr/bin/javac",
     ],
     rust: [
       path.join(home, ".cargo", "bin", "rustc"),

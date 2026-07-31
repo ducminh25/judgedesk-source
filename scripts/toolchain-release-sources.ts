@@ -18,10 +18,6 @@ export type ToolchainPackagingRecipe =
       rootPath: string;
     }
   | {
-      kind: "go-with-prewarmed-cache";
-      rootPath: string;
-    }
-  | {
       kind: "rust-installer";
       rootPath: string;
       components: readonly string[];
@@ -183,7 +179,7 @@ export const TOOLCHAIN_RELEASE_SOURCES: Readonly<
     platform: "win32",
     arch: "x64",
     recipe: {
-      kind: "go-with-prewarmed-cache",
+      kind: "archive-root",
       rootPath: "go",
     },
     inputs: [{
@@ -195,14 +191,14 @@ export const TOOLCHAIN_RELEASE_SOURCES: Readonly<
       role: "primary",
     }],
     packagingDescription:
-      "Normalizes the official Go archive and prewarms the immutable standard-library build cache with that exact compiler.",
+      "Normalizes the official Go archive; JudgeDesk creates a fresh isolated build cache for each compilation.",
   },
   "go-macos-arm64": {
     packageId: "go-macos-arm64",
     platform: "darwin",
     arch: "arm64",
     recipe: {
-      kind: "go-with-prewarmed-cache",
+      kind: "archive-root",
       rootPath: "go",
     },
     inputs: [{
@@ -214,7 +210,7 @@ export const TOOLCHAIN_RELEASE_SOURCES: Readonly<
       role: "primary",
     }],
     packagingDescription:
-      "Normalizes the official Go archive and prewarms the immutable standard-library build cache with that exact compiler.",
+      "Normalizes the official Go archive; JudgeDesk creates a fresh isolated build cache for each compilation.",
   },
   "node-windows-x64": {
     packageId: "node-windows-x64",
@@ -282,7 +278,7 @@ export const TOOLCHAIN_RELEASE_SOURCES: Readonly<
       },
     ],
     packagingDescription:
-      "Runs the official combined Win32/Win64 installer in an isolated build root, then keeps the x86_64 compiler, binutils, units, and upstream license texts.",
+      "Runs the official combined Win32/Win64 installer in an isolated build root, rebuilds the pinned 3.2.2 source as a relocatable native x86_64 compiler, then keeps that compiler, binutils, units, and upstream license texts.",
   },
   "fpc-macos-arm64": {
     packageId: "fpc-macos-arm64",
@@ -334,6 +330,27 @@ export const TOOLCHAIN_RELEASE_SOURCES: Readonly<
     }],
     packagingDescription:
       "Normalizes the official Temurin JDK Contents/Home tree without changing JDK binaries.",
+  },
+  "temurin21-windows-x64": {
+    packageId: "temurin21-windows-x64",
+    platform: "win32",
+    arch: "x64",
+    recipe: {
+      kind: "archive-root",
+      rootPath: "jdk-21.0.12+8",
+    },
+    inputs: [{
+      id: "temurin",
+      fileName:
+        "OpenJDK21U-jdk_x64_windows_hotspot_21.0.12_8.zip",
+      url:
+        "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12%2B8/OpenJDK21U-jdk_x64_windows_hotspot_21.0.12_8.zip",
+      sha256:
+        "9ba963ee2371874a74185d18bc7bb2ab9407df7683300855ed7606e0662321d0",
+      role: "primary",
+    }],
+    packagingDescription:
+      "Normalizes the official Temurin Windows x64 JDK tree without changing JDK binaries.",
   },
   "rust-windows-x64-gnu": {
     packageId: "rust-windows-x64-gnu",

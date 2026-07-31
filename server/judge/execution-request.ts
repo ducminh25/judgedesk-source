@@ -16,6 +16,8 @@ interface CompilerExecutorRunSpecOptions {
   timeoutMs: number;
   memoryBytes: number;
   maxGeneratedFileBytes: number;
+  maxWorkspaceWriteBytes?: number;
+  maxCreatedFiles?: number;
   toolchain?: ExecutorToolchainIdentity;
 }
 
@@ -39,7 +41,11 @@ export function buildCompilerExecutorRunSpec(
       wallTimeMs: options.timeoutMs,
       memoryBytes: options.memoryBytes,
       totalWriteBytes:
-        options.maxGeneratedFileBytes + COMPILER_WRITE_OVERHEAD_BYTES,
+        options.maxWorkspaceWriteBytes
+        ?? options.maxGeneratedFileBytes + COMPILER_WRITE_OVERHEAD_BYTES,
+      createdFiles:
+        options.maxCreatedFiles
+        ?? DEFAULT_EXECUTOR_LIMITS.compiler.createdFiles,
     },
   };
 }
@@ -100,7 +106,7 @@ interface CheckerExecutorRunSpecOptions {
 }
 
 /**
- * Runtime-backed checkers execute a certified interpreter/runtime from the protected
+ * Runtime-backed checkers execute a receipt-verified managed interpreter/runtime from the protected
  * toolchain cache. Native checker artifacts retain the stricter checker role. Keeping
  * this distinction in the typed protocol prevents an environment marker from weakening
  * an arbitrary native checker launch.

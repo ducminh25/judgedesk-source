@@ -269,7 +269,7 @@ function ProfileRow({
   const [localPath, setLocalPath] = useState(profile.selection.localPath || "");
   const [pathDirty, setPathDirty] = useState(false);
   const [pending, setPending] = useState(false);
-  const [certifying, setCertifying] = useState(false);
+  const [freezing, setFreezing] = useState(false);
 
   useEffect(() => {
     if (!pathDirty) setLocalPath(profile.selection.localPath || "");
@@ -308,24 +308,24 @@ function ProfileRow({
   const installing = !!managed && ["downloading", "extracting", "verifying"].includes(
     managed.progress.status,
   );
-  const controlsDisabled = preferenceLocked || pending || certifying;
+  const controlsDisabled = preferenceLocked || pending || freezing;
 
-  const certifyLocalToolchain = async () => {
-    setCertifying(true);
+  const freezeLocalToolchain = async () => {
+    setFreezing(true);
     try {
       const plan = await onPlanCertification(profile.id);
       if (!plan) return;
       const sizeMiB = new Intl.NumberFormat(undefined, {
         maximumFractionDigits: 1,
       }).format(plan.totalBytes / 1024 / 1024);
-      const confirmed = window.confirm(t("toolchains.registry.certificationConfirm", {
+      const confirmed = window.confirm(t("toolchains.registry.freezeConfirm", {
         path: plan.canonicalExecutablePath,
         files: new Intl.NumberFormat().format(plan.fileCount),
         size: sizeMiB,
       }));
       if (confirmed) await onCertify(profile.id);
     } finally {
-      setCertifying(false);
+      setFreezing(false);
     }
   };
 
@@ -439,21 +439,6 @@ function ProfileRow({
       </td>
       <td className="px-4 py-4">
         <div className="flex flex-col items-start gap-2">
-          {profile.certification?.canCertify && (
-            <button
-              type="button"
-              disabled={controlsDisabled}
-              onClick={() => void certifyLocalToolchain()}
-              className="flex items-center gap-1.5 rounded bg-emerald-600 px-3 py-1.5 text-2xs font-bold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {certifying
-                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                : <ShieldCheck className="h-3.5 w-3.5" />}
-              {certifying
-                ? t("toolchains.registry.certifying")
-                : t("toolchains.registry.certifyLocal")}
-            </button>
-          )}
           {managed && !managed.installed && (
             <button
               type="button"
@@ -533,6 +518,41 @@ function ProfileRow({
               {t("toolchains.registry.managedUnavailable")}
             </span>
           )}
+          <details className="w-full max-w-56 rounded border border-surface-border bg-surface-elevated text-2xs text-text-muted">
+            <summary className="cursor-pointer select-none px-2.5 py-2 font-bold text-text-primary">
+              {t("toolchains.registry.advanced")}
+            </summary>
+            <div className="space-y-2 border-t border-surface-border px-2.5 py-2.5 leading-relaxed">
+              <p>
+                <span className="font-bold text-text-primary">
+                  {t("toolchains.registry.supportedLocalVersions")}:
+                </span>{" "}
+                <span className="font-mono">
+                  {profile.localPolicy.supportedVersions.join(", ") || "—"}
+                </span>
+              </p>
+              <p>
+                {t(
+                  `toolchains.registry.localExecution.${profile.localPolicy.executionMode}`,
+                )}
+              </p>
+              {profile.certification?.canCertify && (
+                <button
+                  type="button"
+                  disabled={controlsDisabled}
+                  onClick={() => void freezeLocalToolchain()}
+                  className="flex items-center gap-1.5 rounded bg-emerald-600 px-3 py-1.5 text-2xs font-bold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {freezing
+                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    : <ShieldCheck className="h-3.5 w-3.5" />}
+                  {freezing
+                    ? t("toolchains.registry.freezingForContest")
+                    : t("toolchains.registry.freezeForContest")}
+                </button>
+              )}
+            </div>
+          </details>
         </div>
       </td>
     </tr>

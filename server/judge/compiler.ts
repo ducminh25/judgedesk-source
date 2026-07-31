@@ -12,7 +12,6 @@ import {
   inspectRegularDirectory,
   prepareManagedToolchainComponent,
   prepareManagedToolchainExecutable,
-  prepareManagedToolchainSupportRoot,
 } from "../executor/workspace.js";
 import {
   attachExecutorRun,
@@ -44,6 +43,7 @@ import { isBuiltInChecker } from "./standard-checkers.js";
 import { validatePythonCheckerSource } from "./python-checker.js";
 import {
   buildCompilerAdapterEnvironment,
+  buildJavaCompilationArgs,
   buildManagedPascalSupportArgs,
   buildNativeCompilationRecipe,
   isNativeCompiledLanguage,
@@ -64,6 +64,8 @@ const gccIncludeDirectoryCache = new Map<string, string[]>();
 export interface CompileLimits {
   timeoutMs: number;
   maxGeneratedFileBytes: number;
+  maxWorkspaceWriteBytes?: number;
+  maxCreatedFiles?: number;
   memoryBytes?: number;
 }
 
@@ -162,7 +164,7 @@ export async function resolveChecker(options: ResolveCheckerOptions): Promise<Co
       return {
         path: null,
         error:
-          "CHECKER_TOOLCHAIN_CERTIFICATION_REQUIRED: local/system Python must be certified and snapshotted before it can run a checker",
+          "CHECKER_TOOLCHAIN_MANAGED_REQUIRED: select a JudgeDesk-managed Python runtime for Python checkers",
       };
     }
     try {
@@ -287,6 +289,8 @@ export async function compileSubmission(options: CompileSubmissionOptions): Prom
     const limits = {
       timeoutMs: recipe.timeoutMs,
       maxGeneratedFileBytes: recipe.maxGeneratedFileBytes,
+      maxWorkspaceWriteBytes: recipe.maxWorkspaceWriteBytes,
+      maxCreatedFiles: recipe.maxCreatedFiles,
     };
     if (recipe.splitCompilerPhases) {
       await runCompilerPipelineWithLimits(
@@ -359,18 +363,8 @@ async function compileManagedDirectorySubmission(
           memoryBytes: 768 * 1024 * 1024,
         },
         pinnedToolchain: toolchain,
-        buildArgs: ({ sourcePath, outputDirectory }) => [
-          "--release",
-          "21",
-          "-encoding",
-          "UTF-8",
-          "-g:none",
-          "-proc:none",
-          "-implicit:none",
-          "-d",
-          outputDirectory,
-          sourcePath,
-        ],
+        buildArgs: ({ sourcePath, outputDirectory }) =>
+          buildJavaCompilationArgs(sourcePath, outputDirectory),
         validateArtifact: validateJavaClassDirectory,
       });
       return {
@@ -877,16 +871,11 @@ export async function runCompilerWithLimits(
       if (!pinnedToolchain) {
         throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
       }
-      const buildCache = await prepareManagedToolchainSupportRoot(
-        "go",
-        pinnedToolchain,
-        "go.build-cache",
-        "compiler",
-      );
-      workspace.stageDirectory(buildCache.path, "go-cache", {
-        maxFiles: 50_000,
-        maxBytes: 512 * 1024 * 1024,
-      });
+      // A package-level Go build cache is both expensive to copy and unsafe to
+      // share as writable state between contestants. Keep every cache in this
+      // compilation's protected workspace instead.
+      fs.mkdirSync(path.join(workspace.path, "go-cache"));
+      fs.mkdirSync(path.join(workspace.path, "go-mod-cache"));
       fs.mkdirSync(path.join(workspace.path, "go-tmp"));
     }
     if (kind === "pascal") {
@@ -945,6 +934,8 @@ export async function runCompilerWithLimits(
       timeoutMs: limits.timeoutMs,
       memoryBytes: limits.memoryBytes ?? resolveCompilerMemoryLimitBytes(),
       maxGeneratedFileBytes: limits.maxGeneratedFileBytes,
+      maxWorkspaceWriteBytes: limits.maxWorkspaceWriteBytes,
+      maxCreatedFiles: limits.maxCreatedFiles,
     }));
     const diagnostics = readCompilerDiagnostics(workspace.path);
     assertCompilerSucceeded(result, diagnostics);
