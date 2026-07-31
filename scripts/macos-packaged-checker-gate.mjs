@@ -37,7 +37,7 @@ const baselineWorkspaces = directoryEntrySet(path.join(executorRoot, "workspaces
 const baselineProfiles = directoryEntrySet(path.join(executorRoot, "profiles"));
 let gui = null;
 let baseUrl = "";
-let installedPython = false;
+let downloadedPython = false;
 let failure = null;
 
 if (process.platform !== "darwin" || process.arch !== "arm64") {
@@ -101,14 +101,23 @@ try {
       ["local_auto", "local_path", "managed", "none"],
     );
   }
-  assert.equal(initialToolchains.capabilities?.python?.managed, false);
-  const installResponse = await requestJson(
-    "POST",
-    "/api/toolchains/python-macos-arm64/install",
+  assert.ok(
+    initialToolchains.distribution === "core"
+      || initialToolchains.distribution === "full",
+    `Unexpected packaged distribution: ${initialToolchains.distribution}`,
   );
-  assert.equal(installResponse.success, true);
-  installedPython = true;
-  await waitForManagedPythonInstallation();
+  if (initialToolchains.distribution === "full") {
+    assert.equal(initialToolchains.capabilities?.python?.managed, true);
+  } else {
+    assert.equal(initialToolchains.capabilities?.python?.managed, false);
+    const installResponse = await requestJson(
+      "POST",
+      "/api/toolchains/python-macos-arm64/install",
+    );
+    assert.equal(installResponse.success, true);
+    downloadedPython = true;
+    await waitForManagedPythonInstallation();
+  }
   const selection = await requestJson("POST", "/api/toolchains/custom-path", {
     kind: "python",
     preferredSource: "managed",
@@ -161,17 +170,19 @@ try {
   const statusAfterCancel = await requestJson("GET", "/api/status");
   assert.equal(statusAfterCancel.secureRunner?.ready, true);
 
-  const uninstall = await requestJson(
-    "DELETE",
-    "/api/toolchains/python-macos-arm64",
-  );
-  assert.equal(uninstall.success, true);
-  installedPython = false;
+  if (downloadedPython) {
+    const uninstall = await requestJson(
+      "DELETE",
+      "/api/toolchains/python-macos-arm64",
+    );
+    assert.equal(uninstall.success, true);
+    downloadedPython = false;
+  }
   console.log("macOS packaged C++/Python checker and cancellation gate passed.");
 } catch (error) {
   failure = error;
 } finally {
-  if (installedPython && baseUrl) {
+  if (downloadedPython && baseUrl) {
     try {
       await requestJson("DELETE", "/api/toolchains/python-macos-arm64");
     } catch {
