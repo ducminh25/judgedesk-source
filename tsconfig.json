@@ -23,5 +23,5 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "exclude": ["dist", "src-tauri/target"]
+  "exclude": ["build", "dist", "src-tauri/target"]
 }

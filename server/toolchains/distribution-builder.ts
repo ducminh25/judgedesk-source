@@ -214,6 +214,7 @@ async function materializePackage(
       packageRoot,
       ...descriptor.executableRelativePath.replaceAll("\\", "/").split("/"),
     ),
+    descriptor.healthProbeId,
   );
   writeToolchainPackageReceipt(packageRoot, descriptor);
 }

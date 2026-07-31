@@ -11,6 +11,7 @@ import {
 import {
   chooseNativeProtectedToolchain,
   compareVersions,
+  executableVersionArguments,
   buildCompilerProbeArgs,
   buildDarwinSdkCandidates,
   buildSelectedDarwinCompilerCandidates,
@@ -24,6 +25,7 @@ import {
   managedPackageVersionMatches,
   MIN_GNU_CPP_VERSION,
   MIN_GNU_GDB_VERSION,
+  verifyLocalToolchainCandidate,
 } from "./resolver.js";
 
 test("receipt-backed managed packages must match their exact catalog version", () => {
@@ -243,8 +245,7 @@ test("toolchain version floors match the supported Themis bundle", () => {
 test("compiler probe uses production-compatible flags on Windows and macOS", () => {
   const windows = buildCompilerProbeArgs("win32", "probe.cpp", "probe.exe");
   assert.ok(windows.includes("-static"));
-  assert.ok(windows.includes("-fsanitize=integer-divide-by-zero"));
-  assert.ok(windows.includes("-fsanitize-undefined-trap-on-error"));
+  assert.equal(windows.some((flag) => flag.startsWith("-fsanitize")), false);
   assert.ok(windows.includes("-s"));
   assert.ok(windows.includes("-Wl,--stack,66060288"));
   assert.equal(windows.at(-3), "probe.cpp");
@@ -303,6 +304,23 @@ test("legacy v1 preferences round-trip independent C++ and Python selections", (
   assert.equal(loaded.preferredSourcePython, "managed");
   assert.equal(loaded.customPythonPath, "C:\\remembered\\python.exe");
   assert.deepEqual(loaded.installedToolchains, []);
+});
+
+test("version probes use each toolchain's real non-shell CLI contract", () => {
+  assert.deepEqual(executableVersionArguments("go"), ["version"]);
+  assert.deepEqual(executableVersionArguments("pascal"), ["-iV"]);
+  assert.deepEqual(executableVersionArguments("java"), ["--version"]);
+  assert.deepEqual(executableVersionArguments("javascript"), ["--version"]);
+});
+
+test("quick verification rejects a real but untested local runtime version", () => {
+  const result = verifyLocalToolchainCandidate(
+    "javascript",
+    process.execPath,
+  );
+  assert.equal(result.ready, false);
+  assert.equal(result.diagnosticCode, "LOCAL_VERSION_UNSUPPORTED");
+  assert.match(result.version, /^\d+\.\d+\.\d+$/);
 });
 
 test("toolchainsDir resolves and creates directories", (t) => {

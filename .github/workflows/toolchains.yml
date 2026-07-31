@@ -18,7 +18,7 @@ jobs:
   bundle-windows:
     name: Package Windows x64 toolchains
     runs-on: windows-2022
-    timeout-minutes: 90
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -41,6 +41,25 @@ jobs:
           key: toolchain-sources-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/toolchain-release-sources.ts') }}
       - name: Download, verify, smoke-test and package all Windows toolchains
         run: npm run toolchains:package:host -- dist-toolchains
+      - name: Prepare isolated Windows gate root
+        run: npm run toolchains:prepare:gate -- dist-toolchains build/toolchain-gate-root
+      - name: Reproduce installed-resource ACLs in the Windows gate root
+        shell: pwsh
+        run: ./scripts/prepare-windows-toolchain-gate-acl.ps1 build/toolchain-gate-root
+      - name: Build the native secure executor
+        run: npm run build:executor
+      - name: Gate every Windows compiler and runtime in the secure runner
+        shell: pwsh
+        env:
+          JUDGEDESK_REAL_TOOLCHAIN_GATES: "1"
+          JUDGEDESK_REAL_TOOLCHAIN_GATE_ROOT: ${{ github.workspace }}\build\toolchain-gate-root
+        run: |
+          npx tsx --test server/judge/c-submission.gate.test.ts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npx tsx --test server/judge/multi-language.gate.test.ts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npx tsx --test server/judge/custom-checker.gate.test.ts
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:
           name: toolchains-windows-x64
@@ -52,7 +71,7 @@ jobs:
   bundle-macos-arm64:
     name: Package macOS Apple Silicon toolchains
     runs-on: macos-15
-    timeout-minutes: 90
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -74,6 +93,18 @@ jobs:
           key: toolchain-sources-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/toolchain-release-sources.ts') }}
       - name: Download, verify, smoke-test and package all Apple Silicon toolchains
         run: npm run toolchains:package:host -- dist-toolchains
+      - name: Prepare isolated Apple Silicon gate root
+        run: npm run toolchains:prepare:gate -- dist-toolchains build/toolchain-gate-root
+      - name: Build the native secure executor
+        run: npm run build:executor
+      - name: Gate every Apple Silicon compiler and runtime in the secure runner
+        env:
+          JUDGEDESK_REAL_TOOLCHAIN_GATES: "1"
+          JUDGEDESK_REAL_TOOLCHAIN_GATE_ROOT: ${{ github.workspace }}/build/toolchain-gate-root
+        run: |
+          npx tsx --test server/judge/c-submission.gate.test.ts
+          npx tsx --test server/judge/multi-language.gate.test.ts
+          npx tsx --test server/judge/custom-checker.gate.test.ts
       - uses: actions/upload-artifact@v4
         with:
           name: toolchains-macos-arm64

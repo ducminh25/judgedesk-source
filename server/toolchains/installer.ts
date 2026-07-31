@@ -175,7 +175,14 @@ function listWindowsZip(archivePath: string): string[] {
   const script = [
     "Add-Type -AssemblyName System.IO.Compression.FileSystem",
     "$zip = [System.IO.Compression.ZipFile]::OpenRead($env:ZIP_PATH)",
-    "try { @($zip.Entries | ForEach-Object { $_.FullName }) | ConvertTo-Json -Compress } finally { $zip.Dispose() }",
+    "try {",
+    "  @($zip.Entries | ForEach-Object {",
+    "    $unixType = ($_.ExternalAttributes -shr 16) -band 0xF000",
+    "    $dosReparsePoint = ($_.ExternalAttributes -band 0x400) -ne 0",
+    "    if ($unixType -eq 0xA000 -or $dosReparsePoint) { throw \"ZIP link entries are not supported: $($_.FullName)\" }",
+    "    $_.FullName",
+    "  }) | ConvertTo-Json -Compress",
+    "} finally { $zip.Dispose() }",
   ].join("; ");
   const result = spawnSync(
     "powershell.exe",
@@ -193,6 +200,29 @@ function listWindowsZip(archivePath: string): string[] {
 }
 
 function extractWindowsZip(archivePath: string, destination: string): void {
+  // Supported Windows releases include the native bsdtar client. It is much
+  // faster for the large Full distribution than ZipFile.ExtractToDirectory.
+  // Entry names and link attributes are validated before this function, and
+  // the extracted tree is canonicalized again by the caller.
+  const nativeResult = spawnSync(
+    "tar.exe",
+    ["-xf", archivePath, "-C", destination],
+    {
+      encoding: "utf8",
+      timeout: 5 * 60_000,
+    },
+  );
+  if (nativeResult.status === 0) return;
+  if (
+    (nativeResult.error as NodeJS.ErrnoException | undefined)?.code !== "ENOENT"
+  ) {
+    throw new Error(
+      nativeResult.stderr
+        || nativeResult.error?.message
+        || "Native ZIP extraction failed.",
+    );
+  }
+
   const script = [
     "Add-Type -AssemblyName System.IO.Compression.FileSystem",
     "[System.IO.Compression.ZipFile]::ExtractToDirectory($env:ZIP_PATH, $env:DEST_DIR)",
@@ -235,6 +265,7 @@ export function extractToolchainArchive(
       throw new Error(`Unsupported archive format '${format}' on Windows.`);
     validateArchiveEntries(listWindowsZip(archivePath), absoluteDestination);
     extractWindowsZip(archivePath, absoluteDestination);
+    validateExtractedLinks(absoluteDestination);
   } else {
     validateArchiveEntries(
       listUnixArchive(archivePath, format),
@@ -255,7 +286,18 @@ export function extractToolchainArchive(
   }
 }
 
-export function verifyToolchainExecutable(executablePath: string): void {
+export function toolchainExecutableProbeArgs(
+  healthProbeId?: string,
+): readonly string[] {
+  if (healthProbeId === "fpc.single-file-v1") return ["-iV"];
+  if (healthProbeId === "go.cgo-disabled-v1") return ["version"];
+  return ["--version"];
+}
+
+export function verifyToolchainExecutable(
+  executablePath: string,
+  healthProbeId?: string,
+): void {
   if (!fs.existsSync(executablePath) || !fs.statSync(executablePath).isFile()) {
     throw new Error(
       `Invalid package: executable '${executablePath}' was not found.`,
@@ -264,15 +306,42 @@ export function verifyToolchainExecutable(executablePath: string): void {
   if (os.platform() !== "win32") {
     fs.chmodSync(executablePath, fs.statSync(executablePath).mode | 0o700);
   }
-  const result = spawnSync(executablePath, ["--version"], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-    timeout: 10_000,
-  });
-  if (result.status !== 0 || !(result.stdout || result.stderr).trim()) {
-    throw new Error(
-      "Installed compiler/runtime did not pass its executable verification.",
+  const probeHome = fs.mkdtempSync(
+    path.join(os.tmpdir(), "judgedesk-toolchain-probe-"),
+  );
+  try {
+    const isDotnetHost = /^dotnet(?:\.exe)?$/i.test(
+      path.basename(executablePath),
     );
+    const result = spawnSync(
+      executablePath,
+      toolchainExecutableProbeArgs(healthProbeId),
+      {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: 30_000,
+        env: isDotnetHost
+          ? {
+              ...process.env,
+              DOTNET_CLI_HOME: probeHome,
+              DOTNET_CLI_TELEMETRY_OPTOUT: "1",
+              DOTNET_MULTILEVEL_LOOKUP: "0",
+              DOTNET_NOLOGO: "1",
+              DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1",
+            }
+          : process.env,
+      },
+    );
+    if (result.status !== 0 || !(result.stdout || result.stderr).trim()) {
+      const reason = (result.error as NodeJS.ErrnoException | undefined)?.code
+        || result.signal
+        || `exit ${result.status ?? "unknown"}`;
+      throw new Error(
+        `Installed compiler/runtime did not pass its executable verification (${reason}).`,
+      );
+    }
+  } finally {
+    fs.rmSync(probeHome, { recursive: true, force: true });
   }
 }
 
@@ -349,6 +418,7 @@ export async function installToolchain(
     extractToolchainArchive(tempDownloadPath, tempExtractDir, descriptor.archiveFormat);
     verifyToolchainExecutable(
       path.join(tempExtractDir, descriptor.executableRelativePath),
+      descriptor.healthProbeId,
     );
     // The archive cannot supply its own trust metadata. JudgeDesk writes the
     // receipt only after the signed catalog digest and executable probe pass.

@@ -24,7 +24,7 @@ test("release sources cover every signed package blueprint exactly once", () => 
   );
 });
 
-test("Full host sets are deliberate and Java remains macOS-only", () => {
+test("Full host sets include every managed language on each supported host", () => {
   const hostPackages = (platform: "win32" | "darwin", arch: "x64" | "arm64") =>
     Object.values(TOOLCHAIN_RELEASE_SOURCES)
       .filter((entry) => entry.platform === platform && entry.arch === arch)
@@ -39,6 +39,7 @@ test("Full host sets are deliberate and Java remains macOS-only", () => {
     "node-windows-x64",
     "python-windows-x64",
     "rust-windows-x64-gnu",
+    "temurin21-windows-x64",
   ]);
   assert.deepEqual(hostPackages("darwin", "arm64"), [
     "dotnet10-macos-arm64",
@@ -50,12 +51,7 @@ test("Full host sets are deliberate and Java remains macOS-only", () => {
     "temurin21-macos-arm64",
   ]);
   assert.deepEqual(hostPackages("darwin", "x64"), []);
-  assert.equal(
-    Object.keys(TOOLCHAIN_RELEASE_SOURCES).some((id) =>
-      id.includes("temurin") && id.includes("windows")
-    ),
-    false,
-  );
+  assert.equal(hostPackages("win32", "x64").length, 8);
 });
 
 test("all release inputs are immutable checksum-pinned HTTPS resources", () => {

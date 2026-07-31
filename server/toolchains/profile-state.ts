@@ -9,7 +9,11 @@ import type {
 import {
   LANGUAGE_REGISTRY_REVISION,
   listRegisteredLanguageProfiles,
+  type LocalExecutionMode,
 } from "../languages/registry.js";
+import {
+  toolchainVersionPolicyLabels,
+} from "../languages/version-policy.js";
 import {
   getDiscoveredCandidates,
   getToolchainDiscoverySnapshot,
@@ -67,6 +71,10 @@ export interface LanguageProfileView {
   extensions: readonly SourceExtension[];
   kind: ToolchainKind;
   supportedOnHost: boolean;
+  localPolicy: {
+    supportedVersions: readonly string[];
+    executionMode: LocalExecutionMode | "unsupported";
+  };
   selection: {
     mode: ToolchainSourceMode;
     localPath?: string;
@@ -109,6 +117,11 @@ function mappedHostArchitecture(): "x64" | "arm64" | null {
   const architecture = os.arch();
   if (architecture === "x64" || architecture === "arm64") return architecture;
   return null;
+}
+
+function mappedHostPlatform(): "win32" | "darwin" | null {
+  const platform = os.platform();
+  return platform === "win32" || platform === "darwin" ? platform : null;
 }
 
 function isProfileSupportedOnHost(
@@ -232,9 +245,15 @@ export function buildLanguageProfileState(
   const preferences = loadToolchainPreferenceSnapshot();
   const discovery = getToolchainDiscoverySnapshot();
   const architecture = mappedHostArchitecture();
+  const platform = mappedHostPlatform();
   const profiles = listRegisteredLanguageProfiles().map((entry) => {
     const { profile, toolchainKind: kind } = entry;
     const supportedOnHost = isProfileSupportedOnHost(profile.supportedHosts);
+    const localExecution = entry.localExecution.find(
+      (candidate) =>
+        candidate.platform === platform
+        && candidate.arch === architecture,
+    );
     const selection = getStoredProfilePreference(
       preferences.preferences,
       profile.ref.id,
@@ -316,6 +335,15 @@ export function buildLanguageProfileState(
       extensions: profile.extensions,
       kind,
       supportedOnHost,
+      localPolicy: {
+        supportedVersions: toolchainVersionPolicyLabels(
+          entry.localVersionPolicy,
+          platform && architecture
+            ? { platform, arch: architecture }
+            : undefined,
+        ),
+        executionMode: localExecution?.mode ?? "unsupported",
+      },
       selection,
       status: statusFromRoles(submissionReady, checkerReady),
       roles: { submissionReady, checkerReady },

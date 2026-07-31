@@ -445,9 +445,18 @@
       "managedUnavailable": "No managed package is available for this computer.",
       "noCandidates": "No candidate was found in PATH or the bounded standard locations.",
       "detectedCandidates": "Detected candidates: {{count}}",
-      "certifyLocal": "Certify for JudgeDesk",
-      "certifying": "Certifying...",
-      "certificationConfirm": "JudgeDesk will copy and certify this local compiler for both submissions and C++ checkers.\n\nCompiler: {{path}}\nFiles: {{files}}\nSnapshot size: {{size}} MiB\n\nThe original installation will not be changed. This one-time check can take several minutes. Continue?"
+      "advanced": "Advanced",
+      "supportedLocalVersions": "Tested local versions",
+      "localExecution": {
+        "quick_verified_direct": "A matching local installation can be used after a quick bounded verification.",
+        "platform_certified_direct": "An approved platform toolchain can be used after a quick bounded verification.",
+        "freeze_required": "Direct local judging is disabled. You may create a private immutable copy for this computer before a contest.",
+        "managed_only": "Local installations are detected for diagnostics only. Use the managed package for secure judging.",
+        "unsupported": "Local installations are not supported for this language on this computer."
+      },
+      "freezeForContest": "Freeze for contest",
+      "freezingForContest": "Freezing...",
+      "freezeConfirm": "Advanced operation: JudgeDesk will create and verify a private immutable copy of this local compiler for submissions and C++ checkers on this computer.\n\nCompiler: {{path}}\nFiles: {{files}}\nAdditional disk space: {{size}} MiB\n\nThe original installation will not be changed. This can take several minutes and is not required when using the managed package. Continue?"
     },
     "setup": {
       "title": "Compiler Setup Wizard",

@@ -40,7 +40,13 @@ async function renderWithTranslations(element: ReactNode) {
                 submission_ready: "Submission ready",
               },
               verifyAndUse: "Verify & use",
-              certifyLocal: "Certify for JudgeDesk",
+              advanced: "Advanced",
+              supportedLocalVersions: "Tested local versions",
+              localExecution: {
+                freeze_required: "Freeze required",
+                managed_only: "Managed only",
+              },
+              freezeForContest: "Freeze for contest",
               downloadAndApply: "Download and apply for JudgeDesk",
               applyManaged: "Apply managed package",
               uninstallConfirm: "Confirm uninstall",
@@ -91,6 +97,10 @@ describe("toolchain settings UI regressions", () => {
         extensions: [".cpp"],
         kind: "cpp" as const,
         supportedOnHost: true,
+        localPolicy: {
+          supportedVersions: ["9.2.0", "14.2.0", "16.1.0"],
+          executionMode: "freeze_required" as const,
+        },
         selection: { mode: "local_path" as const, localPath: "C:\\gcc\\g++.exe" },
         status: "not_available" as const,
         roles: { submissionReady: false, checkerReady: false },
@@ -140,6 +150,10 @@ describe("toolchain settings UI regressions", () => {
         extensions: [".py"],
         kind: "python" as const,
         supportedOnHost: true,
+        localPolicy: {
+          supportedVersions: ["3.12.13"],
+          executionMode: "managed_only" as const,
+        },
         selection: { mode: "managed" as const },
         status: "submission_ready" as const,
         roles: { submissionReady: true, checkerReady: true },
@@ -194,7 +208,9 @@ describe("toolchain settings UI regressions", () => {
     assert.match(markup, /Not available/);
     assert.match(markup, /Submission ready/);
     assert.match(markup, /Download and apply for JudgeDesk/);
-    assert.match(markup, /Certify for JudgeDesk/);
+    assert.match(markup, /Advanced/);
+    assert.match(markup, /Freeze for contest/);
+    assert.match(markup, /14\.2\.0/);
     assert.match(markup, /Uninstall/);
 
     const lockedMarkup = await renderWithTranslations(

@@ -296,9 +296,9 @@ impl WindowsPlatform {
             && MANAGED_RUNTIME_MARKERS
                 .iter()
                 .any(|marker| spec.environment.get(*marker).map(String::as_str) == Some("1"));
-        let certified_checker_runtime = matches!(spec.role, RunRole::CheckerRuntime);
+        let managed_checker_runtime = matches!(spec.role, RunRole::CheckerRuntime);
         let use_lpac =
-            !compiler_may_spawn && !isolated_submission_runtime && !certified_checker_runtime;
+            !compiler_may_spawn && !isolated_submission_runtime && !managed_checker_runtime;
         let mut attributes = AttributeList::new(if use_lpac { 4 } else { 3 })?;
         attributes.update(
             PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES as usize,
@@ -335,8 +335,15 @@ impl WindowsPlatform {
         startup.StartupInfo.hStdError = stderr.0;
         startup.lpAttributeList = attributes.as_ptr();
         let mut process: PROCESS_INFORMATION = unsafe { zeroed() };
-        let application = wide(paths.executable.as_os_str());
-        let mut command_line = wide_string(&build_command_line(&paths.executable, &spec.args));
+        // std::fs::canonicalize returns a verbatim (\\?\) path on Windows.
+        // That identity is useful for the security checks above, but several
+        // relocatable toolchains derive their installation root from argv[0].
+        // OpenJDK's JDK_Canonicalize rejects a verbatim modules-image path and
+        // aborts before javac/main can start. Pass the equivalent DOS/UNC path
+        // to the child only after validation has completed.
+        let launch_executable = process_launch_path(&paths.executable);
+        let application = wide(launch_executable.as_os_str());
+        let mut command_line = wide_string(&build_command_line(&launch_executable, &spec.args));
         let current_directory = wide(paths.workspace.as_os_str());
         let mut environment = environment_block(&spec.environment, &paths.workspace);
         let created = unsafe {
@@ -1279,6 +1286,23 @@ fn build_command_line(executable: &Path, arguments: &[String]) -> String {
         .join(" ")
 }
 
+fn process_launch_path(path: &Path) -> PathBuf {
+    const LEGACY_MAX_PATH: usize = 260;
+    let value = path.to_string_lossy();
+    let candidate = if let Some(rest) = value.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{rest}")
+    } else if let Some(rest) = value.strip_prefix(r"\\?\") {
+        rest.to_string()
+    } else {
+        return path.to_path_buf();
+    };
+    if candidate.encode_utf16().count() < LEGACY_MAX_PATH {
+        PathBuf::from(candidate)
+    } else {
+        path.to_path_buf()
+    }
+}
+
 fn quote_windows_argument(value: &str) -> String {
     if !value.is_empty()
         && !value
@@ -1344,6 +1368,20 @@ mod tests {
             quote_windows_argument("C:\\path with space\\"),
             "\"C:\\path with space\\\\\""
         );
+    }
+
+    #[test]
+    fn validated_verbatim_paths_use_child_compatible_argv_zero() {
+        assert_eq!(
+            process_launch_path(Path::new(r"\\?\C:\JudgeDesk\toolchains\bin\javac.exe")),
+            PathBuf::from(r"C:\JudgeDesk\toolchains\bin\javac.exe")
+        );
+        assert_eq!(
+            process_launch_path(Path::new(r"\\?\UNC\server\share\java.exe")),
+            PathBuf::from(r"\\server\share\java.exe")
+        );
+        let long = format!(r"\\?\C:\{}\java.exe", "x".repeat(300));
+        assert_eq!(process_launch_path(Path::new(&long)), PathBuf::from(long));
     }
 
     #[test]

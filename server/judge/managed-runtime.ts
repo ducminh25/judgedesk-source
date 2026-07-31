@@ -44,7 +44,7 @@ export async function prepareDirectoryRuntimeProgram(
     return {
       executableId: runtime.executableId,
       args: buildJavaRuntimeArgs(
-        path.relative(workspace.path, artifactDirectory),
+        artifactDirectory,
         program.entrypoint,
         memoryBytes,
       ),

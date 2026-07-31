@@ -3,7 +3,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
-import { CPP_LANGUAGE_PROFILE_ID } from "../languages/registry.js";
+import {
+  CPP_LANGUAGE_PROFILE_ID,
+  JAVA_LANGUAGE_PROFILE_ID,
+} from "../languages/registry.js";
 import {
   getToolchainDiscoveryFilePath,
   getToolchainDiscoverySnapshot,
@@ -136,4 +139,29 @@ test("corrupt discovery state fails closed until the user explicitly rescans", a
 
   requestToolchainRescan();
   assert.equal((await waitForToolchainDiscovery()).status, "complete");
+});
+
+test("Windows passive discovery checks bounded Eclipse Adoptium JDK roots", {
+  skip: os.platform() !== "win32",
+}, async (t) => {
+  const { root } = useDiscoveryFixture(t);
+  const javac = path.join(
+    root,
+    "Program Files",
+    "Eclipse Adoptium",
+    "jdk-21.0.12.8-hotspot",
+    "bin",
+    "javac.exe",
+  );
+  fs.mkdirSync(path.dirname(javac), { recursive: true });
+  createExecutable(javac);
+
+  startInitialToolchainDiscovery();
+  const completed = await waitForToolchainDiscovery();
+  assert.equal(completed.status, "complete");
+  assert.ok(
+    completed.profiles[JAVA_LANGUAGE_PROFILE_ID]?.some(
+      (candidate) => candidate.canonicalPath === fs.realpathSync(javac),
+    ),
+  );
 });

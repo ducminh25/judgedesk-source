@@ -50,6 +50,24 @@ test("compiler executor request preserves the current role, files, and limits", 
   );
 });
 
+test("compiler executor request can bound a large ephemeral cache without relaxing artifact size", () => {
+  const request = buildCompilerExecutorRunSpec({
+    runId: "compile_go",
+    workspaceId: "workspace_go",
+    executableId: "toolchain/go",
+    args: ["build", "submission.go"],
+    environment: {},
+    timeoutMs: 60_000,
+    memoryBytes: 768 * MiB,
+    maxGeneratedFileBytes: 64 * MiB,
+    maxWorkspaceWriteBytes: 256 * MiB,
+    maxCreatedFiles: 4_096,
+  });
+
+  assert.equal(request.limits.totalWriteBytes, 256 * MiB);
+  assert.equal(request.limits.createdFiles, 4_096);
+});
+
 test("native submission wire request preserves the current empty launch contract", () => {
   const request = buildSubmissionExecutorRunSpec({
     runId: "submission_cpp",

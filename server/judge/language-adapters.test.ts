@@ -3,9 +3,23 @@ import path from "node:path";
 import test from "node:test";
 import {
   buildCompilerAdapterEnvironment,
+  buildJavaCompilationArgs,
   buildManagedPascalSupportArgs,
   buildNativeCompilationRecipe,
 } from "./language-adapters.js";
+
+test("C and C++ split compilation share an explicit two-phase budget", () => {
+  for (const language of ["c", "cpp"] as const) {
+    const recipe = buildNativeCompilationRecipe(
+      language,
+      "win32",
+      `submission.${language === "c" ? "c" : "cpp"}`,
+      "submission.exe",
+    );
+    assert.equal(recipe.splitCompilerPhases, true);
+    assert.equal(recipe.timeoutMs, 30_000);
+  }
+});
 
 test("native language recipes pin standards, offline behavior, and bounded outputs", () => {
   const pascal = buildNativeCompilationRecipe(
@@ -16,7 +30,7 @@ test("native language recipes pin standards, offline behavior, and bounded outpu
   );
   assert.deepEqual(pascal.args, [
     "-O2",
-    "-Xs",
+    "-XS",
     "-Sg",
     "-WR",
     "-Cs66060288",
@@ -37,6 +51,11 @@ test("native language recipes pin standards, offline behavior, and bounded outpu
   });
   assert.ok(go.args.includes("-trimpath"));
   assert.ok(go.args.includes("-buildvcs=false"));
+  assert.ok(go.args.includes("-p=4"));
+  assert.equal(go.timeoutMs, 60_000);
+  assert.equal(go.maxGeneratedFileBytes, 64 * 1024 * 1024);
+  assert.equal(go.maxWorkspaceWriteBytes, 256 * 1024 * 1024);
+  assert.equal(go.maxCreatedFiles, 4_096);
 
   const rust = buildNativeCompilationRecipe(
     "rust",
@@ -57,6 +76,13 @@ test("managed Pascal ignores host config and pins its packaged target roots", ()
   assert.ok(args.includes("-XPx86_64-win64-"));
 });
 
+test("Java keeps the Themis javac default while isolating class artifacts", () => {
+  assert.deepEqual(
+    buildJavaCompilationArgs("Main.java", "classes"),
+    ["-d", "classes", "Main.java"],
+  );
+});
+
 test("compiler adapters keep caches and package roots inside the executor contract", () => {
   const workspace = path.resolve("executor-workspace");
   const root = path.resolve("managed-toolchain");
@@ -69,6 +95,7 @@ test("compiler adapters keep caches and package roots inside the executor contra
   assert.equal(go.GOCACHE, path.join(workspace, "go-cache"));
   assert.equal(go.GOMODCACHE, path.join(workspace, "go-mod-cache"));
   assert.equal(go.GOTMPDIR, path.join(workspace, "go-tmp"));
+  assert.equal(go.GOMAXPROCS, "4");
 
   const executable = path.join(root, "bin", "dotnet");
   const dotnet = buildCompilerAdapterEnvironment(
