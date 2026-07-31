@@ -187,14 +187,31 @@ test("sidecar smoke test verifies a real child process over HTTP", async () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "themis-smoke-test-"));
   const serverScript = path.join(directory, "server.cjs");
   try {
+    const compatibilityHeader = path.join(
+      directory,
+      "compiler-compat",
+      "include",
+      "bits",
+      "stdc++.h",
+    );
+    fs.mkdirSync(path.dirname(compatibilityHeader), { recursive: true });
+    fs.writeFileSync(compatibilityHeader, "// packaged compatibility header\n");
     fs.writeFileSync(
       serverScript,
       [
         'const http = require("node:http");',
         "const port = Number(process.env.PORT);",
+        "let statusRequests = 0;",
         "const server = http.createServer((request, response) => {",
         '  response.writeHead(200, { "content-type": "application/json" });',
-        '  if (request.url === "/api/status") { response.end(JSON.stringify({ healthy: true })); return; }',
+        '  if (request.url === "/api/status") {',
+        "    statusRequests += 1;",
+        "    const gpp = statusRequests < 3",
+        '      ? { installed: false, diagnostic: "Toolchain detection is still in progress." }',
+        "      : { installed: true };",
+        "    response.end(JSON.stringify({ healthy: true, gpp }));",
+        "    return;",
+        "  }",
         '  if (request.url.startsWith("/api/fetch-contestants")) { response.end(JSON.stringify({ success: true, data: ["Contestant 2", "Contestant 10"] })); return; }',
         '  if (request.url.startsWith("/api/fetch-problems")) { response.end(JSON.stringify({ success: true, data: ["Problem A", "Problem B"] })); return; }',
         "  response.writeHead(404).end();",
@@ -207,9 +224,11 @@ test("sidecar smoke test verifies a real child process over HTTP", async () => {
 
     const status = await smokeTestSidecar(process.execPath, {
       args: [serverScript],
+      resourceDirectory: directory,
+      requireCpp: true,
       timeoutMs: 5_000,
     });
-    assert.deepEqual(status, { healthy: true });
+    assert.deepEqual(status, { healthy: true, gpp: { installed: true } });
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
