@@ -87,24 +87,6 @@ export const TOOLCHAIN_CATALOG: ToolchainCatalogEntry[] = [
     licenseFiles: ["LICENSE.txt"],
   },
   {
-    id: "python-macos-x64",
-    provides: ["python"],
-    entrypoints: [
-      {
-        kind: "python",
-        componentId: "python.runtime",
-        executableRelativePath: "bin/python3",
-      },
-    ],
-    kind: "python",
-    version: "3.12.13",
-    platform: "darwin",
-    arch: "x64",
-    archiveFormat: "tar.gz",
-    executableRelativePath: "bin/python3",
-    licenseFiles: ["lib/python3.12/LICENSE.txt"],
-  },
-  {
     id: "python-macos-arm64",
     provides: ["python"],
     entrypoints: [
@@ -392,47 +374,6 @@ export const TOOLCHAIN_RELEASE_BLUEPRINTS: Readonly<
     license: {
       spdxExpression: "Python-2.0",
       licenseFiles: ["LICENSE.txt"],
-      noticeFiles: ["THIRD-PARTY-NOTICES.txt"],
-      sbomPath: "SBOM.spdx.json",
-    },
-  },
-  "python-macos-x64": {
-    id: "python-macos-x64",
-    provides: ["python"],
-    entrypoints: [
-      {
-        kind: "python",
-        componentId: "python.runtime",
-        executableRelativePath: "bin/python3",
-      },
-    ],
-    kind: "python",
-    version: "3.12.13",
-    platform: "darwin",
-    arch: "x64",
-    minimumOs: "11.0",
-    archiveFormat: "tar.gz",
-    archiveFilename: "judgedesk-python-macos-x64-3.12.13.tar.gz",
-    entrypointComponentId: "python.runtime",
-    components: [
-      {
-        id: "python.runtime",
-        kind: "executable",
-        relativePath: "bin/python3",
-        roles: ["submission-runtime", "checker-runtime"],
-      },
-      {
-        id: "python.root",
-        kind: "support-root",
-        relativePath: ".",
-        roles: ["submission-runtime", "checker-runtime"],
-      },
-    ],
-    healthProbeId: "cpython.isolated-v1",
-    upstreamUrl: "https://github.com/astral-sh/python-build-standalone",
-    license: {
-      spdxExpression: "Python-2.0",
-      licenseFiles: ["lib/python3.12/LICENSE.txt"],
       noticeFiles: ["THIRD-PARTY-NOTICES.txt"],
       sbomPath: "SBOM.spdx.json",
     },
