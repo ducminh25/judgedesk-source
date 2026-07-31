@@ -4,8 +4,11 @@ import os from "node:os";
 import path from "node:path";
 import { getJudgeDeskDistribution } from "../distribution.js";
 import {
+  C_LANGUAGE_PROFILE_ID,
   CPP_LANGUAGE_PROFILE_ID,
+  JAVA_LANGUAGE_PROFILE_ID,
   listRegisteredLanguageProfiles,
+  PASCAL_LANGUAGE_PROFILE_ID,
   PYTHON_LANGUAGE_PROFILE_ID,
 } from "../languages/registry.js";
 import type {
@@ -140,6 +143,79 @@ function addMissingRegisteredProfilePreferences(
   };
 }
 
+/**
+ * The first internal Windows Full candidate initialized the newly registered
+ * profiles with the Judger-only defaults before the Full distribution policy
+ * was applied. That candidate also migrated the legacy installed-toolchain
+ * hint, which gives us a narrow, one-time fingerprint for repairing its saved
+ * document without treating an ordinary None/auto-detect choice as implicit
+ * consent to change sources.
+ */
+function migrateMaterializedBrokenWindowsFullDefaults(
+  preferences: ToolchainPreferencesV2,
+): {
+  preferences: ToolchainPreferencesV2;
+  changed: boolean;
+} {
+  if (
+    getJudgeDeskDistribution() !== "full"
+    || os.platform() !== "win32"
+    || os.arch() !== "x64"
+  ) {
+    return { preferences, changed: false };
+  }
+
+  const diagnostics = preferences.migrationDiagnostics;
+  if (
+    diagnostics?.length !== 1
+    || diagnostics[0]?.code !== "LEGACY_INSTALLED_HINT_IGNORED"
+  ) {
+    return { preferences, changed: false };
+  }
+
+  const fingerprint = new Map<LanguageProfileId, StoredProfileToolchainPreference["mode"]>([
+    [CPP_LANGUAGE_PROFILE_ID, "managed"],
+    [PYTHON_LANGUAGE_PROFILE_ID, "managed"],
+    [C_LANGUAGE_PROFILE_ID, "local_auto"],
+    [PASCAL_LANGUAGE_PROFILE_ID, "none"],
+    [JAVA_LANGUAGE_PROFILE_ID, "none"],
+  ]);
+  const storedProfileIds = Object.keys(preferences.profiles);
+  if (
+    storedProfileIds.length !== fingerprint.size
+    || storedProfileIds.some((profileId) => !fingerprint.has(profileId))
+  ) {
+    return { preferences, changed: false };
+  }
+  for (const [profileId, expectedMode] of fingerprint) {
+    const preference = preferences.profiles[profileId];
+    if (
+      !preference
+      || preference.mode !== expectedMode
+      || preference.localPath !== undefined
+    ) {
+      return { preferences, changed: false };
+    }
+  }
+
+  const defaults = createInitialToolchainPreferences();
+  const profiles = { ...preferences.profiles };
+  for (const profileId of fingerprint.keys()) {
+    const preference = defaults.profiles[profileId];
+    if (!preference || preference.mode !== "managed") {
+      return { preferences, changed: false };
+    }
+    profiles[profileId] = preference;
+  }
+  return {
+    preferences: {
+      schemaVersion: 2,
+      profiles,
+    },
+    changed: true,
+  };
+}
+
 function createFailClosedToolchainPreferences(): ToolchainPreferencesV2 {
   const profiles: Record<string, StoredProfileToolchainPreference> = {};
   for (const entry of listRegisteredLanguageProfiles()) {
@@ -238,9 +314,16 @@ export function loadToolchainPreferenceSnapshot(): ToolchainPreferenceSnapshot {
   }
 
   const completed = addMissingRegisteredProfilePreferences(decoded.preferences);
-  if (decoded.status === "migrated-v1" || completed.changed) {
+  const repaired = migrateMaterializedBrokenWindowsFullDefaults(
+    completed.preferences,
+  );
+  if (
+    decoded.status === "migrated-v1"
+    || completed.changed
+    || repaired.changed
+  ) {
     const canonicalJson = encodeToolchainPreferencesV2(
-      completed.preferences,
+      repaired.preferences,
       LEGACY_PROFILE_MAPPING,
     );
     const revision = writeCanonicalPreferences(
@@ -248,7 +331,7 @@ export function loadToolchainPreferenceSnapshot(): ToolchainPreferenceSnapshot {
       contentRevision(bytes),
     );
     return {
-      preferences: completed.preferences,
+      preferences: repaired.preferences,
       revision,
       status: "migrated",
       recoveryDiagnostics: [],
@@ -256,7 +339,7 @@ export function loadToolchainPreferenceSnapshot(): ToolchainPreferenceSnapshot {
   }
 
   return {
-    preferences: completed.preferences,
+    preferences: repaired.preferences,
     revision: contentRevision(bytes),
     status: "ready",
     recoveryDiagnostics: [],

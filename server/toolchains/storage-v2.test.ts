@@ -138,6 +138,109 @@ test("a Full upgrade fills newly registered profiles without overwriting existin
   assert.equal(loadToolchainPreferenceSnapshot().status, "ready");
 });
 
+test(
+  "a Windows Full upgrade repairs only the exact defaults materialized by the broken candidate",
+  { skip: process.platform !== "win32" || process.arch !== "x64" },
+  (t) => {
+    useTemporaryAppData(t);
+    const previous = process.env.JUDGEDESK_DISTRIBUTION;
+    process.env.JUDGEDESK_DISTRIBUTION = "full";
+    t.after(() => {
+      if (previous === undefined) delete process.env.JUDGEDESK_DISTRIBUTION;
+      else process.env.JUDGEDESK_DISTRIBUTION = previous;
+    });
+    fs.writeFileSync(
+      getPreferencesFilePath(),
+      JSON.stringify({
+        schemaVersion: 2,
+        profiles: {
+          [CPP_LANGUAGE_PROFILE_ID]: { mode: "managed" },
+          [PYTHON_LANGUAGE_PROFILE_ID]: { mode: "managed" },
+          [C_LANGUAGE_PROFILE_ID]: { mode: "local_auto" },
+          [JAVA_LANGUAGE_PROFILE_ID]: { mode: "none" },
+          [PASCAL_LANGUAGE_PROFILE_ID]: { mode: "none" },
+        },
+        migrationDiagnostics: [
+          {
+            code: "LEGACY_INSTALLED_HINT_IGNORED",
+            field: "installedToolchains",
+          },
+        ],
+      }),
+    );
+
+    const migrated = loadToolchainPreferenceSnapshot();
+
+    assert.equal(migrated.status, "migrated");
+    for (const profileId of [
+      CPP_LANGUAGE_PROFILE_ID,
+      C_LANGUAGE_PROFILE_ID,
+      PYTHON_LANGUAGE_PROFILE_ID,
+      PASCAL_LANGUAGE_PROFILE_ID,
+      JAVA_LANGUAGE_PROFILE_ID,
+    ]) {
+      assert.equal(migrated.preferences.profiles[profileId]?.mode, "managed");
+    }
+    assert.equal(migrated.preferences.migrationDiagnostics, undefined);
+    assert.equal(loadToolchainPreferenceSnapshot().status, "ready");
+  },
+);
+
+test(
+  "a Windows Full upgrade preserves an explicit source choice near the broken-default fingerprint",
+  { skip: process.platform !== "win32" || process.arch !== "x64" },
+  (t) => {
+    useTemporaryAppData(t);
+    const previous = process.env.JUDGEDESK_DISTRIBUTION;
+    process.env.JUDGEDESK_DISTRIBUTION = "full";
+    t.after(() => {
+      if (previous === undefined) delete process.env.JUDGEDESK_DISTRIBUTION;
+      else process.env.JUDGEDESK_DISTRIBUTION = previous;
+    });
+    fs.writeFileSync(
+      getPreferencesFilePath(),
+      JSON.stringify({
+        schemaVersion: 2,
+        profiles: {
+          [CPP_LANGUAGE_PROFILE_ID]: { mode: "managed" },
+          [PYTHON_LANGUAGE_PROFILE_ID]: { mode: "managed" },
+          [C_LANGUAGE_PROFILE_ID]: {
+            mode: "local_path",
+            localPath: String.raw`C:\teacher\gcc.exe`,
+          },
+          [JAVA_LANGUAGE_PROFILE_ID]: { mode: "none" },
+          [PASCAL_LANGUAGE_PROFILE_ID]: { mode: "none" },
+        },
+        migrationDiagnostics: [
+          {
+            code: "LEGACY_INSTALLED_HINT_IGNORED",
+            field: "installedToolchains",
+          },
+        ],
+      }),
+    );
+
+    const preserved = loadToolchainPreferenceSnapshot();
+
+    assert.equal(preserved.status, "ready");
+    assert.deepEqual(
+      preserved.preferences.profiles[C_LANGUAGE_PROFILE_ID],
+      {
+        mode: "local_path",
+        localPath: String.raw`C:\teacher\gcc.exe`,
+      },
+    );
+    assert.equal(
+      preserved.preferences.profiles[PASCAL_LANGUAGE_PROFILE_ID]?.mode,
+      "none",
+    );
+    assert.equal(
+      preserved.preferences.profiles[JAVA_LANGUAGE_PROFILE_ID]?.mode,
+      "none",
+    );
+  },
+);
+
 test("legacy preferences migrate once and preserve dormant local paths", (t) => {
   useTemporaryAppData(t);
   fs.writeFileSync(
