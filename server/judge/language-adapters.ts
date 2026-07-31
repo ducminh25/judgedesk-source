@@ -74,6 +74,10 @@ export function buildNativeCompilationRecipe(
         // otherwise emits a fixed-base executable with stripped relocations,
         // which Windows rejects with ERROR_ILLEGAL_DLL_RELOCATION (623).
         ...(platform === "win32" ? ["-WR"] : []),
+        // Keep the relocation table but strip linker symbols. Besides matching
+        // a release build, this avoids a recurring Microsoft Defender ML false
+        // positive on small FPC executables that use -WR.
+        ...(platform === "win32" ? ["-Xs"] : []),
         ...(platform === "win32" ? ["-Cs66060288"] : []),
         `-o${outputPath}`,
         sourcePath,

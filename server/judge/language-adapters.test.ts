@@ -33,6 +33,7 @@ test("native language recipes pin standards, offline behavior, and bounded outpu
     "-XS",
     "-Sg",
     "-WR",
+    "-Xs",
     "-Cs66060288",
     "-oprogram.exe",
     "source.pas",
