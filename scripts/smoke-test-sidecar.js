@@ -105,7 +105,9 @@ export function toTauriResourceDirectory(
   resourceDirectory,
   platform = process.platform,
 ) {
-  const resolved = path.resolve(resourceDirectory);
+  const resolved = platform === "win32"
+    ? path.win32.resolve(resourceDirectory)
+    : path.resolve(resourceDirectory);
   if (platform !== "win32" || resolved.startsWith("\\\\?\\")) return resolved;
   if (/^[a-z]:\\/i.test(resolved)) return `\\\\?\\${resolved}`;
   if (resolved.startsWith("\\\\")) {

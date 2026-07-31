@@ -6,6 +6,9 @@ import test, { type TestContext } from "node:test";
 import {
   CPP_LANGUAGE_PROFILE_ID,
   JAVA_LANGUAGE_PROFILE_ID,
+  LANGUAGE_REGISTRY_REVISION,
+  PYTHON_LANGUAGE_PROFILE_ID,
+  listRegisteredLanguageProfiles,
 } from "../languages/registry.js";
 import {
   getToolchainDiscoveryFilePath,
@@ -139,6 +142,179 @@ test("corrupt discovery state fails closed until the user explicitly rescans", a
 
   requestToolchainRescan();
   assert.equal((await waitForToolchainDiscovery()).status, "complete");
+});
+
+test("a valid stale registry snapshot is refreshed once and persisted at the current revision", async (t) => {
+  const { root, bin } = useDiscoveryFixture(t);
+  const compiler = path.join(bin, executableName("g++"));
+  createExecutable(compiler);
+  const compilerCanonicalPath = fs.realpathSync(compiler);
+  const staleSnapshot = {
+    schemaVersion: 1,
+    registryRevision: 1,
+    status: "complete",
+    completedAt: "2026-01-01T00:00:00.000Z",
+    profiles: {
+      [CPP_LANGUAGE_PROFILE_ID]: [],
+      [PYTHON_LANGUAGE_PROFILE_ID]: [],
+    },
+  };
+  fs.mkdirSync(path.dirname(getToolchainDiscoveryFilePath()), { recursive: true });
+  fs.writeFileSync(
+    getToolchainDiscoveryFilePath(),
+    `${JSON.stringify(staleSnapshot, null, 2)}\n`,
+  );
+  resetToolchainDiscoveryRuntimeForTests();
+
+  startInitialToolchainDiscovery();
+  assert.equal(getToolchainDiscoverySnapshot().status, "running");
+  const refreshed = await waitForToolchainDiscovery();
+  assert.equal(refreshed.status, "complete");
+  assert.equal(refreshed.registryRevision, LANGUAGE_REGISTRY_REVISION);
+  assert.deepEqual(
+    Object.keys(refreshed.profiles).sort(),
+    listRegisteredLanguageProfiles().map((entry) => entry.profile.ref.id).sort(),
+  );
+  assert.ok(
+    refreshed.profiles[CPP_LANGUAGE_PROFILE_ID]?.some(
+      (candidate) => candidate.canonicalPath === compilerCanonicalPath,
+    ),
+  );
+  const persisted = JSON.parse(
+    fs.readFileSync(getToolchainDiscoveryFilePath(), "utf8"),
+  ) as { registryRevision?: number; profiles?: Record<string, unknown> };
+  assert.equal(persisted.registryRevision, LANGUAGE_REGISTRY_REVISION);
+  assert.deepEqual(
+    Object.keys(persisted.profiles || {}).sort(),
+    listRegisteredLanguageProfiles().map((entry) => entry.profile.ref.id).sort(),
+  );
+
+  fs.rmSync(compiler);
+  const secondBin = path.join(root, "second-bin");
+  fs.mkdirSync(secondBin);
+  const secondCompiler = path.join(secondBin, executableName("g++"));
+  createExecutable(secondCompiler);
+  process.env.PATH = secondBin;
+  resetToolchainDiscoveryRuntimeForTests();
+  startInitialToolchainDiscovery();
+  const restored = getToolchainDiscoverySnapshot();
+  assert.equal(restored.status, "complete");
+  assert.ok(
+    restored.profiles[CPP_LANGUAGE_PROFILE_ID]?.some(
+      (candidate) => candidate.canonicalPath === compilerCanonicalPath,
+    ),
+  );
+  assert.equal(
+    restored.profiles[CPP_LANGUAGE_PROFILE_ID]?.some(
+      (candidate) => candidate.canonicalPath === fs.realpathSync(secondCompiler),
+    ),
+    false,
+  );
+});
+
+test("an incomplete current registry snapshot fails closed until explicit rescan", async (t) => {
+  useDiscoveryFixture(t);
+  const incompleteSnapshot = {
+    schemaVersion: 1,
+    registryRevision: LANGUAGE_REGISTRY_REVISION,
+    status: "complete",
+    completedAt: "2026-01-01T00:00:00.000Z",
+    profiles: {
+      [CPP_LANGUAGE_PROFILE_ID]: [],
+    },
+  };
+  fs.mkdirSync(path.dirname(getToolchainDiscoveryFilePath()), { recursive: true });
+  const storedBytes = `${JSON.stringify(incompleteSnapshot, null, 2)}\n`;
+  fs.writeFileSync(getToolchainDiscoveryFilePath(), storedBytes);
+  resetToolchainDiscoveryRuntimeForTests();
+
+  startInitialToolchainDiscovery();
+  const failed = getToolchainDiscoverySnapshot();
+  assert.equal(failed.status, "failed");
+  if (failed.status === "failed") {
+    assert.equal(failed.errorCode, "DISCOVERY_STATE_INVALID");
+  }
+  assert.equal(fs.readFileSync(getToolchainDiscoveryFilePath(), "utf8"), storedBytes);
+
+  requestToolchainRescan();
+  const recovered = await waitForToolchainDiscovery();
+  assert.equal(recovered.status, "complete");
+  assert.equal(recovered.registryRevision, LANGUAGE_REGISTRY_REVISION);
+});
+
+test("a future registry snapshot fails closed", (t) => {
+  useDiscoveryFixture(t);
+  const futureSnapshot = {
+    schemaVersion: 1,
+    registryRevision: LANGUAGE_REGISTRY_REVISION + 1,
+    status: "complete",
+    completedAt: "2026-01-01T00:00:00.000Z",
+    profiles: Object.fromEntries(
+      listRegisteredLanguageProfiles().map((entry) => [entry.profile.ref.id, []]),
+    ),
+  };
+  fs.mkdirSync(path.dirname(getToolchainDiscoveryFilePath()), { recursive: true });
+  const storedBytes = `${JSON.stringify(futureSnapshot, null, 2)}\n`;
+  fs.writeFileSync(getToolchainDiscoveryFilePath(), storedBytes);
+  resetToolchainDiscoveryRuntimeForTests();
+
+  startInitialToolchainDiscovery();
+  const failed = getToolchainDiscoverySnapshot();
+  assert.equal(failed.status, "failed");
+  if (failed.status === "failed") {
+    assert.equal(failed.errorCode, "DISCOVERY_STATE_INVALID");
+  }
+  assert.equal(fs.readFileSync(getToolchainDiscoveryFilePath(), "utf8"), storedBytes);
+});
+
+test("a snapshot without a registry revision fails closed", (t) => {
+  useDiscoveryFixture(t);
+  const missingRevisionSnapshot = {
+    schemaVersion: 1,
+    status: "complete",
+    completedAt: "2026-01-01T00:00:00.000Z",
+    profiles: Object.fromEntries(
+      listRegisteredLanguageProfiles().map((entry) => [entry.profile.ref.id, []]),
+    ),
+  };
+  fs.mkdirSync(path.dirname(getToolchainDiscoveryFilePath()), { recursive: true });
+  const storedBytes = `${JSON.stringify(missingRevisionSnapshot, null, 2)}\n`;
+  fs.writeFileSync(getToolchainDiscoveryFilePath(), storedBytes);
+  resetToolchainDiscoveryRuntimeForTests();
+
+  startInitialToolchainDiscovery();
+  const failed = getToolchainDiscoverySnapshot();
+  assert.equal(failed.status, "failed");
+  if (failed.status === "failed") {
+    assert.equal(failed.errorCode, "DISCOVERY_STATE_INVALID");
+  }
+  assert.equal(fs.readFileSync(getToolchainDiscoveryFilePath(), "utf8"), storedBytes);
+});
+
+test("a malformed candidate in a stale registry snapshot still fails closed", (t) => {
+  useDiscoveryFixture(t);
+  const malformedSnapshot = {
+    schemaVersion: 1,
+    registryRevision: 1,
+    status: "complete",
+    completedAt: "2026-01-01T00:00:00.000Z",
+    profiles: {
+      [CPP_LANGUAGE_PROFILE_ID]: [{}],
+      [PYTHON_LANGUAGE_PROFILE_ID]: [],
+    },
+  };
+  fs.mkdirSync(path.dirname(getToolchainDiscoveryFilePath()), { recursive: true });
+  const storedBytes = `${JSON.stringify(malformedSnapshot, null, 2)}\n`;
+  fs.writeFileSync(getToolchainDiscoveryFilePath(), storedBytes);
+  resetToolchainDiscoveryRuntimeForTests();
+
+  startInitialToolchainDiscovery();
+  const failed = getToolchainDiscoverySnapshot();
+  assert.equal(failed.status, "failed");
+  if (failed.status === "failed") {
+    assert.equal(failed.errorCode, "DISCOVERY_STATE_INVALID");
+  }
+  assert.equal(fs.readFileSync(getToolchainDiscoveryFilePath(), "utf8"), storedBytes);
 });
 
 test("Windows passive discovery checks bounded Eclipse Adoptium JDK roots", {

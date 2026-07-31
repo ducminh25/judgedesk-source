@@ -89,11 +89,22 @@ function parseStoredSnapshot(bytes: Buffer): ToolchainDiscoverySnapshot | null {
   if (!isRecord(raw) || raw.schemaVersion !== DISCOVERY_SCHEMA_VERSION) return null;
   if (raw.status !== "complete" || typeof raw.completedAt !== "string") return null;
   if (!isRecord(raw.profiles)) return null;
+  const registryRevision = raw.registryRevision;
+  if (
+    typeof registryRevision !== "number"
+    || !Number.isSafeInteger(registryRevision)
+    || registryRevision < 1
+    || registryRevision > LANGUAGE_REGISTRY_REVISION
+  ) {
+    return null;
+  }
+  const isStaleRegistry = registryRevision < LANGUAGE_REGISTRY_REVISION;
 
   const profiles: Record<string, DiscoveredToolchainCandidate[]> = emptyProfiles();
   for (const entry of listRegisteredLanguageProfiles()) {
     const profileId = entry.profile.ref.id;
     const candidates = raw.profiles[profileId];
+    if (candidates === undefined && isStaleRegistry) continue;
     if (!Array.isArray(candidates) || candidates.length > MAX_CANDIDATES_PER_PROFILE) {
       return null;
     }
@@ -117,8 +128,7 @@ function parseStoredSnapshot(bytes: Buffer): ToolchainDiscoverySnapshot | null {
   }
   return {
     schemaVersion: 1,
-    registryRevision:
-      typeof raw.registryRevision === "number" ? raw.registryRevision : 0,
+    registryRevision,
     status: "complete",
     completedAt: raw.completedAt,
     profiles,
@@ -180,7 +190,12 @@ export function getDiscoveredCandidates(
 
 export function startInitialToolchainDiscovery(): void {
   const runtime = runtimeState();
-  if (runtime.snapshot.status === "complete" || runtime.snapshot.status === "failed") {
+  if (runtime.snapshot.status === "failed") {
+    return;
+  }
+  if (runtime.snapshot.status === "complete") {
+    if (runtime.snapshot.registryRevision === LANGUAGE_REGISTRY_REVISION) return;
+    startDiscovery(runtime, true);
     return;
   }
   startDiscovery(runtime);
@@ -197,7 +212,11 @@ export async function waitForToolchainDiscovery(): Promise<ToolchainDiscoverySna
 
 function startDiscovery(runtime: RuntimeDiscoveryState, force = false): void {
   if (runtime.promise) return;
-  if (!force && runtime.snapshot.status === "complete") return;
+  if (
+    !force
+    && runtime.snapshot.status === "complete"
+    && runtime.snapshot.registryRevision === LANGUAGE_REGISTRY_REVISION
+  ) return;
   runtime.snapshot = {
     schemaVersion: 1,
     registryRevision: LANGUAGE_REGISTRY_REVISION,

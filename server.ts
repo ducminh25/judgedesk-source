@@ -61,7 +61,7 @@ async function startServer() {
   registerExportRoutes(app);
   registerToolchainRoutes(app);
   // D15 fast discovery is passive and asynchronous. It runs only when no
-  // persisted first-run snapshot exists, so it never delays the main window.
+  // current registry snapshot exists, so it never delays the main window.
   startInitialToolchainDiscovery();
 
   registerBatchJudgeRoute(app);
