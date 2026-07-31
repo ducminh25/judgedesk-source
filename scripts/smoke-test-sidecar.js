@@ -7,6 +7,11 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 const STARTUP_TIMEOUT_MS = 30_000;
+// macOS may spend several seconds validating an ad-hoc signed Full bundle the
+// first time its sidecar is launched from a freshly mounted DMG. The gate still
+// requires a non-zero exit and verifies that no listener remains; this longer
+// deadline avoids mistaking cold code-signature validation for token acceptance.
+const STARTUP_GATE_REJECTION_TIMEOUT_MS = 30_000;
 const POLL_INTERVAL_MS = 250;
 const HTTP_REQUEST_TIMEOUT_MS = 5_000;
 const EXPECTED_CONTESTANTS = ["Contestant 2", "Contestant 10"];
@@ -91,7 +96,7 @@ async function fetchJsonWithinDeadline(url, deadline) {
 
 export async function verifyStartupGateRejectsMissingToken(
   executablePath,
-  { args = [], timeoutMs = 5_000 } = {},
+  { args = [], timeoutMs = STARTUP_GATE_REJECTION_TIMEOUT_MS } = {},
 ) {
   const resolvedExecutable = path.resolve(executablePath);
   const port = await allocatePort();
