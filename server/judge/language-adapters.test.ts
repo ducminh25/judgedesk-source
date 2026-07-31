@@ -17,7 +17,7 @@ test("C and C++ split compilation share an explicit two-phase budget", () => {
       "submission.exe",
     );
     assert.equal(recipe.splitCompilerPhases, true);
-    assert.equal(recipe.timeoutMs, 30_000);
+    assert.equal(recipe.timeoutMs, 60_000);
   }
 });
 
@@ -37,6 +37,7 @@ test("native language recipes pin standards, offline behavior, and bounded outpu
     "-oprogram.exe",
     "source.pas",
   ]);
+  assert.equal(pascal.timeoutMs, 45_000);
 
   const go = buildNativeCompilationRecipe(
     "go",
