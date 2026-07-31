@@ -124,13 +124,19 @@ try {
   });
   assert.equal(selection.success, true);
   await requestJson("POST", "/api/toolchains/rescan");
-  await waitFor(async () => {
+  const readyToolchains = await waitFor(async () => {
     const toolchains = await requestJson("GET", "/api/toolchains");
     return toolchains.discovery?.status === "complete"
       && toolchains.capabilities?.cpp?.submissionReady === true
       && toolchains.active?.python?.source === "managed"
-      && toolchains.capabilities?.python?.checkerReady === true;
+      && toolchains.capabilities?.python?.checkerReady === true
+      ? toolchains
+      : false;
   }, 20_000, "registry sources never became ready after rescan");
+  const activePythonPath = readyToolchains.active?.python?.executionPath
+    || readyToolchains.active?.python?.executablePath;
+  assert.equal(typeof activePythonPath, "string");
+  assert.equal(path.isAbsolute(activePythonPath), true);
 
   const normalEvents = await runJudge("packaged_checker_normal", ["A", "B"]);
   assertNoJudgeError(normalEvents);
@@ -141,10 +147,7 @@ try {
   const cancelledRun = runJudge(cancelJobId, ["C"]);
   await waitFor(async () => {
     const rows = await processRows();
-    return rows.some((row) =>
-      row.command.includes("/JudgeDeskExecutor/toolchains/")
-      && row.command.includes("/checker.py")
-    );
+    return rows.some((row) => isPackagedPythonChecker(row, activePythonPath));
   }, 45_000, "sleeping packaged Python checker never became active");
   const lockedToolchains = await requestJson("GET", "/api/toolchains");
   assert.equal(lockedToolchains.mutationsBlocked, true);
@@ -165,7 +168,7 @@ try {
   assert.ok(cancelEvents.some((event) => event.type === "done"));
   await waitFor(async () => {
     const rows = await processRows();
-    return !rows.some((row) => row.command.includes("/checker.py"));
+    return !rows.some((row) => isPackagedPythonChecker(row, activePythonPath));
   }, 10_000, "cancelled packaged checker process remained alive");
   const statusAfterCancel = await requestJson("GET", "/api/status");
   assert.equal(statusAfterCancel.secureRunner?.ready, true);
@@ -321,6 +324,14 @@ function assertAccepted(events, problemName, marker) {
   assert.equal(result.testCases.length, 1);
   assert.equal(result.testCases[0].status, "AC", JSON.stringify(result.testCases[0]));
   assert.match(result.testCases[0].checkerMessage || "", new RegExp(marker));
+}
+
+function isPackagedPythonChecker(row, activePythonPath) {
+  return row.command.includes("/checker.py")
+    && (
+      row.command.includes(activePythonPath)
+      || row.command.includes("/JudgeDeskExecutor/toolchains/")
+    );
 }
 
 async function waitForManagedPythonInstallation() {
