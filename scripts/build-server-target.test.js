@@ -321,6 +321,10 @@ test("Apple Silicon release scripts verify architecture, DMG, and sidecar", () =
     new URL("./build-macos-arm64-sidecar.sh", import.meta.url),
     "utf8",
   );
+  const managedPythonSmoke = fs.readFileSync(
+    new URL("./smoke-test-managed-python.ts", import.meta.url),
+    "utf8",
+  );
   const bundleScript = fs.readFileSync(
     new URL("./verify-macos-arm64-bundle.sh", import.meta.url),
     "utf8",
@@ -373,6 +377,10 @@ test("Apple Silicon release scripts verify architecture, DMG, and sidecar", () =
   assert.match(sidecarScript, /smoke-test-macos-compiler\.ts/);
   assert.match(sidecarScript, /smoke-test-managed-python\.ts/);
   assert.match(sidecarScript, /JUDGEDESK_SMOKE_INSTALL_MANAGED_PYTHON=1/);
+  assert.match(
+    managedPythonSmoke,
+    /prepareIsolatedPythonScript\(\s*workspace,\s*sourcePath,\s*"submission\.py",\s*undefined,\s*managed,\s*\)/,
+  );
   const managedPythonSmokeIndex = sidecarScript.indexOf(
     "npx tsx scripts/smoke-test-managed-python.ts",
   );
