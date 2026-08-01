@@ -1,6 +1,6 @@
 # JudgeDesk
 
-JudgeDesk là ứng dụng desktop chấm bài lập trình dành cho kỳ thi và lớp học. Ứng dụng chạy cục bộ trên Windows x64 và macOS Apple Silicon, tích hợp sẵn bảng điểm, cấu hình nhóm test, giao diện sáng/tối và hỗ trợ tiếng Việt/tiếng Anh.
+JudgeDesk là ứng dụng desktop chấm bài lập trình dành cho kỳ thi và lớp học. Ứng dụng chạy cục bộ trên Windows x64 và macOS Apple Silicon, tích hợp sẵn bảng điểm, cấu hình nhóm test, giao diện sáng/tối và hỗ trợ tiếng Việt/tiếng Anh. Dòng phát hành v1.3 hỗ trợ C++, C, Python, Pascal và Java bằng native secure runner, không fallback âm thầm sang compiler/runtime khác.
 
 Repository này chứa mã nguồn nội bộ của JudgeDesk. Trang công khai dành cho tải
 ứng dụng, hướng dẫn cài đặt, release notes và hỗ trợ người dùng được duy trì tại
@@ -17,9 +17,25 @@ Repository này chứa mã nguồn nội bộ của JudgeDesk. Trang công khai 
 - **[RELEASING.md](RELEASING.md)**: Quy trình đóng gói và phát hành.
 - **[docs/CONTEST-FORMAT.md](docs/CONTEST-FORMAT.md)**: Định dạng file kỳ thi `.judgedesk`.
 
-## Lưu ý cập nhật từ phiên bản 1.1.x (ThemisV2)
+## Bản phân phối Core và Full
 
-- Các bản `1.2.x` giữ nguyên application identifier, khóa updater và thư mục dữ liệu cũ để người dùng các bản 1.1.x có thể cập nhật trực tiếp mà không mất cấu hình hoặc toolchain đã cài.
+- **Full (khuyến nghị cho giáo viên/phòng thi):** cài xong có sẵn toàn bộ
+  managed toolchain được duyệt cho hệ điều hành. Windows còn kèm WebView2
+  offline; kích thước bộ cài lớn là chủ đích để giảm phụ thuộc mạng.
+- **Core:** chỉ chứa máy chấm và danh mục gói đã ký. Người dùng có thể tải
+  managed toolchain từ giao diện hoặc chọn compiler/runtime local đã qua kiểm
+  tra nhanh.
+
+Hai biến thể dùng cùng application identity và dữ liệu, vì vậy không cài song
+song. Cài Core lên Full hoặc Full lên Core được xem là nâng cấp/thay thế cùng
+một JudgeDesk. Full là artifact updater chuẩn để cập nhật không làm mất các
+toolchain tích hợp.
+
+## Lưu ý cập nhật từ phiên bản 1.1.x/1.2.x
+
+- Bản `1.3.0` giữ nguyên application identifier và thư mục dữ liệu cũ. Với đợt
+  phát hành này, người dùng cũ nhận bộ cài mới trực tiếp thay vì đi qua
+  auto-update từ v1.2.7.
 - Trên macOS, bộ cập nhật tự động cập nhật bundle tại chỗ nên không thể đổi tên thư mục `/Applications/ThemisV2.app` đang chạy. Để hoàn tất đổi tên, bạn có thể tải file `.dmg` mới nhất, kéo `JudgeDesk.app` vào Applications để thay thế bản cũ.
 
 ## Môi trường phát triển
@@ -51,11 +67,16 @@ npm run test:stress
 ```
 *(Nếu server không chạy tại `http://127.0.0.1:3000`, đặt thêm biến môi trường `JUDGE_SERVER_URL`)*
 
-Build ứng dụng desktop cục bộ:
+Build hai MSI release candidate trên Windows:
 
 ```powershell
-npm run build:windows:local
+npm run build:windows:release:local
 ```
+
+Các lệnh `build:windows:core:local`, `build:windows:full:local`,
+`build:macos:core:local` và `build:macos:full:local` vẫn dùng cho kiểm tra từng
+biến thể. Bundle macOS release chính thức phải được tạo bằng workflow
+`macos-arm64-release` trên CodeMagic.
 
 ## Cấu trúc mã nguồn
 

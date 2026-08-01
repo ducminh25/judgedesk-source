@@ -1,6 +1,7 @@
 {
   "bundle": {
     "targets": ["msi"],
+    "createUpdaterArtifacts": true,
     "resources": {
       "../build/distribution-resources/": ""
     },
