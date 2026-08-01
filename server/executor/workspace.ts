@@ -349,12 +349,14 @@ export async function prepareManagedToolchainComponent(
       health.diagnostics.join("; ") || "SECURE_RUNNER_UNAVAILABLE",
     );
   }
+  const executableId = executorRelativeCanonicalPath(
+    health.executorRoot,
+    cachedLexicalExecutable,
+  );
   return {
     ...resolved,
     executablePath: cachedExecutable,
-    executableId: path
-      .relative(health.executorRoot, cachedLexicalExecutable)
-      .replaceAll("\\", "/"),
+    executableId,
     root: cachedReceipt.root,
     toolchain: {
       packageId: descriptor.id,
@@ -570,6 +572,26 @@ export function isDescendant(root: string, candidate: string): boolean {
     && relative !== ".."
     && !relative.startsWith(`..${path.sep}`)
     && !path.isAbsolute(relative);
+}
+
+/**
+ * Convert a lexical path rooted at a canonical package directory into the
+ * executor protocol namespace. macOS may report the executor root through the
+ * `/var` alias while `realpath` returns `/private/var`; comparing those two
+ * spellings directly would manufacture a parent-relative executableId.
+ *
+ * Do not canonicalize the candidate itself: signed package receipts grant the
+ * lexical component path, which may legitimately be an internal symlink.
+ */
+export function executorRelativeCanonicalPath(
+  executorRoot: string,
+  canonicalCandidate: string,
+): string {
+  const relative = path
+    .relative(fs.realpathSync(executorRoot), path.resolve(canonicalCandidate))
+    .replaceAll("\\", "/");
+  assertSafeRelative(relative);
+  return relative;
 }
 
 export function inspectRegularDirectory(
