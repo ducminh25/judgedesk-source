@@ -544,6 +544,15 @@ test("Codemagic builds verified Apple Silicon release artifacts on M2", () => {
   assert.match(codemagic, /JUDGEDESK_REAL_LANGUAGE_GATES=pascal,java,python/);
   assert.match(codemagic, /test:macos-packaged-checkers/);
   assert.match(codemagic, /test:macos-process-supervisor/);
+  const sidecarBuildIndex = codemagic.indexOf("bash scripts/build-macos-arm64-sidecar.sh");
+  const tauriTestIndex = codemagic.indexOf(
+    "cargo test --locked --manifest-path src-tauri/Cargo.toml",
+  );
+  assert.ok(sidecarBuildIndex >= 0, "Codemagic must build the Apple Silicon sidecars");
+  assert.ok(
+    tauriTestIndex > sidecarBuildIndex,
+    "Tauri tests must run after the external binaries required by tauri-build exist",
+  );
   assert.match(sidecarScript, /TAURI_TARGET=aarch64-apple-darwin/);
   assert.doesNotMatch(sidecarScript, /x86_64/);
   assert.match(sidecarScript, /smoke-test-macos-compiler\.ts/);
