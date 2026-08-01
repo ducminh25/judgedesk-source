@@ -325,6 +325,10 @@ test("Apple Silicon release scripts verify architecture, DMG, and sidecar", () =
     new URL("./smoke-test-managed-python.ts", import.meta.url),
     "utf8",
   );
+  const compilerSmoke = fs.readFileSync(
+    new URL("./smoke-test-macos-compiler.ts", import.meta.url),
+    "utf8",
+  );
   const bundleScript = fs.readFileSync(
     new URL("./verify-macos-arm64-bundle.sh", import.meta.url),
     "utf8",
@@ -375,6 +379,8 @@ test("Apple Silicon release scripts verify architecture, DMG, and sidecar", () =
   assert.match(sidecarScript, /test:executor/);
   assert.match(sidecarScript, /security\.integration\.test\.ts/);
   assert.match(sidecarScript, /smoke-test-macos-compiler\.ts/);
+  assert.match(compilerSmoke, /std::abort\(\)/);
+  assert.doesNotMatch(compilerSmoke, /integer-divide-by-zero|runtimeDivisor/);
   assert.match(sidecarScript, /smoke-test-managed-python\.ts/);
   assert.match(sidecarScript, /JUDGEDESK_SMOKE_INSTALL_MANAGED_PYTHON=1/);
   assert.match(

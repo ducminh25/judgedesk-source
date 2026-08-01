@@ -88,37 +88,37 @@ try {
   }
   console.log(`Apple Clang compile-and-run smoke passed in ${compilation.compileTime.toFixed(0)} ms.`);
 
-  const divideByZeroSourcePath = path.join(temporaryDirectory, "integer-divide-by-zero.cpp");
+  const runtimeAbortSourcePath = path.join(temporaryDirectory, "runtime-abort.cpp");
   fs.writeFileSync(
-    divideByZeroSourcePath,
+    runtimeAbortSourcePath,
     [
-      "int main(int argc, char**) {",
-      "  volatile int runtimeDivisor = argc - 1;",
-      "  return 42 / runtimeDivisor;",
+      "#include <cstdlib>",
+      "int main() {",
+      "  std::abort();",
       "}",
       "",
     ].join("\n"),
     "utf8",
   );
-  const divideByZeroCompilation = await compileSubmission({
+  const runtimeAbortCompilation = await compileSubmission({
     language: "cpp",
     contestantName: "smoke",
-    problemName: "integer_divide_by_zero",
-    submissionPath: divideByZeroSourcePath,
+    problemName: "runtime_abort",
+    submissionPath: runtimeAbortSourcePath,
     tempDirectory: temporaryDirectory,
   });
-  if (divideByZeroCompilation.compileStatus !== "OK") {
-    throw new Error(`macOS integer divide-by-zero probe failed to compile: ${divideByZeroCompilation.compileError}`);
+  if (runtimeAbortCompilation.compileStatus !== "OK") {
+    throw new Error(`macOS runtime-abort probe failed to compile: ${runtimeAbortCompilation.compileError}`);
   }
 
-  const divideByZeroArtifact = await importExecutorArtifact(divideByZeroCompilation.executablePath);
-  const divideByZeroWorkspace = await createExecutorWorkspace();
+  const runtimeAbortArtifact = await importExecutorArtifact(runtimeAbortCompilation.executablePath);
+  const runtimeAbortWorkspace = await createExecutorWorkspace();
   try {
     const run = await executorClient.run({
-      runId: `macos_divide_by_zero_smoke_${crypto.randomUUID().replaceAll("-", "_")}`,
+      runId: `macos_runtime_abort_smoke_${crypto.randomUUID().replaceAll("-", "_")}`,
       role: "submission",
-      workspaceId: divideByZeroWorkspace.id,
-      executableId: divideByZeroArtifact.executableId,
+      workspaceId: runtimeAbortWorkspace.id,
+      executableId: runtimeAbortArtifact.executableId,
       args: [],
       stdoutFile: "stdout.txt",
       stderrFile: "stderr.txt",
@@ -130,12 +130,12 @@ try {
       },
     });
     if (executorResultToVerdict(run) !== "RE") {
-      throw new Error(`integer divide-by-zero did not produce RE: ${JSON.stringify(run)}`);
+      throw new Error(`std::abort did not produce RE: ${JSON.stringify(run)}`);
     }
   } finally {
-    divideByZeroWorkspace.dispose();
+    runtimeAbortWorkspace.dispose();
   }
-  console.log("Apple Clang integer divide-by-zero trap smoke passed with RE.");
+  console.log("Apple Clang runtime-abort smoke passed with RE.");
 } finally {
   await executorClient.shutdown();
   fs.rmSync(temporaryDirectory, { recursive: true, force: true });
