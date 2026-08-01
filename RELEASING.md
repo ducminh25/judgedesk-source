@@ -1,133 +1,158 @@
 # Releasing JudgeDesk
 
-## Release invariants
+## Repository and identity invariants
 
+- Source, source tags and CI live in private `ducminh25/judgedesk-source`.
+- Installers, checksums, updater metadata, managed toolchains, documentation and
+  support live in public `ducminh25/judgedesk`.
 - `package.json`, `package-lock.json`, `src/version.ts`,
-  `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock` and
-  `src-tauri/tauri.conf.json`, plus `native-executor/Cargo.toml` and
-  `native-executor/Cargo.lock`, must use the same version.
-- Keep `com.themisv2.judge`, the updater public key and the public endpoint
-  unchanged. Existing `1.x` installations depend on this identity.
-- Source tags and workflows live in the private
-  `ducminh25/judgedesk-source` repository. Public installers, updater manifests,
-  checksums and managed toolchains live in `ducminh25/judgedesk`.
-- Keep Windows MSI UpgradeCode `4ac645a9-f719-5210-85be-f03f49c33869`
-  unchanged so JudgeDesk replaces ThemisV2 instead of installing beside it.
-- A public release is update-capable only when it contains `latest.json` plus
-  both signed updater pairs:
-  - `JudgeDesk_<version>_x64_en-US.msi` and `.msi.sig`;
-  - `JudgeDesk.app.tar.gz` and `.app.tar.gz.sig`.
-- The DMG is for manual macOS installation. The `.app.tar.gz` is what the Tauri
-  updater downloads on Apple Silicon.
+  `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`,
+  `src-tauri/tauri.conf.json`, `native-executor/Cargo.toml` and
+  `native-executor/Cargo.lock` must contain the same version.
+- Keep application identifier `com.themisv2.judge`, the embedded updater public
+  key and Windows MSI UpgradeCode `4ac645a9-f719-5210-85be-f03f49c33869`
+  unchanged. They preserve installed data and in-place upgrades.
+- Never replace the existing Tauri updater key or the Ed25519 toolchain manifest
+  key. A lost private key ends that update/signing lineage; generate a new key
+  only for a deliberately new application identity.
 
-## Verification
+## Distribution matrix
+
+Every release supports Windows 10/11 x64 and macOS Apple Silicon only.
+
+| Platform | Core | Full |
+| --- | --- | --- |
+| Windows x64 | Small MSI; WebView2 bootstrap and managed toolchains may be downloaded | Offline WebView2 installer plus all approved managed C/C++, Python, Pascal and Java packages |
+| macOS Apple Silicon | App/DMG with Apple Clang support; managed Python, Pascal and Java may be downloaded | App/DMG with all approved managed Python, Pascal and Java packages; C/C++ uses verified Apple Clang |
+
+Core and Full use the same application identity and cannot be installed side by
+side. Installing one variant upgrades/replaces the other while preserving JudgeDesk
+data. Full is the canonical updater payload because an automatic update must not
+silently remove toolchains that were included by a previous Full installation.
+
+For version `<version>`, the public artifact names are:
+
+- `JudgeDesk_<version>_core_x64_en-US.msi`
+- `JudgeDesk_<version>_full_x64_en-US.msi`
+- `JudgeDesk_<version>_core_aarch64.dmg`
+- `JudgeDesk_<version>_full_aarch64.dmg`
+- `JudgeDesk_<version>_full_aarch64.app.tar.gz`
+- updater `.sig` files for both Windows MSIs and the macOS Full app archive
+- `SHA256SUMS` and `latest.json`
+
+`latest.json` must select only the signed Full MSI and Full macOS app archive.
+Core remains a manual installer choice; a Core installation may later update to
+Full through the normal updater.
+
+## Source verification
+
+Run from a clean release-candidate commit:
 
 ```powershell
 npm ci
 npm run release:check-version
 npm run lint
+npm run test:update-ui
 npm run test:server
 npm run build:frontend
 npm run build:server
+npm run test:executor
 cargo fmt --check --manifest-path src-tauri/Cargo.toml
-cargo test --manifest-path src-tauri/Cargo.toml
+cargo fmt --check --manifest-path native-executor/Cargo.toml
+cargo test --locked --manifest-path src-tauri/Cargo.toml
 ```
 
-Run `npm run test:desktop` for the real Windows/WebView2 UI and complete the
-[v1.2.7 release checklist](docs/v1.2.7-release-test-checklist.md) before
-tagging.
+Run the Windows security, resource, single-instance and packaged smoke gates with
+real-time Defender protection enabled. Do not add exclusions or weaken security
+limits to make a release pass. Record any Defender detection with exact filename,
+SHA-256 and detection name and block publication until it has been resolved.
 
-## Windows package built locally
+The GitHub Actions `Verify Release Source` workflow repeats source checks when a
+`v*` tag is pushed. It deliberately does not build or publish installers; the
+platform-specific process below owns final artifacts.
+
+## Publish managed toolchains v2
+
+The Full and Core builds both consume the signed public `toolchains-v2` release.
+Before installer builds:
+
+1. Run `.github/workflows/toolchains.yml` from the exact release-candidate ref in
+   private `judgedesk-source`.
+2. Require both Windows x64 and macOS ARM64 jobs and their real-language secure
+   runner gates to pass.
+3. Verify the public manifest URL, Ed25519 signature, package SHA-256 values and
+   all package download URLs.
+4. Confirm the release contains exactly the approved v1.3.0 language scope:
+   C++, C, Python, Pascal and Java. Go and other languages are future releases.
+
+The workflow needs `PUBLIC_RELEASE_TOKEN` and
+`TOOLCHAIN_MANIFEST_SIGNING_PRIVATE_KEY_B64` in the private source repository.
+
+## Windows Core and Full
+
+Build both installers on the validated Windows host:
 
 ```powershell
-npm run build:windows:local
+npm run build:windows:release:local
 ```
 
-This command deliberately creates an unsigned MSI for local testing. Do not
-publish it. The Tauri updater `.sig` authenticates an update to JudgeDesk, but
-it is not a Windows Authenticode signature and does not establish the publisher
-shown by Windows.
+The command creates renamed Core/Full MSIs and `SHA256SUMS-windows` under
+`release-assets-windows`. Local MSIs do not contain Tauri updater signatures.
 
-Before public distribution, configure Tauri Windows code signing with one
-stable publisher identity (an eligible code-signing certificate or Azure
-Artifact Signing), SHA-256 and an RFC 3161 timestamp. Build from the exact
-release commit, then verify Authenticode on the MSI and every installed
-JudgeDesk executable/sidecar. An absent, invalid or unexpected publisher is a
-hard release failure.
+Record Authenticode separately. A Tauri `.sig` authenticates updater downloads
+but is not a Windows Authenticode publisher signature. Never describe an unsigned
+MSI as code-signed. If no stable Authenticode certificate is configured, retain
+that limitation in release notes and obtain explicit publication approval.
 
-Run the packaged stress/resource checklist with real-time Defender protection
-enabled and without exclusions. The gate includes launching newly compiled
-MinGW C++ AC, RE/divide-zero and MLE artifacts. If Defender reports a generated
-artifact or distributed binary, retain the exact file/hash and detection name,
-submit it to Microsoft as a suspected false positive, and block publication
-until the signed release candidate passes again. Do not work around the gate by
-disabling Defender, adding an exclusion, or changing required judging semantics.
+Create a temporary public prerelease/tag `v<version>-staging` and upload both
+MSIs. Run CodeMagic workflow `windows-updater-signing` against the exact source
+commit. Pass the locally recorded lowercase hashes as build variables
+`WINDOWS_CORE_MSI_SHA256` and `WINDOWS_FULL_MSI_SHA256`. CodeMagic downloads and
+verifies both files before invoking the established Tauri updater key; a missing
+or mismatched hash fails the build before either MSI is signed. It returns both
+MSIs, both `.sig` files and checksums. Delete the staging release/tag only after
+all final artifacts have been collected and verified.
 
-Upload the resulting MSI to a temporary public prerelease named
-`v<version>-staging`. It must be downloadable without authentication because the
-signing workflow uses the public release URL. Run CodeMagic workflow
-`windows-updater-signing` against the exact release commit; it downloads that
-MSI and creates the updater `.sig` with the private key in the `themis_signing`
-group. Remove the temporary prerelease and tag after collecting the signature.
+## macOS Apple Silicon Core and Full
 
-Official Windows references:
+Run CodeMagic workflow `macos-arm64-release` against the exact tagged source
+commit. The workflow:
 
-- https://v2.tauri.app/distribute/sign/windows/
-- https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation
-- https://learn.microsoft.com/en-us/defender-endpoint/admin-submissions-mde
-- https://www.microsoft.com/wdsi/filesubmission
+1. repeats source/native checks;
+2. builds and tests the Apple Silicon server and native executor;
+3. builds, mounts and smoke-tests the Core DMG;
+4. builds, mounts and smoke-tests the Full DMG, then compiles/runs C, C++,
+   Python, Pascal and Java with the packaged resources;
+5. runs packaged C++ and Python custom-checker/cancellation gates and the
+   packaged process-supervisor gate;
+6. returns both DMGs, the signed Full `.app.tar.gz`, its `.sig` and checksums.
 
-## Apple Silicon package
+The CodeMagic `themis_signing` group must contain
+`TAURI_SIGNING_PRIVATE_KEY` and, when applicable,
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`.
 
-Run CodeMagic workflow `macos-arm64-release` once, against the exact same commit
-that passed the Windows and source gates. Do not use an intermediate commit for
-a “trial DMG”; the workflow deliberately runs all cheap/source/native gates
-before invoking Tauri packaging.
+The current public/free path uses ad-hoc app signing plus the established Tauri
+updater signature. It is not Developer ID notarization. Manual DMG users may need
+**Open Anyway** after checking the official release and SHA-256. Do not claim
+notarization unless `JUDGEDESK_REQUIRE_NOTARIZATION=1` passes in the actual build.
 
-The current public/free CodeMagic path produces updater-signed artifacts without
-requiring Apple Developer ID or notarization. The `themis_signing` Codemagic
-variable group must contain:
+## Tag and publish
 
-- `TAURI_SIGNING_PRIVATE_KEY` and optional
-  `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` for updater artifacts.
+1. Let the release-candidate commit pass source tests and the two local Windows
+   package/smoke gates.
+2. Fast-forward private `main`, create annotated source tag `v<version>` and push
+   both.
+3. Run CodeMagic Windows signing and macOS Core/Full workflows on that exact SHA.
+4. Put all final files in one clean release directory.
+5. Run `scripts/generate-updater-manifest.js`; it must select the Full artifacts.
+6. Generate one combined `SHA256SUMS` over every non-signature public artifact.
+7. Create a draft `v<version>` release in public `ducminh25/judgedesk`, attach
+   release notes and every artifact, then verify each anonymous download URL.
+8. Verify updater signatures, toolchain manifest signature and checksums from the
+   downloaded public files, not only from local copies.
+9. Publish the draft only after both operating-system matrices pass. Remove the
+   temporary staging release afterward.
 
-Never replace this key: existing installations verify updates with the public
-key embedded in the app. The workflow verifies arm64 architecture, the app's
-code-signing structure and entitlements, DMG contents, updater signature, the
-packaged sidecar, Apple Clang, the native executor and Managed Python. It does
-not claim Developer ID identity, a notarization ticket or Gatekeeper reputation;
-manual DMG users may need **Open Anyway** after verifying the checksum and
-release source.
-
-If Developer ID/notarization is added later, configure the Apple credentials
-separately and run the bundle verifier with `JUDGEDESK_REQUIRE_NOTARIZATION=1`.
-Do not describe the current artifacts as notarized unless that stricter gate
-actually passes.
-
-Official setup references:
-
-- https://v2.tauri.app/distribute/sign/macos/
-- https://docs.codemagic.io/yaml-code-signing/signing-macos/
-- https://developer.apple.com/documentation/security/notarizing-macos-software-before-distribution
-
-## Publish
-
-1. Create annotated source tag `v<version>` in the private
-   `ducminh25/judgedesk-source` repository.
-2. Collect the Windows MSI that passed the accepted Windows gates, its CodeMagic
-   updater signature, and all artifacts from `macos-arm64-release`. Record
-   Authenticode status separately; the updater `.sig` is not Authenticode.
-3. Generate `latest.json` with `scripts/generate-updater-manifest.js` and create
-   combined SHA-256 checksums.
-4. Upload all artifacts to a draft `v<version>` release in
-   `ducminh25/judgedesk`.
-5. Verify every URL and signature, then publish the release. `latest.json` must
-   be present before the release becomes the public `latest` release.
-6. Remove the temporary `v<version>-staging` release after the signed Windows
-   artifacts have been collected.
-
-The private source repository must provide `PUBLIC_RELEASE_TOKEN` to both the
-application-release and toolchain workflows. The token must be authorized to
-create releases and upload assets in the public `ducminh25/judgedesk`
-repository. CodeMagic must also be connected to `judgedesk-source`; do not let
-an old integration follow the reused `judgedesk` name.
+For v1.3.0, existing users receive the new installer manually; no v1.2.7 updater
+bridge is required. `latest.json` is still produced so fresh v1.3.0 installations
+remain on the supported updater lineage for later releases.

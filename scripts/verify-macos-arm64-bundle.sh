@@ -2,8 +2,14 @@
 set -euo pipefail
 
 target_root="src-tauri/target/aarch64-apple-darwin/release/bundle"
-dmg_file="$(find "$target_root/dmg" -maxdepth 1 -name 'JudgeDesk_*.dmg' -print -quit)"
-test -n "$dmg_file"
+shopt -s nullglob
+dmg_files=("$target_root"/dmg/JudgeDesk_*.dmg)
+if [[ "${#dmg_files[@]}" -ne 1 ]]; then
+  echo "Expected exactly one JudgeDesk DMG, found ${#dmg_files[@]}." >&2
+  exit 1
+fi
+dmg_file="${dmg_files[0]}"
+distribution_variant="${JUDGEDESK_DISTRIBUTION_VARIANT:-}"
 
 case "${JUDGEDESK_LOCAL_BUNDLE:-0}" in
   0 | 1) ;;
@@ -12,6 +18,16 @@ case "${JUDGEDESK_LOCAL_BUNDLE:-0}" in
     exit 1
     ;;
 esac
+
+if [[ "${JUDGEDESK_LOCAL_BUNDLE:-0}" == "0" ]]; then
+  case "$distribution_variant" in
+    core | full) ;;
+    *)
+      echo "JUDGEDESK_DISTRIBUTION_VARIANT must be core or full for release staging." >&2
+      exit 1
+      ;;
+  esac
+fi
 
 mount_dir="$(mktemp -d)"
 verification_data="$(mktemp -d "${TMPDIR:-/tmp}/judgedesk-macos-bundle-verify.XXXXXX")"
@@ -75,15 +91,27 @@ if [[ "${JUDGEDESK_LOCAL_BUNDLE:-0}" == "1" ]]; then
   exit 0
 fi
 
-rm -rf release-assets-mac
 mkdir -p release-assets-mac
-cp "$target_root"/dmg/JudgeDesk_*.dmg release-assets-mac/
-cp "$target_root"/macos/*.app.tar.gz release-assets-mac/
-cp "$target_root"/macos/*.app.tar.gz.sig release-assets-mac/
+release_version="$(node -p "require('./package.json').version")"
+asset_prefix="JudgeDesk_${release_version}_${distribution_variant}_aarch64"
+cp "$dmg_file" "release-assets-mac/${asset_prefix}.dmg"
+
+if [[ "$distribution_variant" == "full" ]]; then
+  updater_bundles=("$target_root"/macos/*.app.tar.gz)
+  if [[ "${#updater_bundles[@]}" -ne 1 ]]; then
+    echo "Expected exactly one macOS updater bundle, found ${#updater_bundles[@]}." >&2
+    exit 1
+  fi
+  updater_bundle="${updater_bundles[0]}"
+  test -s "${updater_bundle}.sig"
+  cp "$updater_bundle" "release-assets-mac/${asset_prefix}.app.tar.gz"
+  cp "${updater_bundle}.sig" "release-assets-mac/${asset_prefix}.app.tar.gz.sig"
+fi
+
 (
   cd release-assets-mac
-  shasum --algorithm 256 JudgeDesk_*.dmg JudgeDesk.app.tar.gz \
-    > SHA256SUMS-macos
+  find . -maxdepth 1 -type f ! -name '*.sig' ! -name 'SHA256SUMS-macos' \
+    -print | sort | xargs shasum --algorithm 256 > SHA256SUMS-macos
 )
 
-echo "Apple Silicon DMG and updater bundle passed packaged smoke tests."
+echo "Apple Silicon ${distribution_variant} bundle passed packaged smoke tests and was staged."

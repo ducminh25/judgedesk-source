@@ -1,4 +1,4 @@
-name: Build and Publish Release
+name: Verify Release Source
 
 on:
   push:
@@ -10,12 +10,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-source-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   verify:
+    name: Verify tagged source
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -25,193 +27,22 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - run: npm ci
-      - name: Verify version, types, tests and Rust formatting
+      - run: npm ci --no-audit --no-fund
+      - name: Verify version, types, tests, builds and Rust formatting
         run: |
           npm run release:check-version
           npm run lint
+          npm run test:update-ui
           npm run test:server
+          npm run build:frontend
+          npm run build:server
+          npm run test:executor
           cargo fmt --check --manifest-path src-tauri/Cargo.toml
+          cargo fmt --check --manifest-path native-executor/Cargo.toml
+          cargo test --locked --manifest-path src-tauri/Cargo.toml
 
-  build-windows-sidecar:
-    needs: verify
-    runs-on: windows-2022
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Build Windows x64 sidecar
-        run: npm run build:server
-        env:
-          TAURI_TARGET: x86_64-pc-windows-msvc
-      - uses: actions/upload-artifact@v4
-        with:
-          name: server-windows-x64
-          path: src-tauri/binaries/server-x86_64-pc-windows-msvc.exe
-          if-no-files-found: error
-          retention-days: 7
-
-  build-macos-arm64-dmg:
-    needs: verify
-    runs-on: macos-15
-    env:
-      MACOSX_DEPLOYMENT_TARGET: "11.0"
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-darwin
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - name: Require the updater signing key
-        run: |
-          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-            echo "TAURI_SIGNING_PRIVATE_KEY is required to create signed updater artifacts." >&2
-            exit 1
-          fi
-      - name: Build and smoke-test Apple Silicon sidecar
-        run: bash scripts/build-macos-arm64-sidecar.sh
-      - name: Build Apple Silicon app, DMG, and updater bundle
-        run: |
-          unset APPLE_SIGNING_IDENTITY APPLE_API_ISSUER APPLE_API_KEY
-          npx tauri build --config src-tauri/tauri.macos.conf.json --target aarch64-apple-darwin
-      - name: Verify and stage Apple Silicon release artifacts
-        run: bash scripts/verify-macos-arm64-bundle.sh
-      - uses: actions/upload-artifact@v4
-        with:
-          name: mac-package
-          path: release-assets-mac/*
-          if-no-files-found: error
-          retention-days: 14
-
-  build-windows-msi:
-    needs: build-windows-sidecar
-    runs-on: windows-2022
-    env:
-      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-      WINDOWS_CERTIFICATE_THUMBPRINT: ${{ secrets.WINDOWS_CERTIFICATE_THUMBPRINT }}
-      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: server-windows-x64
-          path: src-tauri/binaries
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-
-      - name: Require the updater signing key
-        shell: pwsh
-        run: |
-          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
-            throw "TAURI_SIGNING_PRIVATE_KEY is required to create signed updater artifacts."
-          }
-
-      - name: Import Windows certificate and configure Tauri signing
-        shell: pwsh
-        run: |
-          if (-not $env:WINDOWS_CERTIFICATE) {
-            "WINDOWS_SIGNED=false" | Out-File -FilePath $env:GITHUB_ENV -Append
-            Write-Warning "Building an unsigned MSI. The GitHub Release will remain a draft."
-            exit 0
-          }
-          if (-not $env:WINDOWS_CERTIFICATE_PASSWORD -or -not $env:WINDOWS_CERTIFICATE_THUMBPRINT) {
-            throw "WINDOWS_CERTIFICATE_PASSWORD and WINDOWS_CERTIFICATE_THUMBPRINT are required when WINDOWS_CERTIFICATE is set."
-          }
-          $certificatePath = Join-Path $env:RUNNER_TEMP 'themis-signing.pfx'
-          [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
-          Import-PfxCertificate -FilePath $certificatePath -CertStoreLocation Cert:\CurrentUser\My -Password (ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force) | Out-Null
-
-          $configPath = 'src-tauri/tauri.windows.conf.json'
-          $config = Get-Content $configPath -Raw | ConvertFrom-Json
-          $config.bundle.windows | Add-Member -NotePropertyName certificateThumbprint -NotePropertyValue $env:WINDOWS_CERTIFICATE_THUMBPRINT -Force
-          $config.bundle.windows | Add-Member -NotePropertyName digestAlgorithm -NotePropertyValue 'sha256' -Force
-          $config.bundle.windows | Add-Member -NotePropertyName timestampUrl -NotePropertyValue 'http://timestamp.digicert.com' -Force
-          $config | ConvertTo-Json -Depth 20 | Set-Content -Encoding utf8 $configPath
-
-          $signTool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe | Where-Object FullName -Match '\\x64\\signtool.exe$' | Sort-Object FullName | Select-Object -Last 1
-          if (-not $signTool) { throw 'signtool.exe was not found on the runner.' }
-          & $signTool.FullName sign /sha1 $env:WINDOWS_CERTIFICATE_THUMBPRINT /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 src-tauri/binaries/server-x86_64-pc-windows-msvc.exe
-          if ($LASTEXITCODE -ne 0) { throw 'Windows sidecar signing failed.' }
-          "WINDOWS_SIGNED=true" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Build MSI
-        run: npx tauri build --config src-tauri/tauri.windows.conf.json --target x86_64-pc-windows-msvc
-
-      - name: Verify MSI signature when signing is configured
-        shell: pwsh
-        run: |
-          $msi = Get-ChildItem src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/JudgeDesk_*.msi | Select-Object -First 1
-          if (-not $msi) { throw 'MSI output was not created.' }
-          $signature = Get-AuthenticodeSignature $msi.FullName
-          $signature | Format-List Status,StatusMessage,SignerCertificate
-          if ($env:WINDOWS_SIGNED -eq 'true' -and $signature.Status -ne 'Valid') { throw 'MSI signature verification failed.' }
-
-      - name: Stage Windows release artifacts
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force release-assets-windows | Out-Null
-          Copy-Item src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/JudgeDesk_*.msi release-assets-windows/
-          Copy-Item src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/JudgeDesk_*.msi.sig release-assets-windows/
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: msi-package
-          path: release-assets-windows/*
-          if-no-files-found: error
-          retention-days: 14
-
-  release:
-    needs: [build-windows-msi, build-macos-arm64-dmg]
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    env:
-      PUBLIC_RELEASE_REPOSITORY: ducminh25/judgedesk
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: msi-package
-          path: release-assets
-      - uses: actions/download-artifact@v4
-        with:
-          name: mac-package
-          path: release-assets
-      - name: Generate the signed static updater manifest
-        run: node scripts/generate-updater-manifest.js release-assets
-      - name: Compute release checksums
-        run: |
-          cd release-assets
-          find . -maxdepth 1 -type f ! -name '*.sig' ! -name 'SHA256SUMS' -printf '%f\n' | sort | xargs sha256sum > SHA256SUMS
-          cat SHA256SUMS
-      - name: Create or update draft GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.PUBLIC_RELEASE_TOKEN || github.token }}
-        run: |
-          if [ -z "$GH_TOKEN" ]; then
-            echo "PUBLIC_RELEASE_TOKEN is required to publish to $PUBLIC_RELEASE_REPOSITORY." >&2
-            exit 1
-          fi
-          if gh release view "$GITHUB_REF_NAME" --repo "$PUBLIC_RELEASE_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" release-assets/* --clobber --repo "$PUBLIC_RELEASE_REPOSITORY"
-          else
-            gh release create "$GITHUB_REF_NAME" release-assets/* --draft --generate-notes --title "JudgeDesk $GITHUB_REF_NAME" --repo "$PUBLIC_RELEASE_REPOSITORY"
-          fi
+# Final installers are intentionally assembled outside this workflow:
+# - Windows Core/Full are built on the validated Windows host and updater-signed
+#   by the CodeMagic windows-updater-signing workflow.
+# - macOS Apple Silicon Core/Full are built by CodeMagic macos-arm64-release.
+# - The verified artifacts are uploaded to the public ducminh25/judgedesk repo.

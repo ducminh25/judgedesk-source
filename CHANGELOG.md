@@ -5,15 +5,66 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 ## [Unreleased]
 
-### Repository và phân phối
+## [1.3.0] - 2026-08-01
+
+### Chấm bài đa ngôn ngữ
+
+- Bổ sung registry có version cho C++, C, Python, Pascal và Java; mỗi ngôn ngữ
+  công khai rõ trạng thái `Không tìm thấy`, `Chỉ dùng để dịch máy chấm` hoặc
+  `Sẵn sàng chấm` và không fallback âm thầm khi nguồn đã chọn không khả dụng.
+- Thêm lựa chọn nguồn cố định `None`, `Managed by toolchain`, `Local (path)` và
+  `Local (auto-detect)`. Auto-detect nhanh chỉ tự chạy trong lần thiết lập đầu;
+  các lần sau người dùng chủ động bấm quét lại.
+- C và C++ giữ bộ cờ thi đấu tương thích Themis theo từng nền tảng; Python chạy
+  qua managed interpreter khi chấm submission; Pascal dùng FPC và Java dùng
+  Temurin JDK đã ghim phiên bản.
+- Mọi custom checker C++, C, Python, Pascal và Java đi qua cùng native secure
+  executor, giới hạn tài nguyên và cleanup contract như submission.
+
+### Core, Full và managed toolchain
+
+- Phát hành riêng Core và Full cho Windows x64 và macOS Apple Silicon. Full
+  tích hợp toàn bộ managed package được duyệt; Core tải đúng các gói đã ký từ
+  public repository khi cần.
+- Thêm manifest v2 ký Ed25519, SHA-256 bắt buộc, metadata package nghiêm ngặt,
+  chống path traversal/symlink escape và probe thật trước khi gói được đánh dấu
+  sẵn sàng.
+- Windows Full kèm GCC 14.2, Python 3.12.13, FPC 3.2.2, Temurin 21 và WebView2
+  offline. macOS Full kèm Python/FPC/Temurin ARM64; C/C++ dùng Apple Clang đã
+  kiểm tra nhanh từ Xcode Command Line Tools.
+- Tối ưu clone cache compiler/runtime và snapshot nội bộ để giảm overhead mỗi
+  lượt chấm mà vẫn giữ workspace, quyền thực thi và package identity tách biệt.
+
+### Native protection và vòng đời tiến trình
+
+- Hoàn thiện single-instance: mở JudgeDesk lần hai sẽ chuyển focus về cửa sổ
+  đang chạy thay vì tạo thêm backend hoặc lượt chấm chồng chéo.
+- Siết giám sát backend, process group và run guardian trên macOS; fail closed
+  khi không thiết lập được containment, cleanup hoặc generation guard.
+- Mở rộng secure execution cho C, Pascal và Java; chuẩn hóa timeout khởi động
+  compiler lạnh, chẩn đoán lỗi guardian và cleanup sau hủy/chấm xong.
+- Sửa các trường hợp FPC/macOS cần đúng SDK, linker script và utility hệ thống;
+  giảm false positive Defender từ binary Pascal mà không nới sandbox.
+
+### Giao diện và vận hành
+
+- Thêm màn hình quản lý compiler/runtime và thiết lập lần đầu bằng tiếng
+  Việt/tiếng Anh, với thao tác cài, áp dụng, gỡ managed package hoặc chọn đường
+  dẫn local rõ ràng.
+- Nút kiểm tra/tải bản cập nhật trên toolbar có chữ hiển thị trực tiếp, vùng bấm
+  lớn hơn, tiến độ tải, trạng thái lỗi và thao tác thử lại dễ nhận biết.
+- Sửa discovery snapshot bị cũ sau khi cài Full, đường dẫn resource Windows và
+  giá trị mặc định để năm ngôn ngữ sẵn sàng ngay sau cài đặt hợp lệ.
+
+### Repository, phát hành và kiểm thử
 
 - Chuyển mã nguồn sang repository private `ducminh25/judgedesk-source`; giữ
   `ducminh25/judgedesk` làm repository công khai cho bộ cài, hướng dẫn, hỗ trợ,
   updater manifest và managed toolchain.
-- Workflow toolchain v2 trong source private phát hành chéo sang repository
-  công khai bằng credential riêng, không dùng nhầm `github.repository`.
-- Nút kiểm tra/tải bản cập nhật trên toolbar có nhãn tiếng Việt/tiếng Anh hiển
-  thị trực tiếp và vùng bấm lớn hơn.
+- Workflow toolchain v2 phát hành chéo bằng credential riêng; release pipeline
+  tạo Core/Full có tên artifact riêng và chỉ dùng Full làm updater chuẩn.
+- Bổ sung gate thật cho package, C/Pascal/Java/Python, custom checker, resource
+  limit, single-instance, macOS process supervisor và packaged Full app.
 
 ## [1.2.7] - 2026-07-27
 
@@ -213,3 +264,4 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 [1.2.4]: https://github.com/ducminh25/judgedesk/releases/tag/v1.2.4
 [1.2.6]: https://github.com/ducminh25/judgedesk/releases/tag/v1.2.6
 [1.2.7]: https://github.com/ducminh25/judgedesk/releases/tag/v1.2.7
+[1.3.0]: https://github.com/ducminh25/judgedesk/releases/tag/v1.3.0

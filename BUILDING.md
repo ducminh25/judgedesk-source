@@ -88,22 +88,20 @@ private updater signing key. For a faster executable-only smoke test, run
 x86_64-pc-windows-msvc`; the executable is created in the target release
 directory.
 
-The supported macOS release is Apple Silicon (`aarch64-apple-darwin`). It is
-built and smoke-tested on a macOS runner by GitHub Actions and Codemagic. The
-workflow verifies the app and sidecar architectures, code signatures,
-entitlements, DMG contents, updater bundle, and a real sidecar HTTP startup.
-Use the existing `workflow_dispatch` action on a branch to produce test
-artifacts without publishing a release. A local M-series Mac can use
-`bash scripts/build-macos-arm64-sidecar.sh` followed by the Tauri build command
-from `.github/workflows/release.yml`.
+The supported macOS release is Apple Silicon (`aarch64-apple-darwin`). Final
+Core and Full bundles are built and smoke-tested by CodeMagic workflow
+`macos-arm64-release`. The workflow verifies the app and sidecar architectures,
+code signatures, entitlements, DMG contents, Full updater bundle and real
+sidecar/compiler/runtime startup. A local M-series Mac may use
+`npm run build:macos:core:local` or `npm run build:macos:full:local` for a test
+bundle, but those artifacts are not the final public release.
 
-`src-tauri/tauri.macos.conf.json` is the updater-capable distribution
-configuration. The current CodeMagic workflow requires the existing Tauri
-updater private key, produces the DMG plus signed updater tarball, and validates
-architectures, code-signing structure, entitlements, sidecar startup, compiler,
-executor and Managed Python behavior. It does not require or claim Developer ID
-or Apple notarization by default; public/free DMG users may need to approve the
-app manually in Gatekeeper after verifying its checksum and source.
+`src-tauri/tauri.macos.core.conf.json` disables updater artifact creation;
+`src-tauri/tauri.macos.full.conf.json` creates the canonical signed updater
+tarball. The CodeMagic workflow requires the existing Tauri updater private key
+and stages distinct `_core_`/`_full_` names. It does not require or claim
+Developer ID or Apple notarization by default; public/free DMG users may need to
+approve the app manually in Gatekeeper after verifying its checksum and source.
 
 Set `JUDGEDESK_REQUIRE_NOTARIZATION=1` only in a separately configured
 Developer ID/notarization pipeline. Keep the source/native checks before the
@@ -124,6 +122,17 @@ Free Pascal and Temurin Java. The Apple Silicon packages cover CPython, Free
 Pascal and Temurin Java; C/C++ uses the compatible Apple Clang installation.
 First-launch discovery is deliberately quick and does not run the historical
 multi-minute certification suite.
+
+On Windows, build both final local candidates with:
+
+```powershell
+npm run build:windows:release:local
+```
+
+This stages distinct Core/Full MSIs under `release-assets-windows`. The Core
+configuration uses the WebView2 download bootstrapper; Full uses the offline
+WebView2 installer. Tauri updater signatures are added later by CodeMagic and
+must not be confused with Windows Authenticode signing.
 
 Installed packages are stored in:
 

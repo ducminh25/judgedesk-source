@@ -252,34 +252,37 @@ test("sidecar smoke tests reproduce Tauri resource path spelling on Windows", ()
   );
 });
 
-test("GitHub release workflow builds Apple Silicon only", () => {
+test("GitHub release workflow verifies tagged source without building platform artifacts", () => {
   const workflow = fs.readFileSync(
     new URL("../.github/workflows/release.yml", import.meta.url),
     "utf8",
   );
-  const macJob = workflow.slice(
-    workflow.indexOf("  build-macos-arm64-dmg:"),
-    workflow.indexOf("  build-windows-msi:"),
-  );
 
-  assert.match(macJob, /--target aarch64-apple-darwin/);
-  assert.match(macJob, /build-macos-arm64-sidecar\.sh/);
-  assert.match(macJob, /verify-macos-arm64-bundle\.sh/);
-  assert.doesNotMatch(workflow, /build-macos-universal-dmg/);
-  assert.doesNotMatch(workflow, /x86_64-apple-darwin/);
-  assert.match(
-    workflow,
-    /needs: \[build-windows-msi, build-macos-arm64-dmg\]/,
-  );
+  assert.match(workflow, /name: Verify Release Source/);
+  assert.match(workflow, /tags:\s+\- "v\*"/);
+  assert.match(workflow, /npm run release:check-version/);
+  assert.match(workflow, /npm run test:server/);
+  assert.match(workflow, /cargo fmt --check --manifest-path native-executor\/Cargo\.toml/);
+  assert.doesNotMatch(workflow, /tauri build/);
+  assert.doesNotMatch(workflow, /gh release (create|upload)/);
+  assert.doesNotMatch(workflow, /contents: write/);
 
-  const macConfig = JSON.parse(
+  const coreMacConfig = JSON.parse(
     fs.readFileSync(
-      new URL("../src-tauri/tauri.macos.conf.json", import.meta.url),
+      new URL("../src-tauri/tauri.macos.core.conf.json", import.meta.url),
       "utf8",
     ),
   );
-  assert.deepEqual(macConfig.bundle.targets, ["app", "dmg"]);
-  assert.equal(macConfig.bundle.macOS.entitlements, "./Entitlements.plist");
+  const fullMacConfig = JSON.parse(
+    fs.readFileSync(
+      new URL("../src-tauri/tauri.macos.full.conf.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.deepEqual(coreMacConfig.bundle.targets, ["app", "dmg"]);
+  assert.equal(coreMacConfig.bundle.createUpdaterArtifacts, false);
+  assert.equal(fullMacConfig.bundle.createUpdaterArtifacts, true);
+  assert.equal(fullMacConfig.bundle.macOS.entitlements, "./Entitlements.plist");
   const localMacConfig = JSON.parse(
     fs.readFileSync(
       new URL("../src-tauri/tauri.macos.local.conf.json", import.meta.url),
@@ -466,47 +469,45 @@ test("macOS executor benchmark establishes its guard before loading the client",
   assert.match(benchmark, /releaseMacosTreeGuard\(ownedMacosTreeGuard\)/);
 });
 
-test("release publishing targets the public distribution repository", () => {
+test("signed toolchain publication targets the public distribution repository", () => {
   const workflow = fs.readFileSync(
-    new URL("../.github/workflows/release.yml", import.meta.url),
+    new URL("../.github/workflows/toolchains.yml", import.meta.url),
     "utf8",
   );
-  const releaseJob = workflow.slice(workflow.indexOf("  release:"));
+  const publishJob = workflow.slice(workflow.indexOf("  publish:"));
 
-  assert.match(
-    releaseJob,
-    /PUBLIC_RELEASE_REPOSITORY: ducminh25\/judgedesk/,
-  );
-  assert.match(releaseJob, /GH_TOKEN: \$\{\{ secrets\.PUBLIC_RELEASE_TOKEN \|\| github\.token \}\}/);
-  assert.match(
-    releaseJob,
-    /gh release view[^\n]+--repo "\$PUBLIC_RELEASE_REPOSITORY"/,
-  );
-  assert.match(
-    releaseJob,
-    /gh release upload[^\n]+--repo "\$PUBLIC_RELEASE_REPOSITORY"/,
-  );
-  assert.match(
-    releaseJob,
-    /gh release create[^\n]+--repo "\$PUBLIC_RELEASE_REPOSITORY"/,
-  );
+  assert.match(workflow, /PUBLIC_RELEASE_REPOSITORY: ducminh25\/judgedesk/);
+  assert.match(workflow, /TOOLCHAIN_RELEASE_TAG: toolchains-v2/);
+  assert.match(publishJob, /GH_TOKEN: \$\{\{ secrets\.PUBLIC_RELEASE_TOKEN \}\}/);
+  assert.match(publishJob, /TOOLCHAIN_MANIFEST_SIGNING_PRIVATE_KEY_B64/);
+  assert.match(publishJob, /gh release upload "\$TOOLCHAIN_RELEASE_TAG" dist-toolchains\/\*/);
+  assert.match(publishJob, /--repo "\$PUBLIC_RELEASE_REPOSITORY"/);
 });
 
-test("release workflow signs, flattens, and publishes updater artifacts", () => {
-  const workflow = fs.readFileSync(
-    new URL("../.github/workflows/release.yml", import.meta.url),
+test("release contracts stage Core and Full while updater selection remains Full-only", () => {
+  const codemagic = fs.readFileSync(
+    new URL("../codemagic.yaml", import.meta.url),
     "utf8",
   );
   const macBundleScript = fs.readFileSync(
     new URL("./verify-macos-arm64-bundle.sh", import.meta.url),
     "utf8",
   );
-  assert.match(workflow, /TAURI_SIGNING_PRIVATE_KEY: \$\{\{ secrets\.TAURI_SIGNING_PRIVATE_KEY \}\}/);
-  assert.match(workflow, /release-assets-windows\/\*/);
-  assert.match(workflow, /release-assets-mac\/\*/);
+  const updaterManifest = fs.readFileSync(
+    new URL("./generate-updater-manifest.js", import.meta.url),
+    "utf8",
+  );
+  assert.match(codemagic, /TAURI_SIGNING_PRIVATE_KEY/);
+  assert.match(codemagic, /JudgeDesk_\*_core_aarch64\.dmg/);
+  assert.match(codemagic, /JudgeDesk_\*_full_aarch64\.dmg/);
+  assert.match(codemagic, /JudgeDesk_\*_full_aarch64\.app\.tar\.gz\.sig/);
+  assert.match(codemagic, /JudgeDesk_\$\{version\}_\$\{variant\}_x64_en-US\.msi/);
   assert.match(macBundleScript, /\.app\.tar\.gz\.sig/);
-  assert.match(workflow, /generate-updater-manifest\.js release-assets/);
-  assert.match(workflow, /gh release upload[^\n]+release-assets\/\*/);
+  assert.match(macBundleScript, /distribution_variant.*core \| full/s);
+  assert.match(macBundleScript, /Expected exactly one JudgeDesk DMG/);
+  assert.match(macBundleScript, /Expected exactly one macOS updater bundle/);
+  assert.match(updaterManifest, /JudgeDesk_\$\{version\}_full_x64_en-US\.msi/);
+  assert.match(updaterManifest, /JudgeDesk_\$\{version\}_full_aarch64\.app\.tar\.gz/);
 });
 
 test("Codemagic builds verified Apple Silicon release artifacts on M2", () => {
@@ -531,7 +532,18 @@ test("Codemagic builds verified Apple Silicon release artifacts on M2", () => {
   assert.match(codemagic, />> "\$CM_ENV"/);
   assert.match(codemagic, /--target aarch64-apple-darwin/);
   assert.match(codemagic, /TAURI_SIGNING_PRIVATE_KEY_PASSWORD/);
-  assert.match(codemagic, /JudgeDesk\.app\.tar\.gz\.sig/);
+  assert.match(codemagic, /JudgeDesk_\*_core_aarch64\.dmg/);
+  assert.match(codemagic, /JudgeDesk_\*_full_aarch64\.dmg/);
+  assert.match(codemagic, /JudgeDesk_\*_full_aarch64\.app\.tar\.gz\.sig/);
+  assert.match(codemagic, /distribution:sync:core/);
+  assert.match(codemagic, /distribution:sync:full/);
+  assert.match(codemagic, /tauri\.macos\.core\.conf\.json/);
+  assert.match(codemagic, /tauri\.macos\.full\.conf\.json/);
+  assert.match(codemagic, /JUDGEDESK_DISTRIBUTION_VARIANT=core/);
+  assert.match(codemagic, /JUDGEDESK_DISTRIBUTION_VARIANT=full/);
+  assert.match(codemagic, /JUDGEDESK_REAL_LANGUAGE_GATES=pascal,java,python/);
+  assert.match(codemagic, /test:macos-packaged-checkers/);
+  assert.match(codemagic, /test:macos-process-supervisor/);
   assert.match(sidecarScript, /TAURI_TARGET=aarch64-apple-darwin/);
   assert.doesNotMatch(sidecarScript, /x86_64/);
   assert.match(sidecarScript, /smoke-test-macos-compiler\.ts/);
@@ -540,23 +552,26 @@ test("Codemagic builds verified Apple Silicon release artifacts on M2", () => {
   assert.match(bundleScript, /smoke-test-sidecar\.js/);
 });
 
-test("Codemagic builds signed Windows updater artifacts on a Windows VM", () => {
-  const codemagic = fs.readFileSync(
-    new URL("../codemagic.yaml", import.meta.url),
+test("Windows release builder creates distinct local Core and Full candidates", () => {
+  const packageJson = JSON.parse(
+    fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+  );
+  const releaseScript = fs.readFileSync(
+    new URL("./build-windows-release-variants.ps1", import.meta.url),
     "utf8",
   );
-  const windowsWorkflow = codemagic.slice(
-    codemagic.indexOf("  windows-x64-release:"),
-  );
 
-  assert.match(windowsWorkflow, /instance_type: windows_x2/);
-  assert.match(windowsWorkflow, /node: 22\.23\.1/);
-  assert.match(windowsWorkflow, /groups:\s+\- themis_signing/);
-  assert.match(windowsWorkflow, /TAURI_SIGNING_PRIVATE_KEY/);
-  assert.match(windowsWorkflow, /TAURI_TARGET = 'x86_64-pc-windows-msvc'/);
-  assert.match(windowsWorkflow, /tauri\.windows\.conf\.json/);
-  assert.match(windowsWorkflow, /JudgeDesk_\*\.msi\.sig/);
-  assert.match(windowsWorkflow, /SHA256SUMS-windows/);
+  assert.match(packageJson.scripts["build:windows:release:local"], /build-windows-release-variants\.ps1/);
+  assert.match(releaseScript, /foreach \(\$variant in @\("core", "full"\)\)/);
+  assert.match(releaseScript, /tauri\.windows\.\$variant\.local\.conf\.json/);
+  assert.match(releaseScript, /JudgeDesk_\$\{version\}_\$\{variant\}_x64_en-US\.msi/);
+  assert.match(releaseScript, /Get-AuthenticodeSignature/);
+  assert.match(releaseScript, /SHA256SUMS-windows/);
+  assert.match(releaseScript, /\$repoChildPrefix/);
+  assert.match(
+    releaseScript,
+    /\$outputRoot\.StartsWith\(\$repoChildPrefix,[\s\S]*OrdinalIgnoreCase/,
+  );
 });
 
 test("Codemagic can sign a locally built Windows MSI with the existing updater key", () => {
@@ -571,6 +586,15 @@ test("Codemagic can sign a locally built Windows MSI with the existing updater k
   assert.match(signingWorkflow, /instance_type: mac_mini_m2/);
   assert.match(signingWorkflow, /groups:\s+\- themis_signing/);
   assert.match(signingWorkflow, /v\$\{version\}-staging/);
+  assert.match(signingWorkflow, /for variant in core full/);
+  assert.match(signingWorkflow, /JudgeDesk_\$\{version\}_\$\{variant\}_x64_en-US\.msi/);
+  assert.match(signingWorkflow, /WINDOWS_CORE_MSI_SHA256/);
+  assert.match(signingWorkflow, /WINDOWS_FULL_MSI_SHA256/);
+  assert.ok(
+    signingWorkflow.indexOf("SHA-256 mismatch")
+      < signingWorkflow.indexOf("tauri signer sign"),
+    "staged hashes must be checked before the updater key signs either MSI",
+  );
   assert.match(signingWorkflow, /tauri signer sign/);
   assert.match(signingWorkflow, /JudgeDesk_\*\.msi\.sig/);
 });

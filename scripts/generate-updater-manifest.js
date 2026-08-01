@@ -10,9 +10,20 @@ export function generateUpdaterManifest({
 }) {
   if (!repository || !tag) throw new Error("repository and tag are required");
   const files = fs.readdirSync(assetsDirectory);
-  const windowsBundle = findOne(files, (name) => name.endsWith(".msi"));
-  const macBundle = findOne(files, (name) => name.endsWith(".app.tar.gz"));
   const version = tag.startsWith("v") ? tag.slice(1) : tag;
+  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
+    throw new Error(`Invalid updater tag: ${tag}`);
+  }
+  const windowsBundle = requireArtifact(
+    files,
+    `JudgeDesk_${version}_full_x64_en-US.msi`,
+    "Windows Full updater MSI",
+  );
+  const macBundle = requireArtifact(
+    files,
+    `JudgeDesk_${version}_full_aarch64.app.tar.gz`,
+    "macOS Full updater bundle",
+  );
   const releaseUrl = `https://github.com/${repository}/releases/download/${encodeURIComponent(tag)}`;
   const platform = (fileName) => ({
     signature: fs
@@ -34,14 +45,13 @@ export function generateUpdaterManifest({
   return { manifest, outputPath };
 }
 
-function findOne(files, predicate) {
-  const matches = files.filter(predicate);
-  if (matches.length !== 1) {
-    throw new Error(`Expected exactly one matching updater bundle, found ${matches.length}`);
+function requireArtifact(files, filename, label) {
+  if (!files.includes(filename)) {
+    throw new Error(`Missing exact ${label}: ${filename}`);
   }
-  const signature = `${matches[0]}.sig`;
+  const signature = `${filename}.sig`;
   if (!files.includes(signature)) throw new Error(`Missing updater signature: ${signature}`);
-  return matches[0];
+  return filename;
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {

@@ -54,10 +54,12 @@ workflows:
           npm ci --no-audit --no-fund
           npm run release:check-version
           npm run lint
+          npm run test:update-ui
           npm run test:server
           npm run build:frontend
           cargo fmt --check --manifest-path src-tauri/Cargo.toml
           cargo fmt --check --manifest-path native-executor/Cargo.toml
+          cargo test --locked --manifest-path src-tauri/Cargo.toml
       - name: Install the Apple Silicon Rust target
         script: |
           set -euo pipefail
@@ -66,94 +68,67 @@ workflows:
         script: |
           set -euo pipefail
           bash scripts/build-macos-arm64-sidecar.sh
-      - name: Build Apple Silicon app, DMG, and updater bundle
+      - name: Prepare Core distribution resources
+        script: |
+          set -euo pipefail
+          npm run distribution:sync:core
+      - name: Build Apple Silicon Core app and DMG
         script: |
           set -euo pipefail
           export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
+          rm -rf src-tauri/target/aarch64-apple-darwin/release/bundle
           npx tauri build \
-            --config src-tauri/tauri.macos.conf.json \
+            --config src-tauri/tauri.macos.core.conf.json \
             --target aarch64-apple-darwin
-      - name: Verify and stage macOS release artifacts
+      - name: Verify and stage macOS Core artifact
         script: |
           set -euo pipefail
-          bash scripts/verify-macos-arm64-bundle.sh
+          rm -rf release-assets-mac
+          JUDGEDESK_DISTRIBUTION_VARIANT=core bash scripts/verify-macos-arm64-bundle.sh
+      - name: Prepare Full distribution resources
+        script: |
+          set -euo pipefail
+          npm run distribution:sync:full
+      - name: Build Apple Silicon Full app, DMG, and updater bundle
+        script: |
+          set -euo pipefail
+          export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
+          rm -rf src-tauri/target/aarch64-apple-darwin/release/bundle
+          npx tauri build \
+            --config src-tauri/tauri.macos.full.conf.json \
+            --target aarch64-apple-darwin
+      - name: Verify and stage macOS Full artifacts
+        script: |
+          set -euo pipefail
+          JUDGEDESK_DISTRIBUTION_VARIANT=full bash scripts/verify-macos-arm64-bundle.sh
+          cat release-assets-mac/SHA256SUMS-macos
+      - name: Gate every bundled submission language in the packaged secure runner
+        script: |
+          set -euo pipefail
+          app="src-tauri/target/aarch64-apple-darwin/release/bundle/macos/JudgeDesk.app"
+          resources="$app/Contents/Resources"
+          test -x "$app/Contents/MacOS/judgedesk-executor"
+          test -d "$resources/toolchains"
+          export THEMIS_RESOURCE_DIR="$resources"
+          export JUDGEDESK_EXECUTOR_PATH="$app/Contents/MacOS/judgedesk-executor"
+          export JUDGEDESK_REAL_TOOLCHAIN_GATES=1
+          export JUDGEDESK_REAL_TOOLCHAIN_GATE_ROOT="$resources/toolchains"
+          export JUDGEDESK_REAL_TOOLCHAIN_GATE_ORIGIN=built-in
+          export JUDGEDESK_REAL_LANGUAGE_GATES=pascal,java,python
+          npx tsx --test server/judge/c-submission.gate.test.ts
+          npx tsx --test server/judge/multi-language.gate.test.ts
+          npx tsx --test server/judge/custom-checker.gate.test.ts
+      - name: Gate packaged custom checkers, cancellation, and process supervision
+        script: |
+          set -euo pipefail
+          npm run test:macos-packaged-checkers
+          npm run test:macos-process-supervisor
     artifacts:
-      - release-assets-mac/JudgeDesk_*.dmg
-      - release-assets-mac/JudgeDesk.app.tar.gz
-      - release-assets-mac/JudgeDesk.app.tar.gz.sig
+      - release-assets-mac/JudgeDesk_*_core_aarch64.dmg
+      - release-assets-mac/JudgeDesk_*_full_aarch64.dmg
+      - release-assets-mac/JudgeDesk_*_full_aarch64.app.tar.gz
+      - release-assets-mac/JudgeDesk_*_full_aarch64.app.tar.gz.sig
       - release-assets-mac/SHA256SUMS-macos
-
-  windows-x64-release:
-    name: JudgeDesk Windows x64 release
-    instance_type: windows_x2
-    max_build_duration: 120
-    environment:
-      groups:
-        - themis_signing
-      node: 22.23.1
-    cache:
-      cache_paths:
-        - $HOME/.npm
-        - $HOME/.cargo/registry
-        - $HOME/.cargo/git
-        - src-tauri/target
-    scripts:
-      - name: Install Rust toolchain
-        script: |
-          $ErrorActionPreference = 'Stop'
-          Invoke-WebRequest https://win.rustup.rs/x86_64 -OutFile rustup-init.exe
-          & .\rustup-init.exe -y --profile minimal --default-toolchain stable --default-host x86_64-pc-windows-msvc
-          $env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
-          rustup component add rustfmt
-      - name: Install and verify source
-        script: |
-          $ErrorActionPreference = 'Stop'
-          $env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
-          npm ci --no-audit --no-fund
-          npm run release:check-version
-          npm run lint
-          npm run test:server
-          cargo fmt --check --manifest-path src-tauri/Cargo.toml
-      - name: Require the updater signing key
-        script: |
-          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
-            throw 'Add TAURI_SIGNING_PRIVATE_KEY to the themis_signing variable group.'
-          }
-      - name: Build Windows x64 sidecar, MSI, and updater bundle
-        script: |
-          $ErrorActionPreference = 'Stop'
-          $env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
-          $env:TAURI_TARGET = 'x86_64-pc-windows-msvc'
-          if ($null -eq $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD) {
-            $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ''
-          }
-          npm run build:server
-          npx tauri build --config src-tauri/tauri.windows.conf.json --target x86_64-pc-windows-msvc
-      - name: Verify and stage Windows release artifacts
-        script: |
-          $ErrorActionPreference = 'Stop'
-          $bundleDirectory = 'src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi'
-          $msi = Get-ChildItem "$bundleDirectory/JudgeDesk_*.msi" | Select-Object -First 1
-          if (-not $msi) { throw 'MSI output was not created.' }
-          $signaturePath = "$($msi.FullName).sig"
-          if (-not (Test-Path $signaturePath)) { throw 'Signed MSI updater artifact was not created.' }
-          $authenticode = Get-AuthenticodeSignature $msi.FullName
-          $authenticode | Format-List Status,StatusMessage,SignerCertificate
-          New-Item -ItemType Directory -Force release-assets-windows | Out-Null
-          Copy-Item $msi.FullName release-assets-windows/
-          Copy-Item $signaturePath release-assets-windows/
-          Get-ChildItem release-assets-windows -File |
-            Where-Object { $_.Extension -ne '.sig' } |
-            Sort-Object Name |
-            ForEach-Object {
-              $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-              "$hash  $($_.Name)"
-            } | Set-Content release-assets-windows/SHA256SUMS-windows -Encoding ascii
-          Get-Content release-assets-windows/SHA256SUMS-windows
-    artifacts:
-      - release-assets-windows/JudgeDesk_*.msi
-      - release-assets-windows/JudgeDesk_*.msi.sig
-      - release-assets-windows/SHA256SUMS-windows
 
   windows-updater-signing:
     name: JudgeDesk Windows updater signing
@@ -170,21 +145,48 @@ workflows:
         script: |
           set -euo pipefail
           if [[ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]]; then
-            echo "Add TAURI_SIGNING_PRIVATE_KEY to the themis_signing variable group." >&2
+            echo "Missing required signing input: TAURI_SIGNING_PRIVATE_KEY" >&2
+            exit 1
+          fi
+          if [[ -z "${WINDOWS_CORE_MSI_SHA256:-}" ]]; then
+            echo "Missing required signing input: WINDOWS_CORE_MSI_SHA256" >&2
+            exit 1
+          fi
+          if [[ -z "${WINDOWS_FULL_MSI_SHA256:-}" ]]; then
+            echo "Missing required signing input: WINDOWS_FULL_MSI_SHA256" >&2
             exit 1
           fi
           version="$(node -p "require('./package.json').version")"
-          msi_name="JudgeDesk_${version}_x64_en-US.msi"
           staging_tag="v${version}-staging"
-          staging_url="https://github.com/ducminh25/judgedesk/releases/download/${staging_tag}/${msi_name}"
           mkdir -p release-assets-windows
-          curl --proto '=https' --tlsv1.2 -fL "$staging_url" -o "release-assets-windows/$msi_name"
           export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}"
-          npx tauri signer sign "release-assets-windows/$msi_name"
-          test -s "release-assets-windows/$msi_name.sig"
+          for variant in core full; do
+            msi_name="JudgeDesk_${version}_${variant}_x64_en-US.msi"
+            staging_url="https://github.com/ducminh25/judgedesk/releases/download/${staging_tag}/${msi_name}"
+            curl --proto '=https' --tlsv1.2 -fL "$staging_url" -o "release-assets-windows/$msi_name"
+            case "$variant" in
+              core) expected="$WINDOWS_CORE_MSI_SHA256" ;;
+              full) expected="$WINDOWS_FULL_MSI_SHA256" ;;
+            esac
+            expected="$(printf '%s' "$expected" | tr '[:upper:]' '[:lower:]')"
+            if ! [[ "$expected" =~ ^[0-9a-f]{64}$ ]]; then
+              echo "Invalid expected SHA-256 for $msi_name." >&2
+              exit 1
+            fi
+            actual="$(shasum -a 256 "release-assets-windows/$msi_name" | awk '{print $1}')"
+            if [[ "$actual" != "$expected" ]]; then
+              echo "Staged MSI SHA-256 mismatch for $msi_name." >&2
+              exit 1
+            fi
+          done
+          for variant in core full; do
+            msi_name="JudgeDesk_${version}_${variant}_x64_en-US.msi"
+            npx tauri signer sign "release-assets-windows/$msi_name"
+            test -s "release-assets-windows/$msi_name.sig"
+          done
           (
             cd release-assets-windows
-            shasum -a 256 "$msi_name" > SHA256SUMS-windows
+            shasum -a 256 JudgeDesk_*.msi > SHA256SUMS-windows
             cat SHA256SUMS-windows
           )
     artifacts:
