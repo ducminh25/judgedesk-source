@@ -281,7 +281,9 @@ test("GitHub release workflow verifies tagged source without building platform a
   );
   assert.deepEqual(coreMacConfig.bundle.targets, ["app", "dmg"]);
   assert.equal(coreMacConfig.bundle.createUpdaterArtifacts, false);
+  assert.equal(coreMacConfig.bundle.macOS.signingIdentity, "-");
   assert.equal(fullMacConfig.bundle.createUpdaterArtifacts, true);
+  assert.equal(fullMacConfig.bundle.macOS.signingIdentity, "-");
   assert.equal(fullMacConfig.bundle.macOS.entitlements, "./Entitlements.plist");
   const localMacConfig = JSON.parse(
     fs.readFileSync(
