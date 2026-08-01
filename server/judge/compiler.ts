@@ -88,6 +88,7 @@ export interface CompiledChecker {
   path: string | null;
   runtime?: "native" | "python";
   pythonExecutablePath?: string;
+  pythonToolchain?: Readonly<ResolvedToolchain>;
   error?: string;
 }
 
@@ -183,6 +184,7 @@ export async function resolveChecker(options: ResolveCheckerOptions): Promise<Co
         path: checkerPath,
         runtime: "python",
         pythonExecutablePath: pythonExecutionPath,
+        pythonToolchain: python,
       };
     } catch (error) {
       return {

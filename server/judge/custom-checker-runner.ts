@@ -8,6 +8,7 @@ import {
   runReservedExecutor,
 } from "../jobs.js";
 import type { TestVerdict } from "../types.js";
+import type { ResolvedToolchain } from "../toolchains/types.js";
 import { buildCheckerExecutorRunSpec } from "./execution-request.js";
 import { prepareIsolatedPythonScript } from "./python-runtime.js";
 
@@ -21,6 +22,7 @@ export interface RunCustomCheckerOptions {
   checkerPath: string;
   checkerRuntime: "native" | "python";
   pythonExecutablePath?: string;
+  pythonToolchain?: Readonly<ResolvedToolchain>;
   inputPath: string;
   actualOutputPath: string;
   expectedOutputPath: string;
@@ -57,6 +59,7 @@ export async function runCustomChecker(options: RunCustomCheckerOptions): Promis
           options.checkerPath,
           "checker.py",
           options.pythonExecutablePath,
+          options.pythonToolchain,
         )
       : prepareNativeChecker(workspace, options.checkerPath);
     workspace.stage(options.inputPath, "input.txt");
