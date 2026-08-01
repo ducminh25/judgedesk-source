@@ -381,6 +381,16 @@ test("Apple Silicon release scripts verify architecture, DMG, and sidecar", () =
   assert.match(sidecarScript, /smoke-test-macos-compiler\.ts/);
   assert.match(compilerSmoke, /std::abort\(\)/);
   assert.doesNotMatch(compilerSmoke, /integer-divide-by-zero|runtimeDivisor/);
+  assert.match(compilerSmoke, /findSelectedDarwinCompiler\("cpp"\)/);
+  assert.match(
+    compilerSmoke,
+    /verifyLocalToolchainCandidate\("cpp", compilerPath\)/,
+  );
+  assert.equal(
+    compilerSmoke.match(/toolchains:\s*\{\s*cpp:\s*cppToolchain\s*\}/g)?.length,
+    2,
+  );
+  assert.doesNotMatch(compilerSmoke, /resolveCompilationToolchain/);
   assert.match(sidecarScript, /smoke-test-managed-python\.ts/);
   assert.match(sidecarScript, /JUDGEDESK_SMOKE_INSTALL_MANAGED_PYTHON=1/);
   assert.match(
