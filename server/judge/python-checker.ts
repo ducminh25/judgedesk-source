@@ -7,6 +7,7 @@ import {
   detachExecutorRun,
   runReservedExecutor,
 } from "../jobs.js";
+import type { ResolvedToolchain } from "../toolchains/types.js";
 import { buildCheckerExecutorRunSpec } from "./execution-request.js";
 import { prepareIsolatedPythonRuntime } from "./python-runtime.js";
 
@@ -22,6 +23,7 @@ const CHECKER_DIAGNOSTIC_LIMIT_BYTES = 256 * 1024;
 export async function validatePythonCheckerSource(
   pythonExecutablePath: string,
   checkerPath: string,
+  pythonToolchain: Readonly<ResolvedToolchain>,
   jobId?: string,
 ): Promise<void> {
   const workspace = await createExecutorWorkspace();
@@ -29,7 +31,10 @@ export async function validatePythonCheckerSource(
   try {
     attachExecutorRun(jobId, runId);
     const stagedChecker = workspace.stage(checkerPath, "checker.py");
-    const runtime = await prepareIsolatedPythonRuntime(pythonExecutablePath);
+    const runtime = await prepareIsolatedPythonRuntime(
+      pythonExecutablePath,
+      pythonToolchain,
+    );
     const syntaxCheck = [
       "import pathlib,sys",
       "source=pathlib.Path(sys.argv[1]).read_bytes()",

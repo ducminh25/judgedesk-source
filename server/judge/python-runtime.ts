@@ -83,7 +83,11 @@ export async function prepareIsolatedPythonRuntime(
     ?? await resolveCompilationToolchain("python");
   if (python.kind !== "python") throw new Error("TOOLCHAIN_PYTHON_MISSING");
   if (!python.ready) throw new Error("TOOLCHAIN_PYTHON_MISSING");
-  if (expectedExecutablePath && path.resolve(python.executablePath) !== path.resolve(expectedExecutablePath)) {
+  const resolvedExecutionPath = python.executionPath || python.executablePath;
+  if (
+    expectedExecutablePath
+    && path.resolve(resolvedExecutionPath) !== path.resolve(expectedExecutablePath)
+  ) {
     throw new Error("TOOLCHAIN_PYTHON_MISSING");
   }
   if (python.source !== "managed") throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");

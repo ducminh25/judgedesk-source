@@ -173,7 +173,12 @@ export async function resolveChecker(options: ResolveCheckerOptions): Promise<Co
     }
     try {
       const pythonExecutionPath = python.executionPath || python.executablePath;
-      await validatePythonCheckerSource(pythonExecutionPath, checkerPath, jobId);
+      await validatePythonCheckerSource(
+        pythonExecutionPath,
+        checkerPath,
+        python,
+        jobId,
+      );
       return {
         path: checkerPath,
         runtime: "python",

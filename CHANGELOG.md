@@ -18,8 +18,9 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 - C và C++ giữ bộ cờ thi đấu tương thích Themis theo từng nền tảng; Python chạy
   qua managed interpreter khi chấm submission; Pascal dùng FPC và Java dùng
   Temurin JDK đã ghim phiên bản.
-- Mọi custom checker C++, C, Python, Pascal và Java đi qua cùng native secure
-  executor, giới hạn tài nguyên và cleanup contract như submission.
+- Custom checker C++ và Python đi qua cùng native secure executor, giới hạn tài
+  nguyên và cleanup contract như submission; syntax-check và execution của
+  checker Python được khóa vào cùng managed runtime đã xác minh.
 
 ### Core, Full và managed toolchain
 
