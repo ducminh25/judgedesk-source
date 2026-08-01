@@ -3,11 +3,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { executorClient } from "../server/executor/client.js";
-import { DEFAULT_EXECUTOR_LIMITS } from "../server/executor/protocol.js";
 import {
   createExecutorWorkspace,
   purgeCachedManagedToolchain,
 } from "../server/executor/workspace.js";
+import { buildSubmissionExecutorRunSpec } from "../server/judge/execution-request.js";
 import { prepareIsolatedPythonScript } from "../server/judge/python-runtime.js";
 import { installToolchain } from "../server/toolchains/installer.js";
 import { loadOfficialManifest } from "../server/toolchains/manifest.js";
@@ -53,21 +53,16 @@ try {
     throw new Error(`Managed Python cache escaped the executor root: ${cachedExecutable}`);
   }
 
-  const result = await executorClient.run({
+  const result = await executorClient.run(buildSubmissionExecutorRunSpec({
     runId: `python_smoke_${crypto.randomUUID().replaceAll("-", "_")}`,
-    role: "submission",
     workspaceId: workspace.id,
     executableId: launch.executableId,
     args: launch.args,
-    stdoutFile: "stdout.txt",
-    stderrFile: "stderr.txt",
     environment: launch.environment,
-    limits: {
-      ...DEFAULT_EXECUTOR_LIMITS.submission,
-      wallTimeMs: 2_000,
-      memoryBytes: 128 * 1024 * 1024,
-    },
-  });
+    timeLimitMs: 2_000,
+    memoryBytes: 128 * 1024 * 1024,
+    toolchain: launch.toolchain,
+  }));
   const stdout = fs.readFileSync(path.join(workspace.path, "stdout.txt"), "utf8").trim();
   const stderr = fs.readFileSync(path.join(workspace.path, "stderr.txt"), "utf8").trim();
   if (result.reason !== "exited" || result.exitCode !== 0 || stdout !== "JUDGEDESK_PYTHON_SMOKE:720") {
