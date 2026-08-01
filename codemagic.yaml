@@ -59,7 +59,6 @@ workflows:
           npm run build:frontend
           cargo fmt --check --manifest-path src-tauri/Cargo.toml
           cargo fmt --check --manifest-path native-executor/Cargo.toml
-          cargo test --locked --manifest-path src-tauri/Cargo.toml
       - name: Install the Apple Silicon Rust target
         script: |
           set -euo pipefail
@@ -68,6 +67,10 @@ workflows:
         script: |
           set -euo pipefail
           bash scripts/build-macos-arm64-sidecar.sh
+      - name: Test the Tauri shell with staged Apple Silicon sidecars
+        script: |
+          set -euo pipefail
+          cargo test --locked --manifest-path src-tauri/Cargo.toml
       - name: Prepare Core distribution resources
         script: |
           set -euo pipefail
