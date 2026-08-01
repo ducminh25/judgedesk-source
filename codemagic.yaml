@@ -9,7 +9,7 @@ workflows:
       vars:
         MACOSX_DEPLOYMENT_TARGET: "11.0"
       node: 22.23.1
-      xcode: latest
+      xcode: "26.3"
     cache:
       cache_paths:
         - $HOME/.npm
@@ -42,6 +42,10 @@ workflows:
       - name: Record deterministic build provenance
         script: |
           set -euo pipefail
+          xcodebuild -version
+          selected_compiler="$(xcrun --find clang++)"
+          printf 'Selected Apple Clang: %s\n' "$selected_compiler"
+          "$selected_compiler" --version
           source_epoch="$(git show -s --format=%ct "${CM_COMMIT:-HEAD}")"
           {
             echo "JUDGEDESK_GIT_COMMIT=${CM_COMMIT:-unknown}"
