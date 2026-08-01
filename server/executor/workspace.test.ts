@@ -7,10 +7,53 @@ import { getDescriptorForHost } from "../toolchains/manifest.js";
 import type { ResolvedToolchain } from "../toolchains/types.js";
 import {
   cloneRegularDirectory,
+  executorRelativeCanonicalPath,
   inspectRegularDirectory,
   managedToolchainSourceRoot,
   prepareManagedToolchainExecutable,
 } from "./workspace.js";
+
+test("executor toolchain IDs canonicalize an aliased executor root", (t) => {
+  const temporaryRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "judgedesk-executor-alias-"),
+  );
+  t.after(() => fs.rmSync(temporaryRoot, { recursive: true, force: true }));
+  const canonicalRoot = path.join(temporaryRoot, "private-root");
+  const executablePath = path.join(
+    canonicalRoot,
+    "toolchains",
+    "python-test",
+    "bin",
+    process.platform === "win32" ? "python.exe" : "python3",
+  );
+  fs.mkdirSync(path.dirname(executablePath), { recursive: true });
+  fs.writeFileSync(executablePath, "runtime");
+  const aliasedRoot = path.join(temporaryRoot, "root-alias");
+  try {
+    fs.symlinkSync(
+      canonicalRoot,
+      aliasedRoot,
+      process.platform === "win32" ? "junction" : "dir",
+    );
+  } catch {
+    t.skip("creating a directory alias requires additional privileges");
+    return;
+  }
+
+  assert.equal(
+    executorRelativeCanonicalPath(
+      aliasedRoot,
+      path.join(
+        fs.realpathSync(canonicalRoot),
+        "toolchains",
+        "python-test",
+        "bin",
+        path.basename(executablePath),
+      ),
+    ),
+    `toolchains/python-test/bin/${path.basename(executablePath)}`,
+  );
+});
 
 test("a catalog symlink resolves against its explicit managed package root", (t) => {
   const root = fs.mkdtempSync(
