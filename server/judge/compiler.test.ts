@@ -394,6 +394,7 @@ test("custom checker resolution accepts source files and rejects executables", a
     assert.equal(pythonChecker.path, path.join(root, "checker.py"));
     assert.equal(pythonChecker.runtime, "python");
     assert.ok(pythonChecker.pythonExecutablePath);
+    assert.ok(pythonChecker.pythonToolchain);
   }
   assert.match(
     (await resolveChecker({

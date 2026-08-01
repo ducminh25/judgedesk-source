@@ -156,6 +156,7 @@ export async function runTestCase(options: TestCaseRunnerOptions): Promise<TestC
         checkerPath: options.checker.path,
         checkerRuntime: options.checker.runtime || "native",
         pythonExecutablePath: options.checker.pythonExecutablePath,
+        pythonToolchain: options.checker.pythonToolchain,
         inputPath: options.inputPath,
         actualOutputPath,
         expectedOutputPath: options.expectedOutputPath,

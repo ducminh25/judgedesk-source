@@ -282,10 +282,12 @@ test(
     assert.equal(pythonChecker.runtime, "python");
     assert.ok(pythonChecker.path);
     assert.ok(pythonChecker.pythonExecutablePath);
+    assert.equal(pythonChecker.pythonToolchain, pythonToolchain);
     const pythonResult = await runCustomChecker({
       checkerPath: pythonChecker.path,
       checkerRuntime: "python",
       pythonExecutablePath: pythonChecker.pythonExecutablePath,
+      pythonToolchain: pythonChecker.pythonToolchain,
       inputPath,
       actualOutputPath,
       expectedOutputPath,
@@ -330,11 +332,13 @@ test(
     assert.equal(pythonBoundary.error, undefined, pythonBoundary.error);
     assert.ok(pythonBoundary.path);
     assert.ok(pythonBoundary.pythonExecutablePath);
+    assert.equal(pythonBoundary.pythonToolchain, pythonToolchain);
     const connectionsBeforeRun = acceptedLoopbackConnections;
     const pythonBoundaryResult = await runCustomChecker({
       checkerPath: pythonBoundary.path,
       checkerRuntime: "python",
       pythonExecutablePath: pythonBoundary.pythonExecutablePath,
+      pythonToolchain: pythonBoundary.pythonToolchain,
       inputPath,
       actualOutputPath,
       expectedOutputPath,
