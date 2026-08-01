@@ -9,9 +9,31 @@ import {
   cloneRegularDirectory,
   executorRelativeCanonicalPath,
   inspectRegularDirectory,
+  managedCacheMarker,
   managedToolchainSourceRoot,
   prepareManagedToolchainExecutable,
 } from "./workspace.js";
+
+test("managed cache markers bind receipt-backed copies to the package digest", () => {
+  const firstDigest = "a".repeat(64);
+  const secondDigest = "b".repeat(64);
+  assert.equal(
+    managedCacheMarker("python-test", "3.12.13", firstDigest),
+    `4-receipt-digest\npython-test\n3.12.13\n${firstDigest}\n`,
+  );
+  assert.notEqual(
+    managedCacheMarker("python-test", "3.12.13", firstDigest),
+    managedCacheMarker("python-test", "3.12.13", secondDigest),
+  );
+  assert.equal(
+    managedCacheMarker("python-test", "3.12.13"),
+    "4-receipt-digest\npython-test\n3.12.13\nlegacy\n",
+  );
+  assert.throws(
+    () => managedCacheMarker("python-test", "3.12.13", "ABC"),
+    /lowercase SHA-256/,
+  );
+});
 
 test("executor toolchain IDs canonicalize an aliased executor root", (t) => {
   const temporaryRoot = fs.mkdtempSync(

@@ -49,10 +49,11 @@ export interface CachedManagedSupportRoot {
 }
 
 const artifactCache = new Map<string, { fingerprint: string; artifact: ExecutorArtifact }>();
-const MANAGED_CACHE_SCHEMA = "3-internal-symlinks";
+const MANAGED_CACHE_SCHEMA = "4-receipt-digest";
 
 export async function findCachedManagedToolchain(
   kind: ToolchainKind,
+  packageDigest?: string,
 ): Promise<CachedManagedToolchain | null> {
   const descriptor = getDescriptorForHost(os.platform(), os.arch(), kind);
   if (!descriptor) return null;
@@ -63,7 +64,11 @@ export async function findCachedManagedToolchain(
   const root = path.join(health.executorRoot, "toolchains", cacheId);
   const marker = path.join(root, ".judgedesk-import-complete");
   const executablePath = path.join(root, entrypoint.executableRelativePath);
-  const expectedMarker = `${MANAGED_CACHE_SCHEMA}\n${descriptor.id}\n${descriptor.version}\n`;
+  const expectedMarker = managedCacheMarker(
+    descriptor.id,
+    descriptor.version,
+    packageDigest,
+  );
   try {
     const executableStat = fs.statSync(executablePath);
     if (!executableStat.isFile()) return null;
@@ -157,6 +162,7 @@ export async function importManagedToolchain(
   executablePath: string,
   version: string,
   packageRoot?: string,
+  packageDigest?: string,
 ): Promise<{ executableId: string; executablePath: string; root: string }> {
   const health = await executorClient.start();
   const managedRoot = path.resolve(process.env.LOCALAPPDATA || "", "ThemisV2", "toolchains");
@@ -180,7 +186,11 @@ export async function importManagedToolchain(
   const cacheId = managedCacheId(descriptor.id, version);
   const destinationRoot = path.join(health.executorRoot, "toolchains", cacheId);
   const marker = path.join(destinationRoot, ".judgedesk-import-complete");
-  const expectedMarker = `${MANAGED_CACHE_SCHEMA}\n${descriptor.id}\n${version}\n`;
+  const expectedMarker = managedCacheMarker(
+    descriptor.id,
+    version,
+    packageDigest,
+  );
   if (!fs.existsSync(marker) || fs.readFileSync(marker, "utf8") !== expectedMarker) {
     const staging = `${destinationRoot}.staging.${process.pid}`;
     fs.rmSync(staging, { recursive: true, force: true });
@@ -306,7 +316,7 @@ export async function prepareManagedToolchainComponent(
     };
   }
 
-  const cached = await findCachedManagedToolchain(kind);
+  const cached = await findCachedManagedToolchain(kind, resolved.packageDigest);
   const preparedEntrypoint = cached
     && sameFilePath(cached.executablePath, resolved.executablePath)
     ? cached
@@ -317,6 +327,7 @@ export async function prepareManagedToolchainComponent(
           resolved.executablePath,
           resolved.version,
           resolved.packageRoot,
+          resolved.packageDigest,
         ),
       };
   const cachedReceipt = readVerifiedToolchainPackageReceipt(
@@ -592,6 +603,18 @@ export function executorRelativeCanonicalPath(
     .replaceAll("\\", "/");
   assertSafeRelative(relative);
   return relative;
+}
+
+export function managedCacheMarker(
+  packageId: string,
+  version: string,
+  packageDigest?: string,
+): string {
+  const digest = packageDigest ?? "legacy";
+  if (digest !== "legacy" && !/^[a-f0-9]{64}$/.test(digest)) {
+    throw new Error("Managed cache digest is not a lowercase SHA-256 value.");
+  }
+  return `${MANAGED_CACHE_SCHEMA}\n${packageId}\n${version}\n${digest}\n`;
 }
 
 export function inspectRegularDirectory(

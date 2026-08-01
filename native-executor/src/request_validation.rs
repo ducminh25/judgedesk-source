@@ -8,7 +8,7 @@ const MAX_ID_BYTES: usize = 96;
 pub(crate) const BUILTIN_TOOLCHAINS_ENV: &str = "JUDGEDESK_BUILTIN_TOOLCHAINS_DIR";
 const PACKAGE_RECEIPT: &str = ".judgedesk-package.json";
 const CACHE_MARKER: &str = ".judgedesk-import-complete";
-const CACHE_SCHEMA: &str = "3-internal-symlinks";
+const CACHE_SCHEMA: &str = "4-receipt-digest";
 const MANAGED_RUNTIME_MARKERS: [&str; 4] = [
     "JUDGEDESK_PYTHON_ISOLATED",
     "JUDGEDESK_NODE_ISOLATED",
@@ -345,8 +345,8 @@ fn resolve_cached_toolchain(
     let marker_path = package_root.join(CACHE_MARKER);
     reject_link_or_reparse(&marker_path, "cached package marker")?;
     let expected_marker = format!(
-        "{CACHE_SCHEMA}\n{}\n{}\n",
-        receipt.package_id, receipt.version
+        "{CACHE_SCHEMA}\n{}\n{}\n{}\n",
+        receipt.package_id, receipt.version, receipt.archive_sha256
     );
     let marker = fs::read_to_string(&marker_path)
         .map_err(|error| format!("cached package marker unavailable: {error}"))?;
@@ -911,7 +911,7 @@ mod tests {
         .unwrap();
         fs::write(
             package.join(CACHE_MARKER),
-            "3-internal-symlinks\nruntime-pack\n1.0.0\n",
+            format!("{CACHE_SCHEMA}\nruntime-pack\n1.0.0\n{}\n", "a".repeat(64)),
         )
         .unwrap();
 
@@ -934,7 +934,7 @@ mod tests {
 
         fs::write(
             package.join(CACHE_MARKER),
-            "3-internal-symlinks\nruntime-pack\n9.9.9\n",
+            format!("{CACHE_SCHEMA}\nruntime-pack\n1.0.0\n{}\n", "b".repeat(64)),
         )
         .unwrap();
         assert!(validate_run(&root, &spec)

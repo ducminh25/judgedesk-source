@@ -52,16 +52,19 @@ const [
   { DEFAULT_EXECUTOR_LIMITS },
   { createExecutorWorkspace, importExecutorArtifact },
   { prepareIsolatedPythonRuntime, prepareIsolatedPythonScript },
+  { buildCheckerExecutorRunSpec, buildSubmissionExecutorRunSpec },
   { resolveManagedToolchain },
 ] = await Promise.all([
   import("../executor/client.js"),
   import("../executor/protocol.js"),
   import("../executor/workspace.js"),
   import("../judge/python-runtime.js"),
+  import("../judge/execution-request.js"),
   import("../toolchains/resolver.js"),
 ]);
 
 const MiB = 1024 * 1024;
+const managedPython = resolveManagedToolchain("python");
 const helperBinary = path.join(
   process.cwd(),
   "src-tauri",
@@ -223,7 +226,7 @@ test(
   "managed Python AppContainer blocks private files, network, and child processes",
   {
     timeout: 30_000,
-    skip: process.platform !== "win32" || !resolveManagedToolchain("python").ready,
+    skip: process.platform !== "win32" || !managedPython.ready,
   },
   async () => {
     const hostDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-python-boundary-"));
@@ -262,7 +265,7 @@ test(
   "managed Python checker-runtime blocks private files, network, and child processes",
   {
     timeout: 30_000,
-    skip: !resolveManagedToolchain("python").ready,
+    skip: !managedPython.ready,
   },
   async () => {
     const hostDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-checker-boundary-"));
@@ -295,10 +298,10 @@ test(
   "macOS checker-runtime denies exec of a sibling file in the certified package",
   {
     timeout: 10_000,
-    skip: process.platform !== "darwin" || !resolveManagedToolchain("python").ready,
+    skip: process.platform !== "darwin" || !managedPython.ready,
   },
   async () => {
-    const runtime = await prepareIsolatedPythonRuntime();
+    const runtime = await prepareIsolatedPythonRuntime(undefined, managedPython);
     const packageRoot = path.dirname(path.dirname(runtime.executablePath));
     const libraryDirectory = path.join(packageRoot, "lib");
     const siblingName = fs.readdirSync(libraryDirectory)
@@ -470,7 +473,7 @@ test(
   "checker-runtime cancellation acknowledges only after its terminal drain",
   {
     timeout: 10_000,
-    skip: !resolveManagedToolchain("python").ready,
+    skip: !managedPython.ready,
   },
   async () => {
     const workspace = await createExecutorWorkspace();
@@ -479,19 +482,23 @@ test(
         workspace,
         path.join(process.cwd(), "server/security-fixtures/python/resource_attacks.py"),
         "checker_cancel.py",
+        undefined,
+        managedPython,
       );
       const runId = `checker_cancel_${crypto.randomUUID().replaceAll("-", "_")}`;
-      const pending = executorClient.run({
+      const pending = executorClient.run(buildCheckerExecutorRunSpec({
         runId,
-        role: "checker-runtime",
         workspaceId: workspace.id,
         executableId: launch.executableId,
         args: [...launch.args, "sleep-ms", "5000"],
         stdoutFile: "stdout.txt",
         stderrFile: "stderr.txt",
         environment: launch.environment,
-        limits: limits({ wallTimeMs: 6_000, processCount: 1 }),
-      });
+        runtimeBacked: true,
+        timeoutMs: 6_000,
+        memoryBytes: 128 * MiB,
+        toolchain: launch.toolchain,
+      }));
       let terminalResultReceived = false;
       void pending.then(() => {
         terminalResultReceived = true;
@@ -524,22 +531,33 @@ async function runManagedPython(
       workspace,
       path.join(process.cwd(), "server/security-fixtures/python/resource_attacks.py"),
       "resource_attacks.py",
+      undefined,
+      managedPython,
     );
-    const result = await executorClient.run({
-      runId: `python_security_${crypto.randomUUID().replaceAll("-", "_")}`,
-      role,
+    const runId = `python_security_${crypto.randomUUID().replaceAll("-", "_")}`;
+    const common = {
+      runId,
       workspaceId: workspace.id,
       executableId: launch.executableId,
       args: [...launch.args, ...args],
-      stdoutFile: "stdout.txt",
-      stderrFile: "stderr.txt",
       environment: launch.environment,
-      limits: limits({
-        wallTimeMs: 2_000,
-        memoryBytes: 128 * MiB,
-        processCount: 1,
-      }),
-    });
+      memoryBytes: 128 * MiB,
+      toolchain: launch.toolchain,
+    };
+    const result = await executorClient.run(
+      role === "checker-runtime"
+        ? buildCheckerExecutorRunSpec({
+            ...common,
+            runtimeBacked: true,
+            timeoutMs: 2_000,
+            stdoutFile: "stdout.txt",
+            stderrFile: "stderr.txt",
+          })
+        : buildSubmissionExecutorRunSpec({
+            ...common,
+            timeLimitMs: 2_000,
+          }),
+    );
     return {
       result,
       stdout: fs.existsSync(path.join(workspace.path, "stdout.txt"))
