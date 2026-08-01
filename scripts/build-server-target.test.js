@@ -381,6 +381,10 @@ test("Apple Silicon release scripts verify architecture, DMG, and sidecar", () =
     managedPythonSmoke,
     /prepareIsolatedPythonScript\(\s*workspace,\s*sourcePath,\s*"submission\.py",\s*undefined,\s*managed,\s*\)/,
   );
+  assert.match(
+    managedPythonSmoke,
+    /executorClient\.run\(buildSubmissionExecutorRunSpec\(\{[\s\S]*toolchain: launch\.toolchain/,
+  );
   const managedPythonSmokeIndex = sidecarScript.indexOf(
     "npx tsx scripts/smoke-test-managed-python.ts",
   );
