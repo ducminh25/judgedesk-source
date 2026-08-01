@@ -39,7 +39,13 @@ fs.writeFileSync(sourcePath, "import math\nprint(f'JUDGEDESK_PYTHON_SMOKE:{math.
 const workspace = await createExecutorWorkspace();
 
 try {
-  const launch = await prepareIsolatedPythonScript(workspace, sourcePath, "submission.py");
+  const launch = await prepareIsolatedPythonScript(
+    workspace,
+    sourcePath,
+    "submission.py",
+    undefined,
+    managed,
+  );
   const health = executorClient.health;
   const cachedExecutable = fs.realpathSync(path.join(health.executorRoot, launch.executableId));
   const relativeExecutable = path.relative(fs.realpathSync(health.executorRoot), cachedExecutable);
