@@ -9,14 +9,27 @@ import { createExecutorWorkspace, importExecutorArtifact } from "../server/execu
 import {
   buildSubmissionCompilerArgs,
   compileSubmission,
-  resolveCompilationToolchain,
   runCompilerWithLimits,
 } from "../server/judge/compiler.js";
+import {
+  findSelectedDarwinCompiler,
+  verifyLocalToolchainCandidate,
+} from "../server/toolchains/resolver.js";
 
 if (process.platform !== "darwin" || process.arch !== "arm64") {
   throw new Error("The macOS compiler smoke test requires an Apple Silicon host.");
 }
 
+const compilerPath = findSelectedDarwinCompiler("cpp");
+if (!compilerPath) {
+  throw new Error("Apple Clang was not found in the selected Xcode or Command Line Tools installation.");
+}
+const cppToolchain = verifyLocalToolchainCandidate("cpp", compilerPath);
+if (!cppToolchain.ready) {
+  throw new Error(
+    `Apple Clang did not pass JudgeDesk policy: ${cppToolchain.diagnosticCode ?? "UNKNOWN"}: ${cppToolchain.diagnostic ?? cppToolchain.version}`,
+  );
+}
 const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-macos-compiler-"));
 const sourcePath = path.join(temporaryDirectory, "hello.cpp");
 fs.writeFileSync(
@@ -40,23 +53,26 @@ try {
     problemName: "compiler",
     submissionPath: sourcePath,
     tempDirectory: temporaryDirectory,
+    toolchains: { cpp: cppToolchain },
   });
   if (compilation.compileStatus !== "OK") {
-    const toolchain = await resolveCompilationToolchain("cpp");
     const diagnosticOutput = path.join(temporaryDirectory, "diagnostic.out");
-    let verboseError = "toolchain unavailable";
-    if (toolchain.ready) {
-      try {
-        await runCompilerWithLimits(
-          toolchain.executablePath,
-          ["-v", ...buildSubmissionCompilerArgs("darwin", sourcePath, diagnosticOutput)],
-          temporaryDirectory,
-          diagnosticOutput,
-        );
-        verboseError = "verbose retry unexpectedly succeeded";
-      } catch (error) {
-        verboseError = error instanceof Error ? error.message : String(error);
-      }
+    let verboseError: string;
+    try {
+      await runCompilerWithLimits(
+        cppToolchain.executionPath || cppToolchain.executablePath,
+        ["-v", ...buildSubmissionCompilerArgs("darwin", sourcePath, diagnosticOutput)],
+        temporaryDirectory,
+        diagnosticOutput,
+        undefined,
+        undefined,
+        "cpp",
+        {},
+        cppToolchain,
+      );
+      verboseError = "verbose retry unexpectedly succeeded";
+    } catch (error) {
+      verboseError = error instanceof Error ? error.message : String(error);
     }
     throw new Error(`macOS compiler smoke failed: ${compilation.compileError}\nVerbose retry: ${verboseError}`);
   }
@@ -106,6 +122,7 @@ try {
     problemName: "runtime_abort",
     submissionPath: runtimeAbortSourcePath,
     tempDirectory: temporaryDirectory,
+    toolchains: { cpp: cppToolchain },
   });
   if (runtimeAbortCompilation.compileStatus !== "OK") {
     throw new Error(`macOS runtime-abort probe failed to compile: ${runtimeAbortCompilation.compileError}`);
