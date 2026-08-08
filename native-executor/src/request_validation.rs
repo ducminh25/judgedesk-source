@@ -1,4 +1,7 @@
-use crate::protocol::{RunRole, RunSpec, ToolchainGrant, ToolchainGrantRole};
+use crate::protocol::{
+    LocalToolchainGrant, LocalToolchainIsolation, RunRole, RunSpec, ToolchainGrant,
+    ToolchainGrantRole,
+};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fs;
@@ -48,6 +51,7 @@ enum PackageComponentKind {
 pub struct ValidatedRun {
     pub executable: PathBuf,
     pub toolchain_package_root: Option<PathBuf>,
+    pub isolation: LocalToolchainIsolation,
     pub workspace: PathBuf,
     pub stdin: Option<PathBuf>,
     pub stdout: PathBuf,
@@ -83,17 +87,32 @@ fn validate_run_with_builtin_root(
     let workspace = canonical_existing_descendant(&canonical_root, &workspace, "workspace")?;
     reject_links_between(&canonical_root, &workspace)?;
 
-    let (executable, toolchain_package_root) = match spec.toolchain.as_ref() {
-        Some(grant) => {
-            let (executable, package_root) =
-                resolve_granted_toolchain(&canonical_root, spec, grant, built_in_root)?;
-            (executable, Some(package_root))
-        }
-        None => (
-            resolve_relative(&canonical_root, &spec.executable_id, true)?,
-            None,
-        ),
-    };
+    if spec.toolchain.is_some() && spec.local_toolchain.is_some() {
+        return Err("managed and local toolchain grants are mutually exclusive".into());
+    }
+
+    let (executable, toolchain_package_root, isolation) =
+        match (spec.toolchain.as_ref(), spec.local_toolchain.as_ref()) {
+            (Some(grant), None) => {
+                let (executable, package_root) =
+                    resolve_granted_toolchain(&canonical_root, spec, grant, built_in_root)?;
+                (
+                    executable,
+                    Some(package_root),
+                    LocalToolchainIsolation::Strict,
+                )
+            }
+            (None, Some(grant)) => {
+                let (executable, local_root) = resolve_local_toolchain(spec, grant)?;
+                (executable, Some(local_root), grant.isolation)
+            }
+            (None, None) => (
+                resolve_relative(&canonical_root, &spec.executable_id, true)?,
+                None,
+                LocalToolchainIsolation::Strict,
+            ),
+            (Some(_), Some(_)) => unreachable!(),
+        };
     let in_workspace = executable.starts_with(&workspace);
     let in_toolchains = toolchain_package_root.is_some()
         || executable.starts_with(canonical_root.join("toolchains"));
@@ -130,6 +149,11 @@ fn validate_run_with_builtin_root(
         if !in_toolchains {
             return Err("toolchain grant did not resolve inside a trusted toolchain root".into());
         }
+    } else if let Some(grant) = spec.local_toolchain.as_ref() {
+        validate_grant_role(spec.role, grant.role)?;
+        if !in_toolchains {
+            return Err("local toolchain grant did not resolve inside its canonical root".into());
+        }
     } else if matches!(spec.role, RunRole::CheckerRuntime) {
         if !in_toolchains {
             return Err(
@@ -161,11 +185,70 @@ fn validate_run_with_builtin_root(
     Ok(ValidatedRun {
         executable,
         toolchain_package_root,
+        isolation,
         workspace,
         stdin,
         stdout,
         stderr,
     })
+}
+
+fn resolve_local_toolchain(
+    spec: &RunSpec,
+    grant: &LocalToolchainGrant,
+) -> Result<(PathBuf, PathBuf), String> {
+    if grant.root_path.is_empty()
+        || grant.root_path.len() > 4_096
+        || grant.executable_relative_path.is_empty()
+        || grant.executable_relative_path.len() > 1_024
+    {
+        return Err("local toolchain path exceeds protocol limits".into());
+    }
+    let lexical_root = Path::new(&grant.root_path);
+    if !lexical_root.is_absolute() {
+        return Err("local toolchain root must be absolute".into());
+    }
+    reject_network_or_device_root(lexical_root)?;
+    let root = fs::canonicalize(lexical_root)
+        .map_err(|error| format!("local toolchain root unavailable: {error}"))?;
+    if !root.is_dir() || root.parent().is_none() {
+        return Err("local toolchain root is not a bounded directory".into());
+    }
+
+    let relative = Path::new(&grant.executable_relative_path);
+    if relative.is_absolute()
+        || relative
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err("local toolchain executable path is not normalized".into());
+    }
+    let executable = fs::canonicalize(root.join(relative))
+        .map_err(|error| format!("local toolchain executable unavailable: {error}"))?;
+    if !executable.starts_with(&root) || !executable.is_file() {
+        return Err("local toolchain executable escapes its root".into());
+    }
+
+    let protocol_relative = grant.executable_relative_path.replace('\\', "/");
+    let expected_id = format!("local-toolchain/{protocol_relative}");
+    if spec.executable_id != expected_id {
+        return Err("executableId does not match the local toolchain grant".into());
+    }
+    Ok((executable, root))
+}
+
+fn reject_network_or_device_root(_path: &Path) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let value = _path.to_string_lossy().replace('/', "\\");
+        let lower = value.to_ascii_lowercase();
+        let network = lower.starts_with(r"\\") && !lower.starts_with(r"\\?\");
+        let device_namespace = lower.starts_with(r"\\?\") || lower.starts_with(r"\\.\");
+        if network || device_namespace {
+            return Err("local toolchain root cannot use a network or device path".into());
+        }
+    }
+    Ok(())
 }
 
 fn validate_managed_runtime_marker(spec: &RunSpec) -> Result<bool, String> {
@@ -669,7 +752,9 @@ fn reject_links_between(root: &Path, target: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{RunLimits, ToolchainGrant};
+    use crate::protocol::{
+        LocalToolchainGrant, LocalToolchainIsolation, RunLimits, ToolchainGrant,
+    };
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
@@ -945,6 +1030,97 @@ mod tests {
     }
 
     #[test]
+    fn local_toolchain_grant_is_bounded_role_scoped_and_records_isolation() {
+        let root = test_root();
+        let local_root = root.with_extension("local-runtime");
+        let workspace = root.join("workspaces").join("workspace");
+        let executable = local_root.join("bin").join("runtime");
+        fs::create_dir_all(&workspace).unwrap();
+        fs::create_dir_all(root.join("artifacts")).unwrap();
+        fs::create_dir_all(root.join("toolchains")).unwrap();
+        fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        fs::write(&executable, b"runtime").unwrap();
+
+        let mut spec = sample_spec(RunRole::Submission, "local-toolchain/bin/runtime");
+        spec.environment
+            .insert("JUDGEDESK_PYTHON_ISOLATED".into(), "1".into());
+        spec.local_toolchain = Some(LocalToolchainGrant {
+            root_path: local_root.to_string_lossy().into_owned(),
+            executable_relative_path: "bin/runtime".into(),
+            isolation: LocalToolchainIsolation::Strict,
+            role: ToolchainGrantRole::SubmissionRuntime,
+        });
+
+        let validated = validate_run(&root, &spec).unwrap();
+        assert_eq!(validated.executable, fs::canonicalize(&executable).unwrap());
+        assert_eq!(
+            validated.toolchain_package_root,
+            Some(fs::canonicalize(&local_root).unwrap())
+        );
+        assert_eq!(validated.isolation, LocalToolchainIsolation::Strict);
+
+        spec.local_toolchain.as_mut().unwrap().isolation = LocalToolchainIsolation::ResourceOnly;
+        assert_eq!(
+            validate_run(&root, &spec).unwrap().isolation,
+            LocalToolchainIsolation::ResourceOnly
+        );
+
+        spec.local_toolchain.as_mut().unwrap().role = ToolchainGrantRole::Compiler;
+        assert!(validate_run(&root, &spec)
+            .unwrap_err()
+            .contains("role does not match"));
+        spec.local_toolchain.as_mut().unwrap().role = ToolchainGrantRole::SubmissionRuntime;
+
+        spec.executable_id = "local-toolchain/bin/other".into();
+        assert!(validate_run(&root, &spec)
+            .unwrap_err()
+            .contains("does not match the local toolchain grant"));
+        spec.executable_id = "local-toolchain/bin/runtime".into();
+
+        spec.local_toolchain
+            .as_mut()
+            .unwrap()
+            .executable_relative_path = "../runtime".into();
+        assert!(validate_run(&root, &spec)
+            .unwrap_err()
+            .contains("is not normalized"));
+        spec.local_toolchain
+            .as_mut()
+            .unwrap()
+            .executable_relative_path = "bin/runtime".into();
+
+        spec.toolchain = Some(ToolchainGrant {
+            package_id: "runtime-pack".into(),
+            package_digest: "a".repeat(64),
+            component_id: "runtime".into(),
+            role: ToolchainGrantRole::SubmissionRuntime,
+        });
+        assert!(validate_run(&root, &spec)
+            .unwrap_err()
+            .contains("mutually exclusive"));
+
+        fs::remove_dir_all(root).unwrap();
+        fs::remove_dir_all(local_root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn local_toolchain_root_rejects_network_and_device_paths_on_windows() {
+        for value in [
+            r"\\server\share\runtime",
+            r"\\?\UNC\server\share\runtime",
+            r"\\?\C:\runtime",
+            r"\\?\GLOBALROOT\Device\HarddiskVolume1\runtime",
+            r"\\.\C:\runtime",
+        ] {
+            assert!(
+                reject_network_or_device_root(Path::new(value)).is_err(),
+                "accepted network or device path {value:?}"
+            );
+        }
+    }
+
+    #[test]
     fn a_toolchain_grant_cannot_be_attached_to_a_native_checker() {
         let root = test_root();
         let built_in = root.with_extension("built-in");
@@ -1005,6 +1181,7 @@ mod tests {
             stderr_file: "stderr.txt".into(),
             environment: BTreeMap::new(),
             toolchain: None,
+            local_toolchain: None,
             limits: RunLimits {
                 wall_time_ms: 1_000,
                 memory_bytes: 64 * 1024 * 1024,

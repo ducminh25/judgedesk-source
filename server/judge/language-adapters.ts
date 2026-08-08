@@ -1,7 +1,7 @@
 import path from "node:path";
-import type { SubmissionLanguage } from "../types.js";
+import { getCompileFlags } from "../../shared/compile-config.js";
+import type { ProblemCompileConfig, SubmissionLanguage } from "../types.js";
 import type { ToolchainKind } from "../toolchains/types.js";
-import { buildCertifiedWindowsCppSubmissionArgs } from "../toolchains/cpp-certification-policy.js";
 
 export type NativeCompiledLanguage =
   | "cpp"
@@ -39,6 +39,7 @@ export function buildNativeCompilationRecipe(
   platform: NodeJS.Platform,
   sourcePath: string,
   outputPath: string,
+  compileConfig?: ProblemCompileConfig,
 ): NativeCompilationRecipe {
   if (language === "cpp" || language === "c") {
     return {
@@ -49,6 +50,7 @@ export function buildNativeCompilationRecipe(
         sourcePath,
         outputPath,
         language,
+        compileConfig,
       ),
       environment: {},
       // Both Apple clang and MinGW GCC need an explicit object path. On
@@ -223,22 +225,21 @@ function buildGnuOrAppleClangArgs(
   sourcePath: string,
   outputPath: string,
   language: Extract<NativeCompiledLanguage, "cpp" | "c">,
+  compileConfig?: ProblemCompileConfig,
 ): string[] {
-  if (platform === "win32" && language === "cpp") {
-    return buildCertifiedWindowsCppSubmissionArgs(sourcePath, outputPath);
-  }
-  const args = [
-    language === "cpp" ? "-std=c++14" : "-std=c11",
-    "-pipe",
-    "-O2",
-  ];
+  const args = getCompileFlags(compileConfig, language);
   if (platform === "darwin") {
-    // Apple Clang cannot link the Windows-only static/stack flags below.
+    // Apple Clang cannot link the static/stack/math flags below. The protected
+    // bits/stdc++.h compatibility include is injected by prepareCompiler.
   } else {
-    args.push("-s", "-static", "-lm");
+    args.push("-static");
   }
   args.push("-x", language === "cpp" ? "c++" : "c");
   if (platform === "win32") args.push("-Wl,--stack,66060288");
   args.push(sourcePath, "-o", outputPath);
+  // Static-library order matters: keep libm after the source/object and only
+  // add it for C. C++ drivers supply their standard math dependencies, while
+  // macOS provides libm through libSystem.
+  if (platform !== "darwin" && language === "c") args.push("-lm");
   return args;
 }

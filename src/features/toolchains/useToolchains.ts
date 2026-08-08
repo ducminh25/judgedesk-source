@@ -69,6 +69,11 @@ export interface ResolvedToolchain {
   packageOrigin?: "built-in" | "downloaded";
   packageDigest?: string;
   packageRoot?: string;
+  localProbe?: {
+    status: "not_started" | "checking" | "compatible" | "incompatible";
+    checkedAt?: string;
+    diagnostic?: string;
+  };
 }
 
 export interface ToolchainCertificationPlan {
@@ -88,7 +93,7 @@ export interface DiscoveredToolchainCandidate {
   kind: ToolchainKind;
   canonicalPath: string;
   displayPath: string;
-  origin: "path" | "standard-location";
+  origin: "path" | "standard-location" | "selected-path";
 }
 
 export interface LanguageProfileView {
@@ -109,6 +114,7 @@ export interface LanguageProfileView {
       | "unsupported";
   };
   selection: { mode: ToolchainSourceMode; localPath?: string };
+  detected: boolean;
   status: "not_available" | "checker_only" | "submission_ready";
   roles: { submissionReady: boolean; checkerReady: boolean };
   diagnostic?: { code: string; messageKey: string; message?: string };
@@ -154,8 +160,15 @@ export interface ToolchainState {
   registryRevision: number;
   discovery: {
     status: "not_started" | "running" | "complete" | "failed";
+    refreshing: boolean;
     completedAt?: string;
     errorCode?: string;
+  };
+  executionPolicy: {
+    schemaVersion: 1;
+    allowResourceOnlyLocalExecution: boolean;
+    status: "default" | "ready" | "recovery";
+    diagnostic?: "INVALID_POLICY_DOCUMENT" | "POLICY_READ_FAILED";
   };
   profiles: LanguageProfileView[];
   preferences: {
@@ -184,8 +197,12 @@ export interface ToolchainCapabilities {
   installable: boolean;
 }
 
-function hasRunningOperation(state: ToolchainState): boolean {
+export function hasRunningOperation(state: ToolchainState): boolean {
   return state.discovery.status === "running"
+    || state.discovery.refreshing
+    || state.profiles.some((profile) =>
+      profile.active.localProbe?.status === "not_started"
+      || profile.active.localProbe?.status === "checking")
     || state.manifestStatus === "loading"
     || state.toolchains.some((toolchain) =>
       ["downloading", "extracting", "verifying"].includes(
@@ -319,6 +336,25 @@ export function useToolchains() {
     }
   };
 
+  const setResourceOnlyLocalExecution = async (
+    allowResourceOnlyLocalExecution: boolean,
+  ): Promise<boolean> => {
+    try {
+      setError(null);
+      await apiFetch("/api/toolchains/execution-policy", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ allowResourceOnlyLocalExecution }),
+      });
+      await fetchState();
+      return true;
+    } catch (caught: any) {
+      setError(caught.message);
+      await fetchState();
+      return false;
+    }
+  };
+
   const planCertification = async (
     profileId: string,
   ): Promise<ToolchainCertificationPlan | null> => {
@@ -362,6 +398,7 @@ export function useToolchains() {
     cancel,
     uninstall,
     setProfilePreference,
+    setResourceOnlyLocalExecution,
     rescan,
     planCertification,
     certify,

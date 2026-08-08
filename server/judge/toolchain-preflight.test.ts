@@ -55,6 +55,17 @@ function requirements(
   };
 }
 
+function localIdentity(
+  executableRelativePath: string,
+  isolation: "strict" | "resource-only" = "strict",
+) {
+  return {
+    rootPath: String.raw`C:\local-toolchain`,
+    executableRelativePath,
+    isolation,
+  } as const;
+}
+
 test("preflight accepts only the pinned roles required by the selected batch", () => {
   assert.doesNotThrow(() => assertJudgeToolchainPreflight(
     requirements(["cpp"], ["cpp"]),
@@ -120,6 +131,25 @@ test("preflight rejects local Python independently for submissions and checkers"
     ),
     /Python submissions: CERTIFICATION_REQUIRED; Python checkers: CERTIFICATION_REQUIRED/,
   );
+});
+
+test("preflight accepts admitted local C and Python grants in strict or resource-only mode", () => {
+  assert.doesNotThrow(() => assertJudgeToolchainPreflight(
+    requirements(["c", "python"], ["python"]),
+    pins({
+      c: toolchain("c", {
+        source: "custom",
+        provenance: "unverified-local",
+        localToolchain: localIdentity("bin/gcc.exe"),
+      }),
+      python: toolchain("python", {
+        source: "system",
+        provenance: "unverified-local",
+        localToolchain: localIdentity("python.exe", "resource-only"),
+      }),
+    }),
+    "win32",
+  ));
 });
 
 test("new compiled/runtime profiles are admitted only from a managed package", () => {

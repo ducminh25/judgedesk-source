@@ -4,7 +4,10 @@ import os from "node:os";
 import path from "node:path";
 import test, { type TestContext } from "node:test";
 import type { Express } from "express";
-import { registerToolchainRoutes } from "./toolchain-routes.js";
+import {
+  isLocalPreferenceVerificationAccepted,
+  registerToolchainRoutes,
+} from "./toolchain-routes.js";
 import {
   getPreferencesFilePath,
   loadPreferences,
@@ -21,6 +24,10 @@ import {
 import { getStoredProfilePreference } from "../toolchains/preferences-v2.js";
 import { serverLifecycle } from "../platform/server-lifecycle.js";
 import { TOOLCHAIN_CATALOG } from "../toolchains/manifest.js";
+import {
+  getLocalExecutionPolicyFilePath,
+  loadLocalExecutionPolicy,
+} from "../toolchains/execution-policy.js";
 
 type CapturedHandler = (
   request: { body: unknown; params: Record<string, string> },
@@ -46,6 +53,22 @@ function useTemporaryAppData(t: TestContext): void {
     else process.env.THEMIS_APP_DATA_DIR = previousAppDataDir;
   });
 }
+
+test("local path preference accepts detected-but-pending runtimes without claiming readiness", () => {
+  assert.equal(isLocalPreferenceVerificationAccepted({ ready: true }), true);
+  assert.equal(isLocalPreferenceVerificationAccepted({
+    ready: false,
+    diagnosticCode: "DETECTION_IN_PROGRESS",
+  }), true);
+  assert.equal(isLocalPreferenceVerificationAccepted({
+    ready: false,
+    diagnosticCode: "LOCAL_NOT_SANDBOX_COMPATIBLE",
+  }), true);
+  assert.equal(isLocalPreferenceVerificationAccepted({
+    ready: false,
+    diagnosticCode: "LOCAL_PATH_MISSING",
+  }), false);
+});
 
 function captureToolchainHandlers(): Map<string, CapturedHandler> {
   const handlers = new Map<string, CapturedHandler>();
@@ -126,6 +149,10 @@ test("GET exposes registry state without waiting for the remote package catalog"
     registryRevision?: unknown;
     profiles?: unknown[];
     mutationsBlocked?: unknown;
+    executionPolicy?: {
+      allowResourceOnlyLocalExecution?: unknown;
+      status?: unknown;
+    };
   };
   assert.equal(payload.manifestStatus, "loading");
   assert.equal(payload.registryRevision, LANGUAGE_REGISTRY_REVISION);
@@ -134,6 +161,46 @@ test("GET exposes registry state without waiting for the remote package catalog"
     listRegisteredLanguageProfiles().length,
   );
   assert.equal(payload.mutationsBlocked, false);
+  assert.equal(
+    payload.executionPolicy?.allowResourceOnlyLocalExecution,
+    false,
+  );
+  assert.equal(payload.executionPolicy?.status, "default");
+});
+
+test("resource-only local execution requires an exact explicit policy mutation", async (t) => {
+  useTemporaryAppData(t);
+  const handler = captureToolchainHandlers().get(
+    "PUT /api/toolchains/execution-policy",
+  );
+  assert.ok(handler);
+
+  for (const body of [
+    {},
+    { allowResourceOnlyLocalExecution: "true" },
+    { allowResourceOnlyLocalExecution: true, allowNetwork: true },
+  ]) {
+    const response = createResponse();
+    await handler({ body, params: {} }, response);
+    assert.equal(response.statusCode, 400);
+    assert.equal(fs.existsSync(getLocalExecutionPolicyFilePath()), false);
+  }
+
+  const enabled = createResponse();
+  await handler(
+    { body: { allowResourceOnlyLocalExecution: true }, params: {} },
+    enabled,
+  );
+  assert.equal(enabled.statusCode, 200);
+  assert.equal(loadLocalExecutionPolicy().allowResourceOnlyLocalExecution, true);
+
+  const disabled = createResponse();
+  await handler(
+    { body: { allowResourceOnlyLocalExecution: false }, params: {} },
+    disabled,
+  );
+  assert.equal(disabled.statusCode, 200);
+  assert.equal(loadLocalExecutionPolicy().allowResourceOnlyLocalExecution, false);
 });
 
 test("deferred toolchain packages cannot be installed through the release API", async (t) => {
@@ -206,6 +273,17 @@ test("toolchain mutations fail closed while a judging session is active", async 
     rescanResponse,
   );
   assert.equal(rescanResponse.statusCode, 409);
+
+  const policyResponse = createResponse();
+  await handlers.get("PUT /api/toolchains/execution-policy")?.(
+    {
+      body: { allowResourceOnlyLocalExecution: true },
+      params: {},
+    },
+    policyResponse,
+  );
+  assert.equal(policyResponse.statusCode, 409);
+  assert.equal(fs.existsSync(getLocalExecutionPolicyFilePath()), false);
 
   const hostArch = os.arch() === "x64" || os.arch() === "arm64"
     ? os.arch()

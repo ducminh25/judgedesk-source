@@ -53,7 +53,7 @@ test("the live registry exposes approved profiles in deterministic UI order", ()
   );
 });
 
-test("local version policies pin tested versions instead of accepting any future release", () => {
+test("local version policies use bounded compatibility ranges before the native probe", () => {
   const versions = (kind: Parameters<typeof getRegisteredProfileForKind>[0]) => {
     const policy = getRegisteredProfileForKind(kind).localVersionPolicy;
     assert.equal(policy.kind, "exact_allowlist");
@@ -66,6 +66,7 @@ test("local version policies pin tested versions instead of accepting any future
   assert.deepEqual(versions("java"), ["21.0.12"]);
 
   const cppPolicy = getRegisteredProfileForKind("cpp").localVersionPolicy;
+  assert.equal(cppPolicy.kind, "bounded_range");
   assert.equal(
     isToolchainVersionAllowed(
       "14.2.0",
@@ -80,7 +81,7 @@ test("local version policies pin tested versions instead of accepting any future
       cppPolicy,
       { platform: "darwin", arch: "arm64" },
     ),
-    false,
+    true,
   );
   assert.equal(
     isToolchainVersionAllowed(
@@ -90,6 +91,14 @@ test("local version policies pin tested versions instead of accepting any future
     ),
     true,
   );
+  assert.equal(isToolchainVersionAllowed("8.5.0", cppPolicy), false);
+  assert.equal(isToolchainVersionAllowed("18.0.0", cppPolicy), false);
+
+  const pythonPolicy = getRegisteredProfileForKind("python").localVersionPolicy;
+  assert.equal(pythonPolicy.kind, "bounded_range");
+  assert.equal(isToolchainVersionAllowed("3.8.0", pythonPolicy), true);
+  assert.equal(isToolchainVersionAllowed("3.13.7", pythonPolicy), true);
+  assert.equal(isToolchainVersionAllowed("3.14.0", pythonPolicy), false);
 });
 
 test("registered profiles preserve current submission and checker adapters", () => {

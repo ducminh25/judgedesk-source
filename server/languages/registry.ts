@@ -13,7 +13,7 @@ import {
   validateToolchainVersionPolicy,
 } from "./version-policy.js";
 
-export const LANGUAGE_REGISTRY_REVISION = 4;
+export const LANGUAGE_REGISTRY_REVISION = 5;
 export const CPP_LANGUAGE_PROFILE_ID = "cpp-legacy-v1";
 export const C_LANGUAGE_PROFILE_ID = "c-gcc14";
 export const PYTHON_LANGUAGE_PROFILE_ID = "python-cpython312";
@@ -52,73 +52,22 @@ const BOTH_RELEASE_HOSTS = [WINDOWS_X64_HOST, MACOS_ARM64_HOST] as const;
 
 const LOCAL_VERSION_POLICIES = {
   cpp: {
-    kind: "exact_allowlist",
-    entries: [
-      {
-        family: "gnu-gcc",
-        distributor: "Themis-compatible MinGW",
-        version: "9.2.0",
-        build: "legacy-gcc-9.2.0",
-        identityPolicyId: "gcc.windows.target-runtime-v1",
-        hosts: [WINDOWS_X64_HOST],
-      },
-      {
-        family: "gnu-gcc",
-        distributor: "WinLibs",
-        version: "14.2.0",
-        build: "14.2.0posix-19.1.1-12.0.0-ucrt-r2",
-        identityPolicyId: "gcc.windows.target-runtime-v1",
-        hosts: [WINDOWS_X64_HOST],
-      },
-      {
-        family: "gnu-gcc",
-        distributor: "MSYS2",
-        version: "16.1.0",
-        build: "msys2-ucrt64",
-        identityPolicyId: "gcc.windows.target-runtime-v1",
-        hosts: [WINDOWS_X64_HOST],
-      },
-      {
-        family: "apple-clang",
-        distributor: "Apple",
-        version: "17.0.0",
-        build: "selected-developer-root",
-        identityPolicyId: "apple-clang.selected-sdk-v1",
-        hosts: [MACOS_ARM64_HOST],
-      },
-    ],
+    kind: "bounded_range",
+    minInclusive: "9.0.0",
+    maxExclusive: "18.0.0",
+    testedMajors: [9, 10, 11, 12, 13, 14, 15, 16, 17],
   },
   c: {
-    kind: "exact_allowlist",
-    entries: [
-      {
-        family: "gnu-gcc",
-        distributor: "WinLibs",
-        version: "14.2.0",
-        build: "14.2.0posix-19.1.1-12.0.0-ucrt-r2",
-        identityPolicyId: "gcc.windows.target-runtime-v1",
-        hosts: [WINDOWS_X64_HOST],
-      },
-      {
-        family: "apple-clang",
-        distributor: "Apple",
-        version: "17.0.0",
-        build: "selected-developer-root",
-        identityPolicyId: "apple-clang.selected-sdk-v1",
-        hosts: [MACOS_ARM64_HOST],
-      },
-    ],
+    kind: "bounded_range",
+    minInclusive: "9.0.0",
+    maxExclusive: "18.0.0",
+    testedMajors: [9, 10, 11, 12, 13, 14, 15, 16, 17],
   },
   python: {
-    kind: "exact_allowlist",
-    entries: [{
-      family: "cpython",
-      distributor: "python-build-standalone",
-      version: "3.12.13",
-      build: "20260623",
-      identityPolicyId: "cpython.standalone-abi-v1",
-      hosts: BOTH_RELEASE_HOSTS,
-    }],
+    kind: "bounded_range",
+    minInclusive: "3.8.0",
+    maxExclusive: "3.14.0",
+    testedMajors: [3],
   },
   pascal: {
     kind: "exact_allowlist",
@@ -226,12 +175,8 @@ const LANGUAGE_CATALOG = [
     toolchainKind: "cpp",
     localVersionPolicy: LOCAL_VERSION_POLICIES.cpp,
     localExecution: [
-      { platform: "win32", arch: "x64", mode: "freeze_required" },
-      {
-        platform: "darwin",
-        arch: "arm64",
-        mode: "platform_certified_direct",
-      },
+      { platform: "win32", arch: "x64", mode: "quick_verified_direct" },
+      { platform: "darwin", arch: "arm64", mode: "quick_verified_direct" },
     ],
     freshInstallMode: "local_auto",
   },
@@ -265,12 +210,8 @@ const LANGUAGE_CATALOG = [
     toolchainKind: "c",
     localVersionPolicy: LOCAL_VERSION_POLICIES.c,
     localExecution: [
-      { platform: "win32", arch: "x64", mode: "managed_only" },
-      {
-        platform: "darwin",
-        arch: "arm64",
-        mode: "platform_certified_direct",
-      },
+      { platform: "win32", arch: "x64", mode: "quick_verified_direct" },
+      { platform: "darwin", arch: "arm64", mode: "quick_verified_direct" },
     ],
     freshInstallMode: "local_auto",
   },
@@ -309,8 +250,8 @@ const LANGUAGE_CATALOG = [
     toolchainKind: "python",
     localVersionPolicy: LOCAL_VERSION_POLICIES.python,
     localExecution: [
-      { platform: "win32", arch: "x64", mode: "managed_only" },
-      { platform: "darwin", arch: "arm64", mode: "managed_only" },
+      { platform: "win32", arch: "x64", mode: "quick_verified_direct" },
+      { platform: "darwin", arch: "arm64", mode: "quick_verified_direct" },
     ],
     freshInstallMode: "local_auto",
   },

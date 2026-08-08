@@ -7,7 +7,10 @@ import {
   isPythonCheckerReady,
   isPythonSubmissionReady,
 } from "../toolchains/resolver.js";
-import { isWindowsCppExecutionReady } from "./compiler.js";
+import {
+  isWindowsCppExecutionReady,
+  isWindowsNativeCompilerExecutionReady,
+} from "./compiler.js";
 
 export interface JudgeToolchainRequirements {
   submissions: Set<ToolchainKind>;
@@ -44,14 +47,8 @@ function cReady(
   platform: NodeJS.Platform,
 ): boolean {
   return toolchain.kind === "c"
-    && (
-      isManagedSubmissionToolchainReady(toolchain)
-      || (
-        platform === "darwin"
-        && toolchain.ready
-        && toolchain.provenance === "platform-certified"
-      )
-    );
+    && toolchain.ready
+    && (platform !== "win32" || isWindowsNativeCompilerExecutionReady(toolchain));
 }
 
 function submissionReady(

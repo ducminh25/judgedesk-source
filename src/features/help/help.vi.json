@@ -1,0 +1,210 @@
+{
+  "open": "Hướng dẫn",
+  "title": "Hướng dẫn & thông tin sản phẩm",
+  "subtitle": "Tài liệu offline để chuẩn bị, chấm và xử lý sự cố một kỳ thi trong JudgeDesk",
+  "searchPlaceholder": "Tìm trong hướng dẫn...",
+  "searchLabel": "Tìm kiếm hướng dẫn JudgeDesk",
+  "searchCount": "{{count}} mục",
+  "contentsLabel": "Mục lục hướng dẫn",
+  "noResults": "Không có mục hướng dẫn phù hợp với từ khóa này.",
+  "related": "Nội dung liên quan",
+  "openToolchains": "Mở quản lý trình biên dịch & runtime",
+  "environmentTitle": "Sản phẩm và môi trường",
+  "environmentSubtitle": "Định danh bản build và các đường dẫn của phiên JudgeDesk hiện tại",
+  "environmentUnavailable": "Không thể tải một số thông tin môi trường",
+  "activeToolchains": "Trình biên dịch và runtime đang hoạt động",
+  "diagnosticsPrivacy": "Chẩn đoán không sao chép source thí sinh hoặc nội dung test, nhưng đường dẫn có thể chứa tên tài khoản của bạn. Hãy đọc lại trước khi chia sẻ.",
+  "aboutLabels": {
+    "version": "Phiên bản",
+    "build": "Bản build",
+    "commit": "Commit",
+    "edition": "Bản phân phối",
+    "platform": "Hệ điều hành / kiến trúc",
+    "appData": "Dữ liệu ứng dụng (mặc định)",
+    "toolchains": "Toolchain managed (mặc định)",
+    "temporary": "Thư mục làm việc tạm",
+    "problems": "Thư mục bài thi đã nạp",
+    "contestants": "Thư mục thí sinh đã nạp"
+  },
+  "aboutValues": {
+    "notAvailable": "Không khả dụng",
+    "notLoaded": "Chưa nạp"
+  },
+  "editions": {
+    "full": "Full",
+    "core": "Core",
+    "development": "Development",
+    "unknown": "Không xác định"
+  },
+  "copy": {
+    "idle": "Sao chép chẩn đoán",
+    "copied": "Đã sao chép chẩn đoán",
+    "failed": "Sao chép thất bại"
+  },
+  "sections": {
+    "quickStart": {
+      "title": "Bắt đầu nhanh",
+      "summary": "Từ hai thư mục đến bảng điểm đã chấm",
+      "intro": "JudgeDesk là phần mềm chấm thi đấu lập trình cục bộ, hoạt động offline. Hãy chuẩn bị một thư mục bài thi và một thư mục thí sinh, sau đó thực hiện quy trình ngắn dưới đây.",
+      "stepsTitle": "Kỳ thi đầu tiên trong năm bước",
+      "steps": {
+        "loadProblems": "Chọn Nạp danh sách bài thi và mở thư mục có các thư mục con trực tiếp tương ứng với từng bài.",
+        "loadContestants": "Chọn Nạp danh sách thí sinh và mở thư mục có các thư mục con trực tiếp mang mã hoặc tên từng thí sinh.",
+        "configure": "Kiểm tra nhập/xuất, giới hạn, điểm, checker và profile biên dịch của từng bài. Chỉ giữ dấu chọn ở những bài và thí sinh cần chấm.",
+        "judge": "Chọn Chấm bài. JudgeDesk chỉ chấm các giao điểm thí sinh/bài đang được chọn. Nhấp đúp một ô điểm để xem chi tiết từng test.",
+        "save": "Lưu file kỳ thi .judgedesk nếu cần tiếp tục sau này; xuất bảng điểm đang chọn sang Excel khi cần."
+      },
+      "offlineNote": "Toàn bộ nội dung trong Trung tâm hướng dẫn được đóng gói cùng JudgeDesk. Việc chấm không cần Internet; tải gói và kiểm tra cập nhật là các thao tác riêng."
+    },
+    "foldersReload": {
+      "title": "Thư mục, nạp dữ liệu & Tải lại",
+      "summary": "Cấu trúc kỳ thi và cơ chế dò lại không phá trạng thái",
+      "intro": "Bài thi và bài làm thí sinh nằm trong hai cây thư mục riêng. Bạn có thể dùng nút trên thanh công cụ, chọn qua hộp thoại hoặc kéo thả thư mục vào hộp thoại đó.",
+      "layoutTitle": "Cấu trúc cần chuẩn bị",
+      "layout": {
+        "problems": "Thư mục bài thi: mỗi thư mục con trực tiếp là một bài; tên thư mục con chính là tên bài.",
+        "tests": "Thư mục của một bài: các thư mục test, kèm Config.cfg và source checker tùy chỉnh được hỗ trợ nếu có.",
+        "contestants": "Thư mục thí sinh: mỗi thư mục con trực tiếp là một thí sinh; tên thư mục sẽ xuất hiện trên bảng điểm.",
+        "submissions": "Thư mục của thí sinh: tên file source dùng tên bài và phần mở rộng của ngôn ngữ được hỗ trợ."
+      },
+      "reloadTitle": "Tải lại làm gì",
+      "reloadDescription": "Tải lại dò nội dung hiện tại của hai thư mục đã nhớ. Mục mới được thêm, mục không còn tồn tại được bỏ đi mà không thay toàn bộ kỳ thi.",
+      "selectionNote": "Tải lại giữ nguyên mọi lựa chọn đã chọn hoặc bỏ chọn. Bài và thí sinh mới phát hiện được chọn mặc định. Bảng chọn không bị âm thầm đặt lại."
+    },
+    "problemCheckers": {
+      "title": "Cấu hình bài & checker",
+      "summary": "Nhập/xuất, giới hạn, điểm, nhóm và trình chấm",
+      "intro": "Mở menu thao tác của bài rồi chọn Cấu hình Bài tập. Đây là thiết lập riêng của bài, không phải thiết lập toàn cục trong quản lý trình biên dịch.",
+      "items": {
+        "io": "Chọn riêng luồng vào/ra chuẩn hoặc nhập chính xác tên file vào và file kết quả đối với bài dùng file.",
+        "limits": "Đặt giới hạn thời gian và bộ nhớ có chủ đích. Thời gian hoặc điểm riêng của test sẽ thay giá trị mặc định của bài khi được cấu hình.",
+        "points": "Có thể cho điểm từng test hoặc theo nhóm. Phụ thuộc nhóm và chính sách phải đúng toàn bộ nhóm được đọc từ cấu hình đã lưu.",
+        "checkers": "Các checker văn bản/từ/binary tích hợp đáp ứng những quy tắc so khớp phổ biến. Hãy đọc mô tả trước khi chọn.",
+        "customCheckers": "Checker tùy chỉnh là source trong thư mục bài. JudgeDesk nhận checker C++ (.cpp) và Python (.py) được hỗ trợ; checker .exe kiểu cũ không được nhận."
+      },
+      "configFileNote": "Khi lưu, cấu hình bài được ghi vào Config.cfg trong chính thư mục bài để đi cùng bộ test.",
+      "resultWarning": "Thay đổi thiết lập ảnh hưởng đến cách chấm sẽ làm điểm cũ không còn cùng ý nghĩa. JudgeDesk yêu cầu xác nhận và xóa kết quả cũ của bài khi lưu thay đổi."
+    },
+    "judgingResults": {
+      "title": "Chấm bài & kết quả",
+      "summary": "Phạm vi chọn, verdict, chi tiết, chấm lại và xuất báo cáo",
+      "intro": "JudgeDesk chỉ chấm các hàng và cột đang được chọn sau khi trình chạy native và profile ngôn ngữ cần thiết đã sẵn sàng.",
+      "items": {
+        "selection": "Dùng ô chọn trong cột thí sinh và tiêu đề bài để xác định phạm vi chấm.",
+        "progress": "Cửa sổ tiến trình cho biết thí sinh, bài và giai đoạn hiện tại. Dừng sẽ hủy phiên chấm và dọn các tiến trình được giám sát.",
+        "details": "Nhấp đúp ô kết quả để xem trạng thái biên dịch, verdict từng test, thời gian, bộ nhớ, điểm và nhận xét checker.",
+        "actions": "Dùng menu chuột phải của hàng, cột hoặc ô để chấm lại hay xóa đúng phạm vi mong muốn.",
+        "export": "Xuất Excel dùng danh sách thí sinh và bài đang được chọn, đồng thời kèm metadata chẩn đoán.",
+        "archive": "Lưu kỳ thi sẽ đóng gói bài, source, cấu hình, lựa chọn và các kết quả hiện có vào file .judgedesk."
+      },
+      "verdictsTitle": "Các verdict thường gặp",
+      "verdicts": "AC chấp nhận; WA sai kết quả; PE sai định dạng; CE lỗi biên dịch; RE lỗi khi chạy; TLE quá thời gian; MLE quá bộ nhớ; OLE quá đầu ra; JE lỗi hệ thống chấm; PARTIAL đúng một phần.",
+      "archivePrivacy": "File .judgedesk là container tương thích ZIP, không được mã hóa. Hãy bảo vệ nó như source thí sinh và bộ test chưa công bố."
+    },
+    "toolchains": {
+      "title": "Ngôn ngữ & toolchain",
+      "summary": "Core, Full, trạng thái, đường dẫn và xử lý lỗi nhanh",
+      "intro": "Nguồn trình biên dịch/runtime cho biết ngôn ngữ đến từ đâu. Trạng thái sẵn sàng cho biết JudgeDesk hiện được phép làm gì với nguồn đó. Đây là hai thông tin khác nhau.",
+      "editionsTitle": "Bản Core và Full",
+      "editions": {
+        "full": {
+          "term": "JudgeDesk Full",
+          "description": "Có các gói managed được hỗ trợ và tự chọn chúng khi mở lần đầu. Trên macOS, Python, Pascal và Java dùng gói đi kèm; C/C++ vẫn cần Apple Clang và macOS SDK từ Xcode Command Line Tools."
+        },
+        "core": {
+          "term": "JudgeDesk Core",
+          "description": "Không đóng gói mọi compiler/runtime. App dò PATH trước, sau đó một danh sách vị trí chuẩn có giới hạn, rồi hiển thị version và đường dẫn file thực thi."
+        }
+      },
+      "statusesTitle": "Ý nghĩa trạng thái",
+      "statuses": {
+        "detected": {
+          "term": "Đã phát hiện",
+          "description": "File thực thi được hỗ trợ đã trả lời bước dò nhanh version/đường dẫn. Phát hiện được chưa đồng nghĩa có thể chấm submission."
+        },
+        "ready": {
+          "term": "Sẵn sàng chấm submission",
+          "description": "JudgeDesk có thể biên dịch hoặc chạy bài thí sinh bằng cơ chế bảo vệ đang hoạt động cho ngôn ngữ này."
+        },
+        "checker": {
+          "term": "Chỉ dùng cho checker",
+          "description": "Bản cài có thể phục vụ checker nhưng chưa được phép dùng cho bài thí sinh ở chế độ hiện tại."
+        },
+        "missing": {
+          "term": "Không phát hiện",
+          "description": "Không tìm thấy file thực thi dùng được. Hãy chọn đường dẫn hoặc cài/áp dụng gói managed rồi quét lại."
+        }
+      },
+      "localCompatibilityTitle": "Cho phép chế độ cục bộ ít an toàn hơn",
+      "localCompatibility": {
+        "strict": {
+          "term": "Tắt (mặc định)",
+          "description": "Toolchain local chỉ sẵn sàng chấm submission khi vượt qua strict probe. Khi đó bài vẫn chạy trong sandbox đầy đủ, gồm cô lập filesystem và network."
+        },
+        "resourceOnly": {
+          "term": "Bật: resource-only",
+          "description": "Cho phép toolchain local không tương thích sandbox đầy đủ chạy với giới hạn tài nguyên. JudgeDesk vẫn áp dụng TLE, MLE và dọn toàn bộ cây tiến trình, nhưng KHÔNG cô lập filesystem hoặc network."
+        }
+      },
+      "localCompatibilityWarning": "Chỉ bật công tắc này khi bạn chấp nhận source thí sinh có thể đọc/ghi file mà tài khoản giáo viên truy cập được và có thể dùng network. Gói managed của bản Full vẫn là lựa chọn an toàn hơn.",
+      "troubleshootingTitle": "Khi một ngôn ngữ chưa sẵn sàng",
+      "troubleshooting": {
+        "rescan": "Mở quản lý trình biên dịch & runtime và quét lại sau khi thay PATH hoặc cài compiler.",
+        "path": "Kiểm tra file thực thi đang hiển thị có đúng bản muốn dùng không, đặc biệt khi máy cài nhiều phiên bản.",
+        "version": "Chạy lệnh xem version của đúng file đó trong terminal. Loại bỏ PATH hỏng hoặc chọn đúng đường dẫn local.",
+        "managed": "Ở bản Full, ưu tiên gói đi kèm JudgeDesk. Riêng C/C++ trên macOS, hãy cài Xcode Command Line Tools nếu Apple Clang chưa được phát hiện. Ở bản Core, áp dụng gói managed nếu bản local không tương thích Native protection.",
+        "restart": "Nếu bộ cài vừa thay biến môi trường hệ thống, hãy đóng và mở lại JudgeDesk để tiến trình desktop nhận PATH mới."
+      },
+      "integrityNote": "Việc dò local cố ý chỉ là bước kiểm tra nhanh version/đường dẫn, không quét toàn vẹn. Chữ ký và hash của gói managed được kiểm tra khi tải/bung gói thay vì mỗi lần mở app."
+    },
+    "compileFlags": {
+      "title": "Tham số biên dịch theo từng bài",
+      "summary": "Preset, tham số tùy chỉnh, Config.cfg và việc xóa điểm cũ",
+      "intro": "Tham số biên dịch được chọn trong Cấu hình Bài tập cho từng bài và lưu vào Config.cfg của bài đó; đây không phải preference toolchain toàn cục.",
+      "checkerNote": "Đổi bộ tham số biên dịch không đổi checker của bài. Checker và cấu hình biên dịch là hai trường độc lập trong cùng Config.cfg.",
+      "presetsTitle": "Các profile có sẵn",
+      "presets": {
+        "themis": {
+          "term": "Tương thích Themis",
+          "description": "Mặc định cho Config.cfg cũ chưa có metadata biên dịch. Giữ hành vi C++14/C11 đã dùng để chấm lại ổn định."
+        },
+        "modern": {
+          "term": "Hiện đại (tham khảo IOI/ICPC 2025)",
+          "description": "C++ dùng GNU++20 với -O2 -pipe; C dùng GNU17 với -O2 -pipe. Chỉ chọn khi quy chế kỳ thi cho phép các chuẩn này."
+        },
+        "icpc": {
+          "term": "ICPC World Finals",
+          "description": "C++ dùng GNU++20 với -O2 -g; C dùng GNU11 với -O2 -g theo cấu hình World Finals được tham khảo."
+        },
+        "custom": {
+          "term": "Tùy chỉnh",
+          "description": "Nhập tham số bổ sung cho riêng bài. JudgeDesk xem trước các đối số đã tách và từ chối ghi đè source/output/toolchain/plugin có thể thoát khỏi lệnh được quản lý."
+        }
+      },
+      "configExample": "Ví dụ lưu trong Config.cfg",
+      "platformNote": "Config.cfg chỉ lưu tham số độc lập nền tảng. JudgeDesk tự ghép output bắt buộc, static/stack trên Windows hoặc compatibility trên macOS theo compiler đang dùng; flag riêng Windows không được đưa cho Apple Clang.",
+      "invalidationWarning": "Đổi profile hoặc tham số thực tế sẽ tạo chương trình biên dịch khác. Khi lưu, JudgeDesk yêu cầu xác nhận và xóa điểm/log cũ của bài trước lần chấm tiếp theo.",
+      "restore": "Muốn trở về hành vi quen thuộc, chọn Tương thích Themis cho bài rồi lưu. Việc cập nhật JudgeDesk không âm thầm đổi profile đã ghi trong Config.cfg."
+    },
+    "portable": {
+      "title": "Khả năng portable",
+      "summary": "v1.3.1 hỗ trợ gì và phần nào còn để sau",
+      "notShipped": "JudgeDesk v1.3.1 không phát hành hoặc hỗ trợ gói ứng dụng portable. Artefact được hỗ trợ vẫn là bộ cài Windows và disk image macOS.",
+      "compatibility": "Kiến trúc ứng dụng được giữ tương thích với khả năng bung ra chạy trong tương lai, nhưng chữ ký, updater, vị trí dữ liệu có quyền ghi, WebView/runtime và clean-machine test phải được giải quyết trước khi phát hành.",
+      "items": {
+        "installer": "Dùng bộ cài hoặc disk image chính thức và đối chiếu checksum đã công bố.",
+        "contestArchive": "Định dạng kỳ thi .judgedesk có thể chuyển giữa bản JudgeDesk Windows và macOS được hỗ trợ; điều đó không biến app thành portable.",
+        "futureWindows": "Phương án Windows tương lai sẽ dùng ZIP đã kiểm chứng, không dùng file tự bung kiểu cũ.",
+        "futureMac": "Phương án macOS tương lai phải giữ nguyên app bundle đã ký, quyền thực thi và hành vi Gatekeeper."
+      },
+      "terminology": "Install-free và true portable không giống nhau: true portable còn phải lưu data/log cạnh app. Release này chưa bật chế độ nào như vậy."
+    },
+    "about": {
+      "title": "Thông tin JudgeDesk",
+      "summary": "Phiên bản, bản phân phối, build, đường dẫn và chẩn đoán",
+      "intro": "JudgeDesk là phần mềm desktop chấm thi đấu lập trình cục bộ bằng tiếng Việt cho Windows và macOS Apple Silicon. Việc chuẩn bị kỳ thi, chấm, xem chi tiết, lưu và xuất báo cáo nằm trong một quy trình desktop.",
+      "themisCredit": "Quy trình offline ưu tiên giáo viên và cách hướng dẫn theo ngữ cảnh của JudgeDesk được lấy cảm hứng từ Themis. Nội dung Help này được viết mới cho JudgeDesk, không sao chép văn bản, ảnh chụp hay tài sản của Themis.",
+      "disclaimer": "JudgeDesk là sản phẩm độc lập: không phải Themis, không liên kết với tác giả Themis và không tuyên bố được Bộ Giáo dục và Đào tạo bảo trợ hoặc đặt hàng."
+    }
+  }
+}

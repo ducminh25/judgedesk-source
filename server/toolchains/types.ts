@@ -14,6 +14,7 @@ import type {
   ToolchainProvenance,
   ToolchainRole,
 } from "../languages/contracts.js";
+import type { ExecutorLocalToolchainIdentity } from "../executor/protocol.js";
 
 export type ToolchainSource =
   | "none"
@@ -158,6 +159,14 @@ export interface ResolvedToolchain {
   executionPath?: string;
   executionId?: string;
   executionRoot?: string;
+  /** Direct local executable grant. It never represents package integrity. */
+  localToolchain?: ExecutorLocalToolchainIdentity;
+  /** Cache-only status of the bounded native-executor compatibility probe. */
+  localProbe?: {
+    status: "not_started" | "checking" | "compatible" | "incompatible";
+    checkedAt?: string;
+    diagnostic?: string;
+  };
   packageOrigin?: ToolchainPackageOrigin;
   packageDigest?: string;
   packageRoot?: string;

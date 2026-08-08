@@ -24,13 +24,7 @@ import { getInstallProgress } from "./installer.js";
 import { getDescriptorForHost } from "./manifest.js";
 import { inspectInstalledToolchainPackage } from "./package-store.js";
 import { getStoredProfilePreference } from "./preferences-v2.js";
-import {
-  isPythonCheckerReady,
-  isPythonSubmissionReady,
-  chooseNativeProtectedToolchain,
-  resolveManagedToolchain,
-  resolveToolchain,
-} from "./resolver.js";
+import { resolveCachedToolchainSelection } from "./cached-resolution.js";
 import {
   loadToolchainPreferenceSnapshot,
   type ToolchainPreferenceSnapshot,
@@ -79,6 +73,8 @@ export interface LanguageProfileView {
     mode: ToolchainSourceMode;
     localPath?: string;
   };
+  /** The selected source was found, independently of judging readiness. */
+  detected: boolean;
   status: UiReadinessStatus;
   roles: {
     submissionReady: boolean;
@@ -258,21 +254,10 @@ export function buildLanguageProfileState(
       preferences.preferences,
       profile.ref.id,
     );
-    const selected = resolveToolchain(kind);
-    const active = chooseNativeProtectedToolchain(
-      os.platform(),
-      kind,
-      resolveManagedToolchain(kind),
-      selected,
-    );
-    let submissionReady = kind === "python"
-      ? isPythonSubmissionReady(selected)
-      : active.ready;
-    let checkerReady = !profile.roles.checker
-      ? false
-      : kind === "python"
-        ? isPythonCheckerReady(selected)
-        : active.ready;
+    const cachedResolution = resolveCachedToolchainSelection(kind, selection);
+    const active = cachedResolution.active;
+    let submissionReady = active.ready;
+    let checkerReady = !!profile.roles.checker && active.ready;
     if (!supportedOnHost || preferences.status === "recovery") {
       submissionReady = false;
       checkerReady = false;
@@ -321,12 +306,10 @@ export function buildLanguageProfileState(
           },
     };
     const localSelection = selection.mode === "local_path" || selection.mode === "local_auto";
-    const certificationSupported = kind === "cpp" && os.platform() === "win32";
-    const selectedLocalPathAvailable = selection.mode === "local_path"
-      ? !!selection.localPath
-      : selection.mode === "local_auto"
-        ? getDiscoveredCandidates(kind).length === 1
-        : false;
+    const certificationSupported = kind === "cpp"
+      && os.platform() === "win32"
+      && localExecution?.mode === "freeze_required";
+    const selectedLocalPathAvailable = !!cachedResolution.candidate;
     return {
       id: profile.ref.id,
       version: profile.ref.version,
@@ -345,6 +328,7 @@ export function buildLanguageProfileState(
         executionMode: localExecution?.mode ?? "unsupported",
       },
       selection,
+      detected: cachedResolution.detected,
       status: statusFromRoles(submissionReady, checkerReady),
       roles: { submissionReady, checkerReady },
       diagnostic: diagnosticFor(

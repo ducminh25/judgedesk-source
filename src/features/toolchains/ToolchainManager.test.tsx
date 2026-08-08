@@ -5,6 +5,7 @@ import { createInstance } from "i18next";
 import { I18nextProvider, initReactI18next } from "react-i18next";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ReactNode } from "react";
+import type { ToolchainState } from "./useToolchains.js";
 
 async function renderWithTranslations(element: ReactNode) {
   const i18n = createInstance();
@@ -39,7 +40,7 @@ async function renderWithTranslations(element: ReactNode) {
                 checker_only: "Checker only",
                 submission_ready: "Submission ready",
               },
-              verifyAndUse: "Verify & use",
+              verifyAndUse: "Use this path",
               advanced: "Advanced",
               supportedLocalVersions: "Tested local versions",
               localExecution: {
@@ -47,6 +48,15 @@ async function renderWithTranslations(element: ReactNode) {
                 managed_only: "Managed only",
               },
               freezeForContest: "Freeze for contest",
+              resourceOnly: {
+                title: "Advanced local execution",
+                description: "Filesystem and network are not isolated.",
+                toggle: "Allow less-secure local execution",
+                enabled: "Enabled",
+                disabled: "Off (recommended)",
+                recovery: "Invalid saved policy was disabled.",
+                confirm: "Enable less-secure local execution?",
+              },
               downloadAndApply: "Download and apply for JudgeDesk",
               applyManaged: "Apply managed package",
               uninstallConfirm: "Confirm uninstall",
@@ -70,6 +80,29 @@ async function renderWithTranslations(element: ReactNode) {
 }
 
 describe("toolchain settings UI regressions", () => {
+  it("keeps polling cached refreshes and local compatibility probes", async () => {
+    Object.assign(globalThis, {
+      window: { location: { origin: "http://localhost:5173" } },
+    });
+    const { hasRunningOperation } = await import("./useToolchains.js");
+    const state = {
+      discovery: { status: "complete", refreshing: true },
+      manifestStatus: "ready",
+      toolchains: [],
+      profiles: [],
+    } as unknown as ToolchainState;
+    assert.equal(hasRunningOperation(state), true);
+
+    state.discovery.refreshing = false;
+    state.profiles = [{
+      active: { localProbe: { status: "checking" } },
+    } as ToolchainState["profiles"][number]];
+    assert.equal(hasRunningOperation(state), true);
+
+    state.profiles[0].active.localProbe = { status: "compatible" };
+    assert.equal(hasRunningOperation(state), false);
+  });
+
   it("keeps the Manager action visible before host detection completes", async () => {
     Object.assign(globalThis, {
       window: { location: { origin: "http://localhost:5173" } },
@@ -102,6 +135,7 @@ describe("toolchain settings UI regressions", () => {
           executionMode: "freeze_required" as const,
         },
         selection: { mode: "local_path" as const, localPath: "C:\\gcc\\g++.exe" },
+        detected: true,
         status: "not_available" as const,
         roles: { submissionReady: false, checkerReady: false },
         diagnostic: {
@@ -155,6 +189,7 @@ describe("toolchain settings UI regressions", () => {
           executionMode: "managed_only" as const,
         },
         selection: { mode: "managed" as const },
+        detected: true,
         status: "submission_ready" as const,
         roles: { submissionReady: true, checkerReady: true },
         active: {
@@ -246,6 +281,30 @@ describe("toolchain settings UI regressions", () => {
       appSource.slice(modalStart, modalEnd),
       /handleFetchProblems/,
     );
+  });
+
+  it("shows resource-only local execution as an explicit fail-closed advanced option", async () => {
+    const { LocalExecutionPolicyPanel } = await import("./ToolchainManager.js");
+    const markup = await renderWithTranslations(
+      <LocalExecutionPolicyPanel
+        enabled={false}
+        recovery
+        disabled={false}
+        onChange={async () => true}
+      />,
+    );
+    assert.match(markup, /Allow less-secure local execution/);
+    assert.match(markup, /Off \(recommended\)/);
+    assert.match(markup, /Filesystem and network are not isolated/);
+    assert.match(markup, /Invalid saved policy was disabled/);
+    assert.match(markup, /type="checkbox"/);
+    assert.doesNotMatch(markup, /checked=""/);
+
+    const source = readFileSync(
+      new URL("./ToolchainManager.tsx", import.meta.url),
+      "utf8",
+    );
+    assert.match(source, /window\.confirm/);
   });
 
   it("does not force a toolchain wizard on first launch", () => {

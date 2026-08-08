@@ -200,6 +200,7 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
         submissionPath: subPath,
         tempDirectory: tempDir,
         jobId,
+        compile: probConf.compile,
         cppToolchain: pinnedToolchains.cpp,
         cToolchain: pinnedToolchains.c,
         pythonToolchain: pinnedToolchains.python,

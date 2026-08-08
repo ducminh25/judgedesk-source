@@ -4,8 +4,15 @@ import {
   prepareManagedToolchainComponent,
   prepareManagedToolchainExecutable,
 } from "../executor/workspace.js";
-import type { ExecutorToolchainIdentity } from "../executor/protocol.js";
+import type {
+  ExecutorLocalToolchainIdentity,
+  ExecutorToolchainIdentity,
+} from "../executor/protocol.js";
 import type { ResolvedToolchain } from "../toolchains/types.js";
+import {
+  buildLocalPythonEnvironment,
+  deriveLocalToolchain,
+} from "../toolchains/local-execution.js";
 import { resolveCompilationToolchain } from "./compiler.js";
 
 export interface PythonLaunch {
@@ -13,6 +20,7 @@ export interface PythonLaunch {
   args: string[];
   environment: Record<string, string>;
   toolchain?: ExecutorToolchainIdentity;
+  localToolchain?: ExecutorLocalToolchainIdentity;
 }
 
 export interface IsolatedPythonRuntime {
@@ -20,6 +28,7 @@ export interface IsolatedPythonRuntime {
   executablePath: string;
   environment: Record<string, string>;
   toolchain?: ExecutorToolchainIdentity;
+  localToolchain?: ExecutorLocalToolchainIdentity;
 }
 
 interface IsolatedPythonLaunchOptions {
@@ -72,6 +81,9 @@ export async function prepareIsolatedPythonScript(
     args: ["-I", "-B", path.join(workspace.path, stagedName)],
     environment: runtime.environment,
     ...(runtime.toolchain ? { toolchain: runtime.toolchain } : {}),
+    ...(runtime.localToolchain
+      ? { localToolchain: runtime.localToolchain }
+      : {}),
   };
 }
 
@@ -90,7 +102,30 @@ export async function prepareIsolatedPythonRuntime(
   ) {
     throw new Error("TOOLCHAIN_PYTHON_MISSING");
   }
-  if (python.source !== "managed") throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+  if (python.source !== "managed") {
+    if (!python.localToolchain) {
+      throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+    }
+    const local = deriveLocalToolchain(
+      "python",
+      resolvedExecutionPath,
+      python.localToolchain.isolation,
+    );
+    if (
+      path.resolve(local.identity.rootPath)
+        !== path.resolve(python.localToolchain.rootPath)
+      || local.identity.executableRelativePath
+        !== python.localToolchain.executableRelativePath
+    ) {
+      throw new Error("TOOLCHAIN_CHANGED_DURING_JUDGING");
+    }
+    return {
+      executableId: local.executableId,
+      executablePath: local.executablePath,
+      environment: buildLocalPythonEnvironment(local),
+      localToolchain: python.localToolchain,
+    };
+  }
 
   const cached = python.packageDigest
     ? await prepareManagedToolchainComponent(

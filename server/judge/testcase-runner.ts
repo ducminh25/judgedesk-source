@@ -82,6 +82,7 @@ export async function runTestCase(options: TestCaseRunnerOptions): Promise<TestC
       stdinFile,
       environment: launch.environment,
       toolchain: launch.toolchain,
+      localToolchain: launch.localToolchain,
       timeLimitMs: options.timeLimitMs,
       memoryBytes,
     }));
@@ -196,6 +197,7 @@ async function prepareSubmission(
   args: string[];
   environment: Record<string, string>;
   toolchain?: import("../executor/protocol.js").ExecutorToolchainIdentity;
+  localToolchain?: import("../executor/protocol.js").ExecutorLocalToolchainIdentity;
 }> {
   if (options.program?.kind === "native") {
     const artifact = await importExecutorArtifact(options.program.artifactPath);

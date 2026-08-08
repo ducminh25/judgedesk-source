@@ -159,10 +159,21 @@ export async function prepareDistributionResources(
       { encoding: "utf8", flag: "wx" },
     );
     if (fs.existsSync(outputRoot)) {
-      await renameDirectoryWithRetry(outputRoot, backupRoot);
-      backupCreated = true;
+      try {
+        await renameDirectoryWithRetry(outputRoot, backupRoot);
+        backupCreated = true;
+      } catch (error) {
+        if (!isWindowsRenameFilterError(error)) throw error;
+        fs.cpSync(outputRoot, backupRoot, {
+          recursive: true,
+          force: false,
+          errorOnExist: true,
+        });
+        backupCreated = true;
+        fs.rmSync(outputRoot, { recursive: true, force: true });
+      }
     }
-    await renameDirectoryWithRetry(stagingRoot, outputRoot);
+    await commitStagingDirectory(stagingRoot, outputRoot);
     outputCommitted = true;
     if (backupCreated) {
       fs.rmSync(backupRoot, { recursive: true, force: true });
@@ -170,13 +181,13 @@ export async function prepareDistributionResources(
     }
     return lock;
   } catch (error) {
-    if (outputCommitted && fs.existsSync(outputRoot)) {
+    if ((outputCommitted || backupCreated) && fs.existsSync(outputRoot)) {
       fs.rmSync(outputRoot, { recursive: true, force: true });
       outputCommitted = false;
     }
     if (backupCreated && fs.existsSync(backupRoot)) {
       try {
-        await renameDirectoryWithRetry(backupRoot, outputRoot);
+        await commitStagingDirectory(backupRoot, outputRoot);
         backupCreated = false;
       } catch (rollbackError) {
         throw new AggregateError(
@@ -217,6 +228,34 @@ async function renameDirectoryWithRetry(
       });
     }
   }
+}
+
+function isWindowsRenameFilterError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException).code;
+  return process.platform === "win32"
+    && (code === "EPERM" || code === "EACCES" || code === "EBUSY");
+}
+
+async function commitStagingDirectory(
+  stagingRoot: string,
+  outputRoot: string,
+): Promise<void> {
+  try {
+    await renameDirectoryWithRetry(stagingRoot, outputRoot);
+    return;
+  } catch (error) {
+    if (!isWindowsRenameFilterError(error)) throw error;
+  }
+
+  // Windows filesystem filters can keep a completed package tree locked
+  // against rename. The previous distribution is already backed up, so the
+  // caller can remove a partial copy and restore that backup on any failure.
+  fs.cpSync(stagingRoot, outputRoot, {
+    recursive: true,
+    force: false,
+    errorOnExist: true,
+  });
+  fs.rmSync(stagingRoot, { recursive: true, force: true });
 }
 
 async function materializePackage(

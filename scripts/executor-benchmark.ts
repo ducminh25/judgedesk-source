@@ -21,6 +21,7 @@ const suites = integerOption("--suites", 5);
 const warmups = integerOption("--warmups", 20);
 const enforce = process.argv.includes("--enforce");
 const outputDirectory = path.resolve(option("--output", "docs/benchmarks"));
+const toolchainReadinessTimeoutMs = 15_000;
 const ownedMacosTreeGuard = provisionMacosTreeGuard();
 const [
   { executorClient },
@@ -52,7 +53,7 @@ try {
   // Use the same native-protection selection as production judging. On Windows an
   // already verified executor cache remains usable even if the original installer
   // directory was moved or removed.
-  const benchmarkToolchain = await resolveCompilationToolchain("cpp");
+  const benchmarkToolchain = await resolveBenchmarkToolchain();
   if (!benchmarkToolchain.ready) {
     throw new Error(benchmarkToolchain.diagnostic || "A benchmark-compatible C++ toolchain is unavailable.");
   }
@@ -92,19 +93,23 @@ try {
   // IPC dispatch and OS sandbox creation are independent stages. The old gate
   // compared their sum against the IPC-only 5/10 ms budget, so the committed
   // v1.2.4 Windows baseline failed by construction even though IPC was ~2 ms.
-  // Keep the strict IPC gate and give kernel sandbox setup its own bounded gate.
+  // macOS dispatch also includes the authenticated guardian/supervisor handoff;
+  // the v1.3.0 M1 baseline is about 11/13 ms before sandbox setup. Keep the
+  // stricter Windows IPC budget and bound the full macOS handoff separately.
+  const dispatchP50Limit = process.platform === "darwin" ? 15 : 5;
+  const dispatchP95Limit = process.platform === "darwin" ? 20 : 10;
   const securitySetupP50Limit = process.platform === "darwin" ? 8 : 15;
   const securitySetupP95Limit = process.platform === "darwin" ? 15 : 25;
   const gates = {
     dispatchP50Ms: {
-      limit: 5,
+      limit: dispatchP50Limit,
       actual: aggregate.executorDispatchMs.p50,
-      pass: aggregate.executorDispatchMs.p50 <= 5,
+      pass: aggregate.executorDispatchMs.p50 <= dispatchP50Limit,
     },
     dispatchP95Ms: {
-      limit: 10,
+      limit: dispatchP95Limit,
       actual: aggregate.executorDispatchMs.p95,
-      pass: aggregate.executorDispatchMs.p95 <= 10,
+      pass: aggregate.executorDispatchMs.p95 <= dispatchP95Limit,
     },
     securitySetupP50Ms: {
       limit: securitySetupP50Limit,
@@ -164,6 +169,20 @@ try {
     fs.rmSync(temporaryDirectory, { recursive: true, force: true });
     releaseMacosTreeGuard(ownedMacosTreeGuard);
   }
+}
+
+async function resolveBenchmarkToolchain(): Promise<Awaited<ReturnType<typeof resolveCompilationToolchain>>> {
+  const deadline = Date.now() + toolchainReadinessTimeoutMs;
+  let toolchain = await resolveCompilationToolchain("cpp");
+  while (
+    !toolchain.ready
+    && toolchain.diagnosticCode === "DETECTION_IN_PROGRESS"
+    && Date.now() < deadline
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    toolchain = await resolveCompilationToolchain("cpp");
+  }
+  return toolchain;
 }
 
 interface OwnedMacosTreeGuard {

@@ -36,20 +36,12 @@ function provisionMacosTreeGuard(): string | null {
   return directory;
 }
 
-function macosCppToolchain(): ResolvedToolchain {
-  const executablePath = execFileSync(
+function macosCppExecutable(): string {
+  return fs.realpathSync(execFileSync(
     "/usr/bin/xcrun",
     ["--find", "clang++"],
     { encoding: "utf8" },
-  ).trim();
-  return {
-    kind: "cpp",
-    source: "system",
-    executablePath,
-    version: "17.0.0",
-    ready: true,
-    provenance: "platform-certified",
-  };
+  ).trim());
 }
 
 function listenLoopback(
@@ -79,12 +71,14 @@ test(
       { executorClient },
       { resolveChecker },
       { runCustomChecker },
-      { resolveManagedToolchain },
+      { resolveManagedToolchain, verifyLocalToolchainCandidate },
+      { scheduleLocalCompatibilityProbe },
     ] = await Promise.all([
       import("../executor/client.js"),
       import("./compiler.js"),
       import("./custom-checker-runner.js"),
       import("../toolchains/resolver.js"),
+      import("../toolchains/local-execution.js"),
     ]);
     const root = fs.mkdtempSync(
       path.join(os.tmpdir(), "judgedesk-custom-checker-gate-"),
@@ -117,9 +111,14 @@ test(
     fs.writeFileSync(actualOutputPath, "42\n", "utf8");
     fs.writeFileSync(expectedOutputPath, "42\n", "utf8");
 
-    const cppToolchain = process.platform === "win32"
-      ? resolveManagedToolchain("cpp")
-      : macosCppToolchain();
+    let cppToolchain: ResolvedToolchain;
+    if (process.platform === "win32") {
+      cppToolchain = resolveManagedToolchain("cpp");
+    } else {
+      const compiler = macosCppExecutable();
+      await scheduleLocalCompatibilityProbe("cpp", compiler);
+      cppToolchain = verifyLocalToolchainCandidate("cpp", compiler);
+    }
     assert.equal(
       cppToolchain.ready,
       true,

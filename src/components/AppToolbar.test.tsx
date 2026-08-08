@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { createInstance } from "i18next";
 import { I18nextProvider, initReactI18next } from "react-i18next";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { AppUpdateState } from "../features/updates/useAppUpdater.js";
-import { UpdateButton } from "./AppToolbar.js";
+import { HelpButton, UpdateButton } from "./AppToolbar.js";
 
 const resources = {
   en: {
@@ -21,6 +22,7 @@ const resources = {
         installFailed: "Update installation failed",
         retry: "Try again",
       },
+      helpCenter: { open: "Help" },
     },
   },
   vi: {
@@ -37,6 +39,7 @@ const resources = {
         installFailed: "Cài đặt bản cập nhật thất bại",
         retry: "Thử lại",
       },
+      helpCenter: { open: "Hướng dẫn" },
     },
   },
 };
@@ -57,6 +60,20 @@ async function renderUpdateButton(state: AppUpdateState, language: "en" | "vi") 
         onDownload={() => {}}
         onInstall={() => {}}
       />
+    </I18nextProvider>,
+  );
+}
+
+async function renderHelpButton(language: "en" | "vi") {
+  const i18n = createInstance();
+  await i18n.use(initReactI18next).init({
+    lng: language,
+    resources,
+    interpolation: { escapeValue: false },
+  });
+  return renderToStaticMarkup(
+    <I18nextProvider i18n={i18n}>
+      <HelpButton onOpen={() => {}} />
     </I18nextProvider>,
   );
 }
@@ -102,5 +119,29 @@ describe("toolbar update button", () => {
       markup,
       /aria-label="Tải bản cập nhật thất bại\. Thử lại"/,
     );
+  });
+});
+
+describe("toolbar help button", () => {
+  it("uses a visible English label and advertises the F1 shortcut", async () => {
+    const markup = await renderHelpButton("en");
+
+    assert.match(markup, />Help</);
+    assert.match(markup, /aria-keyshortcuts="F1"/);
+    assert.match(markup, /aria-label="Help \(F1\)"/);
+    assert.match(markup, /h-10/);
+  });
+
+  it("uses an explicit Vietnamese label", async () => {
+    const markup = await renderHelpButton("vi");
+
+    assert.match(markup, />Hướng dẫn</);
+    assert.match(markup, /aria-label="Hướng dẫn \(F1\)"/);
+  });
+
+  it("keeps Help immediately before Update in the toolbar", () => {
+    const source = readFileSync(new URL("./AppToolbar.tsx", import.meta.url), "utf8");
+
+    assert.match(source, /<HelpButton onOpen=\{onOpenHelp\} \/>\s*<UpdateButton/);
   });
 });

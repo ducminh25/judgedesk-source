@@ -5,57 +5,71 @@ import path from "node:path";
 import test, { type TestContext } from "node:test";
 import {
   CPP_LANGUAGE_PROFILE_ID,
-  JAVA_LANGUAGE_PROFILE_ID,
   LANGUAGE_REGISTRY_REVISION,
-  PYTHON_LANGUAGE_PROFILE_ID,
   listRegisteredLanguageProfiles,
 } from "../languages/registry.js";
+import type { ToolchainKind } from "./types.js";
 import {
+  loadToolchainPreferenceSnapshot,
+  updateProfileToolchainPreference,
+} from "./storage.js";
+import {
+  getDiscoveredCandidates,
+  getToolchainDiscoveryAttempts,
   getToolchainDiscoveryFilePath,
   getToolchainDiscoverySnapshot,
-  requestToolchainRescan,
   resetToolchainDiscoveryRuntimeForTests,
+  setToolchainDiscoveryProbeForTests,
+  setToolchainDiscoveryStandardCandidatesForTests,
   startInitialToolchainDiscovery,
   waitForToolchainDiscovery,
+  type ToolchainVersionProbeOutput,
+  type ToolchainVersionProbeRequest,
 } from "./discovery.js";
 
-function useDiscoveryFixture(t: TestContext): { root: string; bin: string } {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-discovery-"));
+interface DiscoveryFixture {
+  root: string;
+  bin: string;
+}
+
+function useDiscoveryFixture(t: TestContext): DiscoveryFixture {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-discovery-v2-"));
   const bin = path.join(root, "bin");
   fs.mkdirSync(bin);
-  const previous = {
-    appData: process.env.THEMIS_APP_DATA_DIR,
-    path: process.env.PATH,
-    programFiles: process.env.ProgramFiles,
-    programFilesX86: process.env["ProgramFiles(x86)"],
-    localAppData: process.env.LOCALAPPDATA,
-    userProfile: process.env.USERPROFILE,
-  };
+  const keys = [
+    "THEMIS_APP_DATA_DIR",
+    "PATH",
+    "ProgramFiles",
+    "ProgramFiles(x86)",
+    "LOCALAPPDATA",
+    "USERPROFILE",
+    "JAVA_HOME",
+    "GOROOT",
+    "DOTNET_ROOT",
+  ] as const;
+  const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
   process.env.THEMIS_APP_DATA_DIR = path.join(root, "app-data");
   process.env.PATH = bin;
   process.env.ProgramFiles = path.join(root, "Program Files");
   process.env["ProgramFiles(x86)"] = path.join(root, "Program Files (x86)");
   process.env.LOCALAPPDATA = path.join(root, "LocalAppData");
   process.env.USERPROFILE = path.join(root, "UserProfile");
+  delete process.env.JAVA_HOME;
+  delete process.env.GOROOT;
+  delete process.env.DOTNET_ROOT;
+  setToolchainDiscoveryProbeForTests(undefined);
+  setToolchainDiscoveryStandardCandidatesForTests(async () => []);
   resetToolchainDiscoveryRuntimeForTests();
   t.after(() => {
-    fs.rmSync(root, { recursive: true, force: true });
-    for (const [key, value] of Object.entries(previous)) {
-      const environmentKey = key === "appData"
-        ? "THEMIS_APP_DATA_DIR"
-        : key === "path"
-          ? "PATH"
-          : key === "programFiles"
-            ? "ProgramFiles"
-            : key === "programFilesX86"
-              ? "ProgramFiles(x86)"
-              : key === "localAppData"
-                ? "LOCALAPPDATA"
-                : "USERPROFILE";
-      if (value === undefined) delete process.env[environmentKey];
-      else process.env[environmentKey] = value;
-    }
+    setToolchainDiscoveryProbeForTests(undefined);
+    setToolchainDiscoveryStandardCandidatesForTests(undefined);
     resetToolchainDiscoveryRuntimeForTests();
+    fs.rmSync(root, { recursive: true, force: true });
+    for (const key of keys) {
+      const value = previous[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   });
   return { root, bin };
 }
@@ -64,280 +78,320 @@ function executableName(base: string): string {
   return os.platform() === "win32" ? `${base}.exe` : base;
 }
 
-function createExecutable(filePath: string): void {
-  fs.writeFileSync(filePath, "passive discovery fixture\n");
+function createExecutable(filePath: string): string {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, "discovery fixture\n");
   if (os.platform() !== "win32") fs.chmodSync(filePath, 0o700);
+  return fs.realpathSync(filePath);
 }
 
-test("initial discovery is passive, persisted, and not repeated on the next app start", async (t) => {
-  const { root, bin } = useDiscoveryFixture(t);
-  const first = path.join(bin, executableName("g++"));
-  createExecutable(first);
-  const firstCanonical = fs.realpathSync(first);
-  startInitialToolchainDiscovery();
-  const completed = await waitForToolchainDiscovery();
-  assert.equal(completed.status, "complete");
-  assert.ok(
-    completed.profiles[CPP_LANGUAGE_PROFILE_ID]?.some(
-      (candidate) => candidate.canonicalPath === firstCanonical,
-    ),
-  );
-  assert.ok(fs.existsSync(getToolchainDiscoveryFilePath()));
+function successfulOutput(kind: ToolchainKind): ToolchainVersionProbeOutput {
+  const output: Record<ToolchainKind, ToolchainVersionProbeOutput> = {
+    cpp: {
+      stdout: "",
+      stderr: "gcc version 14.2.0 (WinLibs)\nTarget: x86_64-w64-mingw32\n",
+    },
+    c: {
+      stdout: "",
+      stderr: "gcc version 14.2.0 (WinLibs)\nTarget: x86_64-w64-mingw32\n",
+    },
+    python: { stdout: "Python 3.12.13\n", stderr: "" },
+    pascal: { stdout: "3.2.2\n", stderr: "" },
+    go: { stdout: "go version go1.26.5 windows/amd64\n", stderr: "" },
+    java: { stdout: "javac 21.0.12\n", stderr: "" },
+    rust: { stdout: "rustc 1.97.1\nhost: x86_64-pc-windows-msvc\n", stderr: "" },
+    javascript: { stdout: "v24.18.1\n", stderr: "" },
+    csharp: { stdout: "10.0.302\n", stderr: "" },
+  };
+  return output[kind];
+}
 
-  fs.rmSync(first);
+function stageEveryLanguage(bin: string): void {
+  const names: Record<ToolchainKind, string> = {
+    cpp: "g++",
+    c: "gcc",
+    python: "python3",
+    pascal: "fpc",
+    go: "go",
+    java: "javac",
+    rust: "rustc",
+    javascript: "node",
+    csharp: "dotnet",
+  };
+  for (const name of Object.values(names)) {
+    createExecutable(path.join(bin, executableName(name)));
+  }
+}
+
+test("cached v2 state is returned immediately and refreshed once on every launch", async (t) => {
+  const { root, bin } = useDiscoveryFixture(t);
+  const firstPath = createExecutable(path.join(bin, executableName("g++")));
+  setToolchainDiscoveryProbeForTests(async (request) => successfulOutput(request.kind));
+  startInitialToolchainDiscovery();
+  const first = await waitForToolchainDiscovery();
+  assert.equal(first.status, "complete");
+  assert.equal(first.refreshing, false);
+  assert.equal(getDiscoveredCandidates("cpp")[0]?.canonicalPath, firstPath);
+
+  fs.rmSync(firstPath);
   const secondBin = path.join(root, "second-bin");
   fs.mkdirSync(secondBin);
-  const second = path.join(secondBin, executableName("g++"));
-  createExecutable(second);
+  const secondPath = createExecutable(path.join(secondBin, executableName("g++")));
   process.env.PATH = secondBin;
+  let releaseProbe!: () => void;
+  let markProbeStarted!: () => void;
+  const probeGate = new Promise<void>((resolve) => {
+    releaseProbe = resolve;
+  });
+  const probeStarted = new Promise<void>((resolve) => {
+    markProbeStarted = resolve;
+  });
+  let probeCalls = 0;
+  setToolchainDiscoveryProbeForTests(async (request) => {
+    probeCalls += 1;
+    markProbeStarted();
+    await probeGate;
+    return successfulOutput(request.kind);
+  });
   resetToolchainDiscoveryRuntimeForTests();
+
+  assert.equal(getToolchainDiscoverySnapshot().status, "complete");
+  assert.equal(probeCalls, 0, "reading cached state must not spawn a probe");
+  assert.equal(getDiscoveredCandidates("cpp")[0]?.canonicalPath, firstPath);
   startInitialToolchainDiscovery();
-  const restored = getToolchainDiscoverySnapshot();
-  assert.equal(restored.status, "complete");
-  assert.ok(
-    restored.profiles[CPP_LANGUAGE_PROFILE_ID]?.some(
-      (candidate) => candidate.canonicalPath === firstCanonical,
-    ),
-  );
-  assert.equal(
-    restored.profiles[CPP_LANGUAGE_PROFILE_ID]?.some(
-      (candidate) => candidate.canonicalPath === fs.realpathSync(second),
-    ),
-    false,
-  );
+  const refreshing = getToolchainDiscoverySnapshot();
+  assert.equal(refreshing.status, "complete");
+  assert.equal(refreshing.refreshing, true);
+  assert.equal(getDiscoveredCandidates("cpp")[0]?.canonicalPath, firstPath);
+  await probeStarted;
+  assert.equal(probeCalls, 1);
+  releaseProbe();
+  const refreshed = await waitForToolchainDiscovery();
+  assert.equal(refreshed.status, "complete");
+  assert.equal(getDiscoveredCandidates("cpp")[0]?.canonicalPath, secondPath);
 });
 
-test("an explicit rescan replaces the passive candidate snapshot", async (t) => {
+test("PATH order wins and a successful PATH probe skips standard locations", async (t) => {
+  const { root } = useDiscoveryFixture(t);
+  const firstBin = path.join(root, "path-0");
+  const secondBin = path.join(root, "path-1");
+  const first = createExecutable(path.join(firstBin, executableName("g++")));
+  createExecutable(path.join(secondBin, executableName("g++")));
+  process.env.PATH = [firstBin, secondBin].join(path.delimiter);
+  const probes: ToolchainVersionProbeRequest[] = [];
+  const standardKinds: ToolchainKind[] = [];
+  setToolchainDiscoveryProbeForTests(async (request) => {
+    probes.push(request);
+    return successfulOutput(request.kind);
+  });
+  setToolchainDiscoveryStandardCandidatesForTests(async (kind) => {
+    standardKinds.push(kind);
+    return [];
+  });
+
+  startInitialToolchainDiscovery();
+  await waitForToolchainDiscovery();
+  const candidate = getDiscoveredCandidates("cpp")[0];
+  assert.equal(candidate?.canonicalPath, first);
+  assert.equal(candidate?.origin, "path");
+  assert.equal(candidate?.pathRank, 0);
+  assert.deepEqual(probes.filter((probe) => probe.kind === "cpp").map(
+    (probe) => probe.executablePath,
+  ), [first]);
+  assert.deepEqual(probes.find((probe) => probe.kind === "cpp")?.args, ["-v"]);
+  assert.deepEqual(standardKinds.filter((kind) => kind === "cpp"), []);
+});
+
+test("an explicit local path is probed before PATH and retained in the cache", async (t) => {
   const { root, bin } = useDiscoveryFixture(t);
-  const first = path.join(bin, executableName("g++"));
-  createExecutable(first);
+  const pathCompiler = createExecutable(path.join(bin, executableName("g++")));
+  const selectedCompiler = createExecutable(path.join(
+    root,
+    "chosen toolchain",
+    "bin",
+    executableName("g++"),
+  ));
+  loadToolchainPreferenceSnapshot();
+  updateProfileToolchainPreference(CPP_LANGUAGE_PROFILE_ID, {
+    mode: "local_path",
+    localPath: selectedCompiler,
+  });
+  const probes: ToolchainVersionProbeRequest[] = [];
+  setToolchainDiscoveryProbeForTests(async (request) => {
+    probes.push(request);
+    return successfulOutput(request.kind);
+  });
+
   startInitialToolchainDiscovery();
   await waitForToolchainDiscovery();
 
-  fs.rmSync(first);
-  const secondBin = path.join(root, "second-bin");
-  fs.mkdirSync(secondBin);
-  const second = path.join(secondBin, executableName("g++"));
-  createExecutable(second);
-  process.env.PATH = secondBin;
-  requestToolchainRescan();
-  const rescanned = await waitForToolchainDiscovery();
-  assert.equal(rescanned.status, "complete");
-  assert.ok(
-    rescanned.profiles[CPP_LANGUAGE_PROFILE_ID]?.some(
-      (candidate) => candidate.canonicalPath === fs.realpathSync(second),
-    ),
-  );
-});
-
-test("corrupt discovery state fails closed until the user explicitly rescans", async (t) => {
-  const { bin } = useDiscoveryFixture(t);
-  createExecutable(path.join(bin, executableName("g++")));
-  fs.mkdirSync(path.dirname(getToolchainDiscoveryFilePath()), { recursive: true });
-  fs.writeFileSync(getToolchainDiscoveryFilePath(), "{invalid");
-  resetToolchainDiscoveryRuntimeForTests();
-  startInitialToolchainDiscovery();
-  assert.equal(getToolchainDiscoverySnapshot().status, "failed");
-  assert.equal(fs.readFileSync(getToolchainDiscoveryFilePath(), "utf8"), "{invalid");
-
-  requestToolchainRescan();
-  assert.equal((await waitForToolchainDiscovery()).status, "complete");
-});
-
-test("a valid stale registry snapshot is refreshed once and persisted at the current revision", async (t) => {
-  const { root, bin } = useDiscoveryFixture(t);
-  const compiler = path.join(bin, executableName("g++"));
-  createExecutable(compiler);
-  const compilerCanonicalPath = fs.realpathSync(compiler);
-  const staleSnapshot = {
-    schemaVersion: 1,
-    registryRevision: 1,
-    status: "complete",
-    completedAt: "2026-01-01T00:00:00.000Z",
-    profiles: {
-      [CPP_LANGUAGE_PROFILE_ID]: [],
-      [PYTHON_LANGUAGE_PROFILE_ID]: [],
-    },
-  };
-  fs.mkdirSync(path.dirname(getToolchainDiscoveryFilePath()), { recursive: true });
-  fs.writeFileSync(
-    getToolchainDiscoveryFilePath(),
-    `${JSON.stringify(staleSnapshot, null, 2)}\n`,
-  );
-  resetToolchainDiscoveryRuntimeForTests();
-
-  startInitialToolchainDiscovery();
-  assert.equal(getToolchainDiscoverySnapshot().status, "running");
-  const refreshed = await waitForToolchainDiscovery();
-  assert.equal(refreshed.status, "complete");
-  assert.equal(refreshed.registryRevision, LANGUAGE_REGISTRY_REVISION);
+  const selected = getDiscoveredCandidates("cpp")[0];
+  assert.equal(selected?.canonicalPath, selectedCompiler);
+  assert.equal(selected?.origin, "selected-path");
+  assert.equal(selected?.pathRank, null);
   assert.deepEqual(
-    Object.keys(refreshed.profiles).sort(),
-    listRegisteredLanguageProfiles().map((entry) => entry.profile.ref.id).sort(),
+    probes.filter((probe) => probe.kind === "cpp").map((probe) => probe.executablePath),
+    [selectedCompiler],
   );
-  assert.ok(
-    refreshed.profiles[CPP_LANGUAGE_PROFILE_ID]?.some(
-      (candidate) => candidate.canonicalPath === compilerCanonicalPath,
-    ),
-  );
-  const persisted = JSON.parse(
-    fs.readFileSync(getToolchainDiscoveryFilePath(), "utf8"),
-  ) as { registryRevision?: number; profiles?: Record<string, unknown> };
-  assert.equal(persisted.registryRevision, LANGUAGE_REGISTRY_REVISION);
-  assert.deepEqual(
-    Object.keys(persisted.profiles || {}).sort(),
-    listRegisteredLanguageProfiles().map((entry) => entry.profile.ref.id).sort(),
-  );
-
-  fs.rmSync(compiler);
-  const secondBin = path.join(root, "second-bin");
-  fs.mkdirSync(secondBin);
-  const secondCompiler = path.join(secondBin, executableName("g++"));
-  createExecutable(secondCompiler);
-  process.env.PATH = secondBin;
-  resetToolchainDiscoveryRuntimeForTests();
-  startInitialToolchainDiscovery();
-  const restored = getToolchainDiscoverySnapshot();
-  assert.equal(restored.status, "complete");
-  assert.ok(
-    restored.profiles[CPP_LANGUAGE_PROFILE_ID]?.some(
-      (candidate) => candidate.canonicalPath === compilerCanonicalPath,
-    ),
-  );
-  assert.equal(
-    restored.profiles[CPP_LANGUAGE_PROFILE_ID]?.some(
-      (candidate) => candidate.canonicalPath === fs.realpathSync(secondCompiler),
-    ),
-    false,
-  );
+  assert.notEqual(selected?.canonicalPath, pathCompiler);
 });
 
-test("an incomplete current registry snapshot fails closed until explicit rescan", async (t) => {
-  useDiscoveryFixture(t);
-  const incompleteSnapshot = {
-    schemaVersion: 1,
-    registryRevision: LANGUAGE_REGISTRY_REVISION,
-    status: "complete",
-    completedAt: "2026-01-01T00:00:00.000Z",
-    profiles: {
-      [CPP_LANGUAGE_PROFILE_ID]: [],
-    },
-  };
-  fs.mkdirSync(path.dirname(getToolchainDiscoveryFilePath()), { recursive: true });
-  const storedBytes = `${JSON.stringify(incompleteSnapshot, null, 2)}\n`;
-  fs.writeFileSync(getToolchainDiscoveryFilePath(), storedBytes);
-  resetToolchainDiscoveryRuntimeForTests();
-
-  startInitialToolchainDiscovery();
-  const failed = getToolchainDiscoverySnapshot();
-  assert.equal(failed.status, "failed");
-  if (failed.status === "failed") {
-    assert.equal(failed.errorCode, "DISCOVERY_STATE_INVALID");
-  }
-  assert.equal(fs.readFileSync(getToolchainDiscoveryFilePath(), "utf8"), storedBytes);
-
-  requestToolchainRescan();
-  const recovered = await waitForToolchainDiscovery();
-  assert.equal(recovered.status, "complete");
-  assert.equal(recovered.registryRevision, LANGUAGE_REGISTRY_REVISION);
-});
-
-test("a future registry snapshot fails closed", (t) => {
-  useDiscoveryFixture(t);
-  const futureSnapshot = {
-    schemaVersion: 1,
-    registryRevision: LANGUAGE_REGISTRY_REVISION + 1,
-    status: "complete",
-    completedAt: "2026-01-01T00:00:00.000Z",
-    profiles: Object.fromEntries(
-      listRegisteredLanguageProfiles().map((entry) => [entry.profile.ref.id, []]),
-    ),
-  };
-  fs.mkdirSync(path.dirname(getToolchainDiscoveryFilePath()), { recursive: true });
-  const storedBytes = `${JSON.stringify(futureSnapshot, null, 2)}\n`;
-  fs.writeFileSync(getToolchainDiscoveryFilePath(), storedBytes);
-  resetToolchainDiscoveryRuntimeForTests();
-
-  startInitialToolchainDiscovery();
-  const failed = getToolchainDiscoverySnapshot();
-  assert.equal(failed.status, "failed");
-  if (failed.status === "failed") {
-    assert.equal(failed.errorCode, "DISCOVERY_STATE_INVALID");
-  }
-  assert.equal(fs.readFileSync(getToolchainDiscoveryFilePath(), "utf8"), storedBytes);
-});
-
-test("a snapshot without a registry revision fails closed", (t) => {
-  useDiscoveryFixture(t);
-  const missingRevisionSnapshot = {
-    schemaVersion: 1,
-    status: "complete",
-    completedAt: "2026-01-01T00:00:00.000Z",
-    profiles: Object.fromEntries(
-      listRegisteredLanguageProfiles().map((entry) => [entry.profile.ref.id, []]),
-    ),
-  };
-  fs.mkdirSync(path.dirname(getToolchainDiscoveryFilePath()), { recursive: true });
-  const storedBytes = `${JSON.stringify(missingRevisionSnapshot, null, 2)}\n`;
-  fs.writeFileSync(getToolchainDiscoveryFilePath(), storedBytes);
-  resetToolchainDiscoveryRuntimeForTests();
-
-  startInitialToolchainDiscovery();
-  const failed = getToolchainDiscoverySnapshot();
-  assert.equal(failed.status, "failed");
-  if (failed.status === "failed") {
-    assert.equal(failed.errorCode, "DISCOVERY_STATE_INVALID");
-  }
-  assert.equal(fs.readFileSync(getToolchainDiscoveryFilePath(), "utf8"), storedBytes);
-});
-
-test("a malformed candidate in a stale registry snapshot still fails closed", (t) => {
-  useDiscoveryFixture(t);
-  const malformedSnapshot = {
-    schemaVersion: 1,
-    registryRevision: 1,
-    status: "complete",
-    completedAt: "2026-01-01T00:00:00.000Z",
-    profiles: {
-      [CPP_LANGUAGE_PROFILE_ID]: [{}],
-      [PYTHON_LANGUAGE_PROFILE_ID]: [],
-    },
-  };
-  fs.mkdirSync(path.dirname(getToolchainDiscoveryFilePath()), { recursive: true });
-  const storedBytes = `${JSON.stringify(malformedSnapshot, null, 2)}\n`;
-  fs.writeFileSync(getToolchainDiscoveryFilePath(), storedBytes);
-  resetToolchainDiscoveryRuntimeForTests();
-
-  startInitialToolchainDiscovery();
-  const failed = getToolchainDiscoverySnapshot();
-  assert.equal(failed.status, "failed");
-  if (failed.status === "failed") {
-    assert.equal(failed.errorCode, "DISCOVERY_STATE_INVALID");
-  }
-  assert.equal(fs.readFileSync(getToolchainDiscoveryFilePath(), "utf8"), storedBytes);
-});
-
-test("Windows passive discovery checks bounded Eclipse Adoptium JDK roots", {
-  skip: os.platform() !== "win32",
-}, async (t) => {
+test("a broken PATH candidate is recorded before the next PATH candidate succeeds", async (t) => {
   const { root } = useDiscoveryFixture(t);
-  const javac = path.join(
-    root,
-    "Program Files",
-    "Eclipse Adoptium",
-    "jdk-21.0.12.8-hotspot",
-    "bin",
-    "javac.exe",
+  const firstBin = path.join(root, "path-0");
+  const secondBin = path.join(root, "path-1");
+  const broken = createExecutable(path.join(firstBin, executableName("g++")));
+  const working = createExecutable(path.join(secondBin, executableName("g++")));
+  process.env.PATH = [firstBin, secondBin].join(path.delimiter);
+  setToolchainDiscoveryProbeForTests(async (request) => {
+    if (request.executablePath === broken) throw new Error("simulated launch failure");
+    return successfulOutput(request.kind);
+  });
+
+  startInitialToolchainDiscovery();
+  await waitForToolchainDiscovery();
+  const attempts = getToolchainDiscoveryAttempts("cpp");
+  assert.equal(attempts.length, 2);
+  assert.equal(attempts[0].canonicalPath, broken);
+  assert.equal(attempts[0].pathRank, 0);
+  assert.match(attempts[0].error || "", /simulated launch failure/);
+  assert.equal(attempts[1].canonicalPath, working);
+  assert.equal(attempts[1].pathRank, 1);
+  assert.equal(attempts[1].error, null);
+});
+
+test("standard locations are consulted only after all PATH probes fail", async (t) => {
+  const { root, bin } = useDiscoveryFixture(t);
+  const broken = createExecutable(path.join(bin, executableName("g++")));
+  const standard = createExecutable(
+    path.join(root, "standard", executableName("g++")),
   );
-  fs.mkdirSync(path.dirname(javac), { recursive: true });
-  createExecutable(javac);
+  setToolchainDiscoveryProbeForTests(async (request) => {
+    if (request.executablePath === broken) throw new Error("broken PATH compiler");
+    return successfulOutput(request.kind);
+  });
+  setToolchainDiscoveryStandardCandidatesForTests(async (kind) =>
+    kind === "cpp" ? [standard] : []
+  );
+
+  startInitialToolchainDiscovery();
+  await waitForToolchainDiscovery();
+  const attempts = getToolchainDiscoveryAttempts("cpp");
+  assert.deepEqual(attempts.map((candidate) => candidate.origin), [
+    "path",
+    "standard-location",
+  ]);
+  assert.equal(attempts[1].canonicalPath, standard);
+  assert.equal(attempts[1].pathRank, null);
+  assert.equal(getDiscoveredCandidates("cpp")[0]?.canonicalPath, standard);
+});
+
+test("language profiles probe concurrently and persist parsed metadata", async (t) => {
+  const { bin } = useDiscoveryFixture(t);
+  stageEveryLanguage(bin);
+  let active = 0;
+  let maximumActive = 0;
+  setToolchainDiscoveryProbeForTests(async (request) => {
+    active += 1;
+    maximumActive = Math.max(maximumActive, active);
+    await new Promise((resolve) => setTimeout(resolve, 35));
+    active -= 1;
+    return successfulOutput(request.kind);
+  });
 
   startInitialToolchainDiscovery();
   const completed = await waitForToolchainDiscovery();
   assert.equal(completed.status, "complete");
-  assert.ok(
-    completed.profiles[JAVA_LANGUAGE_PROFILE_ID]?.some(
-      (candidate) => candidate.canonicalPath === fs.realpathSync(javac),
-    ),
+  assert.equal(
+    maximumActive,
+    listRegisteredLanguageProfiles().length,
+    `expected every registered profile to probe in parallel, saw ${maximumActive}`,
   );
+  assert.equal(getDiscoveredCandidates("cpp")[0]?.family, "gnu-gcc");
+  assert.equal(getDiscoveredCandidates("cpp")[0]?.version, "14.2.0");
+  assert.equal(
+    getDiscoveredCandidates("cpp")[0]?.target,
+    "x86_64-w64-mingw32",
+  );
+  assert.equal(getDiscoveredCandidates("java")[0]?.family, "java");
+  assert.equal(
+    getDiscoveredCandidates("pascal")[0]?.version,
+    "3.2.2",
+  );
+
+  const stored = JSON.parse(fs.readFileSync(getToolchainDiscoveryFilePath(), "utf8"));
+  assert.equal(stored.schemaVersion, 2);
+  assert.equal(stored.registryRevision, LANGUAGE_REGISTRY_REVISION);
+  assert.equal(stored.refreshing, false);
+  const storedCpp = stored.profiles[CPP_LANGUAGE_PROFILE_ID][0];
+  for (const key of [
+    "canonicalPath",
+    "origin",
+    "pathRank",
+    "family",
+    "version",
+    "target",
+    "lastSeenAt",
+    "error",
+  ]) {
+    assert.ok(Object.hasOwn(storedCpp, key), `missing persisted ${key}`);
+  }
+});
+
+test("one hanging executable is bounded and does not serialize other languages", async (t) => {
+  const { bin } = useDiscoveryFixture(t);
+  createExecutable(path.join(bin, executableName("g++")));
+  createExecutable(path.join(bin, executableName("python3")));
+  let pythonFinished = false;
+  setToolchainDiscoveryProbeForTests(async (request) => {
+    if (request.kind === "cpp") return new Promise(() => {});
+    pythonFinished = true;
+    return successfulOutput(request.kind);
+  });
+
+  const started = Date.now();
+  startInitialToolchainDiscovery();
+  const completed = await waitForToolchainDiscovery();
+  const elapsed = Date.now() - started;
+  assert.equal(completed.status, "complete");
+  assert.equal(pythonFinished, true);
+  assert.ok(elapsed < 1_200, `discovery exceeded its bounded timeout: ${elapsed}ms`);
+  assert.match(getToolchainDiscoveryAttempts("cpp")[0]?.error || "", /probe_timeout/);
+  assert.equal(getDiscoveredCandidates("python")[0]?.version, "3.12.13");
+});
+
+test("malformed v2 cache fails closed on read but every launch repairs it in background", async (t) => {
+  const { bin } = useDiscoveryFixture(t);
+  createExecutable(path.join(bin, executableName("g++")));
+  const malformed = {
+    schemaVersion: 2,
+    registryRevision: LANGUAGE_REGISTRY_REVISION,
+    status: "complete",
+    refreshing: false,
+    completedAt: "2026-08-02T00:00:00.000Z",
+    profiles: Object.fromEntries(
+      listRegisteredLanguageProfiles().map((entry) => [entry.profile.ref.id, []]),
+    ),
+  };
+  malformed.profiles[CPP_LANGUAGE_PROFILE_ID] = [{
+    candidateId: "a".repeat(24),
+    profileId: CPP_LANGUAGE_PROFILE_ID,
+    kind: "cpp",
+    canonicalPath: path.resolve("missing-metadata"),
+    displayPath: path.resolve("missing-metadata"),
+    origin: "path",
+  }];
+  fs.mkdirSync(path.dirname(getToolchainDiscoveryFilePath()), { recursive: true });
+  fs.writeFileSync(getToolchainDiscoveryFilePath(), `${JSON.stringify(malformed)}\n`);
+  resetToolchainDiscoveryRuntimeForTests();
+  setToolchainDiscoveryProbeForTests(async (request) => successfulOutput(request.kind));
+
+  const failed = getToolchainDiscoverySnapshot();
+  assert.equal(failed.status, "failed");
+  assert.equal(failed.refreshing, false);
+  startInitialToolchainDiscovery();
+  assert.equal(getToolchainDiscoverySnapshot().status, "running");
+  const repaired = await waitForToolchainDiscovery();
+  assert.equal(repaired.status, "complete");
+  assert.equal(getDiscoveredCandidates("cpp").length, 1);
 });

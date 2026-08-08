@@ -3,10 +3,12 @@ import { initReactI18next } from "react-i18next";
 import { preferencesStorage } from "./features/preferences/storage";
 import enTranslations from "./locales/en.json";
 import viTranslations from "./locales/vi.json";
+import enHelpTranslations from "./features/help/help.en.json";
+import viHelpTranslations from "./features/help/help.vi.json";
 
 const resources = {
-  en: { translation: enTranslations },
-  vi: { translation: viTranslations }
+  en: { translation: { ...enTranslations, helpCenter: enHelpTranslations } },
+  vi: { translation: { ...viTranslations, helpCenter: viHelpTranslations } }
 };
 
 function resolveLanguage(): string {

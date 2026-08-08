@@ -25,6 +25,12 @@ import {
   getHostProductVersion,
   isMinimumOsSupported,
 } from "./host-compatibility.js";
+import {
+  clearLocalCompatibilityProbeCache,
+  localExecutionFields,
+  resolveCachedLocalExecution,
+  scheduleLocalCompatibilityProbe,
+} from "./local-execution.js";
 
 export const MIN_GNU_CPP_VERSION = "9.2.0";
 export const MIN_GNU_GDB_VERSION = "7.6.1";
@@ -252,6 +258,7 @@ export function compareVersions(left: string, right: string): number {
 export function clearToolchainDetectionCache(): void {
   detectionCache.clear();
   executableSupportCache.clear();
+  clearLocalCompatibilityProbeCache();
 }
 
 export function resolveManagedToolchain(kind: ToolchainKind): ResolvedToolchain {
@@ -361,10 +368,13 @@ export function chooseNativeProtectedToolchain(
     && platform === "win32"
     && selected.ready
     && (
-      selected.provenance !== "certified-local"
-      || !selected.certificateId
-      || !selected.executionPath
-      || !selected.certifiedRoles?.includes("submission")
+      !selected.localToolchain
+      && (
+        selected.provenance !== "certified-local"
+        || !selected.certificateId
+        || !selected.executionPath
+        || !selected.certifiedRoles?.includes("submission")
+      )
     )
   ) {
     return {
@@ -386,16 +396,19 @@ export function resolveNativeProtectedToolchain(kind: ToolchainKind): ResolvedTo
 export function isPythonSubmissionReady(toolchain: ResolvedToolchain): boolean {
   return toolchain.kind === "python"
     && toolchain.ready
-    && toolchain.source === "managed";
+    && (
+      toolchain.source === "managed"
+      || !!toolchain.localToolchain
+    );
 }
 
 export function isPythonCheckerReady(toolchain: ResolvedToolchain): boolean {
-  // Local/system runtimes may become eligible after the D15 certification-and-snapshot
-  // workflow exists. Until then, reporting them ready would contradict resolveChecker's
-  // fail-closed admission rule.
   return toolchain.kind === "python"
     && toolchain.ready
-    && toolchain.source === "managed";
+    && (
+      toolchain.source === "managed"
+      || !!toolchain.localToolchain
+    );
 }
 
 export function isManagedSubmissionToolchainReady(
@@ -1052,35 +1065,8 @@ function resolveSelectedLocalExecutable(
         ...(candidateId ? { candidateId } : {}),
       };
     }
-    return {
-      kind,
-      source,
-      executablePath: canonicalExecutablePath,
-      version,
-      ready: false,
-      diagnostic: certificate.diagnostic,
-      diagnosticCode: certificate.code,
-      ...(certificate.certificateId ? { certificateId: certificate.certificateId } : {}),
-      ...(candidateId ? { candidateId } : {}),
-    };
   }
-  if (kind === "python") {
-    return {
-      kind,
-      source,
-      executablePath: canonicalExecutablePath,
-      version,
-      ready: false,
-      diagnostic:
-        "Use the managed Python package; direct local Python is not permitted by the secure runner.",
-      diagnosticCode: "LOCAL_NOT_SANDBOX_COMPATIBLE",
-      ...(candidateId ? { candidateId } : {}),
-    };
-  }
-  if (
-    kind !== "cpp"
-    && !(kind === "c" && os.platform() === "darwin")
-  ) {
+  if (kind !== "cpp" && kind !== "c" && kind !== "python") {
     return {
       kind,
       source,
@@ -1093,29 +1079,28 @@ function resolveSelectedLocalExecutable(
       ...(candidateId ? { candidateId } : {}),
     };
   }
-  const ready = isSupportedExecutable(canonicalExecutablePath, kind);
-  const diagnosticCode: NonNullable<ResolvedToolchain["diagnosticCode"]> =
-    version === "unknown" ? "LOCAL_EXECUTABLE_INVALID" : "HEALTH_CHECK_FAILED";
+  // Scheduling is intentionally fire-and-forget. API status paths consume the
+  // cache-only helper, while discovery/judging can start the bounded native
+  // probe without adding seconds to a GET request.
+  void scheduleLocalCompatibilityProbe(kind, canonicalExecutablePath);
+  const localExecution = resolveCachedLocalExecution(
+    kind,
+    canonicalExecutablePath,
+  );
   return {
     kind,
     source,
     executablePath: canonicalExecutablePath,
-    ...(ready && (kind === "cpp" || kind === "c") && os.platform() === "darwin"
+    ...((kind === "cpp" || kind === "c") && os.platform() === "darwin"
       ? { provenance: "platform-certified" as const }
-      : {}),
+      : { provenance: "unverified-local" as const }),
     version,
-    ready,
+    ...localExecutionFields(localExecution),
     ...(candidateId ? { candidateId } : {}),
-    ...(!ready
-      ? {
-          diagnostic: "The selected local executable failed version or health policy.",
-          diagnosticCode,
-        }
-      : {}),
   };
 }
 
-/** Explicit user action only; passive discovery never calls this probe. */
+/** Explicit path verification; the bounded compatibility probe remains asynchronous. */
 export function verifyLocalToolchainCandidate(
   kind: ToolchainKind,
   executablePath: string,

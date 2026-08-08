@@ -76,6 +76,7 @@ export async function runCustomChecker(options: RunCustomCheckerOptions): Promis
       ],
       environment: launch.environment,
       toolchain: launch.toolchain,
+      localToolchain: launch.localToolchain,
       runtimeBacked: options.checkerRuntime === "python",
       timeoutMs: CHECKER_TIMEOUT_MS,
       memoryBytes: CHECKER_MEMORY_BYTES,
@@ -137,6 +138,7 @@ function prepareNativeChecker(
   args: string[];
   environment: Record<string, string>;
   toolchain?: never;
+  localToolchain?: never;
 } {
   const checkerName = process.platform === "win32" ? "checker.exe" : "checker";
   workspace.stage(checkerPath, checkerName, true);

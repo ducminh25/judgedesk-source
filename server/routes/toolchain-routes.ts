@@ -35,9 +35,9 @@ import {
 import { buildLanguageProfileState } from "../toolchains/profile-state.js";
 import {
   clearToolchainDetectionCache,
-  resolveManagedToolchain,
   verifyLocalToolchainCandidate,
 } from "../toolchains/resolver.js";
+import { resolveCachedManagedToolchain } from "../toolchains/cached-resolution.js";
 import {
   loadPreferences,
   loadToolchainPreferenceSnapshot,
@@ -51,6 +51,10 @@ import {
 } from "../toolchains/release-scope.js";
 import { serverLifecycle } from "../platform/server-lifecycle.js";
 import { toolchainMaintenanceGate } from "../toolchains/maintenance-gate.js";
+import {
+  loadLocalExecutionPolicy,
+  saveLocalExecutionPolicy,
+} from "../toolchains/execution-policy.js";
 
 const SOURCE_MODES = new Set<ToolchainSourceMode>([
   "none",
@@ -58,6 +62,15 @@ const SOURCE_MODES = new Set<ToolchainSourceMode>([
   "local_path",
   "local_auto",
 ]);
+
+export function isLocalPreferenceVerificationAccepted(
+  verification: { ready: boolean; diagnosticCode?: string },
+): boolean {
+  return verification.ready
+    || verification.diagnosticCode === "CERTIFICATION_REQUIRED"
+    || verification.diagnosticCode === "DETECTION_IN_PROGRESS"
+    || verification.diagnosticCode === "LOCAL_NOT_SANDBOX_COMPATIBLE";
+}
 
 const TOOLCHAIN_MUTATION_BLOCKED_MESSAGE =
   "Toolchain settings cannot change while judging is in progress.";
@@ -219,8 +232,8 @@ export function registerToolchainRoutes(app: Express): void {
     const pythonProfile = profileState.profiles.find(
       (profile) => profile.kind === "python",
     )!;
-    const managedCpp = resolveManagedToolchain("cpp");
-    const managedPython = resolveManagedToolchain("python");
+    const managedCpp = resolveCachedManagedToolchain("cpp");
+    const managedPython = resolveCachedManagedToolchain("python");
 
     res.json({
       distribution: getJudgeDeskDistribution(),
@@ -234,6 +247,7 @@ export function registerToolchainRoutes(app: Express): void {
       },
       registryRevision: profileState.registryRevision,
       discovery: profileState.discovery,
+      executionPolicy: loadLocalExecutionPolicy(),
       profiles: profileState.profiles,
       active: {
         cpp: cppProfile.active,
@@ -241,14 +255,14 @@ export function registerToolchainRoutes(app: Express): void {
       },
       capabilities: {
         cpp: {
-          detected: cppProfile.active.ready,
+          detected: cppProfile.detected,
           managed: managedCpp.ready,
           submissionReady: cppProfile.roles.submissionReady,
           checkerReady: cppProfile.roles.checkerReady,
           installable: cppProfile.sources.managed.available,
         },
         python: {
-          detected: pythonProfile.active.ready,
+          detected: pythonProfile.detected,
           managed: managedPython.ready,
           submissionReady: pythonProfile.roles.submissionReady,
           checkerReady: pythonProfile.roles.checkerReady,
@@ -260,6 +274,36 @@ export function registerToolchainRoutes(app: Express): void {
       manifestStatus: manifestState.status,
       manifestError: manifestState.error,
     });
+  });
+
+  app.put("/api/toolchains/execution-policy", (req, res) => {
+    if (toolchainMutationsBlocked()) {
+      return res.status(409).json({
+        success: false,
+        message: TOOLCHAIN_MUTATION_BLOCKED_MESSAGE,
+      });
+    }
+    if (
+      !isRecord(req.body)
+      || Object.keys(req.body).length !== 1
+      || typeof req.body.allowResourceOnlyLocalExecution !== "boolean"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid local execution policy.",
+      });
+    }
+    try {
+      const executionPolicy = saveLocalExecutionPolicy(
+        req.body.allowResourceOnlyLocalExecution,
+      );
+      return res.json({ success: true, executionPolicy });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
   });
 
   app.post("/api/toolchains/profiles/:profileId/certification-plan", async (req, res) => {
@@ -517,10 +561,7 @@ export function registerToolchainRoutes(app: Express): void {
         entry.toolchainKind,
         String(req.body.localPath),
       );
-      if (
-        !verification.ready
-        && verification.diagnosticCode !== "CERTIFICATION_REQUIRED"
-      ) {
+      if (!isLocalPreferenceVerificationAccepted(verification)) {
         return res.status(422).json({
           success: false,
           message: verification.diagnostic || "Local toolchain verification failed.",
@@ -542,7 +583,8 @@ export function registerToolchainRoutes(app: Express): void {
         : current.localPath;
       const preference = localPath ? { mode, localPath } : { mode };
       const updated = updateProfileToolchainPreference(profileId, preference);
-      clearToolchainDetectionCache();
+      if (!hasLocalPath) clearToolchainDetectionCache();
+      requestToolchainRescan();
       return res.json({
         success: true,
         preference: getStoredProfilePreference(updated.preferences, profileId),

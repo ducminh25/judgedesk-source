@@ -13,27 +13,110 @@ import {
 } from "../languages/registry.js";
 import {
   getPreferencesFilePath,
+  getToolchainDistributionStateFilePath,
+  getToolchainDistributionTransitionFilePath,
   loadToolchainPreferenceSnapshot,
+  setDistributionTransitionFailureForTests,
   tryUpdateProfileToolchainPreferenceAtRevision,
   updateProfileToolchainPreference,
 } from "./storage.js";
+import {
+  getDescriptorForHost,
+  TOOLCHAIN_RELEASE_BLUEPRINTS,
+} from "./manifest.js";
+import type { ToolchainKind } from "./types.js";
 
-function useTemporaryAppData(t: TestContext): string {
+function useTemporaryAppData(t: TestContext): { directory: string; builtIn: string } {
   const directory = fs.mkdtempSync(
     path.join(os.tmpdir(), "judgedesk-toolchain-storage-v2-"),
   );
-  const previous = process.env.THEMIS_APP_DATA_DIR;
+  const builtIn = path.join(directory, "built-in");
+  fs.mkdirSync(builtIn);
+  const previous = {
+    appData: process.env.THEMIS_APP_DATA_DIR,
+    builtIn: process.env.JUDGEDESK_BUILTIN_TOOLCHAINS_DIR,
+  };
   process.env.THEMIS_APP_DATA_DIR = directory;
+  process.env.JUDGEDESK_BUILTIN_TOOLCHAINS_DIR = builtIn;
   t.after(() => {
+    setDistributionTransitionFailureForTests(undefined);
     fs.rmSync(directory, { recursive: true, force: true });
-    if (previous === undefined) delete process.env.THEMIS_APP_DATA_DIR;
-    else process.env.THEMIS_APP_DATA_DIR = previous;
+    if (previous.appData === undefined) delete process.env.THEMIS_APP_DATA_DIR;
+    else process.env.THEMIS_APP_DATA_DIR = previous.appData;
+    if (previous.builtIn === undefined) {
+      delete process.env.JUDGEDESK_BUILTIN_TOOLCHAINS_DIR;
+    } else {
+      process.env.JUDGEDESK_BUILTIN_TOOLCHAINS_DIR = previous.builtIn;
+    }
   });
-  return directory;
+  return { directory, builtIn };
+}
+
+function useDistribution(
+  t: TestContext,
+  distribution: "full" | "core" | "development",
+): void {
+  const previous = process.env.JUDGEDESK_DISTRIBUTION;
+  process.env.JUDGEDESK_DISTRIBUTION = distribution;
+  t.after(() => {
+    if (previous === undefined) delete process.env.JUDGEDESK_DISTRIBUTION;
+    else process.env.JUDGEDESK_DISTRIBUTION = previous;
+  });
+}
+
+function stageBuiltInPackage(root: string, kind: ToolchainKind): void {
+  const descriptor = getDescriptorForHost(os.platform(), os.arch(), kind);
+  assert.ok(descriptor, `missing host descriptor for ${kind}`);
+  const blueprint = TOOLCHAIN_RELEASE_BLUEPRINTS[descriptor.id];
+  assert.ok(blueprint, `missing release blueprint for ${descriptor.id}`);
+  const packageRoot = path.join(root, descriptor.id);
+  if (fs.existsSync(path.join(packageRoot, ".judgedesk-package.json"))) return;
+  fs.mkdirSync(packageRoot, { recursive: true });
+  for (const component of blueprint.components) {
+    const componentPath = component.relativePath === "."
+      ? packageRoot
+      : path.join(packageRoot, ...component.relativePath.split("/"));
+    if (component.kind === "support-root") {
+      fs.mkdirSync(componentPath, { recursive: true });
+    } else {
+      fs.mkdirSync(path.dirname(componentPath), { recursive: true });
+      fs.writeFileSync(componentPath, `fixture:${component.id}`);
+      if (os.platform() !== "win32") fs.chmodSync(componentPath, 0o700);
+    }
+  }
+  fs.writeFileSync(
+    path.join(packageRoot, ".judgedesk-package.json"),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      packageId: descriptor.id,
+      version: blueprint.version,
+      archiveSha256: "a".repeat(64),
+      entrypointComponentId: blueprint.entrypointComponentId,
+      components: blueprint.components,
+    }, null, 2)}\n`,
+  );
+}
+
+function stageStableBuiltIns(root: string, omitted?: ToolchainKind): void {
+  const staged = new Set<string>();
+  for (const entry of listRegisteredLanguageProfiles()) {
+    if (entry.profile.stability !== "stable" || entry.toolchainKind === omitted) {
+      continue;
+    }
+    const descriptor = getDescriptorForHost(
+      os.platform(),
+      os.arch(),
+      entry.toolchainKind,
+    );
+    if (!descriptor || staged.has(descriptor.id)) continue;
+    stageBuiltInPackage(root, entry.toolchainKind);
+    staged.add(descriptor.id);
+  }
 }
 
 test("missing preferences keep legacy auto-detect and initialize new profiles to None", (t) => {
   useTemporaryAppData(t);
+  useDistribution(t, "core");
   const snapshot = loadToolchainPreferenceSnapshot();
   assert.equal(snapshot.status, "initialized");
   assert.equal(snapshot.preferences.profiles[CPP_LANGUAGE_PROFILE_ID]?.mode, "local_auto");
@@ -65,13 +148,9 @@ test("missing preferences keep legacy auto-detect and initialize new profiles to
 });
 
 test("a fresh Full install selects supported Stable managed packs without changing migrations", (t) => {
-  useTemporaryAppData(t);
-  const previous = process.env.JUDGEDESK_DISTRIBUTION;
-  process.env.JUDGEDESK_DISTRIBUTION = "full";
-  t.after(() => {
-    if (previous === undefined) delete process.env.JUDGEDESK_DISTRIBUTION;
-    else process.env.JUDGEDESK_DISTRIBUTION = previous;
-  });
+  const { builtIn } = useTemporaryAppData(t);
+  useDistribution(t, "full");
+  stageStableBuiltIns(builtIn);
 
   const snapshot = loadToolchainPreferenceSnapshot();
   assert.equal(snapshot.status, "initialized");
@@ -93,153 +172,135 @@ test("a fresh Full install selects supported Stable managed packs without changi
   ]) {
     assert.equal(snapshot.preferences.profiles[profileId]?.mode, "managed");
   }
+  const marker = JSON.parse(
+    fs.readFileSync(getToolchainDistributionStateFilePath(), "utf8"),
+  );
+  assert.equal(marker.lastDistribution, "full");
+  assert.equal(marker.autoConfiguredRevision, 1);
 });
 
-test("a Full upgrade fills newly registered profiles without overwriting existing choices", (t) => {
-  useTemporaryAppData(t);
-  const previous = process.env.JUDGEDESK_DISTRIBUTION;
-  process.env.JUDGEDESK_DISTRIBUTION = "full";
-  t.after(() => {
-    if (previous === undefined) delete process.env.JUDGEDESK_DISTRIBUTION;
-    else process.env.JUDGEDESK_DISTRIBUTION = previous;
+test("Core to Full overrides every available Stable built-in exactly once", (t) => {
+  const { builtIn } = useTemporaryAppData(t);
+  useDistribution(t, "core");
+  loadToolchainPreferenceSnapshot();
+  updateProfileToolchainPreference(CPP_LANGUAGE_PROFILE_ID, { mode: "none" });
+  updateProfileToolchainPreference(PYTHON_LANGUAGE_PROFILE_ID, {
+    mode: "local_path",
+    localPath: path.resolve("remembered-python"),
   });
-  fs.writeFileSync(
-    getPreferencesFilePath(),
-    JSON.stringify({
-      schemaVersion: 2,
-      profiles: {
-        [CPP_LANGUAGE_PROFILE_ID]: { mode: "none" },
-        [PYTHON_LANGUAGE_PROFILE_ID]: { mode: "local_auto" },
-      },
-    }),
+  stageStableBuiltIns(builtIn);
+
+  process.env.JUDGEDESK_DISTRIBUTION = "full";
+  const migrated = loadToolchainPreferenceSnapshot();
+  assert.equal(migrated.status, "migrated");
+  for (const entry of listRegisteredLanguageProfiles()) {
+    const descriptor = getDescriptorForHost(
+      os.platform(),
+      os.arch(),
+      entry.toolchainKind,
+    );
+    if (entry.profile.stability === "stable" && descriptor) {
+      assert.equal(
+        migrated.preferences.profiles[entry.profile.ref.id]?.mode,
+        "managed",
+      );
+    }
+  }
+  assert.equal(
+    migrated.preferences.profiles[PYTHON_LANGUAGE_PROFILE_ID]?.localPath,
+    path.resolve("remembered-python"),
   );
 
-  const migrated = loadToolchainPreferenceSnapshot();
-
-  assert.equal(migrated.status, "migrated");
+  updateProfileToolchainPreference(PYTHON_LANGUAGE_PROFILE_ID, { mode: "none" });
+  const repeated = loadToolchainPreferenceSnapshot();
+  assert.equal(repeated.status, "ready");
   assert.equal(
-    migrated.preferences.profiles[CPP_LANGUAGE_PROFILE_ID]?.mode,
+    repeated.preferences.profiles[PYTHON_LANGUAGE_PROFILE_ID]?.mode,
+    "none",
+  );
+});
+
+test("Full transition leaves a missing built-in selection untouched", (t) => {
+  const { builtIn } = useTemporaryAppData(t);
+  useDistribution(t, "core");
+  loadToolchainPreferenceSnapshot();
+  updateProfileToolchainPreference(PYTHON_LANGUAGE_PROFILE_ID, { mode: "none" });
+  stageStableBuiltIns(builtIn, "python");
+
+  process.env.JUDGEDESK_DISTRIBUTION = "full";
+  const migrated = loadToolchainPreferenceSnapshot();
+  assert.equal(
+    migrated.preferences.profiles[PYTHON_LANGUAGE_PROFILE_ID]?.mode,
     "none",
   );
   assert.equal(
-    migrated.preferences.profiles[PYTHON_LANGUAGE_PROFILE_ID]?.mode,
-    "local_auto",
+    migrated.preferences.profiles[PASCAL_LANGUAGE_PROFILE_ID]?.mode,
+    "managed",
   );
-  assert.equal(
-    migrated.preferences.profiles[C_LANGUAGE_PROFILE_ID]?.mode,
-    process.platform === "win32" ? "managed" : "local_auto",
-  );
-  for (const profileId of [
-    PASCAL_LANGUAGE_PROFILE_ID,
-    JAVA_LANGUAGE_PROFILE_ID,
-  ]) {
-    assert.equal(migrated.preferences.profiles[profileId]?.mode, "managed");
-  }
-  assert.equal(loadToolchainPreferenceSnapshot().status, "ready");
 });
 
-test(
-  "a Windows Full upgrade repairs only the exact defaults materialized by the broken candidate",
-  { skip: process.platform !== "win32" || process.arch !== "x64" },
-  (t) => {
-    useTemporaryAppData(t);
-    const previous = process.env.JUDGEDESK_DISTRIBUTION;
-    process.env.JUDGEDESK_DISTRIBUTION = "full";
-    t.after(() => {
-      if (previous === undefined) delete process.env.JUDGEDESK_DISTRIBUTION;
-      else process.env.JUDGEDESK_DISTRIBUTION = previous;
-    });
-    fs.writeFileSync(
-      getPreferencesFilePath(),
-      JSON.stringify({
-        schemaVersion: 2,
-        profiles: {
-          [CPP_LANGUAGE_PROFILE_ID]: { mode: "managed" },
-          [PYTHON_LANGUAGE_PROFILE_ID]: { mode: "managed" },
-          [C_LANGUAGE_PROFILE_ID]: { mode: "local_auto" },
-          [JAVA_LANGUAGE_PROFILE_ID]: { mode: "none" },
-          [PASCAL_LANGUAGE_PROFILE_ID]: { mode: "none" },
-        },
-        migrationDiagnostics: [
-          {
-            code: "LEGACY_INSTALLED_HINT_IGNORED",
-            field: "installedToolchains",
-          },
-        ],
-      }),
-    );
+test("Full to Core replaces dangling managed selections with registry defaults", (t) => {
+  const { builtIn } = useTemporaryAppData(t);
+  useDistribution(t, "full");
+  stageStableBuiltIns(builtIn);
+  loadToolchainPreferenceSnapshot();
+  fs.rmSync(builtIn, { recursive: true, force: true });
+  fs.mkdirSync(builtIn);
 
-    const migrated = loadToolchainPreferenceSnapshot();
+  process.env.JUDGEDESK_DISTRIBUTION = "core";
+  const migrated = loadToolchainPreferenceSnapshot();
+  for (const profileId of [
+    CPP_LANGUAGE_PROFILE_ID,
+    C_LANGUAGE_PROFILE_ID,
+    PYTHON_LANGUAGE_PROFILE_ID,
+  ]) {
+    assert.equal(migrated.preferences.profiles[profileId]?.mode, "local_auto");
+  }
+  for (const profileId of [PASCAL_LANGUAGE_PROFILE_ID, JAVA_LANGUAGE_PROFILE_ID]) {
+    assert.equal(migrated.preferences.profiles[profileId]?.mode, "none");
+  }
+});
 
-    assert.equal(migrated.status, "migrated");
-    for (const profileId of [
-      CPP_LANGUAGE_PROFILE_ID,
-      C_LANGUAGE_PROFILE_ID,
-      PYTHON_LANGUAGE_PROFILE_ID,
-      PASCAL_LANGUAGE_PROFILE_ID,
-      JAVA_LANGUAGE_PROFILE_ID,
-    ]) {
-      assert.equal(migrated.preferences.profiles[profileId]?.mode, "managed");
-    }
-    assert.equal(migrated.preferences.migrationDiagnostics, undefined);
-    assert.equal(loadToolchainPreferenceSnapshot().status, "ready");
-  },
-);
+test("an interrupted distribution transaction is recovered from its journal", (t) => {
+  const { directory, builtIn } = useTemporaryAppData(t);
+  useDistribution(t, "core");
+  loadToolchainPreferenceSnapshot();
+  const before = fs.readFileSync(getPreferencesFilePath());
+  stageStableBuiltIns(builtIn);
+  process.env.JUDGEDESK_DISTRIBUTION = "full";
+  setDistributionTransitionFailureForTests("after-preferences");
+  assert.throws(
+    () => loadToolchainPreferenceSnapshot(),
+    /SIMULATED_DISTRIBUTION_TRANSITION_INTERRUPTION/,
+  );
+  assert.ok(fs.existsSync(getToolchainDistributionTransitionFilePath()));
+  const backups = fs.readdirSync(
+    path.join(directory, "toolchain-distribution-backups"),
+  );
+  assert.equal(backups.length, 1);
+  assert.deepEqual(
+    fs.readFileSync(path.join(
+      directory,
+      "toolchain-distribution-backups",
+      backups[0],
+    )),
+    before,
+  );
 
-test(
-  "a Windows Full upgrade preserves an explicit source choice near the broken-default fingerprint",
-  { skip: process.platform !== "win32" || process.arch !== "x64" },
-  (t) => {
-    useTemporaryAppData(t);
-    const previous = process.env.JUDGEDESK_DISTRIBUTION;
-    process.env.JUDGEDESK_DISTRIBUTION = "full";
-    t.after(() => {
-      if (previous === undefined) delete process.env.JUDGEDESK_DISTRIBUTION;
-      else process.env.JUDGEDESK_DISTRIBUTION = previous;
-    });
-    fs.writeFileSync(
-      getPreferencesFilePath(),
-      JSON.stringify({
-        schemaVersion: 2,
-        profiles: {
-          [CPP_LANGUAGE_PROFILE_ID]: { mode: "managed" },
-          [PYTHON_LANGUAGE_PROFILE_ID]: { mode: "managed" },
-          [C_LANGUAGE_PROFILE_ID]: {
-            mode: "local_path",
-            localPath: String.raw`C:\teacher\gcc.exe`,
-          },
-          [JAVA_LANGUAGE_PROFILE_ID]: { mode: "none" },
-          [PASCAL_LANGUAGE_PROFILE_ID]: { mode: "none" },
-        },
-        migrationDiagnostics: [
-          {
-            code: "LEGACY_INSTALLED_HINT_IGNORED",
-            field: "installedToolchains",
-          },
-        ],
-      }),
-    );
-
-    const preserved = loadToolchainPreferenceSnapshot();
-
-    assert.equal(preserved.status, "ready");
-    assert.deepEqual(
-      preserved.preferences.profiles[C_LANGUAGE_PROFILE_ID],
-      {
-        mode: "local_path",
-        localPath: String.raw`C:\teacher\gcc.exe`,
-      },
-    );
-    assert.equal(
-      preserved.preferences.profiles[PASCAL_LANGUAGE_PROFILE_ID]?.mode,
-      "none",
-    );
-    assert.equal(
-      preserved.preferences.profiles[JAVA_LANGUAGE_PROFILE_ID]?.mode,
-      "none",
-    );
-  },
-);
+  setDistributionTransitionFailureForTests(undefined);
+  const recovered = loadToolchainPreferenceSnapshot();
+  assert.equal(
+    recovered.preferences.profiles[PYTHON_LANGUAGE_PROFILE_ID]?.mode,
+    "managed",
+  );
+  assert.equal(fs.existsSync(getToolchainDistributionTransitionFilePath()), false);
+  assert.equal(
+    JSON.parse(
+      fs.readFileSync(getToolchainDistributionStateFilePath(), "utf8"),
+    ).lastDistribution,
+    "full",
+  );
+});
 
 test("legacy preferences migrate once and preserve dormant local paths", (t) => {
   useTemporaryAppData(t);

@@ -1,0 +1,210 @@
+{
+  "open": "Help",
+  "title": "Help & product information",
+  "subtitle": "Offline guidance for preparing, grading, and troubleshooting a JudgeDesk contest",
+  "searchPlaceholder": "Search help...",
+  "searchLabel": "Search JudgeDesk help",
+  "searchCount": "{{count}} section(s)",
+  "contentsLabel": "Help contents",
+  "noResults": "No help section matches this search.",
+  "related": "Related topics",
+  "openToolchains": "Open compiler & runtime manager",
+  "environmentTitle": "Product and environment",
+  "environmentSubtitle": "Build identity and paths available to this JudgeDesk session",
+  "environmentUnavailable": "Some environment details could not be loaded",
+  "activeToolchains": "Active compilers and runtimes",
+  "diagnosticsPrivacy": "Diagnostics do not copy contestant source or test contents, but paths may contain your account name. Review the text before sharing it.",
+  "aboutLabels": {
+    "version": "Version",
+    "build": "Build",
+    "commit": "Commit",
+    "edition": "Edition",
+    "platform": "Operating system / architecture",
+    "appData": "Application data (default)",
+    "toolchains": "Managed toolchains (default)",
+    "temporary": "Temporary workspace",
+    "problems": "Loaded problems",
+    "contestants": "Loaded contestants"
+  },
+  "aboutValues": {
+    "notAvailable": "Not available",
+    "notLoaded": "Not loaded"
+  },
+  "editions": {
+    "full": "Full",
+    "core": "Core",
+    "development": "Development",
+    "unknown": "Unknown"
+  },
+  "copy": {
+    "idle": "Copy diagnostics",
+    "copied": "Diagnostics copied",
+    "failed": "Copy failed"
+  },
+  "sections": {
+    "quickStart": {
+      "title": "Quick start",
+      "summary": "Go from two folders to a checked scoreboard",
+      "intro": "JudgeDesk is a local, offline contest judge. Prepare one problems folder and one contestants folder, then follow this short workflow.",
+      "stepsTitle": "First contest in five steps",
+      "steps": {
+        "loadProblems": "Choose Load problems and select the folder whose direct child folders are the contest problems.",
+        "loadContestants": "Choose Load contestants and select the folder whose direct child folders identify contestants.",
+        "configure": "Review each problem's input/output mode, limits, points, checker, and compile profile. Leave only the problems and contestants you want to grade checked.",
+        "judge": "Choose Judge. Only checked contestant/problem intersections are graded. Double-click a scored cell for test-by-test details.",
+        "save": "Save a .judgedesk contest archive when you need to resume later, and export the current selected scoreboard to Excel when needed."
+      },
+      "offlineNote": "All instructions in this Help Center are packaged with JudgeDesk. Grading does not require an internet connection; downloads and update checks are separate actions."
+    },
+    "foldersReload": {
+      "title": "Folders, loading & Reload",
+      "summary": "Contest layout and non-destructive discovery",
+      "intro": "Problems and contestant submissions live in separate directory trees. You can use the toolbar buttons, browse from the folder dialog, or drop a folder onto that dialog.",
+      "layoutTitle": "Expected layout",
+      "layout": {
+        "problems": "Problems root: one direct child directory per problem. The child directory name is the problem name.",
+        "tests": "Problem directory: test subdirectories plus optional Config.cfg and supported custom checker source files.",
+        "contestants": "Contestants root: one direct child directory per contestant. The child directory name is shown on the scoreboard.",
+        "submissions": "Contestant directory: source filenames use the problem name and a supported language extension."
+      },
+      "reloadTitle": "What Reload does",
+      "reloadDescription": "Reload discovers the current contents of both remembered roots. It adds new problem/contestant names and removes entries no longer present without replacing the whole contest.",
+      "selectionNote": "Reload preserves every existing checked or unchecked choice. Newly discovered problems and contestants start checked. It does not silently reset the scoreboard selection."
+    },
+    "problemCheckers": {
+      "title": "Problem & checker configuration",
+      "summary": "Input/output, limits, points, groups, and checkers",
+      "intro": "Open a problem's action menu and choose Problem configuration. Settings belong to that problem, not to the global compiler manager.",
+      "items": {
+        "io": "Choose standard input/output independently, or provide the exact input and output filenames used by file-based submissions.",
+        "limits": "Set time and memory limits deliberately. Test-specific time and point values override the problem defaults where configured.",
+        "points": "Use per-test points or grouped scoring. Group dependencies and complete-group policy are evaluated from the saved problem configuration.",
+        "checkers": "Built-in text/word/binary checkers cover common exact-output rules. Read each checker description before selecting it.",
+        "customCheckers": "Custom problem checkers are source files in the problem directory. JudgeDesk accepts supported C++ (.cpp) and Python (.py) checker sources; legacy .exe checkers are not accepted."
+      },
+      "configFileNote": "Saving writes the problem settings to Config.cfg inside that problem directory so the configuration travels with the test data.",
+      "resultWarning": "Changing settings that affect judging invalidates the meaning of existing scores. JudgeDesk asks for confirmation and clears that problem's previous results when the change is saved."
+    },
+    "judgingResults": {
+      "title": "Judging & results",
+      "summary": "Selections, verdicts, details, regrading, and export",
+      "intro": "JudgeDesk grades only the currently checked rows and columns after the native runner and required language profiles are ready.",
+      "items": {
+        "selection": "Use the checkboxes in the contestant column and problem headers to choose the grading scope.",
+        "progress": "The progress window identifies the active contestant, problem, and stage. Stop cancels the active session and cleans supervised processes.",
+        "details": "Double-click a result cell to inspect compilation status, each test verdict, timing, memory, score, and checker feedback.",
+        "actions": "Use row, column, or cell context menus to regrade or delete only the intended results.",
+        "export": "Export to Excel uses the currently selected contestants and problems and includes diagnostic metadata.",
+        "archive": "Save contest packages problems, submissions, configuration, selections, and available results into a .judgedesk archive."
+      },
+      "verdictsTitle": "Common verdicts",
+      "verdicts": "AC accepted; WA wrong answer; PE presentation error; CE compilation error; RE runtime error; TLE time limit; MLE memory limit; OLE output limit; JE judge error; PARTIAL partial score.",
+      "archivePrivacy": "A .judgedesk archive is a ZIP-compatible container, not encrypted storage. Protect it like the original contestant sources and unpublished tests."
+    },
+    "toolchains": {
+      "title": "Languages & toolchains",
+      "summary": "Core, Full, statuses, paths, and quick troubleshooting",
+      "intro": "The compiler/runtime source answers where a language comes from. Readiness answers what JudgeDesk is currently allowed to do with it. These are separate facts.",
+      "editionsTitle": "Core and Full",
+      "editions": {
+        "full": {
+          "term": "JudgeDesk Full",
+          "description": "Includes supported managed packages and selects them automatically on first launch. On macOS, bundled packages cover Python, Pascal, and Java; C/C++ still requires Apple Clang and the macOS SDK from Xcode Command Line Tools."
+        },
+        "core": {
+          "term": "JudgeDesk Core",
+          "description": "Does not bundle every compiler/runtime. It probes PATH first, then a bounded list of standard locations, and shows the detected version and executable path."
+        }
+      },
+      "statusesTitle": "Status meanings",
+      "statuses": {
+        "detected": {
+          "term": "Detected",
+          "description": "A supported executable answered a quick version/path probe. Detection alone does not promise submission execution."
+        },
+        "ready": {
+          "term": "Submission ready",
+          "description": "JudgeDesk can compile or run contestant submissions with the active execution protection for this language."
+        },
+        "checker": {
+          "term": "Checker only",
+          "description": "The installation can support checker work but is not approved for contestant submissions in the current mode."
+        },
+        "missing": {
+          "term": "Not detected",
+          "description": "No usable executable was found. Choose a path, install/apply a managed package, then scan again."
+        }
+      },
+      "localCompatibilityTitle": "Allow less-safe local mode",
+      "localCompatibility": {
+        "strict": {
+          "term": "Off (default)",
+          "description": "A local toolchain becomes submission ready only after its strict probe passes. Submissions then retain the full sandbox, including filesystem and network isolation."
+        },
+        "resourceOnly": {
+          "term": "On: resource-only",
+          "description": "Allows a local toolchain that cannot use the full sandbox to run with resource controls. JudgeDesk still enforces TLE, MLE, and process-tree cleanup, but does NOT isolate the filesystem or network."
+        }
+      },
+      "localCompatibilityWarning": "Enable this only if you accept that contestant source may read or write files available to the teacher account and may access the network. A managed Full package remains the safer choice.",
+      "troubleshootingTitle": "If a language is not ready",
+      "troubleshooting": {
+        "rescan": "Open the compiler & runtime manager and scan again after changing PATH or installing a compiler.",
+        "path": "Confirm the displayed executable is the intended compiler/runtime, especially when several versions are installed.",
+        "version": "Run the same executable's version command in a terminal. Remove broken PATH entries or choose the correct local path.",
+        "managed": "In Full, prefer the package included with JudgeDesk. For C/C++ on macOS, install Xcode Command Line Tools if Apple Clang is not detected. In Core, apply a managed package when local execution is not compatible with native protection.",
+        "restart": "If the installer changed system environment variables, close and reopen JudgeDesk so the desktop process receives the new PATH."
+      },
+      "integrityNote": "Local detection is intentionally a fast version/path probe, not a full integrity scan. Managed package signatures and hashes are checked during download/extraction instead of on every app start."
+    },
+    "compileFlags": {
+      "title": "Per-problem compile flags",
+      "summary": "Presets, custom arguments, Config.cfg, and score invalidation",
+      "intro": "Compile flags are selected in Problem configuration for each problem. They are stored with that problem in Config.cfg; they are not a global toolchain preference.",
+      "checkerNote": "Changing the compile profile does not change the problem checker. The checker and compile configuration are independent fields in the same Config.cfg.",
+      "presetsTitle": "Available profiles",
+      "presets": {
+        "themis": {
+          "term": "Themis compatibility",
+          "description": "Default for older Config.cfg files without compile metadata. Keeps the established C++14/C11 behavior for reproducible regrading."
+        },
+        "modern": {
+          "term": "Modern (IOI/ICPC 2025 reference)",
+          "description": "C++ uses GNU++20 with -O2 -pipe; C uses GNU17 with -O2 -pipe. Select it explicitly for a contest that permits these standards."
+        },
+        "icpc": {
+          "term": "ICPC World Finals",
+          "description": "C++ uses GNU++20 with -O2 -g; C uses GNU11 with -O2 -g, following the referenced World Finals configuration."
+        },
+        "custom": {
+          "term": "Custom",
+          "description": "Enter additional arguments for this problem. JudgeDesk previews parsed arguments and rejects source/output/toolchain/plugin overrides that could escape the managed command."
+        }
+      },
+      "configExample": "Example stored in Config.cfg",
+      "platformNote": "Config.cfg stores platform-independent arguments. JudgeDesk adds required output, Windows stack/static-link, or macOS compatibility arguments for the active compiler; it does not apply Windows-only flags to Apple Clang.",
+      "invalidationWarning": "Changing a problem's profile or effective flags changes the compiled program. Saving the change requires confirmation and deletes that problem's old scores/logs before the next grading run.",
+      "restore": "To return to established behavior, choose Themis compatibility in that problem and save. Updating JudgeDesk does not silently rewrite a profile already stored in Config.cfg."
+    },
+    "portable": {
+      "title": "Portable compatibility",
+      "summary": "What v1.3.1 supports and what remains future work",
+      "notShipped": "JudgeDesk v1.3.1 does not ship or support a portable application archive. The supported release artifacts remain the Windows installer and macOS disk image.",
+      "compatibility": "The application is being kept compatible with a future extract-and-run package, but signing, updater behavior, writable data location, WebView/runtime dependencies, and clean-machine testing must be solved before release.",
+      "items": {
+        "installer": "Use the official installer or disk image and verify its published checksum.",
+        "contestArchive": "The .judgedesk contest format is portable between supported Windows and macOS installations; this does not make the application itself portable.",
+        "futureWindows": "A future Windows option would use a verified ZIP, not an old-style self-extracting executable.",
+        "futureMac": "A future macOS option must preserve the signed app bundle, executable permissions, and Gatekeeper behavior."
+      },
+      "terminology": "Install-free and true portable are different: true portable would also keep data/logs beside the app. No such mode is enabled in this release."
+    },
+    "about": {
+      "title": "About JudgeDesk",
+      "summary": "Version, edition, build identity, paths, and diagnostics",
+      "intro": "JudgeDesk is a local Vietnamese programming-contest desktop judge for Windows and Apple Silicon macOS. It keeps contest preparation, grading, detailed results, archives, and exports in one desktop workflow.",
+      "themisCredit": "JudgeDesk's offline, teacher-first workflow and contextual help are inspired by Themis. This Help Center is newly written for JudgeDesk and does not copy Themis text, screenshots, or assets.",
+      "disclaimer": "JudgeDesk is an independent product. It is not Themis, is not affiliated with the Themis authors, and does not claim endorsement or sponsorship by Vietnam's Ministry of Education and Training."
+    }
+  }
+}

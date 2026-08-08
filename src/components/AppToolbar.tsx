@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   CheckCircle2,
+  CircleHelp,
   ClipboardList,
   Download,
   FilePlus2,
@@ -47,6 +48,7 @@ interface Props {
   onReload: () => void;
   onRun: () => void;
   onSaveContest: () => void;
+  onOpenHelp: () => void;
   onOpenToolchains: () => void;
   onRequestHostStatus: () => void;
   updateState: AppUpdateState;
@@ -79,6 +81,7 @@ export default function AppToolbar({
   onReload,
   onRun,
   onSaveContest,
+  onOpenHelp,
   onOpenToolchains,
   onRequestHostStatus,
   updateState,
@@ -200,6 +203,7 @@ export default function AppToolbar({
             {errorMessage}
           </div>
         )}
+        <HelpButton onOpen={onOpenHelp} />
         <UpdateButton state={updateState} disabled={interactionLocked} onCheck={onCheckUpdates} onDownload={onDownloadUpdate} onInstall={onRequestInstall} />
 
         <div ref={utilityMenuRef} className="relative flex-none">
@@ -238,6 +242,23 @@ export default function AppToolbar({
         </div>
       </div>
     </header>
+  );
+}
+
+export function HelpButton({ onOpen }: { onOpen: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title={`${t("helpCenter.open")} (F1)`}
+      aria-label={`${t("helpCenter.open")} (F1)`}
+      aria-keyshortcuts="F1"
+      className="flex h-10 flex-none items-center justify-center gap-2 whitespace-nowrap rounded border border-surface-border bg-surface-elevated px-3 text-xs font-bold text-text-primary transition-colors hover:bg-surface-hover"
+    >
+      <CircleHelp className="h-4 w-4 shrink-0 text-indigo-500 dark:text-indigo-300" />
+      <span>{t("helpCenter.open")}</span>
+    </button>
   );
 }
 

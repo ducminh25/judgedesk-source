@@ -5,6 +5,33 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 ## [Unreleased]
 
+### Toolchain và trải nghiệm cài đặt
+
+- Full tự chọn lại mọi package managed đi kèm đúng một lần khi cài mới hoặc khi
+  thay Core bằng Full; sau bootstrap, lựa chọn thủ công của người dùng tiếp tục
+  được tôn trọng. Full → Core tự chuyển nguồn managed không còn tồn tại về tự
+  phát hiện local.
+- Discovery C/C++/Python chạy nền mỗi lần mở app, ưu tiên đúng thứ tự `PATH`,
+  đọc version/vị trí rồi mới thử các đường dẫn chuẩn có giới hạn. API dùng
+  snapshot ngay lập tức và không chặn giao diện để launch compiler/runtime.
+- Bỏ Verify/Freeze khỏi luồng chính của các profile local nhanh. Strict
+  compatibility probe vẫn là mặc định; công tắc Advanced resource-only phải do
+  người dùng chủ động bật và vẫn giữ TLE/MLE/process-tree cleanup, nhưng không
+  cô lập filesystem/network.
+- Full macOS tiếp tục dùng Apple Clang + macOS SDK từ Xcode Command Line Tools
+  hoặc Xcode cho C/C++; Python, FPC và Temurin ARM64 là các package đi kèm.
+
+### Cấu hình bài và hướng dẫn
+
+- Thêm cấu hình biên dịch riêng từng bài trong `Config.cfg`: `Tương thích
+  Themis` (mặc định), `Hiện đại (tham khảo IOI/ICPC 2025)`, `ICPC World Finals`
+  và `Tùy chỉnh`. Flags được lưu dưới dạng argv snapshot; các override source,
+  output, plugin, toolchain root và linker nguy hiểm bị chặn.
+- Thêm Help Center offline song ngữ, tìm kiếm, phím F1, nút Hướng dẫn bên trái
+  updater và phần About/chẩn đoán sản phẩm trong cùng một cửa sổ.
+- Audit khả năng portable được ghi lại riêng; v1.3.1 vẫn chỉ hỗ trợ installer
+  Windows và disk image macOS, không phát hành ZIP/SFX portable.
+
 ## [1.3.0] - 2026-08-01
 
 ### Chấm bài đa ngôn ngữ

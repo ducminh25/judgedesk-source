@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { execFileSync } from "node:child_process";
+import { createCompileConfig } from "../../shared/compile-config.js";
 import type { NormalizedProblemConfig } from "../types.js";
 import type { ResolvedToolchain } from "../toolchains/types.js";
 
@@ -50,13 +51,15 @@ test(
       { executorClient },
       { compileSubmission },
       { runTestCase },
-      { resolveManagedToolchain },
+      { resolveManagedToolchain, verifyLocalToolchainCandidate },
+      { scheduleLocalCompatibilityProbe },
     ] =
       await Promise.all([
         import("../executor/client.js"),
         import("./compiler.js"),
         import("./testcase-runner.js"),
         import("../toolchains/resolver.js"),
+        import("../toolchains/local-execution.js"),
       ]);
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-c-gate-"));
     t.after(async () => {
@@ -81,6 +84,7 @@ test(
       testScores: {},
       memoryLimit: 256,
       checkerType: "C1",
+      compile: createCompileConfig(),
       polygonConfig: {
         enableGroups: false,
         tests: {},
@@ -128,27 +132,24 @@ test(
               "bin",
               gate.language === "cpp" ? "g++.exe" : "gcc.exe",
             )
-          : execFileSync(
+          : fs.realpathSync(execFileSync(
               "/usr/bin/xcrun",
               ["--find", gate.compilerName],
               { encoding: "utf8" },
-            ).trim();
+            ).trim());
         assert.ok(
           fs.existsSync(compiler),
           `${gate.language} compiler is missing at ${compiler}`,
         );
         const source = path.join(root, `SUM${gate.extension}`);
         fs.writeFileSync(source, gate.source, "utf8");
-        const toolchain: ResolvedToolchain = process.platform === "win32"
-          ? resolveManagedToolchain(gate.language)
-          : {
-              kind: gate.language,
-              source: "system",
-              executablePath: compiler,
-              version: "17.0.0",
-              ready: true,
-              provenance: "platform-certified",
-            };
+        let toolchain: ResolvedToolchain;
+        if (process.platform === "win32") {
+          toolchain = resolveManagedToolchain(gate.language);
+        } else {
+          await scheduleLocalCompatibilityProbe(gate.language, compiler);
+          toolchain = verifyLocalToolchainCandidate(gate.language, compiler);
+        }
         assert.equal(
           toolchain.ready,
           true,
