@@ -153,6 +153,7 @@ notarization unless `JUDGEDESK_REQUIRE_NOTARIZATION=1` passes in the actual buil
 9. Publish the draft only after both operating-system matrices pass. Remove the
    temporary staging release afterward.
 
-For v1.3.0, existing users receive the new installer manually; no v1.2.7 updater
-bridge is required. `latest.json` is still produced so fresh v1.3.0 installations
-remain on the supported updater lineage for later releases.
+Existing v1.3.0 users can receive v1.3.1 through the updater. `latest.json`
+continues to select only the Full Windows MSI and Full macOS updater archive so
+an automatic update never removes managed toolchains included by a previous
+Full installation.
