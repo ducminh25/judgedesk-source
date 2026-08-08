@@ -5,6 +5,8 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-08-08
+
 ### Toolchain và trải nghiệm cài đặt
 
 - Full tự chọn lại mọi package managed đi kèm đúng một lần khi cài mới hoặc khi
@@ -293,3 +295,4 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 [1.2.6]: https://github.com/ducminh25/judgedesk/releases/tag/v1.2.6
 [1.2.7]: https://github.com/ducminh25/judgedesk/releases/tag/v1.2.7
 [1.3.0]: https://github.com/ducminh25/judgedesk/releases/tag/v1.3.0
+[1.3.1]: https://github.com/ducminh25/judgedesk/releases/tag/v1.3.1
