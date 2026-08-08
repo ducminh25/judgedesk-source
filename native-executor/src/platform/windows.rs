@@ -1,5 +1,7 @@
 use super::{failure, reported_peak_memory_bytes, root_display, ActiveRuns, Cancellation};
-use crate::protocol::{ExecutorHealth, RunReason, RunResult, RunRole, RunSpec};
+use crate::protocol::{
+    ExecutorHealth, LocalToolchainIsolation, RunReason, RunResult, RunRole, RunSpec,
+};
 use crate::request_validation::ValidatedRun;
 use crate::workspace::{file_size, initialize_root, inspect_workspace};
 use std::collections::{BTreeMap, HashSet};
@@ -163,6 +165,7 @@ impl WindowsPlatform {
                 stderr_file: "probe.stderr".into(),
                 environment: BTreeMap::new(),
                 toolchain: None,
+                local_toolchain: None,
                 limits: crate::protocol::RunLimits {
                     wall_time_ms: 5_000,
                     memory_bytes: 128 * 1024 * 1024,
@@ -292,19 +295,31 @@ impl WindowsPlatform {
         // network and private user-file access remain default-deny; the Job Object continues to
         // enforce process and resource limits.
         let isolated_submission_runtime = matches!(spec.role, RunRole::Submission)
-            && spec.toolchain.is_some()
+            && (spec.toolchain.is_some() || spec.local_toolchain.is_some())
             && MANAGED_RUNTIME_MARKERS
                 .iter()
                 .any(|marker| spec.environment.get(*marker).map(String::as_str) == Some("1"));
         let managed_checker_runtime = matches!(spec.role, RunRole::CheckerRuntime);
-        let use_lpac =
-            !compiler_may_spawn && !isolated_submission_runtime && !managed_checker_runtime;
-        let mut attributes = AttributeList::new(if use_lpac { 4 } else { 3 })?;
-        attributes.update(
-            PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES as usize,
-            &mut security as *mut _ as *mut c_void,
-            size_of::<SECURITY_CAPABILITIES>(),
-        )?;
+        let resource_only = matches!(paths.isolation, LocalToolchainIsolation::ResourceOnly);
+        let use_lpac = !resource_only
+            && !compiler_may_spawn
+            && !isolated_submission_runtime
+            && !managed_checker_runtime;
+        let attribute_count = if resource_only {
+            2
+        } else if use_lpac {
+            4
+        } else {
+            3
+        };
+        let mut attributes = AttributeList::new(attribute_count)?;
+        if !resource_only {
+            attributes.update(
+                PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES as usize,
+                &mut security as *mut _ as *mut c_void,
+                size_of::<SECURITY_CAPABILITIES>(),
+            )?;
+        }
         if use_lpac {
             attributes.update(
                 PROC_THREAD_ATTRIBUTE_ALL_APPLICATION_PACKAGES_POLICY as usize,

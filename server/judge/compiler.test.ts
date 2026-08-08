@@ -252,11 +252,9 @@ test("compiler flags retain Windows limits and avoid unsupported macOS flags", (
   );
   assert.deepEqual(windows, [
     "-std=c++14",
-    "-pipe",
     "-O2",
-    "-s",
+    "-pipe",
     "-static",
-    "-lm",
     "-x",
     "c++",
     "-Wl,--stack,66060288",
@@ -291,17 +289,16 @@ test("compiler flags retain Windows limits and avoid unsupported macOS flags", (
   );
   assert.deepEqual(cWindows, [
     "-std=c11",
-    "-pipe",
     "-O2",
-    "-s",
+    "-pipe",
     "-static",
-    "-lm",
     "-x",
     "c",
     "-Wl,--stack,66060288",
     "main.c",
     "-o",
     "main.exe",
+    "-lm",
   ]);
 });
 

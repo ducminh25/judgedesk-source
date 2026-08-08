@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "../../api";
 import { PolygonConfig, PolygonTestConfig, ProblemConfig } from "../../types";
+import { normalizeCompileConfig } from "../../../shared/compile-config.js";
 import {
   applyTestEdit,
   createEmptyPolygonConfig,
@@ -22,7 +23,8 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
   const [config, setConfig] = useState<ProblemConfig>({
     ...initialConfig,
     memoryLimit: initialConfig.memoryLimit ?? 256,
-    checkerType: initialConfig.checkerType || "C1"
+    checkerType: initialConfig.checkerType || "C1",
+    compile: normalizeCompileConfig(initialConfig.compile),
   });
   const [polygonConfig, setPolygonConfig] = useState<PolygonConfig>(createEmptyPolygonConfig);
   const [testDetails, setTestDetails] = useState<TestDetail[]>([]);
@@ -67,7 +69,8 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
           setConfig(previous => ({
             ...previous,
             ...configData.data,
-            checkerType: configData.data.checkerType || previous.checkerType || "C1"
+            checkerType: configData.data.checkerType || previous.checkerType || "C1",
+            compile: normalizeCompileConfig(configData.data.compile ?? previous.compile),
           }));
           setUseStdIn(configData.data.useStdIn ?? configData.data.useStdIO ?? false);
           setUseStdOut(configData.data.useStdOut ?? configData.data.useStdIO ?? false);
@@ -136,7 +139,8 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
         useStdIn,
         useStdOut,
         inputFile,
-        outputFile
+        outputFile,
+        compile: normalizeCompileConfig(config.compile),
       };
       await apiFetch("/api/polygon-config", {
         method: "POST",
@@ -150,6 +154,7 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
         useStdOut,
         inputFile,
         outputFile,
+        compile: normalizeCompileConfig(config.compile),
         polygonConfig: configToSave
       });
       onClose();

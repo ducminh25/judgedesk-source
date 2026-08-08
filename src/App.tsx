@@ -28,8 +28,13 @@ import Scoreboard, {
 import DirectoryPickerModal from "./components/DirectoryPickerModal";
 import EntityActionMenu from "./components/EntityActionMenu";
 import AppToolbar from "./components/AppToolbar";
+import HelpCenter, {
+  isHelpShortcut,
+  type HelpSectionId,
+} from "./features/help/HelpCenter.js";
 import { useTranslation } from "react-i18next";
 import ToolchainManager from "./features/toolchains/ToolchainManager.js";
+import type { ToolchainState } from "./features/toolchains/useToolchains.js";
 import { useAppUpdater } from "./features/updates/useAppUpdater.js";
 import UnsavedContestDialog from "./components/UnsavedContestDialog";
 import ScoreDeleteConfirmDialog from "./components/ScoreDeleteConfirmDialog";
@@ -102,6 +107,7 @@ export default function App() {
   );
   const [modalPath, setModalPath] = useState<string>("");
   const [openToolchains, setOpenToolchains] = useState(false);
+  const [helpSection, setHelpSection] = useState<HelpSectionId | null>(null);
   const [showInstallUpdate, setShowInstallUpdate] = useState(false);
   const [isInstallingUpdate, setIsInstallingUpdate] = useState(false);
   const [updateRestartError, setUpdateRestartError] = useState("");
@@ -239,9 +245,26 @@ export default function App() {
     hostStatusRequestRef.current = request;
   }, [t]);
 
+  const loadHelpToolchains = useCallback(async (): Promise<ToolchainState> => {
+    const response = await apiFetch("/api/toolchains");
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return (await response.json()) as ToolchainState;
+  }, []);
+
   useEffect(() => {
     requestHostStatus();
   }, [requestHostStatus]);
+
+  useEffect(() => {
+    const openHelpOnF1 = (event: KeyboardEvent) => {
+      if (!isHelpShortcut(event) || updateHandoffActive) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setHelpSection((current) => current ?? "quick-start");
+    };
+    window.addEventListener("keydown", openHelpOnF1, true);
+    return () => window.removeEventListener("keydown", openHelpOnF1, true);
+  }, [updateHandoffActive]);
 
   useEffect(() => {
     activeLoadModalRef.current = loadModal;
@@ -641,6 +664,7 @@ export default function App() {
         onSaveContest={() => {
           void handleSaveContest();
         }}
+        onOpenHelp={() => setHelpSection("quick-start")}
         onOpenToolchains={() => setOpenToolchains(true)}
         onRequestHostStatus={requestHostStatus}
         updateState={updater.state}
@@ -828,6 +852,23 @@ export default function App() {
             activeLog.type === "contestant" ? activeLog.name : undefined
           }
           onClose={() => setActiveLog(null)}
+        />
+      )}
+
+      {helpSection && (
+        <HelpCenter
+          initialSection={helpSection}
+          hostStatus={hostStatus}
+          workspacePaths={{
+            problems: testPath,
+            contestants: thisinhPath,
+          }}
+          loadToolchains={loadHelpToolchains}
+          onClose={() => setHelpSection(null)}
+          onOpenToolchains={() => {
+            setHelpSection(null);
+            setOpenToolchains(true);
+          }}
         />
       )}
 

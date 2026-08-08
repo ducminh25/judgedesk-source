@@ -210,7 +210,7 @@ test("sidecar smoke test verifies a real child process over HTTP", async () => {
         '  if (request.url === "/api/status") {',
         "    statusRequests += 1;",
         "    const gpp = statusRequests < 3",
-        '      ? { installed: false, diagnostic: "Toolchain detection is still in progress." }',
+        '      ? { installed: false, diagnostic: "Toolchain detection is refreshing in the background." }',
         "      : { installed: true };",
         "    response.end(JSON.stringify({ healthy: true, gpp }));",
         "    return;",
@@ -461,6 +461,10 @@ test("Apple Silicon release scripts verify architecture, DMG, and sidecar", () =
   assert.match(
     processSupervisorGate,
     /port="\$\(wait_for_listening_port "\$active_server"\)"/,
+  );
+  assert.match(
+    processSupervisorGate,
+    /wait_for_cpp_submission_ready "\$port"[\s\S]*api\/batch-judge/,
   );
   assert.match(
     processSupervisorGate,

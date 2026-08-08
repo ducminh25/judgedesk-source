@@ -326,14 +326,10 @@ export async function smokeTestSidecar(
           deadline,
         );
         if (response.ok) {
-          const cppDetectionPending =
-            requireCpp
-            && !status.gpp?.installed
-            && status.gpp?.diagnostic
-              === "Toolchain detection is still in progress.";
+          const cppDetectionPending = requireCpp && !status.gpp?.installed;
           if (cppDetectionPending) {
             lastHealthError = new Error(
-              "Apple Clang detection is still in progress.",
+              `Apple Clang detection has not completed: ${JSON.stringify(status.gpp)}`,
             );
           } else {
             healthy = { baseUrl, status };

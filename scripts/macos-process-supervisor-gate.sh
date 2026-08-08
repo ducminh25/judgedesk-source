@@ -143,6 +143,34 @@ wait_for_listening_port() {
   return 1
 }
 
+wait_for_cpp_submission_ready() {
+  local port="$1"
+  local last_status=""
+  local index
+  for ((index = 0; index < 300; index++)); do
+    last_status="$(
+      curl -fsS --max-time 2 "http://127.0.0.1:$port/api/status" 2>/dev/null || true
+    )"
+    if [[ -n "$last_status" ]] && printf '%s' "$last_status" | node -e '
+      let body = "";
+      process.stdin.setEncoding("utf8");
+      process.stdin.on("data", (chunk) => { body += chunk; });
+      process.stdin.on("end", () => {
+        try {
+          process.exit(JSON.parse(body)?.gpp?.submissionReady === true ? 0 : 1);
+        } catch {
+          process.exit(1);
+        }
+      });
+    '; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  printf 'Last packaged status: %s\n' "${last_status:-unavailable}" >&2
+  return 1
+}
+
 assert_full_generation() {
   [[ "$(exact_count "$gui_command")" == "1" ]] || fail "GUI count is not one"
   [[ "$(exact_count "$helper_command")" == "1" ]] || fail "helper count is not one"
@@ -387,6 +415,8 @@ active_server="$(only_pid backend "$server_command")"
 port="$(wait_for_listening_port "$active_server")" ||
   fail "packaged backend did not open a listening port"
 [[ "$port" =~ ^[0-9]+$ ]] || fail "could not discover the packaged backend port"
+wait_for_cpp_submission_ready "$port" ||
+  fail "packaged C++ toolchain did not become submission-ready"
 
 mkdir -p "$fixture/contestants/alice" "$fixture/tests/A/01"
 printf '%s\n' \

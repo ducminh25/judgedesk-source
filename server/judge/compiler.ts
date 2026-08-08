@@ -3,7 +3,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { ExecutorRunResult } from "../executor/protocol.js";
-import type { ExecutorToolchainIdentity } from "../executor/protocol.js";
+import type {
+  ExecutorLocalToolchainIdentity,
+  ExecutorToolchainIdentity,
+} from "../executor/protocol.js";
 import { executorClient } from "../executor/client.js";
 import {
   createExecutorWorkspace,
@@ -18,7 +21,11 @@ import {
   detachExecutorRun,
   runReservedExecutor,
 } from "../jobs.js";
-import type { ProblemResult, SubmissionLanguage } from "../types.js";
+import type {
+  ProblemCompileConfig,
+  ProblemResult,
+  SubmissionLanguage,
+} from "../types.js";
 import {
   findDarwinSdkDirectory,
   findSelectedDarwinCompiler,
@@ -29,6 +36,7 @@ import {
   resolveToolchain,
 } from "../toolchains/resolver.js";
 import { getToolchainsDir } from "../toolchains/storage.js";
+import { deriveLocalToolchain } from "../toolchains/local-execution.js";
 import type {
   ResolvedToolchain,
   ToolchainKind,
@@ -109,6 +117,7 @@ interface CompileSubmissionOptions {
   submissionPath: string;
   tempDirectory: string;
   jobId?: string;
+  compile?: ProblemCompileConfig;
   cppToolchain?: ResolvedToolchain;
   cToolchain?: ResolvedToolchain;
   pythonToolchain?: ResolvedToolchain;
@@ -131,6 +140,7 @@ interface PreparedCompiler {
   environment: Record<string, string>;
   compatibilityHeaderPath?: string;
   toolchain?: ExecutorToolchainIdentity;
+  localToolchain?: ExecutorLocalToolchainIdentity;
 }
 
 export function getBundledTestlibSource(): string {
@@ -165,11 +175,11 @@ export async function resolveChecker(options: ResolveCheckerOptions): Promise<Co
         error: "CHECKER_TOOLCHAIN_UNAVAILABLE: cannot compile Python checker; Python is missing",
       };
     }
-    if (python.source !== "managed") {
+    if (python.source !== "managed" && !python.localToolchain) {
       return {
         path: null,
         error:
-          "CHECKER_TOOLCHAIN_MANAGED_REQUIRED: select a JudgeDesk-managed Python runtime for Python checkers",
+          "CHECKER_TOOLCHAIN_NOT_SANDBOX_COMPATIBLE: select a native-executor compatible Python runtime",
       };
     }
     try {
@@ -210,7 +220,7 @@ export async function compileSubmission(options: CompileSubmissionOptions): Prom
       ?? options.pythonToolchain
       ?? await resolveCompilationToolchain("python");
     if (!python.ready) return compilationFailure("", "TOOLCHAIN_PYTHON_MISSING", compileStart);
-    if (python.source !== "managed") {
+    if (python.source !== "managed" && !python.localToolchain) {
       return compilationFailure("", "TOOLCHAIN_NOT_SANDBOX_COMPATIBLE", compileStart);
     }
     return {
@@ -272,6 +282,7 @@ export async function compileSubmission(options: CompileSubmissionOptions): Prom
       os.platform(),
       submissionPath,
       executablePath,
+      options.compile,
     );
     const toolchain = options.toolchains?.[recipe.toolchainKind]
       ?? (language === "cpp"
@@ -522,6 +533,7 @@ async function runDirectoryCompilerWithLimits(
         ],
         environment,
         toolchain: compiler.toolchain,
+        localToolchain: compiler.localToolchain,
         timeoutMs: options.limits.timeoutMs,
         memoryBytes:
           options.limits.memoryBytes ?? resolveCompilerMemoryLimitBytes(),
@@ -813,6 +825,13 @@ export function isWindowsNativeCompilerExecutionReady(
   toolchain: ResolvedToolchain,
 ): boolean {
   if (toolchain.source === "managed") return true;
+  if (
+    (toolchain.kind === "cpp" || toolchain.kind === "c")
+    && toolchain.ready
+    && toolchain.localToolchain
+  ) {
+    return true;
+  }
   return toolchain.kind === "cpp"
     && toolchain.provenance === "certified-local"
     && !!toolchain.certificateId
@@ -828,12 +847,14 @@ export function buildSubmissionCompilerArgs(
   sourcePath: string,
   outputPath: string,
   language: "cpp" | "c" = "cpp",
+  compile?: ProblemCompileConfig,
 ): string[] {
   return buildNativeCompilationRecipe(
     language,
     platform,
     sourcePath,
     outputPath,
+    compile,
   ).args;
 }
 
@@ -942,6 +963,7 @@ export async function runCompilerWithLimits(
       args: stagedArgs,
       environment,
       toolchain: compiler.toolchain,
+      localToolchain: compiler.localToolchain,
       timeoutMs: limits.timeoutMs,
       memoryBytes: limits.memoryBytes ?? resolveCompilerMemoryLimitBytes(),
       maxGeneratedFileBytes: limits.maxGeneratedFileBytes,
@@ -1105,6 +1127,37 @@ async function prepareCompiler(
         environment: {},
       });
     }
+    if (
+      pinnedToolchain.localToolchain
+      && (kind === "cpp" || kind === "c")
+    ) {
+      const derived = deriveLocalToolchain(
+        kind,
+        compilerPath,
+        pinnedToolchain.localToolchain.isolation,
+      );
+      if (
+        !sameFile(derived.identity.rootPath, pinnedToolchain.localToolchain.rootPath)
+        || derived.identity.executableRelativePath
+          !== pinnedToolchain.localToolchain.executableRelativePath
+      ) {
+        throw new Error("TOOLCHAIN_CHANGED_DURING_JUDGING");
+      }
+      const darwin = process.platform === "darwin"
+        ? resolveDarwinCompilerSupport(derived.executablePath, kind)
+        : null;
+      return {
+        executableId: derived.executableId,
+        executablePath: derived.executablePath,
+        root: derived.identity.rootPath,
+        argumentPrefix: darwin?.argumentPrefix ?? [],
+        environment: darwin?.environment ?? {},
+        localToolchain: pinnedToolchain.localToolchain,
+        compatibilityHeaderPath: darwin && kind === "cpp"
+          ? resolveDarwinCompatibilityHeader(RESOURCE_ROOT)
+          : undefined,
+      };
+    }
   }
   const cached = await findCachedManagedToolchain(kind);
   if (cached && sameFile(cached.executablePath, compilerPath)) {
@@ -1170,16 +1223,7 @@ async function prepareCompiler(
       environment: {},
     });
   }
-  const darwin = process.platform === "darwin"
-    && (kind === "cpp" || kind === "c")
-    ? resolveDarwinCompilerSupport(realCompiler, kind)
-    : null;
-  if (
-    process.platform === "darwin"
-    && kind !== "cpp"
-    && kind !== "c"
-    && !isDescendant(managedRoot, realCompiler)
-  ) {
+  if (!isExecutorTestHarness(realCompiler)) {
     throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
   }
   const name = stagedCompilerName(realCompiler);
@@ -1187,12 +1231,15 @@ async function prepareCompiler(
   return {
     executableId: workspace.relative(name),
     executablePath: staged,
-    argumentPrefix: darwin?.argumentPrefix ?? [],
-    environment: darwin?.environment ?? {},
-    compatibilityHeaderPath: darwin && kind === "cpp"
-      ? resolveDarwinCompatibilityHeader(RESOURCE_ROOT)
-      : undefined,
+    argumentPrefix: [],
+    environment: {},
   };
+}
+
+function isExecutorTestHarness(executablePath: string): boolean {
+  return path.basename(executablePath).toLowerCase().startsWith(
+    "judgedesk-executor-",
+  );
 }
 
 function decoratePreparedCompilerForPlatform(

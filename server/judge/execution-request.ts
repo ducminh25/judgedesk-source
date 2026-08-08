@@ -1,5 +1,6 @@
 import {
   DEFAULT_EXECUTOR_LIMITS,
+  type ExecutorLocalToolchainIdentity,
   type ExecutorToolchainIdentity,
   type ExecutorRunSpec,
 } from "../executor/protocol.js";
@@ -19,6 +20,7 @@ interface CompilerExecutorRunSpecOptions {
   maxWorkspaceWriteBytes?: number;
   maxCreatedFiles?: number;
   toolchain?: ExecutorToolchainIdentity;
+  localToolchain?: ExecutorLocalToolchainIdentity;
 }
 
 export function buildCompilerExecutorRunSpec(
@@ -33,9 +35,7 @@ export function buildCompilerExecutorRunSpec(
     stdoutFile: "compiler.stdout",
     stderrFile: "compiler.stderr",
     environment: options.environment,
-    ...(options.toolchain
-      ? { toolchain: { ...options.toolchain, role: "compiler" as const } }
-      : {}),
+    ...toolchainGrantFields("compiler", options.toolchain, options.localToolchain),
     limits: {
       ...DEFAULT_EXECUTOR_LIMITS.compiler,
       wallTimeMs: options.timeoutMs,
@@ -60,6 +60,7 @@ interface SubmissionExecutorRunSpecOptions {
   timeLimitMs: number;
   memoryBytes: number;
   toolchain?: ExecutorToolchainIdentity;
+  localToolchain?: ExecutorLocalToolchainIdentity;
 }
 
 export function buildSubmissionExecutorRunSpec(
@@ -75,14 +76,11 @@ export function buildSubmissionExecutorRunSpec(
     stdoutFile: "stdout.txt",
     stderrFile: "stderr.txt",
     environment: options.environment,
-    ...(options.toolchain
-      ? {
-          toolchain: {
-            ...options.toolchain,
-            role: "submission-runtime" as const,
-          },
-        }
-      : {}),
+    ...toolchainGrantFields(
+      "submission-runtime",
+      options.toolchain,
+      options.localToolchain,
+    ),
     limits: {
       ...DEFAULT_EXECUTOR_LIMITS.submission,
       wallTimeMs: Math.max(1, options.timeLimitMs),
@@ -103,6 +101,7 @@ interface CheckerExecutorRunSpecOptions {
   stdoutFile?: string;
   stderrFile?: string;
   toolchain?: ExecutorToolchainIdentity;
+  localToolchain?: ExecutorLocalToolchainIdentity;
 }
 
 /**
@@ -123,14 +122,11 @@ export function buildCheckerExecutorRunSpec(
     stdoutFile: options.stdoutFile ?? "checker.stdout",
     stderrFile: options.stderrFile ?? "checker.stderr",
     environment: options.environment,
-    ...(options.toolchain
-      ? {
-          toolchain: {
-            ...options.toolchain,
-            role: "checker-runtime" as const,
-          },
-        }
-      : {}),
+    ...toolchainGrantFields(
+      "checker-runtime",
+      options.toolchain,
+      options.localToolchain,
+    ),
     limits: {
       ...DEFAULT_EXECUTOR_LIMITS.checker,
       wallTimeMs: options.timeoutMs,
@@ -138,4 +134,17 @@ export function buildCheckerExecutorRunSpec(
       outputBytes: CHECKER_OUTPUT_LIMIT_BYTES,
     },
   };
+}
+
+function toolchainGrantFields(
+  role: "compiler" | "submission-runtime" | "checker-runtime",
+  managed?: ExecutorToolchainIdentity,
+  local?: ExecutorLocalToolchainIdentity,
+): Pick<ExecutorRunSpec, "toolchain" | "localToolchain"> {
+  if (managed && local) {
+    throw new Error("Managed and local toolchain grants are mutually exclusive.");
+  }
+  if (managed) return { toolchain: { ...managed, role } };
+  if (local) return { localToolchain: { ...local, role } };
+  return {};
 }

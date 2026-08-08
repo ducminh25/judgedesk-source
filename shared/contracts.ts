@@ -137,6 +137,25 @@ export interface PolygonConfig {
   groups: Record<string, PolygonGroupConfig>;
 }
 
+export type CompileLanguage = "cpp" | "c";
+
+export type CompileProfile =
+  | "themis"
+  | "modern_ioi_icpc_2025"
+  | "icpc_world_finals"
+  | "custom";
+
+export interface CompileFlags {
+  cpp: string[];
+  c: string[];
+}
+
+export interface ProblemCompileConfig {
+  schemaVersion: 1;
+  profile: CompileProfile;
+  flags: CompileFlags;
+}
+
 export interface ProblemConfig {
   useStdIO: boolean;
   useStdIn?: boolean;
@@ -149,6 +168,7 @@ export interface ProblemConfig {
   memoryLimit?: number;
   polygonConfig?: PolygonConfig;
   checkerType?: string;
+  compile?: ProblemCompileConfig;
 }
 
 export interface NormalizedProblemConfig extends ProblemConfig {
@@ -159,6 +179,7 @@ export interface NormalizedProblemConfig extends ProblemConfig {
   memoryLimit: number;
   checkerType: string;
   polygonConfig: PolygonConfig;
+  compile: ProblemCompileConfig;
 }
 
 export interface HostStatus {

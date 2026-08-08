@@ -26,6 +26,24 @@ export interface ExecutorToolchainGrant extends ExecutorToolchainIdentity {
   role: "compiler" | "submission-runtime" | "checker-runtime";
 }
 
+export type ExecutorLocalIsolation = "strict" | "resource-only";
+
+/**
+ * A user-installed toolchain that remains in place. Unlike a managed grant this
+ * carries no package-integrity claim. The native executor canonicalizes the
+ * root and executable and applies the requested isolation boundary.
+ */
+export interface ExecutorLocalToolchainIdentity {
+  rootPath: string;
+  executableRelativePath: string;
+  isolation: ExecutorLocalIsolation;
+}
+
+export interface ExecutorLocalToolchainGrant
+  extends ExecutorLocalToolchainIdentity {
+  role: "compiler" | "submission-runtime" | "checker-runtime";
+}
+
 export interface ExecutorRunSpec {
   runId: string;
   role: ExecutorRole;
@@ -37,6 +55,7 @@ export interface ExecutorRunSpec {
   stderrFile: string;
   environment: Record<string, string>;
   toolchain?: ExecutorToolchainGrant;
+  localToolchain?: ExecutorLocalToolchainGrant;
   limits: ExecutorLimits;
 }
 

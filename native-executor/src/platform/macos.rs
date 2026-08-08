@@ -3,7 +3,9 @@ use crate::fault_trace::{FaultTrace, FaultTraceEvent, FAULT_EVENT_LOG_ENV, FAULT
 use crate::guardian_protocol::{
     generate_nonce, FrameIdentity, LauncherMonitorLimits, LauncherRlimits, LauncherSpec,
 };
-use crate::protocol::{ExecutorHealth, RunLimits, RunReason, RunResult, RunRole, RunSpec};
+use crate::protocol::{
+    ExecutorHealth, LocalToolchainIsolation, RunLimits, RunReason, RunResult, RunRole, RunSpec,
+};
 use crate::request_validation::{validate_run, ValidatedRun};
 use crate::workspace::initialize_root;
 use std::collections::BTreeMap;
@@ -106,6 +108,7 @@ impl MacosPlatform {
                 stderr_file: "probe.stderr".into(),
                 environment: Default::default(),
                 toolchain: None,
+                local_toolchain: None,
                 limits: RunLimits {
                     wall_time_ms: 5_000,
                     memory_bytes: 128 * 1024 * 1024,
@@ -488,6 +491,24 @@ fn trusted_profile_directory(root: &Path) -> Result<PathBuf, String> {
 }
 
 fn build_profile(spec: &RunSpec, paths: &ValidatedRun) -> Result<String, String> {
+    if matches!(paths.isolation, LocalToolchainIsolation::ResourceOnly) {
+        // Explicitly requested compatibility mode keeps sandbox-exec in the
+        // supervised launch chain, but permits host filesystem and network
+        // access. Process-group escape remains denied so guardian accounting,
+        // cancellation and resource limits continue to cover the full tree.
+        let process_group_escape_denials = match spec.role {
+            RunRole::Compiler => "(deny syscall-unix (syscall-number SYS_setpgid SYS_setsid))",
+            RunRole::Submission
+            | RunRole::Checker
+            | RunRole::CheckerRuntime
+            | RunRole::SecurityProbe => {
+                "(deny syscall-unix (syscall-number SYS_setpgid SYS_setsid SYS_posix_spawn))"
+            }
+        };
+        return Ok(format!(
+            "(version 1)\n(allow default)\n{process_group_escape_denials}\n"
+        ));
+    }
     let canonical_workspace =
         fs::canonicalize(&paths.workspace).map_err(|error| error.to_string())?;
     let canonical_executable =
@@ -957,6 +978,7 @@ mod launcher_spec_tests {
             stderr_file: "stderr.txt".into(),
             environment: BTreeMap::new(),
             toolchain: None,
+            local_toolchain: None,
             limits: RunLimits {
                 wall_time_ms: 1_000,
                 memory_bytes: 64 * 1024 * 1024,

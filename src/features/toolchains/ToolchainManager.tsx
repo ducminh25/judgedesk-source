@@ -41,6 +41,7 @@ export default function ToolchainManager({ onClose, firstRun = false }: Props) {
     cancel,
     uninstall,
     setProfilePreference,
+    setResourceOnlyLocalExecution,
     rescan,
     planCertification,
     certify,
@@ -71,12 +72,13 @@ export default function ToolchainManager({ onClose, firstRun = false }: Props) {
               disabled={
                 !state
                 || state.discovery.status === "running"
+                || state.discovery.refreshing
                 || state.mutationsBlocked
               }
               onClick={() => void rescan()}
               className="flex items-center gap-1.5 rounded border border-surface-border bg-input-bg px-2.5 py-1.5 text-2xs font-bold text-text-primary hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${state?.discovery.status === "running" ? "animate-spin" : ""}`} />
+              <RefreshCw className={`h-3.5 w-3.5 ${state?.discovery.status === "running" || state?.discovery.refreshing ? "animate-spin" : ""}`} />
               {t("toolchains.rescan")}
             </button>
             <button
@@ -111,7 +113,10 @@ export default function ToolchainManager({ onClose, firstRun = false }: Props) {
                   {t("toolchains.manifestUnavailable")}: {state.manifestError}
                 </Notice>
               )}
-              <DiscoveryNotice status={state.discovery.status} />
+              <DiscoveryNotice
+                status={state.discovery.status}
+                refreshing={state.discovery.refreshing}
+              />
 
               <ToolchainRegistryTable
                 profiles={state.profiles}
@@ -126,6 +131,17 @@ export default function ToolchainManager({ onClose, firstRun = false }: Props) {
                 onUninstall={uninstall}
                 onPlanCertification={planCertification}
                 onCertify={certify}
+              />
+              <LocalExecutionPolicyPanel
+                enabled={
+                  state.executionPolicy.allowResourceOnlyLocalExecution
+                }
+                recovery={state.executionPolicy.status === "recovery"}
+                disabled={
+                  state.mutationsBlocked
+                  || state.preferenceDocument.status === "recovery"
+                }
+                onChange={setResourceOnlyLocalExecution}
               />
             </div>
           )}
@@ -147,6 +163,75 @@ export default function ToolchainManager({ onClose, firstRun = false }: Props) {
         </div>
       </div>
     </div>
+  );
+}
+
+export function LocalExecutionPolicyPanel({
+  enabled,
+  recovery,
+  disabled,
+  onChange,
+}: {
+  enabled: boolean;
+  recovery: boolean;
+  disabled: boolean;
+  onChange: (enabled: boolean) => Promise<boolean>;
+}) {
+  const { t } = useTranslation();
+  const [pending, setPending] = useState(false);
+
+  const updatePolicy = async (nextEnabled: boolean) => {
+    if (
+      nextEnabled
+      && !window.confirm(t("toolchains.registry.resourceOnly.confirm"))
+    ) {
+      return;
+    }
+    setPending(true);
+    try {
+      await onChange(nextEnabled);
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <details className="rounded-lg border border-amber-300 bg-amber-50/70 dark:border-amber-900/60 dark:bg-amber-950/20">
+      <summary className="cursor-pointer select-none px-4 py-3 text-xs font-bold text-amber-900 dark:text-amber-200">
+        {t("toolchains.registry.resourceOnly.title")}
+      </summary>
+      <div className="space-y-3 border-t border-amber-300 px-4 py-4 text-xs leading-relaxed text-amber-900 dark:border-amber-900/60 dark:text-amber-200">
+        <div className="flex items-start gap-2">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>{t("toolchains.registry.resourceOnly.description")}</p>
+        </div>
+        {recovery && (
+          <p className="font-bold text-rose-700 dark:text-rose-300">
+            {t("toolchains.registry.resourceOnly.recovery")}
+          </p>
+        )}
+        <label className="flex items-start gap-3 rounded border border-amber-300 bg-white/60 p-3 dark:border-amber-900/60 dark:bg-black/10">
+          <input
+            type="checkbox"
+            checked={enabled}
+            disabled={disabled || pending}
+            onChange={(event) => void updatePolicy(event.target.checked)}
+            className="mt-0.5 h-4 w-4 accent-amber-600"
+          />
+          <span>
+            <strong className="block">
+              {t("toolchains.registry.resourceOnly.toggle")}
+            </strong>
+            <span className="mt-1 block text-2xs">
+              {enabled
+                ? t("toolchains.registry.resourceOnly.enabled")
+                : t("toolchains.registry.resourceOnly.disabled")}
+            </span>
+          </span>
+          {pending && <Loader2 className="ml-auto h-4 w-4 animate-spin" />}
+        </label>
+      </div>
+    </details>
   );
 }
 
@@ -226,15 +311,18 @@ function LoadingState({ error }: { error: string | null }) {
 
 function DiscoveryNotice({
   status,
+  refreshing,
 }: {
   status: "not_started" | "running" | "complete" | "failed";
+  refreshing: boolean;
 }) {
   const { t } = useTranslation();
-  if (status === "complete") return null;
+  if (status === "complete" && !refreshing) return null;
+  const displayStatus = refreshing ? "running" : status;
   return (
-    <Notice tone={status === "failed" ? "warning" : "info"}>
-      {status === "running" && <Loader2 className="h-4 w-4 animate-spin" />}
-      {t(`toolchains.registry.discovery.${status}`)}
+    <Notice tone={displayStatus === "failed" ? "warning" : "info"}>
+      {displayStatus === "running" && <Loader2 className="h-4 w-4 animate-spin" />}
+      {t(`toolchains.registry.discovery.${displayStatus}`)}
     </Notice>
   );
 }

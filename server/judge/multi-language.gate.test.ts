@@ -5,6 +5,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { createCompileConfig } from "../../shared/compile-config.js";
 import type {
   NormalizedProblemConfig,
   SubmissionLanguage,
@@ -326,6 +327,7 @@ const config: NormalizedProblemConfig = {
   testScores: {},
   memoryLimit: 512,
   checkerType: "C1",
+  compile: createCompileConfig(),
   polygonConfig: {
     enableGroups: false,
     tests: {},

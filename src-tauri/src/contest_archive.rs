@@ -82,7 +82,7 @@ fn portable_relative_path(path: &Path) -> Result<String, String> {
 }
 
 #[cfg(unix)]
-fn file_mode(metadata: &fs::Metadata, default_mode: u32) -> u32 {
+fn file_mode(metadata: &fs::Metadata, _default_mode: u32) -> u32 {
     use std::os::unix::fs::PermissionsExt;
     metadata.permissions().mode()
 }

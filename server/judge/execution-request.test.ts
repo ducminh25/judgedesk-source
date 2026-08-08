@@ -233,3 +233,73 @@ test("built-in toolchain identities become role-scoped grants on the wire", () =
     { ...identity, role: undefined },
   );
 });
+
+test("local toolchain identities preserve strict and resource-only isolation on the wire", () => {
+  const strict = buildSubmissionExecutorRunSpec({
+    runId: "submission_local_python",
+    workspaceId: "workspace_local_python",
+    executableId: "local-toolchain/python.exe",
+    args: ["-I", "submission.py"],
+    environment: { JUDGEDESK_PYTHON_ISOLATED: "1" },
+    localToolchain: {
+      rootPath: String.raw`C:\Python312`,
+      executableRelativePath: "python.exe",
+      isolation: "strict",
+    },
+    timeLimitMs: 1_000,
+    memoryBytes: 256 * MiB,
+  });
+  const compatible = buildCompilerExecutorRunSpec({
+    runId: "compiler_local_cpp",
+    workspaceId: "workspace_local_cpp",
+    executableId: "local-toolchain/bin/g++.exe",
+    args: ["submission.cpp"],
+    environment: {},
+    localToolchain: {
+      rootPath: String.raw`C:\msys64\ucrt64`,
+      executableRelativePath: String.raw`bin\g++.exe`,
+      isolation: "resource-only",
+    },
+    timeoutMs: 15_000,
+    memoryBytes: 512 * MiB,
+    maxGeneratedFileBytes: 32 * MiB,
+  });
+
+  assert.deepEqual(strict.localToolchain, {
+    rootPath: String.raw`C:\Python312`,
+    executableRelativePath: "python.exe",
+    isolation: "strict",
+    role: "submission-runtime",
+  });
+  assert.deepEqual(compatible.localToolchain, {
+    rootPath: String.raw`C:\msys64\ucrt64`,
+    executableRelativePath: String.raw`bin\g++.exe`,
+    isolation: "resource-only",
+    role: "compiler",
+  });
+});
+
+test("executor request rejects simultaneous managed and local grants", () => {
+  assert.throws(
+    () => buildSubmissionExecutorRunSpec({
+      runId: "submission_ambiguous",
+      workspaceId: "workspace_ambiguous",
+      executableId: "local-toolchain/python.exe",
+      args: [],
+      environment: {},
+      toolchain: {
+        packageId: "python-windows-x64",
+        packageDigest: "a".repeat(64),
+        componentId: "python",
+      },
+      localToolchain: {
+        rootPath: String.raw`C:\Python312`,
+        executableRelativePath: "python.exe",
+        isolation: "strict",
+      },
+      timeLimitMs: 1_000,
+      memoryBytes: 256 * MiB,
+    }),
+    /mutually exclusive/i,
+  );
+});

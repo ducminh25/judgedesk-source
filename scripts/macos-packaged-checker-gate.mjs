@@ -84,7 +84,7 @@ try {
   assert.equal(status.build?.gitCommit, await currentCommit());
 
   const initialToolchains = await requestJson("GET", "/api/toolchains");
-  assert.equal(initialToolchains.registryRevision, 4);
+  assert.equal(initialToolchains.registryRevision, 5);
   assert.deepEqual(
     initialToolchains.profiles?.map((profile) => profile.id),
     [

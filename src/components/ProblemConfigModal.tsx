@@ -7,6 +7,10 @@ import { TestConfigurationTable } from "../features/problem-config/TestConfigura
 import { TestEditPopover } from "../features/problem-config/TestEditPopover";
 import { TestEditPopover as PopoverState } from "../features/problem-config/editor-state";
 import { useProblemConfigEditor } from "../features/problem-config/useProblemConfigEditor";
+import {
+  CompileProblemSettings,
+  withProblemCompileConfig,
+} from "../features/problem-config/CompileProblemSettings";
 import { useTranslation } from "react-i18next";
 import ProblemConfigSaveConfirmDialog from "./ProblemConfigSaveConfirmDialog";
 
@@ -44,6 +48,7 @@ export default function ProblemConfigModal({
   const [popoverInput, setPopoverInput] = useState("");
   const [batchPointsTotal, setBatchPointsTotal] = useState("");
   const [confirmingSave, setConfirmingSave] = useState(false);
+  const [compileConfigValid, setCompileConfigValid] = useState(true);
 
   const closePopover = () => setPopover(null);
   const savePopover = () => {
@@ -52,6 +57,7 @@ export default function ProblemConfigModal({
     closePopover();
   };
   const requestSave = () => {
+    if (!compileConfigValid) return;
     if (hasScoredResults) {
       setConfirmingSave(true);
       return;
@@ -112,6 +118,14 @@ export default function ProblemConfigModal({
         </div>
 
         <div className="p-5 flex-1 overflow-y-auto font-sans text-xs space-y-6 bg-surface">
+          <CompileProblemSettings
+            value={editor.config.compile}
+            onChange={(compile) => {
+              editor.setConfig((previous) => withProblemCompileConfig(previous, compile));
+            }}
+            onValidityChange={setCompileConfigValid}
+          />
+
           <div className="flex items-center gap-6">
             <label className="flex items-center gap-2 text-text-primary font-medium cursor-pointer">
               <input
@@ -168,6 +182,11 @@ export default function ProblemConfigModal({
               {editor.saveError}
             </span>
           )}
+          {!compileConfigValid && !editor.saveError && (
+            <span className="mr-auto self-center text-xs text-rose-500 dark:text-rose-400">
+              {t("problemConfig.compile.saveBlocked")}
+            </span>
+          )}
           <button
             onClick={onClose}
             className="px-4 py-2 text-xs font-semibold text-text-muted hover:text-text-primary transition"
@@ -175,7 +194,7 @@ export default function ProblemConfigModal({
             {t("problemConfig.cancel")}
           </button>
           <button
-            disabled={editor.isSaving || saveDisabled}
+            disabled={editor.isSaving || saveDisabled || !compileConfigValid}
             onClick={requestSave}
             className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded shadow transition"
           >
@@ -200,7 +219,7 @@ export default function ProblemConfigModal({
       </div>
       {confirmingSave && (
         <ProblemConfigSaveConfirmDialog
-          disabled={editor.isSaving || saveDisabled}
+          disabled={editor.isSaving || saveDisabled || !compileConfigValid}
           problemName={problemName}
           onCancel={() => setConfirmingSave(false)}
           onConfirm={() => {

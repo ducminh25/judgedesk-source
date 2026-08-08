@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
 import {
+  createCompileConfig,
+  createCustomCompileConfig,
+} from "../../shared/compile-config.js";
+import {
   buildCompilerAdapterEnvironment,
   buildJavaCompilationArgs,
   buildManagedPascalSupportArgs,
@@ -19,6 +23,97 @@ test("C and C++ split compilation share an explicit two-phase budget", () => {
     assert.equal(recipe.splitCompilerPhases, true);
     assert.equal(recipe.timeoutMs, 60_000);
   }
+});
+
+test("Windows compiler recipes merge protected static, stack, and C-only math flags", () => {
+  const cpp = buildNativeCompilationRecipe(
+    "cpp",
+    "win32",
+    "source.cpp",
+    "program.exe",
+    createCompileConfig("modern_ioi_icpc_2025"),
+  );
+  assert.deepEqual(cpp.args, [
+    "-std=gnu++20",
+    "-O2",
+    "-pipe",
+    "-static",
+    "-x",
+    "c++",
+    "-Wl,--stack,66060288",
+    "source.cpp",
+    "-o",
+    "program.exe",
+  ]);
+  assert.ok(!cpp.args.includes("-s"));
+  assert.ok(!cpp.args.includes("-lm"));
+
+  const c = buildNativeCompilationRecipe(
+    "c",
+    "win32",
+    "source.c",
+    "program.exe",
+    createCompileConfig("modern_ioi_icpc_2025"),
+  );
+  assert.deepEqual(c.args, [
+    "-std=gnu17",
+    "-O2",
+    "-pipe",
+    "-static",
+    "-x",
+    "c",
+    "-Wl,--stack,66060288",
+    "source.c",
+    "-o",
+    "program.exe",
+    "-lm",
+  ]);
+});
+
+test("macOS compiler recipes keep platform-independent flags and omit GNU link flags", () => {
+  const cpp = buildNativeCompilationRecipe(
+    "cpp",
+    "darwin",
+    "/workspace/source.cpp",
+    "/workspace/program",
+    createCompileConfig("icpc_world_finals"),
+  );
+  assert.deepEqual(cpp.args, [
+    "-std=gnu++20",
+    "-O2",
+    "-g",
+    "-x",
+    "c++",
+    "/workspace/source.cpp",
+    "-o",
+    "/workspace/program",
+  ]);
+  for (const forbidden of ["-static", "-s", "-lm", "-Wl,--stack,66060288"]) {
+    assert.ok(!cpp.args.includes(forbidden));
+  }
+});
+
+test("custom compile snapshots are applied per language before protected arguments", () => {
+  const custom = createCustomCompileConfig({
+    cpp: ["-std=gnu++20", "-O1", "-DCPP_ONLY=1"],
+    c: ["-std=gnu17", "-O3", "-DC_ONLY=1"],
+  });
+  const cpp = buildNativeCompilationRecipe(
+    "cpp",
+    "darwin",
+    "source.cpp",
+    "program",
+    custom,
+  );
+  const c = buildNativeCompilationRecipe(
+    "c",
+    "win32",
+    "source.c",
+    "program.exe",
+    custom,
+  );
+  assert.deepEqual(cpp.args.slice(0, 3), ["-std=gnu++20", "-O1", "-DCPP_ONLY=1"]);
+  assert.deepEqual(c.args.slice(0, 3), ["-std=gnu17", "-O3", "-DC_ONLY=1"]);
 });
 
 test("native language recipes pin standards, offline behavior, and bounded outputs", () => {

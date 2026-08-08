@@ -33,6 +33,54 @@ import {
 const MAX_PROVENANCE_BYTES = 512 * 1024;
 const MAX_PACKAGE_FILES = 500_000;
 const MAX_INSTALLED_BYTES = 8 * 1024 * 1024 * 1024;
+const RENAME_RETRY_DELAYS_MS = [25, 50, 100, 200] as const;
+
+async function renameDirectoryWithRetry(
+  source: string,
+  destination: string,
+): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await fs.promises.rename(source, destination);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      const retryable = code === "EPERM" || code === "EACCES" || code === "EBUSY";
+      if (!retryable || attempt >= RENAME_RETRY_DELAYS_MS.length) throw error;
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, RENAME_RETRY_DELAYS_MS[attempt]);
+      });
+    }
+  }
+}
+
+async function commitStagingDirectory(
+  stagingRoot: string,
+  outputRoot: string,
+): Promise<void> {
+  try {
+    await renameDirectoryWithRetry(stagingRoot, outputRoot);
+    return;
+  } catch (error) {
+    if (!isWindowsRenameFilterError(error)) throw error;
+  }
+
+  // Some Windows filesystem filters keep directory-tree rename operations
+  // locked even after every file handle has closed. The old output has already
+  // been moved to a backup, so a failed copy is still rolled back by the caller.
+  fs.cpSync(stagingRoot, outputRoot, {
+    recursive: true,
+    force: false,
+    errorOnExist: true,
+  });
+  fs.rmSync(stagingRoot, { recursive: true, force: true });
+}
+
+function isWindowsRenameFilterError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException).code;
+  return process.platform === "win32"
+    && (code === "EPERM" || code === "EACCES" || code === "EBUSY");
+}
 
 function isInside(root: string, candidate: string): boolean {
   const relative = path.relative(path.resolve(root), path.resolve(candidate));
@@ -259,21 +307,32 @@ export async function prepareToolchainGateRoot(options: {
       { encoding: "utf8", flag: "wx", mode: 0o600 },
     );
     if (fs.existsSync(outputRoot)) {
-      fs.renameSync(outputRoot, backupRoot);
-      backupCreated = true;
+      try {
+        await renameDirectoryWithRetry(outputRoot, backupRoot);
+        backupCreated = true;
+      } catch (error) {
+        if (!isWindowsRenameFilterError(error)) throw error;
+        fs.cpSync(outputRoot, backupRoot, {
+          recursive: true,
+          force: false,
+          errorOnExist: true,
+        });
+        backupCreated = true;
+        fs.rmSync(outputRoot, { recursive: true, force: true });
+      }
     }
-    fs.renameSync(stagingRoot, outputRoot);
+    await commitStagingDirectory(stagingRoot, outputRoot);
     committed = true;
     if (backupCreated) {
       fs.rmSync(backupRoot, { recursive: true, force: true });
       backupCreated = false;
     }
   } catch (error) {
-    if (committed && fs.existsSync(outputRoot)) {
+    if ((committed || backupCreated) && fs.existsSync(outputRoot)) {
       fs.rmSync(outputRoot, { recursive: true, force: true });
     }
     if (backupCreated && fs.existsSync(backupRoot)) {
-      fs.renameSync(backupRoot, outputRoot);
+      await commitStagingDirectory(backupRoot, outputRoot);
       backupCreated = false;
     }
     throw error;

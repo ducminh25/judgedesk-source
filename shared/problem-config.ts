@@ -1,4 +1,5 @@
 import type { NormalizedProblemConfig, PolygonConfig, ProblemConfig } from "./contracts.js";
+import { createCompileConfig, normalizeCompileConfig } from "./compile-config.js";
 
 export type ProblemConfigInput = Partial<ProblemConfig> & Partial<PolygonConfig>;
 
@@ -14,6 +15,7 @@ export function createDefaultProblemConfig(problemName: string): NormalizedProbl
     testScores: {},
     memoryLimit: 256,
     checkerType: "C1",
+    compile: createCompileConfig(),
     polygonConfig: { enableGroups: false, tests: {}, groups: {} }
   };
 }
@@ -48,6 +50,7 @@ export function normalizeProblemConfig(
     testScores: normalizeTestScores(request.testScores, stored.testScores),
     memoryLimit: toNumber(stored.memoryLimit ?? request.memoryLimit, defaults.memoryLimit),
     checkerType: stored.checkerType || request.checkerType || defaults.checkerType,
+    compile: normalizeCompileConfig(stored.compile ?? request.compile),
     polygonConfig: {
       enableGroups: polygonConfig.enableGroups ?? false,
       tests: { ...(polygonConfig.tests || {}) },

@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import type { NormalizedProblemConfig, ProblemConfig } from "../../shared/contracts.js";
+import { normalizeCompileConfig } from "../../shared/compile-config.js";
 import {
   normalizeProblemConfig,
   type ProblemConfigInput
@@ -20,7 +21,15 @@ export function readStoredProblemConfig(problemDirectory: string): ProblemConfig
 }
 
 export function writeStoredProblemConfig(problemDirectory: string, config: ProblemConfigInput): void {
-  fs.writeFileSync(getProblemConfigPath(problemDirectory), JSON.stringify(config, null, 2), "utf8");
+  const persistedConfig = {
+    ...config,
+    compile: normalizeCompileConfig(config.compile),
+  };
+  fs.writeFileSync(
+    getProblemConfigPath(problemDirectory),
+    JSON.stringify(persistedConfig, null, 2),
+    "utf8",
+  );
 }
 
 export function resolveProblemConfig(
