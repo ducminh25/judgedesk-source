@@ -1,8 +1,8 @@
-# JudgeDesk v1.3.1 — audit khả năng portable
+# JudgeDesk v1.3.2 — audit khả năng portable
 
 Ngày audit: 2026-08-02
 Phạm vi phát hành: **chỉ bộ cài Windows và disk image macOS**. Không tạo hoặc
-phát hành ZIP/SFX portable trong v1.3.1.
+phát hành ZIP/SFX portable trong v1.3.2.
 
 ## Kết luận
 
@@ -89,11 +89,11 @@ release hiện đại; phương án tương lai phù hợp hơn là ZIP đã ký
    Unicode/space, không admin, offline và cleanup toàn bộ process tree.
 5. Chỉ sau khi install-free ổn định mới thiết kế true-portable data semantics.
 
-## Quyết định v1.3.1
+## Quyết định v1.3.2
 
 - Không thêm target bundle portable vào release pipeline.
 - Không thêm SFX executable.
 - Help chỉ mô tả đây là khả năng tương lai và hướng người dùng tới installer/DMG
   chính thức.
-- Các thay đổi toolchain/resource của v1.3.1 phải tiếp tục dùng resource root
+- Các thay đổi toolchain/resource của v1.3.2 phải tiếp tục dùng resource root
   do Tauri truyền, không thêm đường dẫn tuyệt đối gắn với vị trí cài đặt.

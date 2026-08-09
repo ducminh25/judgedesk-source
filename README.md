@@ -16,8 +16,8 @@ Repository này chứa mã nguồn nội bộ của JudgeDesk. Trang công khai 
 - **[BUILDING.md](BUILDING.md)**: Hướng dẫn build từ mã nguồn.
 - **[RELEASING.md](RELEASING.md)**: Quy trình đóng gói và phát hành.
 - **[docs/CONTEST-FORMAT.md](docs/CONTEST-FORMAT.md)**: Định dạng file kỳ thi `.judgedesk`.
-- **[docs/v1.3.1-toolchains-help-implementation-plan.md](docs/v1.3.1-toolchains-help-implementation-plan.md)**: Thiết kế toolchain, flags theo từng bài và Help Center của v1.3.1.
-- **[docs/portable-compatibility-v1.3.1.md](docs/portable-compatibility-v1.3.1.md)**: Audit khả năng portable; không phải artefact được hỗ trợ trong v1.3.1.
+- **[docs/v1.3.2-toolchains-help-implementation-plan.md](docs/v1.3.2-toolchains-help-implementation-plan.md)**: Thiết kế toolchain, flags theo từng bài và Help Center của v1.3.2.
+- **[docs/portable-compatibility-v1.3.2.md](docs/portable-compatibility-v1.3.2.md)**: Audit khả năng portable; không phải artefact được hỗ trợ trong v1.3.2.
 
 ## Bản phân phối Core và Full
 
@@ -39,7 +39,7 @@ toolchain tích hợp.
 - Bản `1.3.0` giữ nguyên application identifier và thư mục dữ liệu cũ. Với đợt
   phát hành này, người dùng cũ nhận bộ cài mới trực tiếp thay vì đi qua
   auto-update từ v1.2.7.
-- Khi chuyển Core → Full ở v1.3.1, JudgeDesk ghi đè nguồn ngôn ngữ cũ sang các
+- Khi chuyển Core → Full ở v1.3.2, JudgeDesk ghi đè nguồn ngôn ngữ cũ sang các
   package managed đi kèm đúng một lần. Các thay đổi thủ công sau lần bootstrap
   đó vẫn được giữ nguyên.
 - Trên macOS, bộ cập nhật tự động cập nhật bundle tại chỗ nên không thể đổi tên thư mục `/Applications/ThemisV2.app` đang chạy. Để hoàn tất đổi tên, bạn có thể tải file `.dmg` mới nhất, kéo `JudgeDesk.app` vào Applications để thay thế bản cũ.

@@ -37,7 +37,7 @@ const hostStatus: HostStatus = {
   platform: "win32",
   isServerMode: false,
   build: {
-    appVersion: "1.3.1",
+    appVersion: "1.3.2",
     buildNumber: "51",
     gitCommit: "0123456789abcdef",
     builtAt: "2026-08-02T12:00:00.000Z",
@@ -45,7 +45,7 @@ const hostStatus: HostStatus = {
   secureRunner: {
     mode: "windows-lpac-job",
     ready: true,
-    executorVersion: "1.3.1",
+    executorVersion: "1.3.2",
     diagnostics: [],
     networkBlocked: true,
     filesystemIsolated: true,
@@ -110,7 +110,7 @@ describe("Help Center", () => {
     const markup = await renderHelp("vi", "about");
 
     assert.match(markup, /Thông tin JudgeDesk/);
-    assert.match(markup, />1\.3\.1</);
+    assert.match(markup, />1\.3\.2</);
     assert.match(markup, />51</);
     assert.match(markup, /không phải Themis/);
     assert.match(markup, /không tuyên bố được Bộ Giáo dục và Đào tạo bảo trợ hoặc đặt hàng/);
@@ -119,7 +119,7 @@ describe("Help Center", () => {
 
   it("builds copyable diagnostics without embedding test or source contents", () => {
     const diagnostics: HelpDiagnostics = {
-      appVersion: "1.3.1",
+      appVersion: "1.3.2",
       buildNumber: "51",
       gitCommit: "abc123",
       builtAt: "2026-08-02T12:00:00.000Z",
@@ -146,7 +146,7 @@ describe("Help Center", () => {
     };
 
     const text = buildHelpDiagnosticsText(diagnostics);
-    assert.match(text, /App version: 1\.3\.1/);
+    assert.match(text, /App version: 1\.3\.2/);
     assert.match(text, /Edition: full/);
     assert.match(text, /Problems path: D:\\Contest\\Problems/);
     assert.match(text, /Toolchain C\+\+ \(cpp-gnu\)/);

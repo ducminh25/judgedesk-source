@@ -388,6 +388,10 @@ test("Apple Silicon release scripts verify architecture, DMG, and sidecar", () =
     compilerSmoke,
     /verifyLocalToolchainCandidate\("cpp", compilerPath\)/,
   );
+  assert.match(compilerSmoke, /toolchainReadinessTimeoutMs = 15_000/);
+  assert.match(compilerSmoke, /diagnosticCode === "DETECTION_IN_PROGRESS"/);
+  assert.match(compilerSmoke, /Date\.now\(\) < readinessDeadline/);
+  assert.match(compilerSmoke, /setTimeout\(resolve, toolchainReadinessPollIntervalMs\)/);
   assert.equal(
     compilerSmoke.match(/toolchains:\s*\{\s*cpp:\s*cppToolchain\s*\}/g)?.length,
     2,
