@@ -17,6 +17,7 @@ import {
 } from "../toolchains/storage.js";
 import {
   CPP_LANGUAGE_PROFILE_ID,
+  getRegisteredLanguageProfile,
   LANGUAGE_REGISTRY_REVISION,
   PYTHON_LANGUAGE_PROFILE_ID,
   listRegisteredLanguageProfiles,
@@ -39,6 +40,19 @@ interface CapturedResponse {
   payload: unknown;
   status(code: number): CapturedResponse;
   json(payload: unknown): CapturedResponse;
+}
+
+function currentHostSupportsProfile(profileId: string): boolean {
+  const platform = os.platform();
+  const rawArch = os.arch();
+  const arch = rawArch === "x86_64" || rawArch === "amd64"
+    ? "x64"
+    : rawArch === "aarch64"
+      ? "arm64"
+      : rawArch;
+  return getRegisteredLanguageProfile(profileId)?.profile.supportedHosts.some(
+    (host) => host.platform === platform && host.arch === arch,
+  ) ?? false;
 }
 
 function useTemporaryAppData(t: TestContext): void {
@@ -295,21 +309,21 @@ test("toolchain mutations fail closed while a judging session is active", async 
   const hostPackage = TOOLCHAIN_CATALOG.find(
     (entry) => entry.platform === os.platform() && entry.arch === hostArch,
   );
-  assert.ok(hostPackage);
+  if (hostPackage) {
+    const installResponse = createResponse();
+    await handlers.get("POST /api/toolchains/:id/install")?.(
+      { body: undefined, params: { id: hostPackage.id } },
+      installResponse,
+    );
+    assert.equal(installResponse.statusCode, 409);
 
-  const installResponse = createResponse();
-  await handlers.get("POST /api/toolchains/:id/install")?.(
-    { body: undefined, params: { id: hostPackage.id } },
-    installResponse,
-  );
-  assert.equal(installResponse.statusCode, 409);
-
-  const uninstallResponse = createResponse();
-  await handlers.get("DELETE /api/toolchains/:id")?.(
-    { body: undefined, params: { id: hostPackage.id } },
-    uninstallResponse,
-  );
-  assert.equal(uninstallResponse.statusCode, 409);
+    const uninstallResponse = createResponse();
+    await handlers.get("DELETE /api/toolchains/:id")?.(
+      { body: undefined, params: { id: hostPackage.id } },
+      uninstallResponse,
+    );
+    assert.equal(uninstallResponse.statusCode, 409);
+  }
   assert.equal(fs.readFileSync(getPreferencesFilePath(), "utf8"), storedBefore);
 });
 
@@ -410,7 +424,11 @@ test("legacy v1 custom-path rejects malformed patches without writing preference
   }
 });
 
-test("profile preference route updates one stable registry ID and preserves dormant paths", async (t) => {
+test("profile preference route updates one stable registry ID and preserves dormant paths", {
+  skip: currentHostSupportsProfile(CPP_LANGUAGE_PROFILE_ID)
+    ? false
+    : "profile preference mutation requires a supported JudgeDesk host",
+}, async (t) => {
   useTemporaryAppData(t);
   savePreferences({
     preferredSourceCpp: "custom",
@@ -474,19 +492,21 @@ test("profile preference route rejects unknown modes and unsafe paths without wr
     assert.equal(fs.readFileSync(getPreferencesFilePath(), "utf8"), storedBefore);
   }
 
-  const failedVerification = createResponse();
-  await handler(
-    {
-      body: {
-        mode: "local_path",
-        localPath: path.join(os.tmpdir(), "judgedesk-does-not-exist", "g++"),
+  if (currentHostSupportsProfile(CPP_LANGUAGE_PROFILE_ID)) {
+    const failedVerification = createResponse();
+    await handler(
+      {
+        body: {
+          mode: "local_path",
+          localPath: path.join(os.tmpdir(), "judgedesk-does-not-exist", "g++"),
+        },
+        params: { profileId: CPP_LANGUAGE_PROFILE_ID },
       },
-      params: { profileId: CPP_LANGUAGE_PROFILE_ID },
-    },
-    failedVerification,
-  );
-  assert.equal(failedVerification.statusCode, 422);
-  assert.equal(fs.readFileSync(getPreferencesFilePath(), "utf8"), storedBefore);
+      failedVerification,
+    );
+    assert.equal(failedVerification.statusCode, 422);
+    assert.equal(fs.readFileSync(getPreferencesFilePath(), "utf8"), storedBefore);
+  }
 
   const unknownResponse = createResponse();
   await handler(

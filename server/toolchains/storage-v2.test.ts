@@ -114,6 +114,13 @@ function stageStableBuiltIns(root: string, omitted?: ToolchainKind): void {
   }
 }
 
+function hostHasStableManagedPackage(): boolean {
+  return listRegisteredLanguageProfiles().some((entry) =>
+    entry.profile.stability === "stable"
+    && !!getDescriptorForHost(os.platform(), os.arch(), entry.toolchainKind)
+  );
+}
+
 test("missing preferences keep legacy auto-detect and initialize new profiles to None", (t) => {
   useTemporaryAppData(t);
   useDistribution(t, "core");
@@ -154,23 +161,24 @@ test("a fresh Full install selects supported Stable managed packs without changi
 
   const snapshot = loadToolchainPreferenceSnapshot();
   assert.equal(snapshot.status, "initialized");
-  assert.equal(
-    snapshot.preferences.profiles[PYTHON_LANGUAGE_PROFILE_ID]?.mode,
-    "managed",
-  );
-  assert.equal(
-    snapshot.preferences.profiles[CPP_LANGUAGE_PROFILE_ID]?.mode,
-    process.platform === "win32" ? "managed" : "local_auto",
-  );
-  assert.equal(
-    snapshot.preferences.profiles[C_LANGUAGE_PROFILE_ID]?.mode,
-    process.platform === "win32" ? "managed" : "local_auto",
-  );
-  for (const profileId of [
-    PASCAL_LANGUAGE_PROFILE_ID,
-    JAVA_LANGUAGE_PROFILE_ID,
-  ]) {
-    assert.equal(snapshot.preferences.profiles[profileId]?.mode, "managed");
+  for (const entry of listRegisteredLanguageProfiles()) {
+    const descriptor = getDescriptorForHost(
+      os.platform(),
+      os.arch(),
+      entry.toolchainKind,
+    );
+    const legacyAutoDetect = entry.profile.ref.id === CPP_LANGUAGE_PROFILE_ID
+      || entry.profile.ref.id === C_LANGUAGE_PROFILE_ID
+      || entry.profile.ref.id === PYTHON_LANGUAGE_PROFILE_ID;
+    const expectedMode = entry.profile.stability === "stable" && descriptor
+      ? "managed"
+      : legacyAutoDetect
+        ? "local_auto"
+        : "none";
+    assert.equal(
+      snapshot.preferences.profiles[entry.profile.ref.id]?.mode,
+      expectedMode,
+    );
   }
   const marker = JSON.parse(
     fs.readFileSync(getToolchainDistributionStateFilePath(), "utf8"),
@@ -192,7 +200,10 @@ test("Core to Full overrides every available Stable built-in exactly once", (t) 
 
   process.env.JUDGEDESK_DISTRIBUTION = "full";
   const migrated = loadToolchainPreferenceSnapshot();
-  assert.equal(migrated.status, "migrated");
+  assert.equal(
+    migrated.status,
+    hostHasStableManagedPackage() ? "migrated" : "ready",
+  );
   for (const entry of listRegisteredLanguageProfiles()) {
     const descriptor = getDescriptorForHost(
       os.platform(),
@@ -235,7 +246,9 @@ test("Full transition leaves a missing built-in selection untouched", (t) => {
   );
   assert.equal(
     migrated.preferences.profiles[PASCAL_LANGUAGE_PROFILE_ID]?.mode,
-    "managed",
+    getDescriptorForHost(os.platform(), os.arch(), "pascal")
+      ? "managed"
+      : "none",
   );
 });
 
@@ -261,7 +274,11 @@ test("Full to Core replaces dangling managed selections with registry defaults",
   }
 });
 
-test("an interrupted distribution transaction is recovered from its journal", (t) => {
+test("an interrupted distribution transaction is recovered from its journal", {
+  skip: hostHasStableManagedPackage()
+    ? false
+    : "distribution transactions require a managed package for the current host",
+}, (t) => {
   const { directory, builtIn } = useTemporaryAppData(t);
   useDistribution(t, "core");
   loadToolchainPreferenceSnapshot();
