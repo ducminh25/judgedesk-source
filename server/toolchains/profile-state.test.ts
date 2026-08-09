@@ -48,7 +48,12 @@ test("profile state is registry ordered and reports first-run detection without 
     assert.equal(profile.status, "not_available");
     assert.equal(profile.roles.submissionReady, false);
     assert.equal(profile.roles.checkerReady, false);
-    assert.equal(profile.diagnostic?.code, "DETECTION_IN_PROGRESS");
+    assert.equal(
+      profile.diagnostic?.code,
+      profile.supportedOnHost
+        ? "DETECTION_IN_PROGRESS"
+        : "PROFILE_UNSUPPORTED_ON_HOST",
+    );
   }
   for (const profile of state.profiles.filter(
     (candidate) =>
@@ -76,5 +81,8 @@ test("None remains active intent even when other sources may exist", (t) => {
   assert.equal(cpp.selection.mode, "none");
   assert.equal(cpp.active.source, "none");
   assert.equal(cpp.status, "not_available");
-  assert.equal(cpp.diagnostic?.code, "DISABLED_BY_USER");
+  assert.equal(
+    cpp.diagnostic?.code,
+    cpp.supportedOnHost ? "DISABLED_BY_USER" : "PROFILE_UNSUPPORTED_ON_HOST",
+  );
 });
