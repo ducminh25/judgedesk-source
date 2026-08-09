@@ -104,7 +104,10 @@ test("a local C++ certificate resolves only to its immutable executor snapshot",
   assert.equal(ready.state, "ready");
   if (ready.state === "ready") {
     assert.equal(ready.certificate.certificateId, certificate.certificateId);
-    assert.equal(ready.snapshotExecutablePath, snapshot.executablePath);
+    assert.equal(
+      fs.realpathSync.native(ready.snapshotExecutablePath),
+      fs.realpathSync.native(snapshot.executablePath),
+    );
     assert.notEqual(ready.snapshotExecutablePath, fs.realpathSync(executablePath));
   }
 

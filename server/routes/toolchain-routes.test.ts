@@ -547,7 +547,10 @@ test("certification plan is derived only from the selected local Windows compile
     plan: { canonicalExecutablePath: string; fileCount: number; totalBytes: number };
   };
   assert.equal(payload.success, true);
-  assert.equal(payload.plan.canonicalExecutablePath, fs.realpathSync(compilerPath));
+  assert.equal(
+    fs.realpathSync.native(payload.plan.canonicalExecutablePath),
+    fs.realpathSync.native(compilerPath),
+  );
   assert.equal(payload.plan.fileCount, 1);
   assert.equal(payload.plan.totalBytes, Buffer.byteLength("structural-compiler-fixture"));
 });

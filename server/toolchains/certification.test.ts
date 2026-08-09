@@ -73,7 +73,10 @@ test("local C++ certification plan derives a bounded whole-root snapshot", async
     fs.writeFileSync(path.join(temporary, "support.a"), "support");
     const plan = await planLocalCppCertification(compiler, { platform: "win32" });
     assert.equal(plan.mode, "local-snapshot");
-    assert.equal(plan.sourceRoot, fs.realpathSync(temporary));
+    assert.equal(
+      fs.realpathSync.native(plan.sourceRoot),
+      fs.realpathSync.native(temporary),
+    );
     assert.equal(plan.relativeExecutablePath, "bin/g++.exe");
     assert.equal(plan.fileCount, 2);
     assert.equal(plan.totalBytes, 15);
