@@ -58,12 +58,17 @@ test("local snapshot is copied content-addressed and verified before use", async
     assert.equal(snapshot.relativeExecutablePath, "bin/g++.exe");
     assert.equal(snapshot.executableId.startsWith("toolchains/local_cpp_"), true);
     assert.equal(fs.readFileSync(snapshot.executablePath, "utf8"), "compiler");
-    assert.equal(findLocalToolchainSnapshot({
+    const found = findLocalToolchainSnapshot({
       kind: "cpp",
       snapshotDigest: snapshot.treeDigest,
       relativeExecutablePath: snapshot.relativeExecutablePath,
       executorRoot,
-    })?.executablePath, snapshot.executablePath);
+    });
+    assert.ok(found);
+    assert.equal(
+      fs.realpathSync.native(found.executablePath),
+      fs.realpathSync.native(snapshot.executablePath),
+    );
 
     const reused = await createLocalToolchainSnapshot({
       kind: "cpp",
@@ -100,7 +105,7 @@ test("snapshot cleanup removes only an old staging directory owned by a dead pro
     const unrelated = path.join(toolchainsRoot, ".local_cpp_pending.not-a-pid.staging");
     fs.mkdirSync(orphan);
     fs.mkdirSync(unrelated);
-    const canonicalOrphan = fs.realpathSync(orphan);
+    const canonicalOrphan = fs.realpathSync.native(orphan);
     const old = new Date(Date.now() - 10 * 60 * 1000);
     fs.utimesSync(orphan, old, old);
 

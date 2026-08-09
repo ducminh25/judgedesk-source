@@ -82,7 +82,7 @@ function createExecutable(filePath: string): string {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, "discovery fixture\n");
   if (os.platform() !== "win32") fs.chmodSync(filePath, 0o700);
-  return fs.realpathSync(filePath);
+  return fs.realpathSync.native(filePath);
 }
 
 function successfulOutput(kind: ToolchainKind): ToolchainVersionProbeOutput {
