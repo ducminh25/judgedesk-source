@@ -62,14 +62,26 @@ $gatePhase = "startup"
 function Register-OwnedProcessObject {
     param([System.Diagnostics.Process]$Process)
     try {
-        $Process.Refresh()
-        if ($Process.HasExited) {
+        $captureDeadline = [DateTime]::UtcNow.AddSeconds(2)
+        $processPath = $null
+        do {
+            $Process.Refresh()
+            if ($Process.HasExited) {
+                return $null
+            }
+            $processPath = $Process.MainModule.FileName
+            if (-not [string]::IsNullOrWhiteSpace($processPath)) {
+                break
+            }
+            Start-Sleep -Milliseconds 10
+        } while ([DateTime]::UtcNow -lt $captureDeadline)
+        if ([string]::IsNullOrWhiteSpace($processPath)) {
             return $null
         }
         $identity = [pscustomobject]@{
             ProcessId = $Process.Id
             StartTimeUtcTicks = $Process.StartTime.ToUniversalTime().Ticks
-            Path = $Process.MainModule.FileName
+            Path = [System.IO.Path]::GetFullPath($processPath)
         }
         $key = "$($identity.ProcessId):$($identity.StartTimeUtcTicks)"
         if (-not $ownedProcesses.ContainsKey($key)) {
