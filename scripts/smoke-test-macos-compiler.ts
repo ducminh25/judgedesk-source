@@ -24,7 +24,18 @@ const compilerPath = findSelectedDarwinCompiler("cpp");
 if (!compilerPath) {
   throw new Error("Apple Clang was not found in the selected Xcode or Command Line Tools installation.");
 }
-const cppToolchain = verifyLocalToolchainCandidate("cpp", compilerPath);
+const toolchainReadinessTimeoutMs = 15_000;
+const toolchainReadinessPollIntervalMs = 100;
+const readinessDeadline = Date.now() + toolchainReadinessTimeoutMs;
+let cppToolchain = verifyLocalToolchainCandidate("cpp", compilerPath);
+while (
+  !cppToolchain.ready
+  && cppToolchain.diagnosticCode === "DETECTION_IN_PROGRESS"
+  && Date.now() < readinessDeadline
+) {
+  await new Promise((resolve) => setTimeout(resolve, toolchainReadinessPollIntervalMs));
+  cppToolchain = verifyLocalToolchainCandidate("cpp", compilerPath);
+}
 if (!cppToolchain.ready) {
   throw new Error(
     `Apple Clang did not pass JudgeDesk policy: ${cppToolchain.diagnosticCode ?? "UNKNOWN"}: ${cppToolchain.diagnostic ?? cppToolchain.version}`,

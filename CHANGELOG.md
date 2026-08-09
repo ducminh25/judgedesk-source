@@ -5,7 +5,7 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 ## [Unreleased]
 
-## [1.3.1] - 2026-08-09
+## [1.3.2] - 2026-08-10
 
 ### Toolchain và trải nghiệm cài đặt
 
@@ -22,6 +22,8 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
   cô lập filesystem/network.
 - Full macOS tiếp tục dùng Apple Clang + macOS SDK từ Xcode Command Line Tools
   hoặc Xcode cho C/C++; Python, FPC và Temurin ARM64 là các package đi kèm.
+- Smoke gate Apple Silicon chờ strict compatibility probe hoàn tất trong thời
+  hạn hữu hạn thay vì báo lỗi ngay khi trạng thái còn đang được kiểm tra.
 
 ### Cấu hình bài và hướng dẫn
 
@@ -31,7 +33,7 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
   output, plugin, toolchain root và linker nguy hiểm bị chặn.
 - Thêm Help Center offline song ngữ, tìm kiếm, phím F1, nút Hướng dẫn bên trái
   updater và phần About/chẩn đoán sản phẩm trong cùng một cửa sổ.
-- Audit khả năng portable được ghi lại riêng; v1.3.1 vẫn chỉ hỗ trợ installer
+- Audit khả năng portable được ghi lại riêng; v1.3.2 vẫn chỉ hỗ trợ installer
   Windows và disk image macOS, không phát hành ZIP/SFX portable.
 
 ## [1.3.0] - 2026-08-01
@@ -295,4 +297,4 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 [1.2.6]: https://github.com/ducminh25/judgedesk/releases/tag/v1.2.6
 [1.2.7]: https://github.com/ducminh25/judgedesk/releases/tag/v1.2.7
 [1.3.0]: https://github.com/ducminh25/judgedesk/releases/tag/v1.3.0
-[1.3.1]: https://github.com/ducminh25/judgedesk/releases/tag/v1.3.1
+[1.3.2]: https://github.com/ducminh25/judgedesk/releases/tag/v1.3.2
