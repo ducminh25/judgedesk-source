@@ -5,7 +5,7 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 ## [Unreleased]
 
-## [1.3.1] - 2026-08-08
+## [1.3.1] - 2026-08-09
 
 ### Toolchain và trải nghiệm cài đặt
 
