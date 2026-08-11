@@ -42,6 +42,7 @@
     "test:stress": "tsx scripts/stress-test.ts",
     "test:desktop": "npm run build:server && node scripts/prepare-desktop-dev.js && cross-env DISABLE_HMR=true tauri dev --no-watch",
     "release:check-version": "node scripts/check-release-version.js",
+    "release:verify-public-assets": "node scripts/check-node.js && node scripts/verify-public-release-assets.js",
     "start": "node dist/server.cjs",
     "tauri": "tauri",
     "clean": "node scripts/clean.js",
