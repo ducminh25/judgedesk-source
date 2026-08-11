@@ -30,19 +30,32 @@ side. Installing one variant upgrades/replaces the other while preserving JudgeD
 data. Full is the canonical updater payload because an automatic update must not
 silently remove toolchains that were included by a previous Full installation.
 
-For version `<version>`, the public artifact names are:
+For version `<version>`, upload exactly these seven public release assets:
 
 - `JudgeDesk_<version>_core_x64_en-US.msi`
 - `JudgeDesk_<version>_full_x64_en-US.msi`
 - `JudgeDesk_<version>_core_aarch64.dmg`
 - `JudgeDesk_<version>_full_aarch64.dmg`
 - `JudgeDesk_<version>_full_aarch64.app.tar.gz`
-- updater `.sig` files for both Windows MSIs and the macOS Full app archive
 - `SHA256SUMS` and `latest.json`
 
 `latest.json` must select only the signed Full MSI and Full macOS app archive.
 Core remains a manual installer choice; a Core installation may later update to
 Full through the normal updater.
+
+The macOS `.app.tar.gz` is the actual automatic-updater payload and is therefore
+mandatory. Standalone `.sig` files are build/staging inputs, not public download
+assets: Tauri requires their contents in each `latest.json` platform entry and
+does not fetch a `.sig` URL. Keep and verify the Full MSI and macOS archive
+signatures until `latest.json` has been generated and the public downloads have
+passed signature verification, but do not upload any `.sig` file to the final
+release. A Core MSI signature may still be produced as staging evidence, but it
+is not used by the Full-only updater manifest.
+
+GitHub adds the two **Source code** links (`zip` and `tar.gz`) from the public
+release tag automatically. Confirm that both links work, but do not upload
+duplicate source archives or any private source. These GitHub-managed links are
+not release assets and are not entries in `SHA256SUMS`.
 
 ## Source verification
 
@@ -143,15 +156,25 @@ notarization unless `JUDGEDESK_REQUIRE_NOTARIZATION=1` passes in the actual buil
 2. Fast-forward private `main`, create annotated source tag `v<version>` and push
    both.
 3. Run CodeMagic Windows signing and macOS Core/Full workflows on that exact SHA.
-4. Put all final files in one clean release directory.
-5. Run `scripts/generate-updater-manifest.js`; it must select the Full artifacts.
-6. Generate one combined `SHA256SUMS` over every non-signature public artifact.
-7. Create a draft `v<version>` release in public `ducminh25/judgedesk`, attach
-   release notes and every artifact, then verify each anonymous download URL.
-8. Verify updater signatures, toolchain manifest signature and checksums from the
-   downloaded public files, not only from local copies.
-9. Publish the draft only after both operating-system matrices pass. Remove the
-   temporary staging release afterward.
+4. Put the verified installers, updater archive and standalone signatures in one
+   clean private staging directory.
+5. Run `scripts/generate-updater-manifest.js`; it must select the Full artifacts
+   and embed the contents of their `.sig` files in `latest.json`.
+6. Create a separate clean `public-release-assets` directory containing exactly
+   the seven-item allowlist above. Generate one combined `SHA256SUMS` over the
+   other six public assets; do not include standalone `.sig` files or GitHub's
+   generated source links.
+7. Run
+   `npm run release:verify-public-assets -- public-release-assets v<version>`.
+   Any missing or extra file, including a standalone `.sig`, blocks publication.
+8. Create a draft `v<version>` release in public `ducminh25/judgedesk`, attach
+   release notes and only `public-release-assets/*`, then verify each anonymous
+   download URL plus both GitHub-generated Source code links.
+9. Verify checksums and verify the downloaded Full updater payloads using the
+   signatures embedded in the downloaded `latest.json`; include a tamper-negative
+   signature test. Do not depend on unpublished local `.sig` files for this gate.
+10. Publish the draft only after both operating-system matrices pass. Remove the
+    temporary staging release afterward.
 
 Existing v1.3.0 users can receive v1.3.2 through the updater. `latest.json`
 continues to select only the Full Windows MSI and Full macOS updater archive so
