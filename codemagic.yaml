@@ -8,7 +8,8 @@ workflows:
         - themis_signing
       vars:
         MACOSX_DEPLOYMENT_TARGET: "11.0"
-      node: 22.23.1
+      node: 24.19.0
+      npm: 11.17.0
       xcode: "26.3"
     cache:
       cache_paths:
@@ -34,10 +35,10 @@ workflows:
         script: |
           set -euo pipefail
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-            | sh -s -- -y --profile minimal
+            | sh -s -- -y --profile minimal --default-toolchain none
           source "$HOME/.cargo/env"
-          rustup default stable
-          rustup component add rustfmt
+          rustup toolchain install 1.97.1 --profile minimal --component rustfmt --no-self-update
+          rustup default 1.97.1
           echo "PATH=$HOME/.cargo/bin:$PATH" >> "$CM_ENV"
       - name: Record deterministic build provenance
         script: |
@@ -144,7 +145,8 @@ workflows:
     environment:
       groups:
         - themis_signing
-      node: 22.23.1
+      node: 24.19.0
+      npm: 11.17.0
     scripts:
       - name: Install source dependencies
         script: npm ci --no-audit --no-fund

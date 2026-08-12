@@ -24,7 +24,10 @@ import {
 } from "../languages/registry.js";
 import { getStoredProfilePreference } from "../toolchains/preferences-v2.js";
 import { serverLifecycle } from "../platform/server-lifecycle.js";
-import { TOOLCHAIN_CATALOG } from "../toolchains/manifest.js";
+import {
+  normalizeHostArchitecture,
+  TOOLCHAIN_CATALOG,
+} from "../toolchains/manifest.js";
 import {
   getLocalExecutionPolicyFilePath,
   loadLocalExecutionPolicy,
@@ -44,12 +47,7 @@ interface CapturedResponse {
 
 function currentHostSupportsProfile(profileId: string): boolean {
   const platform = os.platform();
-  const rawArch = os.arch();
-  const arch = rawArch === "x86_64" || rawArch === "amd64"
-    ? "x64"
-    : rawArch === "aarch64"
-      ? "arm64"
-      : rawArch;
+  const arch = normalizeHostArchitecture(os.arch());
   return getRegisteredLanguageProfile(profileId)?.profile.supportedHosts.some(
     (host) => host.platform === platform && host.arch === arch,
   ) ?? false;
@@ -299,13 +297,7 @@ test("toolchain mutations fail closed while a judging session is active", async 
   assert.equal(policyResponse.statusCode, 409);
   assert.equal(fs.existsSync(getLocalExecutionPolicyFilePath()), false);
 
-  const hostArch = os.arch() === "x64" || os.arch() === "arm64"
-    ? os.arch()
-    : os.arch() === "x86_64" || os.arch() === "amd64"
-      ? "x64"
-      : os.arch() === "aarch64"
-        ? "arm64"
-        : os.arch();
+  const hostArch = normalizeHostArchitecture(os.arch());
   const hostPackage = TOOLCHAIN_CATALOG.find(
     (entry) => entry.platform === os.platform() && entry.arch === hostArch,
   );
