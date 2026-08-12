@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canStartJudge, selectedNames } from "./availability.js";
+import { canExportScoreboard, canStartJudge, selectedNames } from "./availability.js";
 
 test("judge becomes available again after selecting all contestants and problems", () => {
   const contestants = ["Alice", "Bob"];
@@ -36,6 +36,13 @@ test("judge requires paths, one selected target of each kind, and a ready runner
   assert.equal(canStartJudge({ ...valid, secureRunnerReady: false }), false);
   assert.equal(canStartJudge({ ...valid, contestantsPath: " " }), false);
   assert.equal(canStartJudge({ ...valid, testsPath: " " }), false);
+});
+
+test("score export needs a contestant or a problem, but not both", () => {
+  assert.equal(canExportScoreboard([], []), false);
+  assert.equal(canExportScoreboard(["Alice"], []), true);
+  assert.equal(canExportScoreboard([], ["A"]), true);
+  assert.equal(canExportScoreboard(["Alice"], ["A"]), true);
 });
 
 test("selected judging targets preserve the current scoreboard order", () => {

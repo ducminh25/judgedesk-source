@@ -336,7 +336,9 @@
     "compilationSuccess": "Compilation Success",
     "compilationError": "Compilation Error",
     "notFound": "Not found",
-    "compilation": "Compilation"
+    "compilation": "Compilation",
+    "exporting": "Creating Excel...",
+    "workerUnavailable": "Excel export is not supported by this webview."
   },
   "status": {
     "ready": "Ready",

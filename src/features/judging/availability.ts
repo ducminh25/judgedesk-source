@@ -20,3 +20,10 @@ export function canStartJudge(availability: JudgeAvailability): boolean {
     && availability.problemNames.length > 0
     && availability.secureRunnerReady;
 }
+
+export function canExportScoreboard(
+  contestantNames: readonly string[],
+  problemNames: readonly string[],
+): boolean {
+  return contestantNames.length > 0 || problemNames.length > 0;
+}

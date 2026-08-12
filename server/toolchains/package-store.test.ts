@@ -5,6 +5,7 @@ import path from "node:path";
 import test, { type TestContext } from "node:test";
 import {
   assertToolchainPackageReceiptMatchesDescriptor,
+  createInstalledToolchainPackageInspector,
   createToolchainPackageReceipt,
   inspectInstalledToolchainPackage,
   TOOLCHAIN_PACKAGE_RECEIPT,
@@ -42,6 +43,20 @@ const DESCRIPTOR: ToolchainDescriptor = {
   sha256: "a".repeat(64),
   sizeBytes: 123,
 };
+
+test("request-scoped package inspection reuses only equivalent package identities", () => {
+  let inspections = 0;
+  const inspect = createInstalledToolchainPackageInspector(() => {
+    inspections += 1;
+    return { status: "not_installed" };
+  });
+
+  assert.equal(inspect(ENTRY).status, "not_installed");
+  assert.equal(inspect(ENTRY, { kind: "python" }).status, "not_installed");
+  assert.equal(inspections, 1);
+  assert.equal(inspect({ ...ENTRY, version: "1.2.4" }).status, "not_installed");
+  assert.equal(inspections, 2);
+});
 
 function temporaryStores(t: TestContext): {
   root: string;

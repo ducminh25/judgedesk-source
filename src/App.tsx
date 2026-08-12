@@ -5,16 +5,21 @@ import ProgressWindow from "./components/ProgressWindow";
 import JudgingDetailsModal from "./components/JudgingDetailsModal";
 import ScoringLogModal from "./components/ScoringLogModal";
 import { apiFetch } from "./api";
+import { buildScoreExport } from "./features/export/score-workbook-client";
 import {
-  buildDiagnosticJson,
-  buildScoreWorkbookBase64,
-} from "./features/export/score-workbook";
+  encodeScoreExportPayload,
+  SCORE_EXPORT_CONTENT_TYPE,
+} from "../shared/score-export-wire";
 import {
   judgeResultsReducer,
   problemHasPositiveScore,
   type JudgeResultsAction,
 } from "./features/judging/judge-results";
-import { canStartJudge, selectedNames } from "./features/judging/availability";
+import {
+  canExportScoreboard,
+  canStartJudge,
+  selectedNames,
+} from "./features/judging/availability";
 import { useJudgeSession } from "./features/judging/useJudgeSession";
 import {
   isDesktopReloadShortcut,
@@ -115,6 +120,7 @@ export default function App() {
   const [contestCreatedAt, setContestCreatedAt] = useState<string | undefined>();
   const [isContestDirty, setIsContestDirty] = useState(false);
   const [isSavingContest, setIsSavingContest] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [pendingContestAction, setPendingContestAction] = useState<PendingContestAction | null>(null);
   const [pendingScoreDeletion, setPendingScoreDeletion] = useState<PendingScoreDeletion | null>(null);
   const contestDirtyRef = useRef(false);
@@ -122,6 +128,7 @@ export default function App() {
   const interactionLockedRef = useRef(false);
   const hostStatusRequestRef = useRef<Promise<void> | null>(null);
   const saveOperationRef = useRef(false);
+  const exportOperationRef = useRef(false);
   const updater = useAppUpdater();
   const updateRequiresRestart =
     updater.state.status === "error" &&
@@ -595,7 +602,14 @@ export default function App() {
       );
 
   const handleExportExcel = async () => {
-    if (!judgeResult || interactionLockedRef.current || saveOperationRef.current) return;
+    if (
+      interactionLockedRef.current
+      || saveOperationRef.current
+      || exportOperationRef.current
+    ) return;
+    exportOperationRef.current = true;
+    setIsExporting(true);
+    setErrorMessage("");
     try {
       const activeProblems = displayedProblems.filter(
         (problem) => selectedProblems[problem],
@@ -603,24 +617,30 @@ export default function App() {
       const activeContestants = displayedContestants.filter(
         (contestant) => selectedContestants[contestant],
       );
-      const workbookBase64 = await buildScoreWorkbookBase64(
-        judgeResult,
+      const scoreExport = await buildScoreExport(
+        judgeResult ?? { success: true, contestants: [] },
         activeContestants,
         activeProblems,
         t,
       );
-      const diagnosticJson = buildDiagnosticJson(
-        judgeResult,
-        activeContestants,
-        activeProblems,
+      const payload = encodeScoreExportPayload(
+        scoreExport.workbook,
+        scoreExport.diagnosticJson,
       );
-      await apiFetch("/api/open-excel", {
+      const response = await apiFetch("/api/open-excel", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workbookBase64, diagnosticJson }),
+        headers: { "Content-Type": SCORE_EXPORT_CONTENT_TYPE },
+        body: payload,
       });
+      if (!response.ok) {
+        const failure = await response.json().catch(() => null) as { message?: string } | null;
+        throw new Error(failure?.message || `HTTP ${response.status}`);
+      }
     } catch (error: any) {
       setErrorMessage(error.message || "Failed to open the Excel workbook.");
+    } finally {
+      exportOperationRef.current = false;
+      setIsExporting(false);
     }
   };
 
@@ -637,13 +657,14 @@ export default function App() {
       >
       <AppToolbar
         canDeleteSelected={canDeleteSelected}
-        canExport={!!judgeResult?.contestants.some((contestant) => contestant.problems.length > 0)}
+        canExport={canExportScoreboard(contestantsList, problemsList)}
         canRun={canRun}
         canSaveContest={isContestDirty && hasContestData}
         errorMessage={backendErrorMessage || errorMessage}
         hostStatus={hostStatus}
         interactionLocked={interactionLocked}
         isJudging={isJudging}
+        isExporting={isExporting}
         isSavingContest={isSavingContest}
         onDeleteSelected={() => {
           setPendingScoreDeletion({

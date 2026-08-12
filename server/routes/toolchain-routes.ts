@@ -28,7 +28,9 @@ import {
   normalizeHostArchitecture,
   TOOLCHAIN_CATALOG,
 } from "../toolchains/manifest.js";
-import { inspectInstalledToolchainPackage } from "../toolchains/package-store.js";
+import {
+  createInstalledToolchainPackageInspector,
+} from "../toolchains/package-store.js";
 import {
   getStoredProfilePreference,
   isValidToolchainLocalPath,
@@ -192,9 +194,10 @@ export function registerToolchainRoutes(app: Express): void {
     const prefs = loadPreferences();
     startManifestLoad();
     const manifest = manifestState.entries;
+    const inspectInstalledPackage = createInstalledToolchainPackageInspector();
     const toolchainsList = manifest.map((descriptor) => {
       const progress = getInstallProgress(descriptor.id);
-      const installedState = inspectInstalledToolchainPackage(descriptor);
+      const installedState = inspectInstalledPackage(descriptor);
       const installed = installedState.status === "installed"
         ? installedState.package
         : undefined;
@@ -222,13 +225,15 @@ export function registerToolchainRoutes(app: Express): void {
         },
       };
     });
-    const profileState = buildLanguageProfileState(manifest);
+    const profileState = buildLanguageProfileState(manifest, {
+      inspectInstalledPackage,
+    });
     const cppProfile = profileState.profiles.find((profile) => profile.kind === "cpp")!;
     const pythonProfile = profileState.profiles.find(
       (profile) => profile.kind === "python",
     )!;
-    const managedCpp = resolveCachedManagedToolchain("cpp");
-    const managedPython = resolveCachedManagedToolchain("python");
+    const managedCpp = resolveCachedManagedToolchain("cpp", inspectInstalledPackage);
+    const managedPython = resolveCachedManagedToolchain("python", inspectInstalledPackage);
 
     res.json({
       distribution: getJudgeDeskDistribution(),
