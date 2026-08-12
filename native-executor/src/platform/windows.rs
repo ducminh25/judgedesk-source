@@ -21,17 +21,19 @@ use windows_sys::Win32::Foundation::{
     GENERIC_WRITE, HANDLE, INVALID_HANDLE_VALUE, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 use windows_sys::Win32::Security::Authorization::{
-    ConvertSidToStringSidW, SetNamedSecurityInfoW, SE_FILE_OBJECT,
+    ConvertSidToStringSidW, GetNamedSecurityInfoW, SetNamedSecurityInfoW, SE_FILE_OBJECT,
 };
 use windows_sys::Win32::Security::Isolation::{
     CreateAppContainerProfile, DeriveAppContainerSidFromAppContainerName, GetAppContainerFolderPath,
 };
 use windows_sys::Win32::Security::{
-    AddAccessAllowedAceEx, CreateWellKnownSid, DeriveCapabilitySidsFromName, FreeSid, GetLengthSid,
+    AclSizeInformation, AddAccessAllowedAceEx, CreateWellKnownSid, DeriveCapabilitySidsFromName,
+    EqualSid, FreeSid, GetAce, GetAclInformation, GetLengthSid, GetSecurityDescriptorControl,
     GetTokenInformation, InitializeAcl, TokenUser, WinBuiltinAdministratorsSid, WinLocalSystemSid,
-    ACCESS_ALLOWED_ACE, ACL, ACL_REVISION, CONTAINER_INHERIT_ACE, DACL_SECURITY_INFORMATION,
-    OBJECT_INHERIT_ACE, PROTECTED_DACL_SECURITY_INFORMATION, PSID, SECURITY_ATTRIBUTES,
-    SECURITY_CAPABILITIES, SECURITY_MAX_SID_SIZE, SID_AND_ATTRIBUTES, TOKEN_QUERY, TOKEN_USER,
+    ACCESS_ALLOWED_ACE, ACL, ACL_REVISION, ACL_SIZE_INFORMATION, CONTAINER_INHERIT_ACE,
+    DACL_SECURITY_INFORMATION, OBJECT_INHERIT_ACE, PROTECTED_DACL_SECURITY_INFORMATION,
+    PSECURITY_DESCRIPTOR, PSID, SECURITY_ATTRIBUTES, SECURITY_CAPABILITIES, SECURITY_MAX_SID_SIZE,
+    SE_DACL_PROTECTED, SID_AND_ATTRIBUTES, TOKEN_QUERY, TOKEN_USER,
 };
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, CREATE_ALWAYS, FILE_ALL_ACCESS, FILE_ATTRIBUTE_NORMAL, FILE_GENERIC_EXECUTE,
@@ -52,7 +54,8 @@ use windows_sys::Win32::System::JobObjects::{
     JOB_OBJECT_LIMIT_JOB_MEMORY, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
 };
 use windows_sys::Win32::System::SystemServices::{
-    JOB_OBJECT_MSG_ACTIVE_PROCESS_LIMIT, JOB_OBJECT_MSG_JOB_MEMORY_LIMIT, SE_GROUP_ENABLED,
+    ACCESS_ALLOWED_ACE_TYPE, JOB_OBJECT_MSG_ACTIVE_PROCESS_LIMIT, JOB_OBJECT_MSG_JOB_MEMORY_LIMIT,
+    SE_GROUP_ENABLED,
 };
 use windows_sys::Win32::System::Threading::{
     CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess, GetExitCodeProcess,
@@ -594,7 +597,98 @@ fn protect_cache_directory(path: &Path, app_container_sid: &[u8]) -> Result<(), 
             inherit,
         ),
     ];
+    if protected_acl_matches(path, &grants)? {
+        return Ok(());
+    }
     set_protected_acl(path, &grants, "protect executor cache")
+}
+
+fn protected_acl_matches(path: &Path, grants: &[AclGrant<'_>]) -> Result<bool, String> {
+    let wide_path = wide(path.as_os_str());
+    let mut acl: *mut ACL = null_mut();
+    let mut descriptor: PSECURITY_DESCRIPTOR = null_mut();
+    let status = unsafe {
+        GetNamedSecurityInfoW(
+            wide_path.as_ptr(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            null_mut(),
+            null_mut(),
+            &mut acl,
+            null_mut(),
+            &mut descriptor,
+        )
+    };
+    if status != 0 {
+        return Err(format!(
+            "inspect executor cache ACL {}: Windows error {status}",
+            path.display()
+        ));
+    }
+    if descriptor.is_null() {
+        return Err(format!(
+            "inspect executor cache ACL {}: Windows returned no security descriptor",
+            path.display()
+        ));
+    }
+
+    let matches = (|| -> Result<bool, String> {
+        if acl.is_null() {
+            return Ok(false);
+        }
+        let mut control = 0_u16;
+        let mut revision = 0_u32;
+        win_bool(
+            unsafe { GetSecurityDescriptorControl(descriptor, &mut control, &mut revision) },
+            "inspect executor cache security descriptor",
+        )?;
+        if control & SE_DACL_PROTECTED == 0 {
+            return Ok(false);
+        }
+
+        let mut information = ACL_SIZE_INFORMATION::default();
+        win_bool(
+            unsafe {
+                GetAclInformation(
+                    acl,
+                    (&mut information as *mut ACL_SIZE_INFORMATION).cast(),
+                    size_of::<ACL_SIZE_INFORMATION>() as u32,
+                    AclSizeInformation,
+                )
+            },
+            "inspect executor cache ACL",
+        )?;
+        if information.AceCount as usize != grants.len() {
+            return Ok(false);
+        }
+
+        for (index, grant) in grants.iter().enumerate() {
+            let mut raw_ace: *mut c_void = null_mut();
+            win_bool(
+                unsafe { GetAce(acl, index as u32, &mut raw_ace) },
+                "inspect executor cache ACL entry",
+            )?;
+            if raw_ace.is_null() {
+                return Ok(false);
+            }
+            let ace = unsafe { &*raw_ace.cast::<ACCESS_ALLOWED_ACE>() };
+            if ace.Header.AceType != ACCESS_ALLOWED_ACE_TYPE as u8
+                || ace.Header.AceFlags != grant.inheritance as u8
+                || ace.Mask != grant.access
+            {
+                return Ok(false);
+            }
+            let ace_sid = (&ace.SidStart as *const u32).cast_mut().cast::<c_void>();
+            if unsafe { EqualSid(ace_sid, grant.sid.as_ptr() as PSID) } == 0 {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    })();
+    unsafe {
+        LocalFree(descriptor);
+    }
+    matches
 }
 
 fn protect_workspace_parent(path: &Path, app_container_sid: &[u8]) -> Result<(), String> {
@@ -1373,6 +1467,30 @@ unsafe fn wide_ptr_to_string(pointer: *const u16) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    struct TestDirectory(PathBuf);
+
+    impl TestDirectory {
+        fn new(label: &str) -> Self {
+            let nonce = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!(
+                "judgedesk-windows-{label}-{}-{nonce}",
+                std::process::id()
+            ));
+            fs::create_dir(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
 
     #[test]
     fn windows_argument_quoting_preserves_spaces_quotes_and_trailing_slashes() {
@@ -1449,5 +1567,35 @@ mod tests {
         let second = derive_workspace_capability_sid("workspace_two").unwrap();
         assert_eq!(first, repeated);
         assert_ne!(first, second);
+    }
+
+    #[test]
+    fn cache_acl_matcher_accepts_only_the_exact_protected_policy() {
+        let directory = TestDirectory::new("cache-acl");
+        let app_container_sid = current_user_sid().unwrap();
+        protect_cache_directory(&directory.0, &app_container_sid).unwrap();
+
+        let user_sid = current_user_sid().unwrap();
+        let system_sid = well_known_sid(WinLocalSystemSid).unwrap();
+        let administrators_sid = well_known_sid(WinBuiltinAdministratorsSid).unwrap();
+        let inherit = OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE;
+        let expected = [
+            AclGrant::new(&user_sid, FILE_ALL_ACCESS, inherit),
+            AclGrant::new(&system_sid, FILE_ALL_ACCESS, inherit),
+            AclGrant::new(&administrators_sid, FILE_ALL_ACCESS, inherit),
+            AclGrant::new(
+                &app_container_sid,
+                FILE_GENERIC_READ | FILE_GENERIC_EXECUTE,
+                inherit,
+            ),
+        ];
+        assert!(protected_acl_matches(&directory.0, &expected).unwrap());
+
+        let wrong = [AclGrant::new(&user_sid, FILE_ALL_ACCESS, inherit)];
+        set_protected_acl(&directory.0, &wrong, "set test ACL").unwrap();
+        assert!(!protected_acl_matches(&directory.0, &expected).unwrap());
+
+        protect_cache_directory(&directory.0, &app_container_sid).unwrap();
+        assert!(protected_acl_matches(&directory.0, &expected).unwrap());
     }
 }
