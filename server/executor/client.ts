@@ -221,6 +221,7 @@ export class ExecutorClient {
       return this.cachedHealth;
     }
     try {
+      const startupStarted = performance.now();
       const child = spawn(executable, [], {
         stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
@@ -251,7 +252,10 @@ export class ExecutorClient {
       if (response.type !== "health") {
         throw new SecureRunnerError("SECURE_RUNNER_PROTOCOL_ERROR", `Unexpected ${response.type} health response.`);
       }
-      this.cachedHealth = response.health;
+      this.cachedHealth = {
+        ...response.health,
+        clientStartupTimeMs: performance.now() - startupStarted,
+      };
     } catch (error) {
       this.cachedHealth = unavailableHealth(error instanceof Error ? error.message : String(error));
     }

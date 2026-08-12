@@ -4,7 +4,8 @@ use crate::guardian_protocol::{
     generate_nonce, FrameIdentity, LauncherMonitorLimits, LauncherRlimits, LauncherSpec,
 };
 use crate::protocol::{
-    ExecutorHealth, LocalToolchainIsolation, RunLimits, RunReason, RunResult, RunRole, RunSpec,
+    ExecutorHealth, ExecutorStartupTimings, LocalToolchainIsolation, RunLimits, RunReason,
+    RunResult, RunRole, RunSpec,
 };
 use crate::request_validation::{validate_run, ValidatedRun};
 use crate::workspace::initialize_root;
@@ -14,6 +15,7 @@ use std::io::Write;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Instant;
 
 const TRUSTED_SUPERVISOR_NPROC_OVERHEAD: u64 = 1;
 const OBSERVABLE_PROCESS_LIMIT_OVERFLOW: u64 = 1;
@@ -21,6 +23,7 @@ const REAL_USER_PROCESS_DRIFT_ALLOWANCE: u64 = 4;
 
 pub struct MacosPlatform {
     self_test: SelfTest,
+    startup_timings: ExecutorStartupTimings,
 }
 
 struct SelfTest {
@@ -33,11 +36,19 @@ struct SelfTest {
 
 impl MacosPlatform {
     pub fn initialize() -> Result<(Self, PathBuf), String> {
+        let startup_started = Instant::now();
+        let mut phases = BTreeMap::new();
+        let phase_started = Instant::now();
         if !Path::new("/usr/bin/sandbox-exec").is_file() {
             return Err("SECURE_RUNNER_UNAVAILABLE: /usr/bin/sandbox-exec was not found".into());
         }
+        phases.insert("platformCheck".into(), elapsed_us(phase_started));
+        let phase_started = Instant::now();
         let root = initialize_root(std::env::temp_dir())?;
+        phases.insert("root".into(), elapsed_us(phase_started));
+        let phase_started = Instant::now();
         emit_fault_gate_ready()?;
+        phases.insert("faultGate".into(), elapsed_us(phase_started));
         let mut platform = Self {
             self_test: SelfTest {
                 ready: false,
@@ -46,8 +57,18 @@ impl MacosPlatform {
                 filesystem_isolated: false,
                 process_tree_controlled: false,
             },
+            startup_timings: ExecutorStartupTimings {
+                total_time_us: 0,
+                phases,
+            },
         };
+        let phase_started = Instant::now();
         platform.self_test = platform.run_self_test(&root);
+        platform
+            .startup_timings
+            .phases
+            .insert("selfTest".into(), elapsed_us(phase_started));
+        platform.startup_timings.total_time_us = elapsed_us(startup_started);
         Ok((platform, root))
     }
 
@@ -62,6 +83,7 @@ impl MacosPlatform {
             filesystem_isolated: self.self_test.filesystem_isolated,
             process_tree_controlled: self.self_test.process_tree_controlled,
             memory_limit_supported: self.self_test.ready,
+            startup_timings: Some(self.startup_timings.clone()),
         }
     }
 
@@ -231,6 +253,10 @@ impl MacosPlatform {
     ) -> Result<RunResult, String> {
         crate::macos_run_controller::run_with_guardian(root, spec, active)
     }
+}
+
+fn elapsed_us(started: Instant) -> u64 {
+    started.elapsed().as_micros().min(u64::MAX as u128) as u64
 }
 
 fn emit_fault_gate_ready() -> Result<(), String> {
