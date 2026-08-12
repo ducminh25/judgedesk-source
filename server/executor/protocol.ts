@@ -99,6 +99,11 @@ export interface ExecutorHealth {
   filesystemIsolated: boolean;
   processTreeControlled: boolean;
   memoryLimitSupported: boolean;
+  startupTimings?: {
+    totalTimeUs: number;
+    phases: Record<string, number>;
+  };
+  clientStartupTimeMs?: number;
 }
 
 export type ExecutorRequest =

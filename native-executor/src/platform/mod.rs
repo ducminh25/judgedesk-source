@@ -85,6 +85,7 @@ impl Platform {
                 filesystem_isolated: false,
                 process_tree_controlled: false,
                 memory_limit_supported: false,
+                startup_timings: None,
             },
         }
     }
