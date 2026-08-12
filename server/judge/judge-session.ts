@@ -1,8 +1,13 @@
-import fs from "fs";
 import path from "path";
-import { isTextFile } from "../file-utils.js";
+import { isTextFile, readTextPreview } from "../file-utils.js";
 import { activeJobs } from "../jobs.js";
-import type { BatchJudgeRequest, ContestantResult, ProblemResult, TestCaseRun } from "../types.js";
+import type {
+  BatchJudgeRequest,
+  ContestantResult,
+  NormalizedProblemConfig,
+  ProblemResult,
+  TestCaseRun,
+} from "../types.js";
 import { resolveProblemConfig } from "../problems/problem-config-repository.js";
 import {
   compileSubmission,
@@ -12,11 +17,16 @@ import {
 import type { JudgeEventWriter } from "./judge-event-writer.js";
 import { calculateProblemSummary } from "./scoring.js";
 import {
-  findSubmission,
+  createSubmissionResolver,
   listContestants,
   type Submission,
 } from "./submission-discovery.js";
-import { createProblemDirectoryResolver, listTestDirectories, resolveTestCaseFiles } from "./testcase-discovery.js";
+import {
+  createProblemDirectoryResolver,
+  discoverTestCases,
+  type ProblemDirectory,
+  type TestCaseFiles,
+} from "./testcase-discovery.js";
 import { runTestCase } from "./testcase-runner.js";
 import {
   assertJudgeToolchainPreflight,
@@ -32,6 +42,20 @@ interface JudgeSessionOptions {
   tempDirectory: string;
   events: JudgeEventWriter;
   pinnedToolchains: PinnedJudgeToolchains;
+}
+
+export interface PlannedTestCase {
+  files: TestCaseFiles;
+  inputIsText: boolean;
+  expectedOutputPreview: string;
+  score: number;
+  timeLimitMs: number;
+}
+
+interface PlannedProblem {
+  directory: ProblemDirectory;
+  config: NormalizedProblemConfig;
+  tests: PlannedTestCase[];
 }
 
 export async function runJudgeSession(options: JudgeSessionOptions): Promise<void> {
@@ -59,14 +83,16 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
   const pinnedSubmissions = new Map<string, Map<string, Submission | null>>();
   for (const contestant of contestantDirs) {
     const contestantPath = path.join(resolvedThisinh, contestant);
+    const resolveSubmission = createSubmissionResolver(contestantPath);
     const submissions = new Map<string, Submission | null>();
     pinnedSubmissions.set(contestant, submissions);
     for (const targetProblem of activeProblemsList) {
-      const submission = findSubmission(contestantPath, targetProblem);
+      const submission = resolveSubmission(targetProblem);
       submissions.set(targetProblem, submission);
       if (submission) toolchainRequirements.submissions.add(submission.language);
     }
   }
+  const plannedProblems = new Map<string, PlannedProblem>();
   for (const targetProblem of activeProblemsList) {
     const testProblemDirectory = getTestProblemDirObj(targetProblem);
     if (!testProblemDirectory) continue;
@@ -75,6 +101,11 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
       testProblemDirectory.path,
       request.problemConfigs?.[targetProblem],
     );
+    plannedProblems.set(targetProblem.toLowerCase(), {
+      directory: testProblemDirectory,
+      config,
+      tests: [],
+    });
     const checker = config.checkerType.toLowerCase();
     if (checker.endsWith(".cpp")) toolchainRequirements.checkers.add("cpp");
     if (checker.endsWith(".py")) toolchainRequirements.checkers.add("python");
@@ -91,6 +122,9 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
       percent: 0,
     });
     await ensureCertifiedLocalCppSessionProbe(pinnedToolchains.cpp, tempDir, jobId);
+  }
+  for (const problem of plannedProblems.values()) {
+    problem.tests = planProblemTestCases(problem.directory.path, problem.config);
   }
   console.info("[Judge] Toolchain pin", {
     jobId,
@@ -120,7 +154,6 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
 
   for (const contestant of contestantDirs) {
     if (jobId && activeJobs.get(jobId)?.cancel) break;
-    const contestantPath = path.join(resolvedThisinh, contestant);
     const problems: ProblemResult[] = [];
     for (const targetProb of activeProblemsList) {
       if (jobId && activeJobs.get(jobId)?.cancel) break;
@@ -154,8 +187,8 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
 
       const { problemName, language } = submission;
       
-      const testProblemDir = getTestProblemDirObj(problemName);
-      if (!testProblemDir) {
+      const plannedProblem = plannedProblems.get(targetProb.toLowerCase());
+      if (!plannedProblem) {
          const missingResult: ProblemResult = {
            problemName: targetProb,
            language: "unknown",
@@ -182,11 +215,7 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
         percent: totalProblemsCount ? (completedProblemsCount / totalProblemsCount) * 100 : 0
       });
 
-      const probConf = resolveProblemConfig(
-        problemName,
-        testProblemDir.path,
-        request.problemConfigs?.[problemName]
-      );
+      const probConf = plannedProblem.config;
       const checkerType = probConf.checkerType;
       const useStdIn = probConf.useStdIn;
       const useStdOut = probConf.useStdOut;
@@ -212,7 +241,7 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
       let compileError = compilation.compileError;
 
       const tcRuns: TestCaseRun[] = [];
-      const tcDirEntries = listTestDirectories(testProblemDir.path);
+      const tcDirEntries = plannedProblem.tests.map(testCase => testCase.files.name);
 
        if (compileStatus === "OK") {
          const cacheKey = `${problemName}_${checkerType}`;
@@ -220,71 +249,32 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
            compiledCheckers[cacheKey] = await resolveChecker({
              checkerType,
              problemName,
-             problemDirectory: testProblemDir.path,
+             problemDirectory: plannedProblem.directory.path,
              tempDirectory: tempDir,
              jobId,
              cppToolchain: pinnedToolchains.cpp,
              pythonToolchain: pinnedToolchains.python,
            });
          }
-         const poly = probConf.polygonConfig;
          const isStdIO = probConf.useStdIO;
 
-         let totalWeight = 0;
-         for (const tc of tcDirEntries) {
-             let w = probConf.defaultScore !== undefined ? Number(probConf.defaultScore) : 1;
-             if (poly && poly.tests && poly.tests[tc] && poly.tests[tc].points !== undefined) {
-                 w = Number(poly.tests[tc].points);
-             } else if (probConf.testScores[tc] !== undefined) {
-                 w = Number(probConf.testScores[tc]);
-             }
-             totalWeight += w;
-         }
-
-         for (let i = 0; i < tcDirEntries.length; i++) {
-             const tcDir = tcDirEntries[i];
+         for (let i = 0; i < plannedProblem.tests.length; i++) {
+             const plannedTestCase = plannedProblem.tests[i];
+             const tcDir = plannedTestCase.files.name;
              if (jobId && activeJobs.get(jobId)?.cancel) break;
              sendEvent("progress", {
                contestant, problem: problemName,
                action: `Judging test ${i + 1} of ${tcDirEntries.length}`,
                percent: totalProblemsCount ? (completedProblemsCount / totalProblemsCount) * 100 : 0
              });
-           const testFiles = resolveTestCaseFiles(testProblemDir.path, tcDir);
-           if (!testFiles) continue;
+           const testFiles = plannedTestCase.files;
            const inpPath = testFiles.inputPath;
            const outPath = testFiles.outputPath;
-           const outputStringTarget = fs.readFileSync(outPath, "utf8");
 
-           if (!isTextFile(inpPath)) {
+           if (!plannedTestCase.inputIsText) {
              compileStatus = "CE";
              compileError = `Unreadable input file: ${testFiles.inputFileName}. Only text files are allowed.`;
              break;
-           }
-
-           // Determine the specific score for this test case
-           let weightForTc: number = probConf.defaultScore !== undefined ? Number(probConf.defaultScore) : 1;
-           if (poly && poly.tests && poly.tests[tcDir] && poly.tests[tcDir].points !== undefined) {
-               weightForTc = Number(poly.tests[tcDir].points);
-           } else if (probConf.testScores[tcDir] !== undefined) {
-               weightForTc = Number(probConf.testScores[tcDir]);
-           }
-           
-           let scoreForTc = weightForTc;
-           const totalScoreInput = probConf.totalScore;
-           // Polygon config overrides proportional scoring
-           if (!poly.enableGroups && totalScoreInput !== null) {
-               if (totalWeight > 0) {
-                  scoreForTc = (weightForTc / totalWeight) * Number(totalScoreInput);
-               } else {
-                  scoreForTc = 0;
-               }
-               scoreForTc = Math.round(scoreForTc * 10000) / 10000;
-           }
-
-           // Determine specific time limit for this test case
-           let tcTimeLimitMs = 1_000;
-           if (poly && poly.tests && poly.tests[tcDir] && poly.tests[tcDir].timeLimit !== undefined) {
-               tcTimeLimitMs = Math.round(Number(poly.tests[tcDir].timeLimit) * 1000);
            }
 
            const tcRes = await runTestCase({
@@ -296,13 +286,13 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
              executablePath,
              inputPath: inpPath,
              expectedOutputPath: outPath,
-             expectedOutput: outputStringTarget,
+             expectedOutputPreview: plannedTestCase.expectedOutputPreview,
              testRoot: testPath,
              contestantsRoot: thisinhPath,
              tempDirectory: tempDir,
              pythonCommand: language === "python" ? executablePath : "",
-             timeLimitMs: tcTimeLimitMs,
-             score: scoreForTc,
+             timeLimitMs: plannedTestCase.timeLimitMs,
+             score: plannedTestCase.score,
              config: probConf,
              checker: compiledCheckers[`${problemName}_${checkerType}`],
              program: compilation.program,
@@ -339,4 +329,45 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
     }
   }
 
+}
+
+export function planProblemTestCases(
+  problemDirectory: string,
+  config: NormalizedProblemConfig,
+): PlannedTestCase[] {
+  const discovered = discoverTestCases(problemDirectory);
+  const weighted = discovered.map(files => ({
+    files,
+    inputIsText: isTextFile(files.inputPath),
+    expectedOutputPreview: readTextPreview(files.outputPath),
+    weight: testCaseWeight(config, files.name),
+    timeLimitMs: testCaseTimeLimitMs(config, files.name),
+  }));
+  const totalWeight = weighted.reduce((total, testCase) => total + testCase.weight, 0);
+  return weighted.map(({ weight, ...testCase }) => ({
+    ...testCase,
+    score: testCaseScore(config, weight, totalWeight),
+  }));
+}
+
+function testCaseWeight(config: NormalizedProblemConfig, testName: string): number {
+  const polygonTest = config.polygonConfig?.tests?.[testName];
+  if (polygonTest?.points !== undefined) return Number(polygonTest.points);
+  if (config.testScores[testName] !== undefined) return Number(config.testScores[testName]);
+  return config.defaultScore !== undefined ? Number(config.defaultScore) : 1;
+}
+
+function testCaseScore(
+  config: NormalizedProblemConfig,
+  weight: number,
+  totalWeight: number,
+): number {
+  if (config.polygonConfig.enableGroups || config.totalScore === null) return weight;
+  const score = totalWeight > 0 ? (weight / totalWeight) * Number(config.totalScore) : 0;
+  return Math.round(score * 10_000) / 10_000;
+}
+
+function testCaseTimeLimitMs(config: NormalizedProblemConfig, testName: string): number {
+  const timeLimit = config.polygonConfig?.tests?.[testName]?.timeLimit;
+  return timeLimit === undefined ? 1_000 : Math.round(Number(timeLimit) * 1_000);
 }

@@ -3,8 +3,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { findSubmission, listContestants } from "./submission-discovery";
-import { createProblemDirectoryResolver, listTestDirectories, resolveTestCaseFiles } from "./testcase-discovery";
+import { isTextFile, readTextPreview } from "../file-utils.js";
+import { createSubmissionResolver, findSubmission, listContestants } from "./submission-discovery";
+import {
+  createProblemDirectoryResolver,
+  discoverTestCases,
+  listTestDirectories,
+  resolveTestCaseFiles,
+} from "./testcase-discovery";
 import { discoverCustomCheckers } from "../routes/problem-routes";
 
 test("discovery matches problem names case-insensitively and sorts tests naturally", t => {
@@ -110,6 +116,51 @@ test("submission discovery fails closed when one problem has multiple languages"
     () => findSubmission(root, "SUM"),
     /AMBIGUOUS_SUBMISSION.*SUM\.cpp.*SUM\.py/,
   );
+});
+
+test("submission resolver snapshots one contestant directory for the whole session", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-submission-index-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(root, "SUM.cpp"), "");
+  const resolveSubmission = createSubmissionResolver(root);
+
+  fs.writeFileSync(path.join(root, "SUM.py"), "");
+  assert.equal(resolveSubmission("sum")?.fileName, "SUM.cpp");
+  assert.throws(
+    () => createSubmissionResolver(root)("SUM"),
+    /AMBIGUOUS_SUBMISSION.*SUM\.cpp.*SUM\.py/,
+  );
+});
+
+test("testcase index returns naturally sorted resolved file pairs", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-testcase-index-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const name of ["10", "2"]) {
+    const directory = path.join(root, name);
+    fs.mkdirSync(directory);
+    fs.writeFileSync(path.join(directory, "case.in"), name);
+    fs.writeFileSync(path.join(directory, "case.ans"), name);
+  }
+
+  const indexed = discoverTestCases(root);
+  assert.deepEqual(indexed.map(testCase => testCase.name), ["2", "10"]);
+  assert.equal(indexed[0].inputPath, path.join(root, "2", "case.in"));
+  assert.equal(indexed[0].outputPath, path.join(root, "2", "case.ans"));
+});
+
+test("bounded text inspection preserves binary detection and output previews", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-file-inspection-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const text = path.join(root, "text.in");
+  const binary = path.join(root, "binary.in");
+  const output = path.join(root, "answer.out");
+  fs.writeFileSync(text, "x".repeat(1024 * 1024));
+  fs.writeFileSync(binary, Buffer.from([65, 0, 66]));
+  fs.writeFileSync(output, "ấ".repeat(600), "utf8");
+
+  assert.equal(isTextFile(text), true);
+  assert.equal(isTextFile(binary), false);
+  assert.equal(readTextPreview(output), `${"ấ".repeat(500)}...`);
 });
 
 test("submission discovery ignores candidates that are not an exact supported source file", (t) => {
