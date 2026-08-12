@@ -22,7 +22,10 @@ import {
 } from "./discovery.js";
 import { getInstallProgress } from "./installer.js";
 import { getDescriptorForHost } from "./manifest.js";
-import { inspectInstalledToolchainPackage } from "./package-store.js";
+import {
+  inspectInstalledToolchainPackage,
+  type InstalledToolchainPackageInspector,
+} from "./package-store.js";
 import { getStoredProfilePreference } from "./preferences-v2.js";
 import { resolveCachedToolchainSelection } from "./cached-resolution.js";
 import {
@@ -151,11 +154,12 @@ function defaultProgress(id: string): InstallProgress {
 function managedPackageState(
   kind: ToolchainKind,
   manifest: readonly ToolchainDescriptor[],
+  inspectInstalledPackage: InstalledToolchainPackageInspector,
 ): ProfileManagedPackage | undefined {
   const catalogEntry = getDescriptorForHost(os.platform(), os.arch(), kind);
   if (!catalogEntry) return undefined;
   const manifestEntry = manifest.find((entry) => entry.id === catalogEntry.id);
-  const installedState = inspectInstalledToolchainPackage(catalogEntry, { kind });
+  const installedState = inspectInstalledPackage(catalogEntry, { kind });
   const installed = installedState.status === "installed"
     ? installedState.package
     : undefined;
@@ -237,7 +241,12 @@ function provenanceFor(
 
 export function buildLanguageProfileState(
   manifest: readonly ToolchainDescriptor[],
+  options: {
+    inspectInstalledPackage?: InstalledToolchainPackageInspector;
+  } = {},
 ): LanguageProfileState {
+  const inspectInstalledPackage = options.inspectInstalledPackage
+    ?? inspectInstalledToolchainPackage;
   const preferences = loadToolchainPreferenceSnapshot();
   const discovery = getToolchainDiscoverySnapshot();
   const architecture = mappedHostArchitecture();
@@ -254,7 +263,11 @@ export function buildLanguageProfileState(
       preferences.preferences,
       profile.ref.id,
     );
-    const cachedResolution = resolveCachedToolchainSelection(kind, selection);
+    const cachedResolution = resolveCachedToolchainSelection(
+      kind,
+      selection,
+      inspectInstalledPackage,
+    );
     const active = cachedResolution.active;
     let submissionReady = active.ready;
     let checkerReady = !!profile.roles.checker && active.ready;
@@ -262,7 +275,7 @@ export function buildLanguageProfileState(
       submissionReady = false;
       checkerReady = false;
     }
-    const managedPackage = managedPackageState(kind, manifest);
+    const managedPackage = managedPackageState(kind, manifest, inspectInstalledPackage);
     const managedSupported = !!getDescriptorForHost(
       os.platform(),
       architecture || os.arch(),

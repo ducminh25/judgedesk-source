@@ -1,30 +1,52 @@
 import type ExcelJS from "exceljs";
 import type { BatchJudgeResult, ContestantResult } from "../../types";
 import { describeTestResult } from "../judging/verdict";
-import type { TFunction } from "i18next";
 
-export async function buildScoreWorkbookBase64(
+export interface ScoreWorkbookLabels {
+  scoreboardTitle: string;
+  detailsTitle: string;
+  candidate: string;
+  problem: string;
+  test: string;
+  score: string;
+  time: string;
+  results: string;
+  total: string;
+  seconds: string;
+  notFound: string;
+  compilationError: string;
+  compilationSuccess: string;
+}
+
+export interface ScoreExportBuildRequest {
+  judgeResult: BatchJudgeResult;
+  contestantNames: string[];
+  problemNames: string[];
+  labels: ScoreWorkbookLabels;
+}
+
+export async function buildScoreWorkbookBytes(
   judgeResult: BatchJudgeResult,
   contestantNames: string[],
   problemNames: string[],
-  t: TFunction
-): Promise<string> {
+  labels: ScoreWorkbookLabels,
+): Promise<Uint8Array> {
   const contestants = contestantNames.map(
     name => judgeResult.contestants.find(item => item.contestantName === name) || emptyContestant(name)
   );
   const ExcelJSRuntime = (await import("exceljs")).default;
   const workbook = new ExcelJSRuntime.Workbook();
-  addSheet(workbook, t("export.scoreboardTitle"), [t("scoringLog.candidate"), ...problemNames, t("scoreboard.total")], buildSummaryRows(contestants, problemNames, t));
+  addSheet(workbook, labels.scoreboardTitle, [labels.candidate, ...problemNames, labels.total], buildSummaryRows(contestants, problemNames, labels));
   addSheet(
     workbook,
-    t("export.detailsTitle"),
+    labels.detailsTitle,
     [
-      t("scoringLog.candidate"),
-      t("scoringLog.problem"),
-      t("scoringLog.test"),
-      t("scoringLog.score"),
-      t("scoringLog.time"),
-      t("scoringLog.results"),
+      labels.candidate,
+      labels.problem,
+      labels.test,
+      labels.score,
+      labels.time,
+      labels.results,
       "Verdict",
       "Executor reason",
       "Exit code",
@@ -43,11 +65,11 @@ export async function buildScoreWorkbookBase64(
       "Created files",
       "Executor diagnostic",
     ],
-    buildDetailRows(contestants, problemNames, t),
+    buildDetailRows(contestants, problemNames, labels),
   );
   addRunMetadataSheet(workbook, judgeResult);
   const buffer = await workbook.xlsx.writeBuffer();
-  return toBase64(buffer);
+  return new Uint8Array(buffer);
 }
 
 export function buildDiagnosticJson(
@@ -128,63 +150,71 @@ function addRunMetadataSheet(
   addSheet(workbook, "Run Metadata", ["Field", "Value"], rows);
 }
 
-function buildSummaryRows(contestants: ContestantResult[], problemNames: string[], t: TFunction) {
+function buildSummaryRows(
+  contestants: ContestantResult[],
+  problemNames: string[],
+  labels: ScoreWorkbookLabels,
+) {
   return contestants.map(contestant => {
-    const row: Record<string, string | number> = { [t("scoringLog.candidate")]: contestant.contestantName };
+    const row: Record<string, string | number> = { [labels.candidate]: contestant.contestantName };
     let totalScore = 0;
     for (const problemName of problemNames) {
       const problem = findProblem(contestant, problemName);
       if (!problem || (problem.compileStatus === "SKIPPED" && problem.compileError === "not_found")) {
-        row[problemName] = t("export.notFound");
+        row[problemName] = labels.notFound;
       } else if (problem.compileStatus !== "OK") {
-        row[problemName] = t("export.compilationError");
+        row[problemName] = labels.compilationError;
       } else {
         row[problemName] = problem.summary.score;
         totalScore += problem.summary.score;
       }
     }
-    row[t("scoreboard.total")] = roundScore(totalScore);
+    row[labels.total] = roundScore(totalScore);
     return row;
   });
 }
 
-function buildDetailRows(contestants: ContestantResult[], problemNames: string[], t: TFunction) {
+function buildDetailRows(
+  contestants: ContestantResult[],
+  problemNames: string[],
+  labels: ScoreWorkbookLabels,
+) {
   const rows: Array<Record<string, string | number>> = [];
   for (const contestant of contestants) {
     const problems = contestant.problems.filter(problem =>
       problemNames.some(name => name.toLowerCase() === problem.problemName.toLowerCase())
     );
     rows.push({
-      [t("scoringLog.candidate")]: contestant.contestantName,
-      [t("scoringLog.problem")]: "",
-      [t("scoringLog.test")]: "",
-      [t("scoringLog.score")]: roundScore(problems.reduce((total, problem) => total + problem.summary.score, 0)),
-      [t("scoringLog.time")]: "",
-      [t("scoringLog.results")]: ""
+      [labels.candidate]: contestant.contestantName,
+      [labels.problem]: "",
+      [labels.test]: "",
+      [labels.score]: roundScore(problems.reduce((total, problem) => total + problem.summary.score, 0)),
+      [labels.time]: "",
+      [labels.results]: ""
     });
     for (const problem of problems) {
       rows.push({
-        [t("scoringLog.candidate")]: contestant.contestantName,
-        [t("scoringLog.problem")]: problem.problemName,
-        [t("scoringLog.test")]: "",
-        [t("scoringLog.score")]: problem.summary.score,
-        [t("scoringLog.time")]: "",
-        [t("scoringLog.results")]:
+        [labels.candidate]: contestant.contestantName,
+        [labels.problem]: problem.problemName,
+        [labels.test]: "",
+        [labels.score]: problem.summary.score,
+        [labels.time]: "",
+        [labels.results]:
           problem.compileStatus === "SKIPPED" && problem.compileError === "not_found"
-            ? t("export.notFound")
+            ? labels.notFound
             : problem.compileStatus === "OK"
-              ? t("export.compilationSuccess")
-              : t("export.compilationError")
+              ? labels.compilationSuccess
+              : labels.compilationError
       });
       for (const test of problem.testCases) {
         const execution = test.execution;
         rows.push({
-          [t("scoringLog.candidate")]: contestant.contestantName,
-          [t("scoringLog.problem")]: problem.problemName,
-          [t("scoringLog.test")]: test.name,
-          [t("scoringLog.score")]: test.score,
-          [t("scoringLog.time")]: `${(test.executionTime / 1000).toFixed(3)} ${t("scoringLog.seconds")}`,
-          [t("scoringLog.results")]: describeTestResult(test),
+          [labels.candidate]: contestant.contestantName,
+          [labels.problem]: problem.problemName,
+          [labels.test]: test.name,
+          [labels.score]: test.score,
+          [labels.time]: `${(test.executionTime / 1000).toFixed(3)} ${labels.seconds}`,
+          [labels.results]: describeTestResult(test),
           Verdict: test.status,
           "Executor reason": execution?.reason || "",
           "Exit code": execution?.exitCode ?? "",
@@ -219,13 +249,4 @@ function emptyContestant(contestantName: string): ContestantResult {
 
 function roundScore(score: number): number {
   return Math.round(score * 10_000) / 10_000;
-}
-
-function toBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + 0x8000, bytes.length)));
-  }
-  return btoa(binary);
 }

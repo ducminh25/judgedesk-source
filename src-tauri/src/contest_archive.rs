@@ -381,23 +381,29 @@ fn open_contest_archive_impl(path: &Path) -> Result<Value, String> {
 }
 
 #[tauri::command]
-pub fn save_contest_archive(
+pub async fn save_contest_archive(
     destination: String,
     contestants_path: String,
     tests_path: String,
     manifest_json: String,
 ) -> Result<(), String> {
-    save_contest_archive_impl(
-        Path::new(&destination),
-        (!contestants_path.trim().is_empty()).then(|| Path::new(&contestants_path)),
-        (!tests_path.trim().is_empty()).then(|| Path::new(&tests_path)),
-        &manifest_json,
-    )
+    tauri::async_runtime::spawn_blocking(move || {
+        save_contest_archive_impl(
+            Path::new(&destination),
+            (!contestants_path.trim().is_empty()).then(|| Path::new(&contestants_path)),
+            (!tests_path.trim().is_empty()).then(|| Path::new(&tests_path)),
+            &manifest_json,
+        )
+    })
+    .await
+    .map_err(|error| format!("Contest archive worker failed: {error}"))?
 }
 
 #[tauri::command]
-pub fn open_contest_archive(path: String) -> Result<Value, String> {
-    open_contest_archive_impl(Path::new(&path))
+pub async fn open_contest_archive(path: String) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || open_contest_archive_impl(Path::new(&path)))
+        .await
+        .map_err(|error| format!("Contest archive worker failed: {error}"))?
 }
 
 #[cfg(test)]

@@ -5,10 +5,11 @@ import ProgressWindow from "./components/ProgressWindow";
 import JudgingDetailsModal from "./components/JudgingDetailsModal";
 import ScoringLogModal from "./components/ScoringLogModal";
 import { apiFetch } from "./api";
+import { buildScoreExport } from "./features/export/score-workbook-client";
 import {
-  buildDiagnosticJson,
-  buildScoreWorkbookBase64,
-} from "./features/export/score-workbook";
+  encodeScoreExportPayload,
+  SCORE_EXPORT_CONTENT_TYPE,
+} from "../shared/score-export-wire";
 import {
   judgeResultsReducer,
   problemHasPositiveScore,
@@ -122,6 +123,7 @@ export default function App() {
   const interactionLockedRef = useRef(false);
   const hostStatusRequestRef = useRef<Promise<void> | null>(null);
   const saveOperationRef = useRef(false);
+  const exportOperationRef = useRef(false);
   const updater = useAppUpdater();
   const updateRequiresRestart =
     updater.state.status === "error" &&
@@ -580,7 +582,13 @@ export default function App() {
       );
 
   const handleExportExcel = async () => {
-    if (!judgeResult || interactionLockedRef.current || saveOperationRef.current) return;
+    if (
+      !judgeResult
+      || interactionLockedRef.current
+      || saveOperationRef.current
+      || exportOperationRef.current
+    ) return;
+    exportOperationRef.current = true;
     try {
       const activeProblems = displayedProblems.filter(
         (problem) => selectedProblems[problem],
@@ -588,24 +596,25 @@ export default function App() {
       const activeContestants = displayedContestants.filter(
         (contestant) => selectedContestants[contestant],
       );
-      const workbookBase64 = await buildScoreWorkbookBase64(
+      const scoreExport = await buildScoreExport(
         judgeResult,
         activeContestants,
         activeProblems,
         t,
       );
-      const diagnosticJson = buildDiagnosticJson(
-        judgeResult,
-        activeContestants,
-        activeProblems,
+      const payload = encodeScoreExportPayload(
+        scoreExport.workbook,
+        scoreExport.diagnosticJson,
       );
       await apiFetch("/api/open-excel", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workbookBase64, diagnosticJson }),
+        headers: { "Content-Type": SCORE_EXPORT_CONTENT_TYPE },
+        body: payload,
       });
     } catch (error: any) {
       setErrorMessage(error.message || "Failed to open the Excel workbook.");
+    } finally {
+      exportOperationRef.current = false;
     }
   };
 

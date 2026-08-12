@@ -2,7 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import ExcelJS from "exceljs";
 import type { BatchJudgeResult } from "../../types";
-import { buildDiagnosticJson, buildScoreWorkbookBase64 } from "./score-workbook";
+import {
+  buildDiagnosticJson,
+  buildScoreWorkbookBytes,
+} from "./score-workbook";
+import { createScoreWorkbookLabels } from "./score-workbook-client";
+import {
+  decodeScoreExportPayload,
+  encodeScoreExportPayload,
+} from "../../../shared/score-export-wire";
 
 test("score export creates summary and detail worksheets", async () => {
   const result: BatchJudgeResult = {
@@ -65,9 +73,14 @@ test("score export creates summary and detail worksheets", async () => {
     }]
   };
   const mockT = (key: string) => key;
-  const base64 = await buildScoreWorkbookBase64(result, ["Alice"], ["sum"], mockT as any);
+  const workbookBytes = await buildScoreWorkbookBytes(
+    result,
+    ["Alice"],
+    ["sum"],
+    createScoreWorkbookLabels(mockT as any),
+  );
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load(Buffer.from(base64, "base64"));
+  await workbook.xlsx.load(Buffer.from(workbookBytes));
   assert.deepEqual(
     workbook.worksheets.map(sheet => sheet.name),
     ["export.scoreboardTitle", "export.detailsTitle", "Run Metadata"],
@@ -90,4 +103,19 @@ test("score export creates summary and detail worksheets", async () => {
   assert.equal(diagnostic.metadata.toolchains.cpp.provenance, "certified-local");
   assert.equal(diagnostic.metadata.toolchains.cpp.snapshotDigest, "c".repeat(64));
   assert.equal(diagnostic.contestants[0].problems[0].testCases[0].execution.reason, "exited");
+
+  const payload = encodeScoreExportPayload(workbookBytes, JSON.stringify(diagnostic));
+  const decoded = decodeScoreExportPayload(payload);
+  assert.deepEqual(decoded.workbook, workbookBytes);
+  assert.deepEqual(JSON.parse(decoded.diagnosticJson), diagnostic);
+});
+
+test("score export wire format rejects invalid or truncated payloads", () => {
+  assert.throws(
+    () => decodeScoreExportPayload(new Uint8Array([1, 2, 3])),
+    /empty or too large/,
+  );
+  const payload = encodeScoreExportPayload(new Uint8Array([1]), "{}");
+  new DataView(payload.buffer).setUint32(8, payload.byteLength, true);
+  assert.throws(() => decodeScoreExportPayload(payload), /truncated/);
 });
