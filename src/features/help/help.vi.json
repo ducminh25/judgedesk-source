@@ -188,8 +188,8 @@
     },
     "portable": {
       "title": "Khả năng portable",
-      "summary": "v1.3.2 hỗ trợ gì và phần nào còn để sau",
-      "notShipped": "JudgeDesk v1.3.2 không phát hành hoặc hỗ trợ gói ứng dụng portable. Artefact được hỗ trợ vẫn là bộ cài Windows và disk image macOS.",
+      "summary": "Bản hiện tại hỗ trợ gì và phần nào còn để sau",
+      "notShipped": "JudgeDesk không phát hành hoặc hỗ trợ gói ứng dụng portable. Artefact được hỗ trợ vẫn là bộ cài Windows và disk image macOS.",
       "compatibility": "Kiến trúc ứng dụng được giữ tương thích với khả năng bung ra chạy trong tương lai, nhưng chữ ký, updater, vị trí dữ liệu có quyền ghi, WebView/runtime và clean-machine test phải được giải quyết trước khi phát hành.",
       "items": {
         "installer": "Dùng bộ cài hoặc disk image chính thức và đối chiếu checksum đã công bố.",

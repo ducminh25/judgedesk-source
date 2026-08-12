@@ -4,7 +4,10 @@ Chỉ tải JudgeDesk từ trang [Releases chính thức](https://github.com/duc
 
 ## Windows 10/11 x64
 
-1. Mở release mới nhất và tải file `JudgeDesk_..._x64_en-US.msi`.
+1. Mở release mới nhất và chọn một file:
+   - `JudgeDesk_..._full_x64_en-US.msi` (khuyến nghị cho phòng thi/lớp học,
+     có sẵn WebView2 và các managed toolchain đã duyệt).
+   - `JudgeDesk_..._core_x64_en-US.msi` (nhỏ hơn, có thể tải toolchain sau).
 2. Tải thêm `SHA256SUMS` trong cùng release.
 3. Kiểm tra checksum bằng PowerShell:
 
@@ -27,7 +30,8 @@ từ repo này hoặc checksum không khớp.
 
 JudgeDesk hỗ trợ macOS 11 trở lên trên máy M-chip.
 
-1. Mở release mới nhất và tải file `.dmg` aarch64.
+1. Mở release mới nhất và chọn `full_aarch64.dmg` (khuyến nghị, có sẵn các
+   runtime managed) hoặc `core_aarch64.dmg` (nhỏ hơn, tải runtime sau).
 2. Tải `SHA256SUMS`, sau đó kiểm tra trong Terminal:
 
    ```bash
@@ -45,16 +49,21 @@ Nếu Gatekeeper chặn ứng dụng, chỉ dùng **System Settings → Privacy 
 Open Anyway** sau khi đã xác minh checksum và nguồn tải. Không chạy các lệnh xóa
 quarantine lấy từ nguồn không tin cậy.
 
-## Compiler và Python
+## Compiler và runtime
 
-JudgeDesk hỗ trợ ba lựa chọn:
+JudgeDesk v1.3 hỗ trợ C++, C, Python, Pascal và Java. Nguồn compiler/runtime
+được chọn riêng theo từng ngôn ngữ và không tự fallback sang nguồn khác khi
+nguồn đã chọn không còn khả dụng.
 
-- Dùng G++/Python đã có trên máy.
-- Chỉ dùng chức năng judger với môi trường hệ thống.
-- Để ứng dụng tải gói GCC/Python độc lập, đã được kiểm tra SHA-256.
+- Bản Full kèm các managed package được duyệt cho nền tảng.
+- Bản Core có thể tải managed package đã ký từ repository sau khi cài.
+- C/C++/Python local phù hợp có thể được phát hiện hoặc chọn theo đường dẫn và
+  phải vượt policy tương thích trước khi dùng để chấm.
 
-Windows có gói GCC và Python được quản lý. macOS sử dụng Apple Clang từ Xcode
-Command Line Tools cho C/C++ và có thể tải Python độc lập.
+Windows Full kèm GCC, Python, Free Pascal và Temurin JDK. macOS dùng Apple
+Clang từ Xcode Command Line Tools/Xcode cho C/C++; Full kèm Python, Free Pascal
+và Temurin ARM64. Chế độ local ít cô lập hơn chỉ hoạt động khi người dùng chủ
+động bật trong Advanced và không nên là lựa chọn mặc định cho máy thi.
 
 ## Gỡ cài đặt
 

@@ -37,7 +37,7 @@ const hostStatus: HostStatus = {
   platform: "win32",
   isServerMode: false,
   build: {
-    appVersion: "1.3.2",
+    appVersion: "1.3.3",
     buildNumber: "51",
     gitCommit: "0123456789abcdef",
     builtAt: "2026-08-02T12:00:00.000Z",
@@ -45,7 +45,7 @@ const hostStatus: HostStatus = {
   secureRunner: {
     mode: "windows-lpac-job",
     ready: true,
-    executorVersion: "1.3.2",
+    executorVersion: "1.3.3",
     diagnostics: [],
     networkBlocked: true,
     filesystemIsolated: true,
@@ -119,7 +119,7 @@ describe("Help Center", () => {
 
   it("builds copyable diagnostics without embedding test or source contents", () => {
     const diagnostics: HelpDiagnostics = {
-      appVersion: "1.3.2",
+      appVersion: "1.3.3",
       buildNumber: "51",
       gitCommit: "abc123",
       builtAt: "2026-08-02T12:00:00.000Z",

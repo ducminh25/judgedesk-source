@@ -84,10 +84,13 @@ The GitHub Actions `Verify Release Source` workflow repeats source checks when a
 `v*` tag is pushed. It deliberately does not build or publish installers; the
 platform-specific process below owns final artifacts.
 
-## Publish managed toolchains v2
+## Verify or publish managed toolchains v2
 
 The Full and Core builds both consume the signed public `toolchains-v2` release.
-Before installer builds:
+Before installer builds, compare the release-candidate package catalog,
+blueprints and release scope with the currently published manifest.
+
+If any package input or signed manifest content changed:
 
 1. Run `.github/workflows/toolchains.yml` from the exact release-candidate ref in
    private `judgedesk-source`.
@@ -100,6 +103,12 @@ Before installer builds:
 
 The workflow needs `PUBLIC_RELEASE_TOKEN` and
 `TOOLCHAIN_MANIFEST_SIGNING_PRIVATE_KEY_B64` in the private source repository.
+
+If none of those inputs changed, do not rebuild or replace the existing
+`toolchains-v2` release merely for an application patch. Verify its public
+manifest URL, Ed25519 signature, package SHA-256 values, download URLs and exact
+language/host allowlist again, then record that immutable release as the input
+to both Core and Full builds.
 
 ## Windows Core and Full
 
@@ -176,7 +185,7 @@ notarization unless `JUDGEDESK_REQUIRE_NOTARIZATION=1` passes in the actual buil
 10. Publish the draft only after both operating-system matrices pass. Remove the
     temporary staging release afterward.
 
-Existing v1.3.0 users can receive v1.3.2 through the updater. `latest.json`
+Existing v1.3.0 and v1.3.2 users can receive v1.3.3 through the updater. `latest.json`
 continues to select only the Full Windows MSI and Full macOS updater archive so
 an automatic update never removes managed toolchains included by a previous
 Full installation.
