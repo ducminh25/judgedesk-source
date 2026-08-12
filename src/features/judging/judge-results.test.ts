@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { BatchJudgeResult, ProblemResult } from "../../types";
 import { judgeResultsReducer, problemHasPositiveScore } from "./judge-results";
+import { createLatestFrameScheduler } from "./progress-scheduler";
+import {
+  indexProblemResults,
+  indexScoreboardResults,
+  selectedTotalScore,
+} from "../scoreboard/scoreboard-model";
 
 function problem(problemName: string, score: number): ProblemResult {
   return {
@@ -94,4 +100,45 @@ test("saving a problem configuration can remove every score and judging log for 
   assert.deepEqual(next?.contestants, [
     { contestantName: "Alice", problems: [problem("B", 20)] },
   ]);
+});
+
+test("scoreboard indexes results once with case-insensitive problem lookup", () => {
+  const alice = { contestantName: "Alice", problems: [problem("A", 10), problem("b", 20)] };
+  const result: BatchJudgeResult = { success: true, contestants: [alice] };
+  const index = indexScoreboardResults(result);
+  const problems = indexProblemResults(index.contestants.get("Alice"));
+
+  assert.equal(index.contestants.get("Alice"), alice);
+  assert.deepEqual([...index.problemsWithResults], ["a", "b"]);
+  assert.equal(problems.get("a"), alice.problems[0]);
+  assert.equal(problems.get("B".toLowerCase()), alice.problems[1]);
+  assert.equal(selectedTotalScore(alice, new Set(["b"])), 20);
+});
+
+test("progress scheduler publishes only the latest event in each frame", () => {
+  const frames = new Map<number, () => void>();
+  const published: number[] = [];
+  let nextFrameId = 1;
+  const scheduler = createLatestFrameScheduler<number, number>(
+    (callback) => {
+      const frameId = nextFrameId++;
+      frames.set(frameId, callback);
+      return frameId;
+    },
+    (frameId) => frames.delete(frameId),
+    (value) => published.push(value),
+  );
+
+  scheduler.schedule(1);
+  scheduler.schedule(2);
+  assert.equal(frames.size, 1);
+  const firstFrame = frames.get(1);
+  frames.delete(1);
+  firstFrame?.();
+  assert.deepEqual(published, [2]);
+
+  scheduler.schedule(3);
+  scheduler.cancel();
+  assert.equal(frames.size, 0);
+  assert.deepEqual(published, [2]);
 });
