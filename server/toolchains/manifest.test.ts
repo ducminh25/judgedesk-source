@@ -9,6 +9,7 @@ import {
   TOOLCHAIN_RELEASE_BLUEPRINTS,
   canonicalizeManifestPayload,
   loadOfficialManifest,
+  normalizeHostArchitecture,
   validateManifestDocument,
 } from "./manifest.js";
 import type {
@@ -21,6 +22,15 @@ import {
   isCurrentReleaseToolchainKind,
   listCurrentReleaseManagedPackageIds,
 } from "./release-scope.js";
+
+test("host architecture normalization accepts Node and upstream aliases", () => {
+  assert.equal(normalizeHostArchitecture("x64"), "x64");
+  assert.equal(normalizeHostArchitecture("x86_64"), "x64");
+  assert.equal(normalizeHostArchitecture("amd64"), "x64");
+  assert.equal(normalizeHostArchitecture("arm64"), "arm64");
+  assert.equal(normalizeHostArchitecture("aarch64"), "arm64");
+  assert.equal(normalizeHostArchitecture("riscv64"), "riscv64");
+});
 
 test("current release scope contains only Themis languages and complete host packages", () => {
   assert.deepEqual(CURRENT_RELEASE_TOOLCHAIN_KINDS, [

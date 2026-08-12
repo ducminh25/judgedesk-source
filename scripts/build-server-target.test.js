@@ -15,6 +15,57 @@ import {
   toTauriResourceDirectory,
 } from "./smoke-test-sidecar.js";
 
+test("build toolchain versions stay pinned consistently", () => {
+  const packageJson = JSON.parse(
+    fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+  );
+  const nodeVersion = fs
+    .readFileSync(new URL("../.nvmrc", import.meta.url), "utf8")
+    .trim();
+  const npmVersion = packageJson.packageManager.match(/^npm@(.+)$/)?.[1];
+  const rustToolchain = fs.readFileSync(
+    new URL("../rust-toolchain.toml", import.meta.url),
+    "utf8",
+  );
+  const rustVersion = rustToolchain.match(/^channel = "([^"]+)"$/m)?.[1];
+  const ciWorkflow = fs.readFileSync(
+    new URL("../.github/workflows/ci.yml", import.meta.url),
+    "utf8",
+  );
+  const releaseWorkflow = fs.readFileSync(
+    new URL("../.github/workflows/release.yml", import.meta.url),
+    "utf8",
+  );
+  const toolchainWorkflow = fs.readFileSync(
+    new URL("../.github/workflows/toolchains.yml", import.meta.url),
+    "utf8",
+  );
+  const codemagic = fs.readFileSync(
+    new URL("../codemagic.yaml", import.meta.url),
+    "utf8",
+  );
+
+  assert.equal(nodeVersion, "24.19.0");
+  assert.equal(packageJson.engines.node, nodeVersion);
+  assert.equal(packageJson.volta.node, nodeVersion);
+  assert.equal(npmVersion, "11.17.0");
+  assert.equal(packageJson.volta.npm, npmVersion);
+  for (const workflow of [ciWorkflow, releaseWorkflow, toolchainWorkflow]) {
+    assert.match(workflow, new RegExp(`node-version: ${nodeVersion.replaceAll(".", "\\.")}`));
+    assert.doesNotMatch(workflow, /node-version:\s*(?:22|latest|current)\b/);
+  }
+  assert.equal((codemagic.match(/node: 24\.19\.0/g) || []).length, 2);
+  assert.equal((codemagic.match(/npm: 11\.17\.0/g) || []).length, 2);
+
+  assert.equal(rustVersion, "1.97.1");
+  for (const workflow of [ciWorkflow, releaseWorkflow]) {
+    assert.match(workflow, new RegExp(`toolchain: ${rustVersion.replaceAll(".", "\\.")}`));
+    assert.doesNotMatch(workflow, /rust-toolchain@stable/);
+  }
+  assert.match(codemagic, /rustup toolchain install 1\.97\.1/);
+  assert.match(codemagic, /rustup default 1\.97\.1/);
+});
+
 test("sidecar target names match Tauri target triples", () => {
   assert.equal(targetTripleForHost("win32", "x64"), "x86_64-pc-windows-msvc");
   assert.equal(targetTripleForHost("darwin", "x64"), "x86_64-apple-darwin");
@@ -571,12 +622,15 @@ test("Codemagic builds verified Apple Silicon release artifacts on M2", () => {
   );
 
   assert.match(codemagic, /instance_type: mac_mini_m2/);
-  assert.match(codemagic, /node: 22\.23\.1/);
+  assert.match(codemagic, /node: 24\.19\.0/);
+  assert.match(codemagic, /npm: 11\.17\.0/);
   assert.match(codemagic, /xcode:\s*["']26\.3["']/);
   assert.doesNotMatch(codemagic, /xcode:\s*(?:latest|edge)/);
   assert.match(codemagic, /xcrun --find clang\+\+/);
   assert.match(codemagic, /groups:\s+\- themis_signing/);
   assert.match(codemagic, /https:\/\/sh\.rustup\.rs/);
+  assert.match(codemagic, /rustup toolchain install 1\.97\.1/);
+  assert.match(codemagic, /rustup default 1\.97\.1/);
   assert.match(codemagic, /PATH=\$HOME\/\.cargo\/bin:\$PATH/);
   assert.match(codemagic, />> "\$CM_ENV"/);
   assert.match(codemagic, /--target aarch64-apple-darwin/);
