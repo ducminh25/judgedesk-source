@@ -951,7 +951,7 @@ let cachedBundledManifest: {
   toolchains: ToolchainDescriptor[];
 } | null = null;
 
-function mappedArchitecture(arch: string): string {
+export function normalizeHostArchitecture(arch: string): string {
   return arch === "x86_64" || arch === "amd64"
     ? "x64"
     : arch === "aarch64"
@@ -1577,7 +1577,7 @@ export function getDescriptorForHost(
   arch: string,
   kind: string,
 ): ToolchainCatalogEntry | undefined {
-  const mappedArch = mappedArchitecture(arch);
+  const mappedArch = normalizeHostArchitecture(arch);
   return TOOLCHAIN_CATALOG.find(
     (entry) =>
       entry.platform === platform &&

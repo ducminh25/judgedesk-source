@@ -25,6 +25,7 @@ import {
 import {
   getDescriptorForHost,
   loadOfficialManifest,
+  normalizeHostArchitecture,
   TOOLCHAIN_CATALOG,
 } from "../toolchains/manifest.js";
 import { inspectInstalledToolchainPackage } from "../toolchains/package-store.js";
@@ -139,18 +140,12 @@ function isAcceptedLocalPath(value: unknown): value is string {
   return path.posix.isAbsolute(value);
 }
 
-function mappedArchitecture(): string {
-  const architecture = os.arch();
-  if (architecture === "x86_64" || architecture === "amd64") return "x64";
-  if (architecture === "aarch64") return "arm64";
-  return architecture;
-}
-
 function profileSupportsCurrentHost(profileId: string): boolean {
   const entry = getRegisteredLanguageProfile(profileId);
   if (!entry) return false;
   return entry.profile.supportedHosts.some(
-    (host) => host.platform === os.platform() && host.arch === mappedArchitecture(),
+    (host) => host.platform === os.platform()
+      && host.arch === normalizeHostArchitecture(os.arch()),
   );
 }
 
@@ -193,7 +188,7 @@ export function registerToolchainRoutes(app: Express): void {
 
   app.get("/api/toolchains", (_req, res) => {
     const platform = os.platform();
-    const arch = mappedArchitecture();
+    const arch = normalizeHostArchitecture(os.arch());
     const prefs = loadPreferences();
     startManifestLoad();
     const manifest = manifestState.entries;
@@ -381,7 +376,10 @@ export function registerToolchainRoutes(app: Express): void {
         message: `Toolchain descriptor with ID '${id}' is not enabled in this release.`,
       });
     }
-    if (catalogEntry.platform !== os.platform() || catalogEntry.arch !== mappedArchitecture()) {
+    if (
+      catalogEntry.platform !== os.platform()
+      || catalogEntry.arch !== normalizeHostArchitecture(os.arch())
+    ) {
       return res.status(400).json({
         success: false,
         message: "This toolchain package is not compatible with the current host.",

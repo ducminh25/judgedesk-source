@@ -2,8 +2,11 @@
 
 ## Required toolchains
 
-- Node.js `22.x` (enforced by `.nvmrc` and `scripts/check-node.js`).
-- Rust stable with `rustfmt`.
+- Node.js `24.19.0` LTS with npm `11.17.0` (enforced by `.nvmrc`,
+  `package.json` and `scripts/check-node.js`). The exact Node binary becomes the
+  packaged SEA backend, so release builds intentionally use a reproducible
+  version rather than a floating `latest` alias.
+- Rust `1.97.1` with `rustfmt` (pinned by `rust-toolchain.toml`).
 - Windows: Visual Studio Build Tools with **Desktop development with C++** and WebView2.
 - macOS: Xcode Command Line Tools (`xcode-select --install`).
 
