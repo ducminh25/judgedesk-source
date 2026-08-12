@@ -21,12 +21,12 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 150
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
       - run: npm ci
@@ -36,7 +36,7 @@ jobs:
           "SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)" |
             Out-File -FilePath $env:GITHUB_ENV -Append
       - name: Restore verified upstream source cache
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: build/toolchain-source-cache
           key: toolchain-sources-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/toolchain-release-sources.ts') }}
@@ -62,7 +62,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npx tsx --test server/judge/custom-checker.gate.test.ts
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: toolchains-windows-x64
           if-no-files-found: error
@@ -75,12 +75,12 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 150
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
       - run: npm ci
@@ -89,7 +89,7 @@ jobs:
       - name: Pin reproducible package timestamp
         run: echo "SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
       - name: Restore verified upstream source cache
-        uses: actions/cache@v4
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: build/toolchain-source-cache
           key: toolchain-sources-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/toolchain-release-sources.ts') }}
@@ -108,7 +108,7 @@ jobs:
           npx tsx --test server/judge/c-submission.gate.test.ts
           npx tsx --test server/judge/multi-language.gate.test.ts
           npx tsx --test server/judge/custom-checker.gate.test.ts
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: toolchains-macos-arm64
           if-no-files-found: error
@@ -123,15 +123,15 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - name: Pin reproducible manifest timestamp
         run: echo "SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: dist-toolchains
           merge-multiple: true
