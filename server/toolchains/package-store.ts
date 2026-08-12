@@ -63,6 +63,34 @@ export type InstalledToolchainPackageState =
       status: "not_installed";
     };
 
+export type InstalledToolchainPackageInspector = (
+  entry: ToolchainCatalogEntry,
+  options?: { kind?: ToolchainKind },
+) => InstalledToolchainPackageState;
+
+export function createInstalledToolchainPackageInspector(
+  inspect: InstalledToolchainPackageInspector = inspectInstalledToolchainPackage,
+): InstalledToolchainPackageInspector {
+  const snapshot = new Map<string, InstalledToolchainPackageState>();
+  return (entry, options = {}) => {
+    const kind = options.kind ?? entry.kind;
+    const entrypoint = entry.entrypoints.find((candidate) => candidate.kind === kind);
+    const key = [
+      entry.id,
+      entry.version,
+      entry.platform,
+      entry.arch,
+      kind,
+      entrypoint?.executableRelativePath ?? "",
+    ].join("\0");
+    const cached = snapshot.get(key);
+    if (cached) return cached;
+    const state = inspect(entry, { kind });
+    snapshot.set(key, state);
+    return state;
+  };
+}
+
 export function getBuiltInToolchainsDir(
   resourceRoot: string = RESOURCE_ROOT,
 ): string {

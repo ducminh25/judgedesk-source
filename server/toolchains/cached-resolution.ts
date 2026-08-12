@@ -15,7 +15,10 @@ import {
   getDescriptorForHost,
   TOOLCHAIN_RELEASE_BLUEPRINTS,
 } from "./manifest.js";
-import { inspectInstalledToolchainPackage } from "./package-store.js";
+import {
+  inspectInstalledToolchainPackage,
+  type InstalledToolchainPackageInspector,
+} from "./package-store.js";
 import {
   getHostProductVersion,
   isMinimumOsSupported,
@@ -62,6 +65,7 @@ function unavailable(
  */
 export function resolveCachedManagedToolchain(
   kind: ToolchainKind,
+  inspectInstalledPackage: InstalledToolchainPackageInspector = inspectInstalledToolchainPackage,
 ): ResolvedToolchain {
   const descriptor = getDescriptorForHost(os.platform(), os.arch(), kind);
   if (!descriptor) {
@@ -86,7 +90,7 @@ export function resolveCachedManagedToolchain(
       descriptor.version,
     );
   }
-  const installed = inspectInstalledToolchainPackage(descriptor, { kind });
+  const installed = inspectInstalledPackage(descriptor, { kind });
   if (installed.status === "installed") {
     return {
       kind,
@@ -326,6 +330,7 @@ function resolveCachedLocalCandidate(
 export function resolveCachedToolchainSelection(
   kind: ToolchainKind,
   selection: StoredProfileToolchainPreference,
+  inspectInstalledPackage: InstalledToolchainPackageInspector = inspectInstalledToolchainPackage,
 ): CachedToolchainResolution {
   if (selection.mode === "none") {
     return {
@@ -339,7 +344,7 @@ export function resolveCachedToolchainSelection(
     };
   }
   if (selection.mode === "managed") {
-    const active = resolveCachedManagedToolchain(kind);
+    const active = resolveCachedManagedToolchain(kind, inspectInstalledPackage);
     return { active, detected: active.ready };
   }
   const source = selection.mode === "local_path" ? "custom" : "system";

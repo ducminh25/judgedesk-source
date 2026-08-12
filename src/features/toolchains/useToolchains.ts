@@ -218,6 +218,7 @@ export function useToolchains() {
   const [state, setState] = useState<ToolchainState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const pollingRef = useRef<number | null>(null);
+  const pollingMountedRef = useRef(false);
   const initialRetryRef = useRef<number | null>(null);
 
   const fetchState = useCallback(async () => {
@@ -235,18 +236,24 @@ export function useToolchains() {
 
   const startPolling = useCallback(() => {
     if (pollingRef.current) return;
-    pollingRef.current = window.setInterval(async () => {
+    const poll = async () => {
       const data = await fetchState();
-      if (!data) return;
-      if (!hasRunningOperation(data) && pollingRef.current) {
-        clearInterval(pollingRef.current);
+      if (!pollingMountedRef.current) {
         pollingRef.current = null;
+        return;
       }
-    }, 1000);
+      if (data && !hasRunningOperation(data)) {
+        pollingRef.current = null;
+        return;
+      }
+      pollingRef.current = window.setTimeout(() => void poll(), 1000);
+    };
+    pollingRef.current = window.setTimeout(() => void poll(), 1000);
   }, [fetchState]);
 
   useEffect(() => {
     let disposed = false;
+    pollingMountedRef.current = true;
     const loadInitialState = async (retriesRemaining: number) => {
       const data = await fetchState();
       if (disposed) return;
@@ -262,8 +269,9 @@ export function useToolchains() {
     void loadInitialState(10);
     return () => {
       disposed = true;
+      pollingMountedRef.current = false;
       if (initialRetryRef.current) clearTimeout(initialRetryRef.current);
-      if (pollingRef.current) clearInterval(pollingRef.current);
+      if (pollingRef.current) clearTimeout(pollingRef.current);
       initialRetryRef.current = null;
       pollingRef.current = null;
     };

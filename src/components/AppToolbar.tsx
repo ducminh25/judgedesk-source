@@ -37,6 +37,7 @@ interface Props {
   errorMessage: string;
   hostStatus: HostStatus | null;
   interactionLocked: boolean;
+  isExporting: boolean;
   isJudging: boolean;
   isSavingContest: boolean;
   onDeleteSelected: () => void;
@@ -70,6 +71,7 @@ export default function AppToolbar({
   errorMessage,
   hostStatus,
   interactionLocked,
+  isExporting,
   isJudging,
   isSavingContest,
   onDeleteSelected,
@@ -182,9 +184,11 @@ export default function AppToolbar({
           {isJudging ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
           <span>{isJudging ? t("status.judging") : t("toolbar.run")}</span>
         </button>
-        <button type="button" onClick={onExport} disabled={!canExport || interactionLocked} className={commandButton}>
-          <FileSpreadsheet className="h-4 w-4 text-emerald-500" />
-          <span>{t("scoreboard.export")}</span>
+        <button type="button" onClick={onExport} disabled={!canExport || interactionLocked || isExporting} className={commandButton}>
+          {isExporting
+            ? <RefreshCw className="h-4 w-4 animate-spin" />
+            : <FileSpreadsheet className="h-4 w-4 text-emerald-500" />}
+          <span>{isExporting ? t("export.exporting") : t("scoreboard.export")}</span>
         </button>
         <button
           type="button"
