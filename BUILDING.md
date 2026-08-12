@@ -43,7 +43,8 @@ For an already packaged app, the repeatable local gate is:
 
 ```powershell
 npm run test:windows-resources -- `
-  -AppExecutable '<extracted-or-installed-path>\themis-v2.exe'
+  -AppExecutable '<extracted-or-installed-path>\themis-v2.exe' `
+  -StressRoot 'D:\path\to\stress_test_judge'
 ```
 
 This local gate is valid resource evidence, but it is not the Windows security
