@@ -10,6 +10,8 @@ export interface Submission {
   language: SubmissionLanguage;
 }
 
+export type SubmissionResolver = (targetProblem: string) => Submission | null;
+
 export function listContestants(contestantsDirectory: string, targets?: unknown): string[] {
   const contestants = fs.readdirSync(contestantsDirectory)
     .filter(name => fs.statSync(path.join(contestantsDirectory, name)).isDirectory());
@@ -24,31 +26,43 @@ export function listContestants(contestantsDirectory: string, targets?: unknown)
 }
 
 export function findSubmission(contestantDirectory: string, targetProblem: string): Submission | null {
-  const candidates = fs.readdirSync(contestantDirectory).filter(name => {
+  return createSubmissionResolver(contestantDirectory)(targetProblem);
+}
+
+export function createSubmissionResolver(contestantDirectory: string): SubmissionResolver {
+  const candidatesByProblem = new Map<string, Submission[]>();
+  for (const entry of fs.readdirSync(contestantDirectory, { withFileTypes: true })) {
+    const name = entry.name;
     const filePath = path.join(contestantDirectory, name);
     const extension = path.extname(name);
     const baseName = name.slice(0, name.length - extension.length);
-    return fs.statSync(filePath).isFile()
-      && baseName.toLowerCase() === targetProblem.toLowerCase()
-      && !!getRegisteredProfileForExtension(extension);
-  });
-  if (candidates.length === 0) return null;
-  if (candidates.length > 1) {
-    throw new Error(
-      `AMBIGUOUS_SUBMISSION: '${targetProblem}' has multiple supported source files: ${
-        candidates.sort((left, right) => left.localeCompare(right)).join(", ")
-      }`,
-    );
+    const registered = getRegisteredProfileForExtension(extension);
+    const isFile = entry.isFile()
+      || (entry.isSymbolicLink() && fs.statSync(filePath).isFile());
+    if (!registered || !isFile) continue;
+    const normalizedProblem = baseName.toLowerCase();
+    const submissions = candidatesByProblem.get(normalizedProblem) ?? [];
+    submissions.push({
+      fileName: name,
+      filePath,
+      problemName: baseName,
+      language: registered.toolchainKind as SubmissionLanguage,
+    });
+    candidatesByProblem.set(normalizedProblem, submissions);
   }
-  const fileName = candidates[0];
-  const extension = path.extname(fileName);
-  const baseName = fileName.slice(0, fileName.length - extension.length);
-  const registered = getRegisteredProfileForExtension(extension);
-  if (!registered) return null;
-  return {
-    fileName,
-    filePath: path.join(contestantDirectory, fileName),
-    problemName: baseName,
-    language: registered.toolchainKind as SubmissionLanguage,
+
+  return targetProblem => {
+    const candidates = candidatesByProblem.get(targetProblem.toLowerCase()) ?? [];
+    if (candidates.length === 0) return null;
+    if (candidates.length > 1) {
+      throw new Error(
+        `AMBIGUOUS_SUBMISSION: '${targetProblem}' has multiple supported source files: ${
+          candidates.map(candidate => candidate.fileName)
+            .sort((left, right) => left.localeCompare(right))
+            .join(", ")
+        }`,
+      );
+    }
+    return candidates[0];
   };
 }

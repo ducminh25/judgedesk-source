@@ -174,7 +174,7 @@ test(
           executablePath: compiled.executablePath,
           inputPath: input,
           expectedOutputPath: expected,
-          expectedOutput: "42\n",
+          expectedOutputPreview: "42\n",
           testRoot: root,
           contestantsRoot: root,
           tempDirectory: root,

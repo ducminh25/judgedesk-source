@@ -23,11 +23,19 @@ export function createProblemDirectoryResolver(testDirectory: string): (problemN
 }
 
 export function listTestDirectories(problemDirectory: string): string[] {
+  return discoverTestCases(problemDirectory).map(testCase => testCase.name);
+}
+
+export function discoverTestCases(problemDirectory: string): TestCaseFiles[] {
   return fs.readdirSync(problemDirectory, { withFileTypes: true })
     .filter(entry => entry.isDirectory())
-    .map(entry => entry.name)
-    .filter(name => resolveTestCaseFiles(problemDirectory, name) !== null)
-    .sort((left, right) => left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" }));
+    .map(entry => resolveTestCaseFiles(problemDirectory, entry.name))
+    .filter((testCase): testCase is TestCaseFiles => testCase !== null)
+    .sort((left, right) => left.name.localeCompare(
+      right.name,
+      undefined,
+      { numeric: true, sensitivity: "base" },
+    ));
 }
 
 export function resolveTestCaseFiles(problemDirectory: string, testName: string): TestCaseFiles | null {
