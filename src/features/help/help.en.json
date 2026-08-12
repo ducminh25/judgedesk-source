@@ -188,8 +188,8 @@
     },
     "portable": {
       "title": "Portable compatibility",
-      "summary": "What v1.3.2 supports and what remains future work",
-      "notShipped": "JudgeDesk v1.3.2 does not ship or support a portable application archive. The supported release artifacts remain the Windows installer and macOS disk image.",
+      "summary": "What the current release supports and what remains future work",
+      "notShipped": "JudgeDesk does not ship or support a portable application archive. The supported release artifacts remain the Windows installer and macOS disk image.",
       "compatibility": "The application is being kept compatible with a future extract-and-run package, but signing, updater behavior, writable data location, WebView/runtime dependencies, and clean-machine testing must be solved before release.",
       "items": {
         "installer": "Use the official installer or disk image and verify its published checksum.",

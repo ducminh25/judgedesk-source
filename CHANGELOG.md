@@ -5,6 +5,38 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 ## [Unreleased]
 
+## [1.3.3] - 2026-08-13
+
+### Hiệu năng và độ phản hồi
+
+- Giảm mạnh thời gian khởi động Native protection trên Windows khi cache
+  toolchain lớn đã có đúng ACL: JudgeDesk kiểm tra policy trước và bỏ qua lượt
+  áp quyền đệ quy dư thừa; mọi sai lệch vẫn được sửa theo đường fail-closed cũ.
+- Mỗi phiên chấm chỉ quét source thí sinh/test một lần và lưu sẵn cấu hình trọng
+  số, điểm tối đa, time limit để dùng lại. Đây không phải tính trước điểm kết
+  quả: điểm vẫn chỉ có sau khi bài chạy và checker trả verdict như trước.
+- Bảng điểm dùng chỉ mục kết quả, memo hóa từng hàng và gom các progress event
+  dày vào frame giao diện mới nhất, giúp cuộn/chấm kỳ thi lớn ổn định hơn.
+- Nén/mở kỳ thi `.judgedesk`, tạo workbook Excel và các thao tác toolchain nặng
+  được chuyển khỏi luồng giao diện; polling toolchain chậm không còn chồng lặp.
+
+### Xuất Excel
+
+- Nút **Xuất file Excel** sáng khi bảng điểm có ít nhất một thí sinh hoặc một
+  bài, kể cả trước khi chấm; các ô và tổng điểm chưa có kết quả là ô trống thật.
+- Trên Windows có Microsoft Excel, JudgeDesk mở một workbook `.xlsx` mới chưa
+  lưu để `Ctrl+S` hoặc đóng workbook đi qua Save As. Máy không có Excel và
+  macOS vẫn giao chính file `.xlsx` cho ứng dụng do hệ điều hành chọn.
+- Chặn thao tác xuất trùng trong lúc worker đang tạo file và thay giới hạn cũ
+  bằng một giới hạn an toàn 256 MiB cho toàn payload, phù hợp hơn với kỳ thi lớn.
+
+### Nền tảng build
+
+- Khóa release vào Node.js 24.19.0/npm 11.17.0, Rust 1.97.1 và dependency Tauri
+  v2 đã cập nhật, đồng thời làm mới các GitHub Action đã pin SHA.
+- Không thay đổi hệ điều hành hỗ trợ: Windows 10/11 x64 và macOS 11+ trên Apple
+  Silicon; application identifier, dữ liệu người dùng và updater key được giữ nguyên.
+
 ## [1.3.2] - 2026-08-10
 
 ### Toolchain và trải nghiệm cài đặt
@@ -298,3 +330,4 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 [1.2.7]: https://github.com/ducminh25/judgedesk/releases/tag/v1.2.7
 [1.3.0]: https://github.com/ducminh25/judgedesk/releases/tag/v1.3.0
 [1.3.2]: https://github.com/ducminh25/judgedesk/releases/tag/v1.3.2
+[1.3.3]: https://github.com/ducminh25/judgedesk/releases/tag/v1.3.3

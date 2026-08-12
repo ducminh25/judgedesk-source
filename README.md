@@ -16,6 +16,7 @@ Repository này chứa mã nguồn nội bộ của JudgeDesk. Trang công khai 
 - **[BUILDING.md](BUILDING.md)**: Hướng dẫn build từ mã nguồn.
 - **[RELEASING.md](RELEASING.md)**: Quy trình đóng gói và phát hành.
 - **[docs/CONTEST-FORMAT.md](docs/CONTEST-FORMAT.md)**: Định dạng file kỳ thi `.judgedesk`.
+- **[docs/v1.3.3-release-context.md](docs/v1.3.3-release-context.md)**: Phạm vi, artefact và ledger xác minh release v1.3.3.
 - **[docs/v1.3.2-toolchains-help-implementation-plan.md](docs/v1.3.2-toolchains-help-implementation-plan.md)**: Thiết kế toolchain, flags theo từng bài và Help Center của v1.3.2.
 - **[docs/portable-compatibility-v1.3.2.md](docs/portable-compatibility-v1.3.2.md)**: Audit khả năng portable; không phải artefact được hỗ trợ trong v1.3.2.
 
@@ -46,8 +47,9 @@ toolchain tích hợp.
 
 ## Môi trường phát triển
 
-- **Node.js**: phiên bản `22.x` (chưa dùng 23+ vì tương thích đóng gói SEA).
-- **Rust**: toolchain stable mới nhất cùng các thư viện nền cho [Tauri v2](https://v2.tauri.app/start/prerequisites/).
+- **Node.js/npm**: đúng `24.19.0` / `11.17.0`; Node trở thành SEA backend nên release không dùng alias `latest`.
+- **Rust**: đúng `1.97.1` với `rustfmt`, được khóa bởi `rust-toolchain.toml`.
+- **Tauri**: dòng v2 theo dependency lock của repository; không nâng trôi tự do trong lúc đóng gói release.
 - **Windows**: Visual Studio Build Tools với workload **Desktop development with C++**.
 - **macOS**: Xcode Command Line Tools.
 
