@@ -1,16 +1,22 @@
 import {
+  memo,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
   type Dispatch,
   type MouseEvent as ReactMouseEvent,
-  type ReactNode,
   type SetStateAction,
 } from "react";
 import { ArrowUpDown, MoreVertical, Terminal } from "lucide-react";
-import type { BatchJudgeResult, ProblemResult } from "../../types";
+import type { BatchJudgeResult, ContestantResult, ProblemResult } from "../../types";
 import { useTranslation } from "react-i18next";
+import {
+  indexProblemResults,
+  indexScoreboardResults,
+  selectedTotalScore,
+} from "./scoreboard-model";
 
 export interface ScoreboardActionTarget {
   type: "problem" | "contestant" | "result";
@@ -44,7 +50,12 @@ interface ViewportSize {
   height: number;
 }
 
-export default function Scoreboard({
+type OpenContextMenu = (
+  event: ReactMouseEvent,
+  target: Omit<ScoreboardActionTarget, "x" | "y">,
+) => void;
+
+function Scoreboard({
   allContestants,
   contestants,
   contestantSort,
@@ -73,10 +84,7 @@ export default function Scoreboard({
     return () => observer.disconnect();
   }, []);
 
-  const resultsByContestant = useMemo(
-    () => new Map((result?.contestants || []).map((contestant) => [contestant.contestantName, contestant])),
-    [result],
-  );
+  const resultIndex = useMemo(() => indexScoreboardResults(result), [result]);
   const selectedProblemNames = useMemo(
     () => new Set(Object.keys(selectedProblems).filter((problem) => selectedProblems[problem]).map((name) => name.toLowerCase())),
     [selectedProblems],
@@ -99,7 +107,7 @@ export default function Scoreboard({
     ? Math.max(24, Math.min(38, Math.floor((viewport.height - headerHeight) / contestants.length)))
     : 32;
 
-  const openContextMenu = (
+  const openContextMenu = useCallback((
     event: ReactMouseEvent,
     target: Omit<ScoreboardActionTarget, "x" | "y">,
   ) => {
@@ -113,56 +121,7 @@ export default function Scoreboard({
       x: Math.max(4, Math.min(requestedX, window.innerWidth - 224)),
       y: Math.max(4, Math.min(requestedY, window.innerHeight - 196)),
     });
-  };
-
-  const problemResultFor = (contestantName: string, problemName: string) =>
-    resultsByContestant
-      .get(contestantName)
-      ?.problems.find((item) => item.problemName.toLowerCase() === problemName.toLowerCase());
-
-  const renderCell = (contestantName: string, problemName: string) => {
-    const problem = problemResultFor(contestantName, problemName);
-    let displayText: ReactNode = "-";
-    let colorClass = "text-text-muted";
-    if (problem) {
-      displayText = problem.summary.score;
-      if (problem.compileStatus === "SKIPPED" && problem.compileError === "not_found") {
-        displayText = t("scoreboard.notFound");
-        colorClass = "text-text-muted bg-surface-hover";
-      } else if (problem.compileStatus === "CE") {
-        displayText = "CE";
-        colorClass = "bg-rose-100 font-bold text-rose-700 dark:bg-rose-950/30 dark:text-rose-400";
-      } else if (problem.summary.status === "AC") {
-        colorClass = "bg-emerald-100 font-bold text-emerald-700 dark:bg-emerald-950/25 dark:text-emerald-400";
-      } else if (problem.summary.status === "PARTIAL") {
-        colorClass = "bg-amber-100 font-bold text-amber-700 dark:bg-amber-950/25 dark:text-amber-400";
-      } else {
-        colorClass = "bg-rose-50 text-rose-700 dark:bg-rose-950/15 dark:text-rose-400";
-      }
-    }
-
-    return (
-      <td
-        key={problemName}
-        onContextMenu={(event) => openContextMenu(event, {
-          type: "result",
-          name: `${contestantName} · ${problemName}`,
-          contestantName,
-          problemName,
-          hasResults: !!problem,
-          canRegrade: true,
-        })}
-        onDoubleClick={() => {
-          if (problem && problem.compileStatus !== "SKIPPED") onOpenDetails(contestantName, problem);
-        }}
-        className={`border-b border-l border-surface-border px-2 text-center align-middle transition-[filter] hover:brightness-95 dark:hover:brightness-110 ${problem ? "cursor-pointer" : "cursor-default"} ${colorClass}`}
-        style={{ height: rowHeight }}
-        title={problem ? t("scoreboard.resultStatus", { status: problem.summary.status, compileStatus: problem.compileStatus }) : undefined}
-      >
-        <span className="block whitespace-nowrap">{displayText}</span>
-      </td>
-    );
-  };
+  }, [onOpenActions]);
 
   return (
     <main
@@ -219,9 +178,7 @@ export default function Scoreboard({
                   </div>
                 </th>
                 {problems.map((problemName) => {
-                  const hasResults = (result?.contestants || []).some((contestant) =>
-                    contestant.problems.some((problem) => problem.problemName.toLowerCase() === problemName.toLowerCase()),
-                  );
+                  const hasResults = resultIndex.problemsWithResults.has(problemName.toLowerCase());
                   return (
                     <th
                       key={problemName}
@@ -282,57 +239,21 @@ export default function Scoreboard({
               </tr>
             </thead>
             <tbody>
-              {contestants.map((contestantName) => {
-                const contestantResult = resultsByContestant.get(contestantName);
-                const hasResults = !!contestantResult?.problems.length;
-                const totalScore = contestantResult?.problems
-                  .filter((problem) => selectedProblemNames.has(problem.problemName.toLowerCase()))
-                  .reduce((total, problem) => total + problem.summary.score, 0) || 0;
-                const contestantTarget = {
-                  type: "contestant" as const,
-                  name: contestantName,
-                  contestantName,
-                  hasResults,
-                  canRegrade: problems.length > 0,
-                };
-                return (
-                  <tr key={contestantName} className={selectedContestants[contestantName] ? "hover:bg-surface-hover/40" : "opacity-50"}>
-                    <td
-                      onContextMenu={(event) => openContextMenu(event, contestantTarget)}
-                      className="sticky left-0 z-10 cursor-default border-b border-r border-surface-border bg-surface px-2 font-mono text-text-primary"
-                      style={{ height: rowHeight }}
-                    >
-                      <div className="flex min-w-0 items-center gap-1.5">
-                        <input
-                          type="checkbox"
-                          disabled={interactionLocked}
-                          checked={!!selectedContestants[contestantName]}
-                          onChange={(event) => setSelectedContestants((previous) => ({ ...previous, [contestantName]: event.target.checked }))}
-                          className="h-4 w-4 flex-none cursor-pointer rounded border-surface-border-strong bg-input-bg text-indigo-500"
-                        />
-                        <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere] leading-tight">{contestantName}</span>
-                        <button
-                          type="button"
-                          onClick={(event) => openContextMenu(event, contestantTarget)}
-                          className="flex h-6 w-5 flex-none items-center justify-center rounded text-text-muted hover:bg-surface-hover hover:text-text-primary"
-                          title={t("scoreboard.actionsFor", { name: contestantName })}
-                          aria-label={t("scoreboard.actionsFor", { name: contestantName })}
-                        >
-                          <MoreVertical className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </td>
-                    {problems.map((problemName) => renderCell(contestantName, problemName))}
-                    <td
-                      onContextMenu={(event) => openContextMenu(event, contestantTarget)}
-                      className="sticky right-0 z-10 cursor-default border-b border-l border-surface-border bg-total-column px-2 text-center font-bold text-indigo-700 dark:text-indigo-300"
-                      style={{ height: rowHeight }}
-                    >
-                      {contestantResult ? totalScore.toFixed(2) : "-"}
-                    </td>
-                  </tr>
-                );
-              })}
+              {contestants.map((contestantName) => (
+                <ScoreboardRow
+                  key={contestantName}
+                  contestantName={contestantName}
+                  contestantResult={resultIndex.contestants.get(contestantName)}
+                  selected={!!selectedContestants[contestantName]}
+                  selectedProblemNames={selectedProblemNames}
+                  problems={problems}
+                  interactionLocked={interactionLocked}
+                  rowHeight={rowHeight}
+                  setSelectedContestants={setSelectedContestants}
+                  openContextMenu={openContextMenu}
+                  onOpenDetails={onOpenDetails}
+                />
+              ))}
             </tbody>
           </table>
         )}
@@ -340,3 +261,135 @@ export default function Scoreboard({
     </main>
   );
 }
+
+interface ScoreboardRowProps {
+  contestantName: string;
+  contestantResult: ContestantResult | undefined;
+  selected: boolean;
+  selectedProblemNames: ReadonlySet<string>;
+  problems: string[];
+  interactionLocked: boolean;
+  rowHeight: number;
+  setSelectedContestants: Dispatch<SetStateAction<Record<string, boolean>>>;
+  openContextMenu: OpenContextMenu;
+  onOpenDetails: (contestant: string, problem: ProblemResult) => void;
+}
+
+const ScoreboardRow = memo(function ScoreboardRow({
+  contestantName,
+  contestantResult,
+  selected,
+  selectedProblemNames,
+  problems,
+  interactionLocked,
+  rowHeight,
+  setSelectedContestants,
+  openContextMenu,
+  onOpenDetails,
+}: ScoreboardRowProps) {
+  const { t } = useTranslation();
+  const problemResults = useMemo(
+    () => indexProblemResults(contestantResult),
+    [contestantResult],
+  );
+  const totalScore = useMemo(
+    () => selectedTotalScore(contestantResult, selectedProblemNames),
+    [contestantResult, selectedProblemNames],
+  );
+  const contestantTarget = {
+    type: "contestant" as const,
+    name: contestantName,
+    contestantName,
+    hasResults: problemResults.size > 0,
+    canRegrade: problems.length > 0,
+  };
+
+  return (
+    <tr className={selected ? "hover:bg-surface-hover/40" : "opacity-50"}>
+      <td
+        onContextMenu={(event) => openContextMenu(event, contestantTarget)}
+        className="sticky left-0 z-10 cursor-default border-b border-r border-surface-border bg-surface px-2 font-mono text-text-primary"
+        style={{ height: rowHeight }}
+      >
+        <div className="flex min-w-0 items-center gap-1.5">
+          <input
+            type="checkbox"
+            disabled={interactionLocked}
+            checked={selected}
+            onChange={(event) => setSelectedContestants((previous) => ({
+              ...previous,
+              [contestantName]: event.target.checked,
+            }))}
+            className="h-4 w-4 flex-none cursor-pointer rounded border-surface-border-strong bg-input-bg text-indigo-500"
+          />
+          <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere] leading-tight">{contestantName}</span>
+          <button
+            type="button"
+            onClick={(event) => openContextMenu(event, contestantTarget)}
+            className="flex h-6 w-5 flex-none items-center justify-center rounded text-text-muted hover:bg-surface-hover hover:text-text-primary"
+            title={t("scoreboard.actionsFor", { name: contestantName })}
+            aria-label={t("scoreboard.actionsFor", { name: contestantName })}
+          >
+            <MoreVertical className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      </td>
+      {problems.map((problemName) => {
+        const problem = problemResults.get(problemName.toLowerCase());
+        let displayText: string | number = "-";
+        let colorClass = "text-text-muted";
+        if (problem) {
+          displayText = problem.summary.score;
+          if (problem.compileStatus === "SKIPPED" && problem.compileError === "not_found") {
+            displayText = t("scoreboard.notFound");
+            colorClass = "text-text-muted bg-surface-hover";
+          } else if (problem.compileStatus === "CE") {
+            displayText = "CE";
+            colorClass = "bg-rose-100 font-bold text-rose-700 dark:bg-rose-950/30 dark:text-rose-400";
+          } else if (problem.summary.status === "AC") {
+            colorClass = "bg-emerald-100 font-bold text-emerald-700 dark:bg-emerald-950/25 dark:text-emerald-400";
+          } else if (problem.summary.status === "PARTIAL") {
+            colorClass = "bg-amber-100 font-bold text-amber-700 dark:bg-amber-950/25 dark:text-amber-400";
+          } else {
+            colorClass = "bg-rose-50 text-rose-700 dark:bg-rose-950/15 dark:text-rose-400";
+          }
+        }
+        return (
+          <td
+            key={problemName}
+            onContextMenu={(event) => openContextMenu(event, {
+              type: "result",
+              name: `${contestantName} · ${problemName}`,
+              contestantName,
+              problemName,
+              hasResults: !!problem,
+              canRegrade: true,
+            })}
+            onDoubleClick={() => {
+              if (problem && problem.compileStatus !== "SKIPPED") {
+                onOpenDetails(contestantName, problem);
+              }
+            }}
+            className={`border-b border-l border-surface-border px-2 text-center align-middle transition-[filter] hover:brightness-95 dark:hover:brightness-110 ${problem ? "cursor-pointer" : "cursor-default"} ${colorClass}`}
+            style={{ height: rowHeight }}
+            title={problem ? t("scoreboard.resultStatus", {
+              status: problem.summary.status,
+              compileStatus: problem.compileStatus,
+            }) : undefined}
+          >
+            <span className="block whitespace-nowrap">{displayText}</span>
+          </td>
+        );
+      })}
+      <td
+        onContextMenu={(event) => openContextMenu(event, contestantTarget)}
+        className="sticky right-0 z-10 cursor-default border-b border-l border-surface-border bg-total-column px-2 text-center font-bold text-indigo-700 dark:text-indigo-300"
+        style={{ height: rowHeight }}
+      >
+        {contestantResult ? totalScore.toFixed(2) : "-"}
+      </td>
+    </tr>
+  );
+});
+
+export default memo(Scoreboard);
