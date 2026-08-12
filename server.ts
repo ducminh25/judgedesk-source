@@ -21,12 +21,17 @@ startParentWatchdog(process.env.JUDGEDESK_PARENT_PID, async () => {
 });
 
 async function startServer() {
+  const serverStartupStarted = performance.now();
   const secureRunner = await executorClient.start();
   if (!secureRunner.ready) {
     console.error(`[Secure Runner] Unavailable: ${secureRunner.diagnostics.join("; ")}`);
   } else {
     console.log(`[Secure Runner] Ready: ${secureRunner.mode} v${secureRunner.executorVersion}`);
   }
+  console.log("[Performance] Secure runner startup", {
+    clientStartupTimeMs: secureRunner.clientStartupTimeMs,
+    nativeStartupTimings: secureRunner.startupTimings,
+  });
   const app = express();
 
   // Use JSON and URL encoded parsers
@@ -85,6 +90,7 @@ async function startServer() {
 
   app.listen(SERVER_PORT, "127.0.0.1", () => {
     console.log(`[Online Judge Server] Live on http://127.0.0.1:${SERVER_PORT}`);
+    console.log(`[Performance] Backend ready in ${(performance.now() - serverStartupStarted).toFixed(1)} ms`);
   });
 }
 

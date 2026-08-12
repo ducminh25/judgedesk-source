@@ -222,6 +222,11 @@ export interface HostStatus {
     filesystemIsolated: boolean;
     processTreeControlled: boolean;
     memoryLimitSupported: boolean;
+    startupTimings?: {
+      totalTimeUs: number;
+      phases: Record<string, number>;
+    };
+    clientStartupTimeMs?: number;
   };
 }
 

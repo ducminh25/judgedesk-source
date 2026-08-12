@@ -155,6 +155,13 @@ pub struct RunResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ExecutorStartupTimings {
+    pub total_time_us: u64,
+    pub phases: BTreeMap<String, u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ExecutorHealth {
     pub ready: bool,
     pub mode: String,
@@ -165,6 +172,8 @@ pub struct ExecutorHealth {
     pub filesystem_isolated: bool,
     pub process_tree_controlled: bool,
     pub memory_limit_supported: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub startup_timings: Option<ExecutorStartupTimings>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -286,5 +295,31 @@ mod tests {
             read_frame(&mut bytes.as_slice()).unwrap_err().kind(),
             io::ErrorKind::InvalidData
         );
+    }
+
+    #[test]
+    fn health_serializes_startup_timings_with_stable_camel_case_names() {
+        let response = ExecutorResponse::Health {
+            id: "health-1".into(),
+            health: ExecutorHealth {
+                ready: true,
+                mode: "test".into(),
+                executor_version: "1.0.0".into(),
+                executor_root: "root".into(),
+                diagnostics: Vec::new(),
+                network_blocked: true,
+                filesystem_isolated: true,
+                process_tree_controlled: true,
+                memory_limit_supported: true,
+                startup_timings: Some(ExecutorStartupTimings {
+                    total_time_us: 42,
+                    phases: BTreeMap::from([("selfTest".into(), 7)]),
+                }),
+            },
+        };
+
+        let value = serde_json::to_value(response).unwrap();
+        assert_eq!(value["health"]["startupTimings"]["totalTimeUs"], 42);
+        assert_eq!(value["health"]["startupTimings"]["phases"]["selfTest"], 7);
     }
 }

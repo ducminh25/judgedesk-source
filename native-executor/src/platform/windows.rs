@@ -1,6 +1,7 @@
 use super::{failure, reported_peak_memory_bytes, root_display, ActiveRuns, Cancellation};
 use crate::protocol::{
-    ExecutorHealth, LocalToolchainIsolation, RunReason, RunResult, RunRole, RunSpec,
+    ExecutorHealth, ExecutorStartupTimings, LocalToolchainIsolation, RunReason, RunResult, RunRole,
+    RunSpec,
 };
 use crate::request_validation::ValidatedRun;
 use crate::workspace::{file_size, initialize_root, inspect_workspace};
@@ -79,6 +80,7 @@ const MANAGED_RUNTIME_MARKERS: [&str; 4] = [
 pub struct WindowsPlatform {
     sid: Vec<u8>,
     self_test: SelfTest,
+    startup_timings: ExecutorStartupTimings,
 }
 
 struct SelfTest {
@@ -91,11 +93,23 @@ struct SelfTest {
 
 impl WindowsPlatform {
     pub fn initialize() -> Result<(Self, PathBuf), String> {
+        let startup_started = Instant::now();
+        let mut phases = BTreeMap::new();
+        let phase_started = Instant::now();
         let (sid, profile_root) = create_or_open_profile()?;
+        phases.insert("profile".into(), elapsed_us(phase_started));
+        let phase_started = Instant::now();
         let root = initialize_root(profile_root.join("LocalState"))?;
+        phases.insert("root".into(), elapsed_us(phase_started));
+        let phase_started = Instant::now();
         protect_cache_directory(&root.join("toolchains"), &sid)?;
+        phases.insert("toolchainAcl".into(), elapsed_us(phase_started));
+        let phase_started = Instant::now();
         protect_cache_directory(&root.join("artifacts"), &sid)?;
+        phases.insert("artifactAcl".into(), elapsed_us(phase_started));
+        let phase_started = Instant::now();
         protect_workspace_parent(&root.join("workspaces"), &sid)?;
+        phases.insert("workspaceAcl".into(), elapsed_us(phase_started));
         let mut platform = Self {
             sid,
             self_test: SelfTest {
@@ -105,8 +119,18 @@ impl WindowsPlatform {
                 filesystem_isolated: false,
                 process_tree_controlled: false,
             },
+            startup_timings: ExecutorStartupTimings {
+                total_time_us: 0,
+                phases,
+            },
         };
+        let phase_started = Instant::now();
         platform.self_test = platform.run_self_test(&root);
+        platform
+            .startup_timings
+            .phases
+            .insert("selfTest".into(), elapsed_us(phase_started));
+        platform.startup_timings.total_time_us = elapsed_us(startup_started);
         Ok((platform, root))
     }
 
@@ -121,6 +145,7 @@ impl WindowsPlatform {
             filesystem_isolated: self.self_test.filesystem_isolated,
             process_tree_controlled: self.self_test.process_tree_controlled,
             memory_limit_supported: true,
+            startup_timings: Some(self.startup_timings.clone()),
         }
     }
 
@@ -577,6 +602,10 @@ impl WindowsPlatform {
             diagnostic,
         })
     }
+}
+
+fn elapsed_us(started: Instant) -> u64 {
+    started.elapsed().as_micros().min(u64::MAX as u128) as u64
 }
 
 fn protect_cache_directory(path: &Path, app_container_sid: &[u8]) -> Result<(), String> {

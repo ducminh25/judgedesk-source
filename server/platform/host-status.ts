@@ -84,7 +84,9 @@ export function getHostStatus(): HostStatus {
       networkBlocked: secureRunner.networkBlocked,
       filesystemIsolated: secureRunner.filesystemIsolated,
       processTreeControlled: secureRunner.processTreeControlled,
-      memoryLimitSupported: secureRunner.memoryLimitSupported
+      memoryLimitSupported: secureRunner.memoryLimitSupported,
+      startupTimings: secureRunner.startupTimings,
+      clientStartupTimeMs: secureRunner.clientStartupTimeMs,
     }
   };
 }
