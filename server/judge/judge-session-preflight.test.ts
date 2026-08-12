@@ -8,7 +8,8 @@ import type {
   ToolchainKind,
 } from "../toolchains/types.js";
 import type { JudgeEventWriter } from "./judge-event-writer.js";
-import { runJudgeSession } from "./judge-session.js";
+import { planProblemTestCases, runJudgeSession } from "./judge-session.js";
+import { normalizeProblemConfig } from "../../shared/problem-config.js";
 
 function pin(
   kind: ToolchainKind,
@@ -77,4 +78,33 @@ test("judge session preflight rejects a missing C++ capability before emitting r
     /TOOLCHAIN_PREFLIGHT_FAILED: C\+\+ submissions: CERTIFICATION_REQUIRED/,
   );
   assert.deepEqual(emitted, []);
+});
+
+test("session testcase plan preserves score, time, order, and preview semantics", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-session-plan-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const name of ["10", "2"]) {
+    const directory = path.join(root, name);
+    fs.mkdirSync(directory);
+    fs.writeFileSync(path.join(directory, "data.in"), `${name}\n`);
+    fs.writeFileSync(path.join(directory, "data.out"), "x".repeat(600));
+  }
+  const config = normalizeProblemConfig("SUM", {
+    useStdIO: true,
+    totalScore: 10,
+    defaultScore: 1,
+    testScores: { "2": 1, "10": 3 },
+    polygonConfig: {
+      enableGroups: false,
+      tests: { "10": { points: 7, timeLimit: 2 } },
+      groups: {},
+    },
+  }, null);
+
+  const planned = planProblemTestCases(root, config);
+  assert.deepEqual(planned.map(testCase => testCase.files.name), ["2", "10"]);
+  assert.deepEqual(planned.map(testCase => testCase.score), [1.25, 8.75]);
+  assert.deepEqual(planned.map(testCase => testCase.timeLimitMs), [1_000, 2_000]);
+  assert.equal(planned[0].inputIsText, true);
+  assert.equal(planned[0].expectedOutputPreview, `${"x".repeat(500)}...`);
 });

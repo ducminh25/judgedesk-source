@@ -40,7 +40,7 @@ interface TestCaseRunnerOptions {
   executablePath: string;
   inputPath: string;
   expectedOutputPath: string;
-  expectedOutput: string;
+  expectedOutputPreview: string;
   testRoot: string;
   contestantsRoot: string;
   tempDirectory: string;
@@ -274,7 +274,7 @@ function createResult(
     score,
     checkerMessage,
     errorDetail,
-    expectedOutputPreview: preview(options.expectedOutput),
+    expectedOutputPreview: options.expectedOutputPreview,
     actualOutputPreview: preview(actualOutput),
     execution: executorResult ? {
       reason: executorResult.reason,
