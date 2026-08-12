@@ -1,9 +1,9 @@
 import fs from "fs";
-import os from "os";
+import crypto from "crypto";
 import path from "path";
-import { spawn } from "child_process";
 import { raw, type Express } from "express";
 import { TEMP_ROOT } from "../runtime.js";
+import { openScoreWorkbook } from "../export/workbook-opener.js";
 import {
   decodeScoreExportPayload,
   MAX_SCORE_EXPORT_PAYLOAD_BYTES,
@@ -23,27 +23,17 @@ export function registerExportRoutes(app: Express): void {
       const { workbook, diagnosticJson } = decodeScoreExportPayload(body);
 
       const exportsDir = path.join(TEMP_ROOT, "exports");
-      await fs.promises.mkdir(exportsDir, { recursive: true });
-      const exportId = Date.now();
-      const exportPath = path.join(exportsDir, `judging_result_${exportId}.xlsx`);
-      const diagnosticsPath = path.join(
-        exportsDir,
-        `judging_result_${exportId}.diagnostics.json`,
-      );
+      const exportDir = path.join(exportsDir, crypto.randomUUID());
+      await fs.promises.mkdir(exportDir, { recursive: true });
+      const exportPath = path.join(exportDir, "Book.xlsx");
+      const diagnosticsPath = path.join(exportDir, "diagnostics.json");
       await Promise.all([
         fs.promises.writeFile(exportPath, workbook),
         fs.promises.writeFile(diagnosticsPath, diagnosticJson, "utf8"),
       ]);
 
-      const platform = os.platform();
-      const opener =
-        platform === "win32"
-          ? spawn("explorer.exe", [exportPath], { detached: true, stdio: "ignore" })
-          : platform === "darwin"
-            ? spawn("open", [exportPath], { detached: true, stdio: "ignore" })
-            : spawn("xdg-open", [exportPath], { detached: true, stdio: "ignore" });
-      opener.unref();
-      return res.json({ success: true, path: exportPath, diagnosticsPath });
+      const openMode = await openScoreWorkbook(exportPath);
+      return res.json({ success: true, path: exportPath, diagnosticsPath, openMode });
     } catch (error: any) {
       const message = error.message || "Failed to open workbook.";
       const status = /payload|Workbook|Diagnostic JSON/.test(message) ? 400 : 500;

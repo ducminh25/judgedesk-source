@@ -336,7 +336,9 @@
     "compilationSuccess": "Biên dịch thành công",
     "compilationError": "Lỗi biên dịch",
     "notFound": "Không có bài",
-    "compilation": "Biên dịch"
+    "compilation": "Biên dịch",
+    "exporting": "Đang tạo Excel...",
+    "workerUnavailable": "Webview này không hỗ trợ xuất file Excel."
   },
   "status": {
     "ready": "Sẵn sàng",

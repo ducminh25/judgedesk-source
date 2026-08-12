@@ -25,6 +25,8 @@ export interface ScoreExportBuildRequest {
   labels: ScoreWorkbookLabels;
 }
 
+type WorkbookCellValue = string | number | null;
+
 export async function buildScoreWorkbookBytes(
   judgeResult: BatchJudgeResult,
   contestantNames: string[],
@@ -101,7 +103,7 @@ function addSheet(
   workbook: ExcelJS.Workbook,
   name: string,
   headers: string[],
-  rows: Array<Record<string, string | number>>
+  rows: Array<Record<string, WorkbookCellValue>>
 ): void {
   const sheet = workbook.addWorksheet(name);
   sheet.columns = headers.map(header => ({ header, key: header, width: 10 }));
@@ -156,20 +158,26 @@ function buildSummaryRows(
   labels: ScoreWorkbookLabels,
 ) {
   return contestants.map(contestant => {
-    const row: Record<string, string | number> = { [labels.candidate]: contestant.contestantName };
+    const row: Record<string, WorkbookCellValue> = { [labels.candidate]: contestant.contestantName };
     let totalScore = 0;
+    let hasResult = false;
     for (const problemName of problemNames) {
       const problem = findProblem(contestant, problemName);
-      if (!problem || (problem.compileStatus === "SKIPPED" && problem.compileError === "not_found")) {
+      if (!problem) {
+        row[problemName] = null;
+      } else if (problem.compileStatus === "SKIPPED" && problem.compileError === "not_found") {
+        hasResult = true;
         row[problemName] = labels.notFound;
       } else if (problem.compileStatus !== "OK") {
+        hasResult = true;
         row[problemName] = labels.compilationError;
       } else {
+        hasResult = true;
         row[problemName] = problem.summary.score;
         totalScore += problem.summary.score;
       }
     }
-    row[labels.total] = roundScore(totalScore);
+    row[labels.total] = hasResult ? roundScore(totalScore) : null;
     return row;
   });
 }
@@ -179,7 +187,7 @@ function buildDetailRows(
   problemNames: string[],
   labels: ScoreWorkbookLabels,
 ) {
-  const rows: Array<Record<string, string | number>> = [];
+  const rows: Array<Record<string, WorkbookCellValue>> = [];
   for (const contestant of contestants) {
     const problems = contestant.problems.filter(problem =>
       problemNames.some(name => name.toLowerCase() === problem.problemName.toLowerCase())
@@ -188,7 +196,9 @@ function buildDetailRows(
       [labels.candidate]: contestant.contestantName,
       [labels.problem]: "",
       [labels.test]: "",
-      [labels.score]: roundScore(problems.reduce((total, problem) => total + problem.summary.score, 0)),
+      [labels.score]: problems.length > 0
+        ? roundScore(problems.reduce((total, problem) => total + problem.summary.score, 0))
+        : null,
       [labels.time]: "",
       [labels.results]: ""
     });

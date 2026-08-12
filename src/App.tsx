@@ -15,7 +15,11 @@ import {
   problemHasPositiveScore,
   type JudgeResultsAction,
 } from "./features/judging/judge-results";
-import { canStartJudge, selectedNames } from "./features/judging/availability";
+import {
+  canExportScoreboard,
+  canStartJudge,
+  selectedNames,
+} from "./features/judging/availability";
 import { useJudgeSession } from "./features/judging/useJudgeSession";
 import {
   isDesktopReloadShortcut,
@@ -116,6 +120,7 @@ export default function App() {
   const [contestCreatedAt, setContestCreatedAt] = useState<string | undefined>();
   const [isContestDirty, setIsContestDirty] = useState(false);
   const [isSavingContest, setIsSavingContest] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [pendingContestAction, setPendingContestAction] = useState<PendingContestAction | null>(null);
   const [pendingScoreDeletion, setPendingScoreDeletion] = useState<PendingScoreDeletion | null>(null);
   const contestDirtyRef = useRef(false);
@@ -583,12 +588,13 @@ export default function App() {
 
   const handleExportExcel = async () => {
     if (
-      !judgeResult
-      || interactionLockedRef.current
+      interactionLockedRef.current
       || saveOperationRef.current
       || exportOperationRef.current
     ) return;
     exportOperationRef.current = true;
+    setIsExporting(true);
+    setErrorMessage("");
     try {
       const activeProblems = displayedProblems.filter(
         (problem) => selectedProblems[problem],
@@ -597,7 +603,7 @@ export default function App() {
         (contestant) => selectedContestants[contestant],
       );
       const scoreExport = await buildScoreExport(
-        judgeResult,
+        judgeResult ?? { success: true, contestants: [] },
         activeContestants,
         activeProblems,
         t,
@@ -606,15 +612,20 @@ export default function App() {
         scoreExport.workbook,
         scoreExport.diagnosticJson,
       );
-      await apiFetch("/api/open-excel", {
+      const response = await apiFetch("/api/open-excel", {
         method: "POST",
         headers: { "Content-Type": SCORE_EXPORT_CONTENT_TYPE },
         body: payload,
       });
+      if (!response.ok) {
+        const failure = await response.json().catch(() => null) as { message?: string } | null;
+        throw new Error(failure?.message || `HTTP ${response.status}`);
+      }
     } catch (error: any) {
       setErrorMessage(error.message || "Failed to open the Excel workbook.");
     } finally {
       exportOperationRef.current = false;
+      setIsExporting(false);
     }
   };
 
@@ -631,13 +642,14 @@ export default function App() {
       >
       <AppToolbar
         canDeleteSelected={canDeleteSelected}
-        canExport={!!judgeResult?.contestants.some((contestant) => contestant.problems.length > 0)}
+        canExport={canExportScoreboard(contestantsList, problemsList)}
         canRun={canRun}
         canSaveContest={isContestDirty && hasContestData}
         errorMessage={backendErrorMessage || errorMessage}
         hostStatus={hostStatus}
         interactionLocked={interactionLocked}
         isJudging={isJudging}
+        isExporting={isExporting}
         isSavingContest={isSavingContest}
         onDeleteSelected={() => {
           setPendingScoreDeletion({

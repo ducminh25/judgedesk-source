@@ -110,6 +110,42 @@ test("score export creates summary and detail worksheets", async () => {
   assert.deepEqual(JSON.parse(decoded.diagnosticJson), diagnostic);
 });
 
+test("score export leaves unjudged scoreboard cells blank", async () => {
+  const mockT = (key: string) => key;
+  const workbookBytes = await buildScoreWorkbookBytes(
+    { success: true, contestants: [] },
+    ["Alice"],
+    ["sum"],
+    createScoreWorkbookLabels(mockT as any),
+  );
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(Buffer.from(workbookBytes));
+
+  const summary = workbook.getWorksheet("export.scoreboardTitle")!;
+  assert.equal(summary.getCell("A2").value, "Alice");
+  assert.equal(summary.getCell("B2").value, null);
+  assert.equal(summary.getCell("C2").value, null);
+});
+
+test("score export supports a scoreboard with problems but no contestants", async () => {
+  const mockT = (key: string) => key;
+  const workbookBytes = await buildScoreWorkbookBytes(
+    { success: true, contestants: [] },
+    [],
+    ["sum"],
+    createScoreWorkbookLabels(mockT as any),
+  );
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(Buffer.from(workbookBytes));
+
+  const summary = workbook.getWorksheet("export.scoreboardTitle")!;
+  assert.equal(summary.rowCount, 1);
+  assert.deepEqual(
+    (summary.getRow(1).values as string[]).slice(1),
+    ["scoringLog.candidate", "sum", "scoreboard.total"],
+  );
+});
+
 test("score export wire format rejects invalid or truncated payloads", () => {
   assert.throws(
     () => decodeScoreExportPayload(new Uint8Array([1, 2, 3])),

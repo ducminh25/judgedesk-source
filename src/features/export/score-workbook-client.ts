@@ -27,7 +27,7 @@ export async function buildScoreExport(
     labels: createScoreWorkbookLabels(t),
   };
   if (typeof Worker === "undefined") {
-    throw new Error("Excel export requires Web Worker support.");
+    throw new Error(t("export.workerUnavailable"));
   }
 
   const worker = new Worker(new URL("./score-workbook.worker.ts", import.meta.url), {

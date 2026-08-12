@@ -110,8 +110,10 @@ Checklist nạp dữ liệu:
 - [X] Chọn lại tất cả thí sinh khi còn ít nhất một bài được chọn: **Chấm bài** sáng lại.
 - [X] Bỏ chọn tất cả bài: **Chấm bài** tắt; chọn lại tất cả bài khi còn ít nhất một thí sinh được
   chọn: **Chấm bài** sáng lại.
-- [X] Nút **Xuất Excel** chỉ sáng sau khi đã có ít nhất một kết quả chấm; nút này không phụ thuộc
-  trực tiếp vào trạng thái Native runner hay selection hiện tại.
+- [ ] Nút **Xuất Excel** sáng khi bảng điểm có ít nhất một thí sinh hoặc một bài; có thể xuất trước
+  khi chấm và các ô chưa có kết quả phải để trống.
+- [ ] Trên máy có Microsoft Excel, **Xuất Excel** mở một workbook mới chưa lưu từ nguồn `.xlsx`;
+  `Ctrl+S` hoặc đóng workbook phải hiện luồng chọn nơi lưu, mặc định là `.xlsx`.
 - [ ] Double-click ô kết quả mở modal chi tiết; các nhãn `MLE`, `OLE`, `JE` được dịch đúng.
 
 ## 5. Ma trận chấm thủ công

@@ -1,6 +1,5 @@
 export const SCORE_EXPORT_CONTENT_TYPE = "application/vnd.judgedesk.score-export-v1";
-export const MAX_SCORE_EXPORT_PART_BYTES = 25 * 1024 * 1024;
-export const MAX_SCORE_EXPORT_PAYLOAD_BYTES = MAX_SCORE_EXPORT_PART_BYTES * 2 + 12;
+export const MAX_SCORE_EXPORT_PAYLOAD_BYTES = 256 * 1024 * 1024;
 
 const MAGIC = new Uint8Array([0x4a, 0x44, 0x58, 0x4c, 0x53, 0x58, 0x30, 0x31]);
 const HEADER_BYTES = MAGIC.length + 4;
@@ -15,8 +14,9 @@ export function encodeScoreExportPayload(
   diagnosticJson: string,
 ): Uint8Array {
   const diagnostics = new TextEncoder().encode(diagnosticJson);
-  validatePartSizes(workbook.byteLength, diagnostics.byteLength);
-  const payload = new Uint8Array(HEADER_BYTES + diagnostics.byteLength + workbook.byteLength);
+  const payloadBytes = HEADER_BYTES + diagnostics.byteLength + workbook.byteLength;
+  validatePayloadSizes(workbook.byteLength, diagnostics.byteLength, payloadBytes);
+  const payload = new Uint8Array(payloadBytes);
   payload.set(MAGIC, 0);
   new DataView(payload.buffer).setUint32(MAGIC.length, diagnostics.byteLength, true);
   payload.set(diagnostics, HEADER_BYTES);
@@ -41,7 +41,7 @@ export function decodeScoreExportPayload(payload: Uint8Array): DecodedScoreExpor
     throw new Error("Score export payload is truncated.");
   }
   const workbook = payload.subarray(workbookOffset);
-  validatePartSizes(workbook.byteLength, diagnosticsLength);
+  validatePayloadSizes(workbook.byteLength, diagnosticsLength, payload.byteLength);
   const diagnosticJson = new TextDecoder("utf-8", { fatal: true }).decode(
     payload.subarray(HEADER_BYTES, workbookOffset),
   );
@@ -53,11 +53,14 @@ export function decodeScoreExportPayload(payload: Uint8Array): DecodedScoreExpor
   return { workbook, diagnosticJson };
 }
 
-function validatePartSizes(workbookBytes: number, diagnosticsBytes: number): void {
-  if (workbookBytes <= 0 || workbookBytes > MAX_SCORE_EXPORT_PART_BYTES) {
-    throw new Error("Workbook is empty or too large.");
-  }
-  if (diagnosticsBytes <= 0 || diagnosticsBytes > MAX_SCORE_EXPORT_PART_BYTES) {
-    throw new Error("Diagnostic JSON is required and must be at most 25 MiB.");
+function validatePayloadSizes(
+  workbookBytes: number,
+  diagnosticsBytes: number,
+  payloadBytes: number,
+): void {
+  if (workbookBytes <= 0) throw new Error("Workbook is empty.");
+  if (diagnosticsBytes <= 0) throw new Error("Diagnostic JSON is required.");
+  if (payloadBytes > MAX_SCORE_EXPORT_PAYLOAD_BYTES) {
+    throw new Error("Score export exceeds the 256 MiB safety limit.");
   }
 }
