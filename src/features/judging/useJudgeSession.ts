@@ -1,4 +1,4 @@
-import { useRef, useState, type Dispatch } from "react";
+import { useEffect, useRef, useState, type Dispatch } from "react";
 import { apiFetch } from "../../api";
 import type {
   BatchJudgeRequest,
@@ -7,6 +7,10 @@ import type {
   ProblemConfig
 } from "../../types";
 import type { JudgeResultsAction } from "./judge-results";
+import {
+  createLatestFrameScheduler,
+  type LatestFrameScheduler,
+} from "./progress-scheduler";
 
 interface JudgeSessionOptions {
   contestantsPath: string;
@@ -14,6 +18,10 @@ interface JudgeSessionOptions {
   problemConfigs: Record<string, ProblemConfig>;
   dispatchResults: Dispatch<JudgeResultsAction>;
 }
+
+type ProgressFrame =
+  | { kind: "animation"; id: number }
+  | { kind: "timeout"; id: ReturnType<typeof globalThis.setTimeout> };
 
 export function useJudgeSession({
   contestantsPath,
@@ -27,6 +35,25 @@ export function useJudgeSession({
   const [progressState, setProgressState] = useState<JudgeProgress | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const activeRunRef = useRef(false);
+  const progressSchedulerRef = useRef<LatestFrameScheduler<JudgeProgress> | null>(null);
+  if (!progressSchedulerRef.current) {
+    const requestFrame = (callback: () => void): ProgressFrame => (
+      typeof globalThis.requestAnimationFrame === "function"
+        ? { kind: "animation", id: globalThis.requestAnimationFrame(callback) }
+        : { kind: "timeout", id: globalThis.setTimeout(callback, 16) }
+    );
+    const cancelFrame = (frame: ProgressFrame) => {
+      if (frame.kind === "animation") globalThis.cancelAnimationFrame(frame.id);
+      else globalThis.clearTimeout(frame.id);
+    };
+    progressSchedulerRef.current = createLatestFrameScheduler(
+      requestFrame,
+      cancelFrame,
+      setProgressState,
+    );
+  }
+
+  useEffect(() => () => progressSchedulerRef.current?.cancel(), []);
 
   const runJudge = async (targetContestants: string[], targetProblems: string[]) => {
     if (activeRunRef.current) return;
@@ -44,6 +71,7 @@ export function useJudgeSession({
     }
 
     setErrorMessage("");
+    progressSchedulerRef.current?.cancel();
     activeRunRef.current = true;
     setIsJudging(true);
     dispatchResults({ type: "initialize" });
@@ -73,6 +101,7 @@ export function useJudgeSession({
         setErrorMessage(error.message || "Something went wrong during local execution.");
       }
     } finally {
+      progressSchedulerRef.current?.cancel();
       activeRunRef.current = false;
       setIsJudging(false);
       setJobId(null);
@@ -92,6 +121,7 @@ export function useJudgeSession({
         body: JSON.stringify({ jobId })
       });
     } finally {
+      progressSchedulerRef.current?.cancel();
       activeRunRef.current = false;
       setIsJudging(false);
       setJobId(null);
@@ -101,7 +131,7 @@ export function useJudgeSession({
 
   const handleEvent = (event: JudgeStreamEvent) => {
     if (event.type === "progress") {
-      setProgressState(event.data);
+      progressSchedulerRef.current?.schedule(event.data);
     } else if (event.type === "metadata") {
       dispatchResults({ type: "set_metadata", metadata: event.data });
     } else if (event.type === "problem_completed") {

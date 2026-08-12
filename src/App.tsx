@@ -136,6 +136,21 @@ export default function App() {
   }, []);
 
   const markContestDirty = useCallback(() => setContestDirty(true), [setContestDirty]);
+  const updateSelectedContestants = useCallback((
+    update: React.SetStateAction<Record<string, boolean>>,
+  ) => {
+    setSelectedContestants(update);
+    markContestDirty();
+  }, [markContestDirty, setSelectedContestants]);
+  const updateSelectedProblems = useCallback((
+    update: React.SetStateAction<Record<string, boolean>>,
+  ) => {
+    setSelectedProblems(update);
+    markContestDirty();
+  }, [markContestDirty, setSelectedProblems]);
+  const openResultDetails = useCallback((cont: string, data: ProblemResult) => {
+    setActiveDetails({ cont, data });
+  }, []);
 
   const hasContestData = hasSavableContestData(
     contestantsList.length,
@@ -683,16 +698,10 @@ export default function App() {
         selectedProblems={selectedProblems}
         interactionLocked={interactionLocked}
         setContestantSort={setContestantSort}
-        setSelectedContestants={(update) => {
-          setSelectedContestants(update);
-          markContestDirty();
-        }}
-        setSelectedProblems={(update) => {
-          setSelectedProblems(update);
-          markContestDirty();
-        }}
+        setSelectedContestants={updateSelectedContestants}
+        setSelectedProblems={updateSelectedProblems}
         onOpenActions={setActionMenu}
-        onOpenDetails={(cont, data) => setActiveDetails({ cont, data })}
+        onOpenDetails={openResultDetails}
       />
 
       <footer className="flex h-7 flex-none items-center justify-between border-t border-surface-border bg-surface-elevated px-3 text-[10px] text-text-muted">
