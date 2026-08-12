@@ -99,6 +99,10 @@ test("toolchain publishing workflow has no Intel macOS release path", () => {
     path.resolve(".github", "workflows", "toolchains.yml"),
     "utf8",
   );
+  const windowsGateAcl = fs.readFileSync(
+    path.resolve("scripts", "prepare-windows-toolchain-gate-acl.ps1"),
+    "utf8",
+  );
 
   assert.match(workflow, /bundle-windows:/);
   assert.match(workflow, /bundle-macos-arm64:/);
@@ -120,6 +124,9 @@ test("toolchain publishing workflow has no Intel macOS release path", () => {
     workflow,
     /\.\/scripts\/prepare-windows-toolchain-gate-acl\.ps1 build\/toolchain-gate-root/,
   );
+  assert.doesNotMatch(windowsGateAcl, /GetRelativePath/);
+  assert.match(windowsGateAcl, /StringComparison\]::OrdinalIgnoreCase/);
+  assert.match(windowsGateAcl, /\*S-1-15-2-1:\(OI\)\(CI\)RX/);
   assert.equal(
     workflow.match(/server\/judge\/c-submission\.gate\.test\.ts/g)?.length,
     2,

@@ -5,14 +5,21 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$buildRoot = (Resolve-Path -LiteralPath "build").Path
-$target = (Resolve-Path -LiteralPath $GateRoot).Path
-$relative = [System.IO.Path]::GetRelativePath($buildRoot, $target)
+$buildRoot = [System.IO.Path]::GetFullPath(
+  (Resolve-Path -LiteralPath "build").Path
+)
+$target = [System.IO.Path]::GetFullPath(
+  (Resolve-Path -LiteralPath $GateRoot).Path
+)
+$buildChildPrefix = $buildRoot.TrimEnd(
+  [System.IO.Path]::DirectorySeparatorChar,
+  [System.IO.Path]::AltDirectorySeparatorChar
+) + [System.IO.Path]::DirectorySeparatorChar
 if (
-  $relative -eq "." -or
-  $relative -eq ".." -or
-  $relative.StartsWith("..$([System.IO.Path]::DirectorySeparatorChar)") -or
-  [System.IO.Path]::IsPathRooted($relative) -or
+  -not $target.StartsWith(
+    $buildChildPrefix,
+    [System.StringComparison]::OrdinalIgnoreCase
+  ) -or
   -not (Test-Path -LiteralPath $target -PathType Container)
 ) {
   throw "The Windows toolchain gate root must be an existing child of the workspace build directory."
