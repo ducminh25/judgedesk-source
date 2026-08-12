@@ -39,13 +39,33 @@ compile workload and an MLE workload. A per-test executor peak by itself is not
 sufficient evidence. Also verify that a second concurrent batch request gets
 `JUDGE_BUSY` instead of starting more compiler/submission processes.
 
-For an already packaged app, the repeatable local gate is:
+For an installed app under `Program Files`, the repeatable local gate is:
 
 ```powershell
 npm run test:windows-resources -- `
-  -AppExecutable '<extracted-or-installed-path>\themis-v2.exe' `
+  -AppExecutable 'C:\Program Files\JudgeDesk\themis-v2.exe' `
   -StressRoot 'D:\path\to\stress_test_judge'
 ```
+
+To test without installing, use an MSI administrative extraction under
+`build/`, then reproduce the read/execute access that `Program Files` grants to
+Windows AppContainers before starting JudgeDesk:
+
+```powershell
+msiexec.exe /a '<full-msi-path>' /qn `
+  TARGETDIR="$PWD\build\msi-resource-gate"
+./scripts/prepare-windows-toolchain-gate-acl.ps1 `
+  -GateRoot 'build\msi-resource-gate\PFiles\JudgeDesk'
+npm run test:windows-resources -- `
+  -AppExecutable "$PWD\build\msi-resource-gate\PFiles\JudgeDesk\themis-v2.exe" `
+  -StressRoot 'D:\path\to\stress_test_judge'
+```
+
+Do not use the executable directly from `src-tauri/target` as packaged Python
+evidence. A regular AppContainer may be unable to load its adjacent runtime
+DLLs from a private source tree and return `0xC0000135`; that is a test-layout
+failure, not a valid Python verdict. The ACL helper is deliberately confined to
+an existing child of `build/` and grants only AppContainer read/execute access.
 
 This local gate is valid resource evidence, but it is not the Windows security
 release gate: an unsigned local build can have different Defender/SmartScreen
