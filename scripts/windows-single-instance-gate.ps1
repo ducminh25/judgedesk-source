@@ -363,8 +363,9 @@ function Wait-RuntimeReady {
     param([System.Diagnostics.Process]$Primary)
     $primaryIdentity = $Primary.JudgeDeskIdentity
     $deadline = [DateTime]::UtcNow.AddSeconds($StartupTimeoutSeconds)
-    # The native executor is intentionally lazy and starts with the first judge
-    # workload. The packaged resource gate separately proves that lifecycle.
+    # The native executor is lazy. It may start during background toolchain
+    # readiness or with the first judge workload, so both 0 and 1 are valid at
+    # idle; more than one is never valid.
     do {
         if (-not (Test-StartedProcessAlive -Process $Primary)) {
             throw "JudgeDesk primary $($primaryIdentity.ProcessId) exited before runtime readiness."
@@ -377,13 +378,13 @@ function Wait-RuntimeReady {
             $inventory.Guis.Count -eq 1 -and
             $inventory.Helpers.Count -eq 1 -and
             $inventory.Servers.Count -eq 1 -and
-            $inventory.Executors.Count -eq 0
+            $inventory.Executors.Count -le 1
         ) {
             return $inventory
         }
         Start-Sleep -Milliseconds 100
     } while ([DateTime]::UtcNow -lt $deadline)
-    throw "JudgeDesk idle runtime did not reach 1 GUI + 1 supervisor + 1 backend + 0 executors."
+    throw "JudgeDesk idle runtime did not reach 1 GUI + 1 supervisor + 1 backend + at most 1 executor."
 }
 
 function Wait-OwnedProcessesExit {
@@ -472,6 +473,13 @@ try {
     $result.InitialHelperPid = $inventory.Helpers[0].ProcessId
     $result.InitialBackendPid = $inventory.Servers[0].ProcessId
     $result.ExecutorStartedAtIdle = $inventory.Executors.Count -gt 0
+    if ($inventory.Executors.Count -eq 1) {
+        $result.InitialExecutorPid = $inventory.Executors[0].ProcessId
+        $result.ExecutorWorkingSetMiB = [Math]::Round(
+            (Get-Process -Id $inventory.Executors[0].ProcessId).WorkingSet64 / 1MB,
+            1
+        )
+    }
     $result.PrimaryWorkingSetMiB = [Math]::Round(
         (Get-Process -Id $primary.Id).WorkingSet64 / 1MB,
         1
@@ -496,7 +504,7 @@ try {
         throw "JudgeDesk did not minimize before the focus test."
     }
     $focusProbe = Start-OwnedProcess
-    if (-not $focusProbe.WaitForExit(10000)) {
+    if (-not $focusProbe.WaitForExit($StartupTimeoutSeconds * 1000)) {
         Stop-OwnedProcess -Identity $focusProbe.JudgeDeskIdentity
         $focusProbe.Dispose()
         throw "Secondary instance did not exit after activation."
@@ -547,7 +555,7 @@ try {
         $inventory.Guis.Count -ne 1 -or
         $inventory.Helpers.Count -ne 1 -or
         $inventory.Servers.Count -ne 1 -or
-        $inventory.Executors.Count -ne 0
+        $inventory.Executors.Count -gt 1
     ) {
         throw "Sequential launches changed the stable runtime inventory."
     }
@@ -569,7 +577,7 @@ try {
             -Processes @(
                 @($inventory.Servers) + @($inventory.Executors)
             ) `
-            -ExpectedCount 1 `
+            -ExpectedCount (1 + $inventory.Executors.Count) `
             -Label "old judge tree"
     )
     Stop-OwnedProcess -Identity $primary.JudgeDeskIdentity
@@ -601,7 +609,7 @@ try {
             $replacementInventory.Guis.Count -eq 1 -and
             $replacementInventory.Helpers.Count -eq 1 -and
             $replacementInventory.Servers.Count -eq 1 -and
-            $replacementInventory.Executors.Count -eq 0
+            $replacementInventory.Executors.Count -le 1
         if (-not $replacementReady) {
             Start-Sleep -Milliseconds 25
         }
@@ -631,7 +639,7 @@ try {
                 @($replacementInventory.Servers) +
                     @($replacementInventory.Executors)
             ) `
-            -ExpectedCount 1 `
+            -ExpectedCount (1 + $replacementInventory.Executors.Count) `
             -Label "replacement judge tree"
     )
     Stop-OwnedProcess -Identity $replacementHelperIdentity
@@ -653,7 +661,7 @@ try {
                     @($finalInventory.Servers) +
                     @($finalInventory.Executors)
             ) `
-            -ExpectedCount 2 `
+            -ExpectedCount (2 + $finalInventory.Executors.Count) `
             -Label "final protected runtime"
     )
     $finalTrackedIdentities = @(
