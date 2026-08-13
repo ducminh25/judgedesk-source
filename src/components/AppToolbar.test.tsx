@@ -5,7 +5,7 @@ import { createInstance } from "i18next";
 import { I18nextProvider, initReactI18next } from "react-i18next";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { AppUpdateState } from "../features/updates/useAppUpdater.js";
-import { HelpButton, UpdateButton } from "./AppToolbar.js";
+import { DonationButton, HelpButton, UpdateButton } from "./AppToolbar.js";
 
 const resources = {
   en: {
@@ -13,7 +13,7 @@ const resources = {
       updates: {
         check: "Check for updates",
         checking: "Checking...",
-        available: "Download {{version}}",
+        available: "Version {{version}} available",
         downloading: "Downloading {{percent}}%",
         installQuestion: "Install update",
         upToDate: "Up to date",
@@ -23,6 +23,7 @@ const resources = {
         retry: "Try again",
       },
       helpCenter: { open: "Help" },
+      donation: { tooltip: "Buy me a coffee?" },
     },
   },
   vi: {
@@ -30,7 +31,7 @@ const resources = {
       updates: {
         check: "Kiểm tra cập nhật",
         checking: "Đang kiểm tra...",
-        available: "Tải bản {{version}}",
+        available: "Có bản {{version}}",
         downloading: "Đang tải {{percent}}%",
         installQuestion: "Cài bản cập nhật",
         upToDate: "Đã là bản mới nhất",
@@ -40,6 +41,7 @@ const resources = {
         retry: "Thử lại",
       },
       helpCenter: { open: "Hướng dẫn" },
+      donation: { tooltip: "Buy me a coffee? (Ủng hộ dự án?)" },
     },
   },
 };
@@ -57,7 +59,7 @@ async function renderUpdateButton(state: AppUpdateState, language: "en" | "vi") 
         state={state}
         disabled={false}
         onCheck={() => {}}
-        onDownload={() => {}}
+        onChoose={() => {}}
         onInstall={() => {}}
       />
     </I18nextProvider>,
@@ -90,16 +92,36 @@ describe("toolbar update button", () => {
 
   it("makes the Vietnamese download action explicit", async () => {
     const markup = await renderUpdateButton(
-      { status: "available", version: "1.3.0" },
+      {
+        status: "available",
+        version: "1.3.4",
+        currentEdition: "core",
+        candidates: {
+          core: {
+            edition: "core",
+            version: "1.3.4",
+            target: "windows-x86_64-core",
+            downloadSizeBytes: 10,
+            installedSizeBytes: 20,
+          },
+          full: {
+            edition: "full",
+            version: "1.3.4",
+            target: "windows-x86_64-full",
+            downloadSizeBytes: 30,
+            installedSizeBytes: 40,
+          },
+        },
+      },
       "vi",
     );
 
-    assert.match(markup, />Tải bản 1\.3\.0</);
+    assert.match(markup, />Có bản 1\.3\.4</);
   });
 
   it("keeps progress visible and disables the button while downloading", async () => {
     const markup = await renderUpdateButton(
-      { status: "downloading", version: "1.3.0", percent: 42 },
+      { status: "downloading", version: "1.3.4", edition: "full", percent: 42 },
       "en",
     );
 
@@ -119,6 +141,28 @@ describe("toolbar update button", () => {
       markup,
       /aria-label="Tải bản cập nhật thất bại\. Thử lại"/,
     );
+  });
+});
+
+describe("toolbar donation button", () => {
+  it("shows the requested Vietnamese coffee tooltip", async () => {
+    const i18n = createInstance();
+    await i18n.use(initReactI18next).init({
+      lng: "vi",
+      resources,
+      interpolation: { escapeValue: false },
+    });
+    const markup = renderToStaticMarkup(
+      <I18nextProvider i18n={i18n}>
+        <DonationButton onOpen={() => {}} disabled={false} />
+      </I18nextProvider>,
+    );
+    assert.match(markup, /title="Buy me a coffee\? \(Ủng hộ dự án\?\)"/);
+  });
+
+  it("keeps Coffee between Update and Tools", () => {
+    const source = readFileSync(new URL("./AppToolbar.tsx", import.meta.url), "utf8");
+    assert.match(source, /<UpdateButton[\s\S]*?<DonationButton[\s\S]*?<div ref=\{utilityMenuRef\}/);
   });
 });
 

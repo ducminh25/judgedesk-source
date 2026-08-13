@@ -25,6 +25,72 @@ if ($version -notmatch '^\d+\.\d+\.\d+$') {
     throw "Invalid release version: $version"
 }
 
+function Get-MsiInstalledSizeBytes([string]$MsiPath) {
+    $installer = New-Object -ComObject WindowsInstaller.Installer
+    $view = $null
+    try {
+        $database = $installer.GetType().InvokeMember(
+            "OpenDatabase",
+            [System.Reflection.BindingFlags]::InvokeMethod,
+            $null,
+            $installer,
+            @($MsiPath, 0)
+        )
+        $view = $database.GetType().InvokeMember(
+            "OpenView",
+            [System.Reflection.BindingFlags]::InvokeMethod,
+            $null,
+            $database,
+            @('SELECT `FileSize` FROM `File`')
+        )
+        $view.GetType().InvokeMember(
+            "Execute",
+            [System.Reflection.BindingFlags]::InvokeMethod,
+            $null,
+            $view,
+            $null
+        ) | Out-Null
+        [Int64]$total = 0
+        while ($true) {
+            $record = $view.GetType().InvokeMember(
+                "Fetch",
+                [System.Reflection.BindingFlags]::InvokeMethod,
+                $null,
+                $view,
+                $null
+            )
+            if ($null -eq $record) { break }
+            $fileSize = $record.GetType().InvokeMember(
+                "IntegerData",
+                [System.Reflection.BindingFlags]::GetProperty,
+                $null,
+                $record,
+                1
+            )
+            $total += [Int64]$fileSize
+        }
+        if ($total -le 0) { throw "MSI File table did not report a positive installed size." }
+        return $total
+    }
+    finally {
+        if ($null -ne $view) {
+            try {
+                $view.GetType().InvokeMember(
+                    "Close",
+                    [System.Reflection.BindingFlags]::InvokeMethod,
+                    $null,
+                    $view,
+                    $null
+                ) | Out-Null
+            }
+            catch {}
+        }
+        if ($null -ne $installer) {
+            [void][System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($installer)
+        }
+    }
+}
+
 Push-Location $repoRoot
 try {
     if (Test-Path -LiteralPath $outputRoot) {
@@ -60,6 +126,15 @@ try {
         $destinationName = "JudgeDesk_${version}_${variant}_x64_en-US.msi"
         $destinationPath = Join-Path $outputRoot $destinationName
         Copy-Item -LiteralPath $msiFiles[0].FullName -Destination $destinationPath
+
+        $metadata = [ordered]@{
+            schemaVersion = 1
+            edition = $variant
+            platform = "windows"
+            arch = "x86_64"
+            installedSizeBytes = Get-MsiInstalledSizeBytes $destinationPath
+        }
+        $metadata | ConvertTo-Json | Set-Content -LiteralPath "${destinationPath}.metadata.json" -Encoding utf8
 
         $signature = Get-AuthenticodeSignature -LiteralPath $destinationPath
         Write-Host "$destinationName Authenticode: $($signature.Status)"

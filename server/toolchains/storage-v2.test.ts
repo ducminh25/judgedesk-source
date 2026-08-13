@@ -187,6 +187,43 @@ test("a fresh Full install selects supported Stable managed packs without changi
   assert.equal(marker.autoConfiguredRevision, 1);
 });
 
+test("Core to Core updates preserve custom compiler modes and paths", (t) => {
+  useTemporaryAppData(t);
+  useDistribution(t, "core");
+  loadToolchainPreferenceSnapshot();
+  const customPath = path.resolve("teacher-selected-python");
+  updateProfileToolchainPreference(PYTHON_LANGUAGE_PROFILE_ID, {
+    mode: "local_path",
+    localPath: customPath,
+  });
+
+  const updated = loadToolchainPreferenceSnapshot();
+  assert.equal(updated.status, "ready");
+  assert.deepEqual(updated.preferences.profiles[PYTHON_LANGUAGE_PROFILE_ID], {
+    mode: "local_path",
+    localPath: customPath,
+  });
+});
+
+test("Full to Full updates preserve an explicit custom compiler selection", (t) => {
+  const { builtIn } = useTemporaryAppData(t);
+  useDistribution(t, "full");
+  stageStableBuiltIns(builtIn);
+  loadToolchainPreferenceSnapshot();
+  const customPath = path.resolve("teacher-selected-python");
+  updateProfileToolchainPreference(PYTHON_LANGUAGE_PROFILE_ID, {
+    mode: "local_path",
+    localPath: customPath,
+  });
+
+  const updated = loadToolchainPreferenceSnapshot();
+  assert.equal(updated.status, "ready");
+  assert.deepEqual(updated.preferences.profiles[PYTHON_LANGUAGE_PROFILE_ID], {
+    mode: "local_path",
+    localPath: customPath,
+  });
+});
+
 test("Core to Full overrides every available Stable built-in exactly once", (t) => {
   const { builtIn } = useTemporaryAppData(t);
   useDistribution(t, "core");

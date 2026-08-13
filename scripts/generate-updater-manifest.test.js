@@ -10,101 +10,123 @@ import {
   verifyPublicReleaseAssets,
 } from "./verify-public-release-assets.js";
 
-test("updater manifest maps only the signed Full bundles when Core artifacts coexist", (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "themis-updater-manifest-"));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  fs.writeFileSync(path.join(root, "JudgeDesk_1.3.0_core_x64_en-US.msi"), "core-msi");
-  fs.writeFileSync(path.join(root, "JudgeDesk_1.3.0_full_x64_en-US.msi"), "full-msi");
-  fs.writeFileSync(path.join(root, "JudgeDesk_1.3.0_full_x64_en-US.msi.sig"), "windows-signature\n");
-  fs.writeFileSync(path.join(root, "JudgeDesk_1.3.0_core_aarch64.dmg"), "core-dmg");
-  fs.writeFileSync(path.join(root, "JudgeDesk_1.3.0_full_aarch64.dmg"), "full-dmg");
-  fs.writeFileSync(path.join(root, "JudgeDesk_1.3.0_full_aarch64.app.tar.gz"), "full-mac");
-  fs.writeFileSync(path.join(root, "JudgeDesk_1.3.0_full_aarch64.app.tar.gz.sig"), "mac-signature\n");
+const VARIANTS = [
+  {
+    target: "windows-x86_64-core",
+    edition: "core",
+    platform: "windows",
+    arch: "x86_64",
+    filename: "JudgeDesk_1.3.4_core_x64_en-US.msi",
+  },
+  {
+    target: "windows-x86_64-full",
+    edition: "full",
+    platform: "windows",
+    arch: "x86_64",
+    filename: "JudgeDesk_1.3.4_full_x64_en-US.msi",
+  },
+  {
+    target: "darwin-aarch64-core",
+    edition: "core",
+    platform: "darwin",
+    arch: "aarch64",
+    filename: "JudgeDesk_1.3.4_core_aarch64.app.tar.gz",
+  },
+  {
+    target: "darwin-aarch64-full",
+    edition: "full",
+    platform: "darwin",
+    arch: "aarch64",
+    filename: "JudgeDesk_1.3.4_full_aarch64.app.tar.gz",
+  },
+];
 
+function createStaging(t) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-updater-manifest-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const [index, variant] of VARIANTS.entries()) {
+    fs.writeFileSync(path.join(root, variant.filename), `bundle:${variant.target}`);
+    fs.writeFileSync(path.join(root, `${variant.filename}.sig`), `signature:${variant.target}\n`);
+    fs.writeFileSync(path.join(root, `${variant.filename}.metadata.json`), JSON.stringify({
+      schemaVersion: 1,
+      edition: variant.edition,
+      platform: variant.platform,
+      arch: variant.arch,
+      installedSizeBytes: 100_000 + index,
+    }));
+  }
+  for (const edition of ["core", "full"]) {
+    fs.writeFileSync(path.join(root, `JudgeDesk_1.3.4_${edition}_aarch64.dmg`), `dmg:${edition}`);
+  }
+  return root;
+}
+
+test("updater manifest maps signed Core and Full bundles with exact size metadata", (t) => {
+  const root = createStaging(t);
   const { manifest, outputPath } = generateUpdaterManifest({
     assetsDirectory: root,
     repository: "owner/repository",
-    tag: "v1.3.0",
-    publicationDate: new Date("2026-08-01T00:00:00.000Z"),
+    tag: "v1.3.4",
+    publicationDate: new Date("2026-08-13T00:00:00.000Z"),
   });
 
-  assert.equal(manifest.version, "1.3.0");
-  assert.equal(manifest.platforms["windows-x86_64"].signature, "windows-signature");
-  assert.ok(manifest.platforms["windows-x86_64"].url.endsWith("JudgeDesk_1.3.0_full_x64_en-US.msi"));
-  assert.equal(manifest.platforms["darwin-x86_64"], undefined);
-  assert.ok(manifest.platforms["darwin-aarch64"].url.endsWith("JudgeDesk_1.3.0_full_aarch64.app.tar.gz"));
-  assert.equal(JSON.parse(fs.readFileSync(outputPath, "utf8")).version, "1.3.0");
+  assert.equal(manifest.version, "1.3.4");
+  assert.deepEqual(Object.keys(manifest.platforms).sort(), VARIANTS.map(({ target }) => target).sort());
+  for (const variant of VARIANTS) {
+    const entry = manifest.platforms[variant.target];
+    assert.equal(entry.signature, `signature:${variant.target}`);
+    assert.ok(entry.url.endsWith(variant.filename));
+    assert.deepEqual(entry.judgedesk, {
+      edition: variant.edition,
+      downloadSizeBytes: fs.statSync(path.join(root, variant.filename)).size,
+      installedSizeBytes: 100_000 + VARIANTS.indexOf(variant),
+    });
+  }
+  assert.equal(JSON.parse(fs.readFileSync(outputPath, "utf8")).version, "1.3.4");
 });
 
-test("updater manifest rejects stale-version and wrong-architecture Full bundles", (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "themis-updater-mismatch-"));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  for (const filename of [
-    "JudgeDesk_1.2.7_full_x64_en-US.msi",
-    "JudgeDesk_1.2.7_full_x64_en-US.msi.sig",
-    "JudgeDesk_1.3.0_full_x86_en-US.msi",
-    "JudgeDesk_1.3.0_full_x86_en-US.msi.sig",
-    "JudgeDesk_1.3.0_full_x86_64.app.tar.gz",
-    "JudgeDesk_1.3.0_full_x86_64.app.tar.gz.sig",
-  ]) {
-    fs.writeFileSync(path.join(root, filename), "mismatch");
-  }
-
+test("updater manifest rejects a missing edition bundle and mismatched metadata", (t) => {
+  const root = createStaging(t);
+  fs.rmSync(path.join(root, VARIANTS[0].filename));
   assert.throws(
-    () => generateUpdaterManifest({
-      assetsDirectory: root,
-      repository: "owner/repository",
-      tag: "v1.3.0",
-    }),
-    /Missing exact Windows Full updater MSI: JudgeDesk_1\.3\.0_full_x64_en-US\.msi/,
+    () => generateUpdaterManifest({ assetsDirectory: root, repository: "owner/repository", tag: "v1.3.4" }),
+    /Missing exact windows core updater bundle/,
   );
 
-  fs.writeFileSync(path.join(root, "JudgeDesk_1.3.0_full_x64_en-US.msi"), "windows");
-  fs.writeFileSync(path.join(root, "JudgeDesk_1.3.0_full_x64_en-US.msi.sig"), "signature");
+  fs.writeFileSync(path.join(root, VARIANTS[0].filename), "restored");
+  fs.writeFileSync(path.join(root, `${VARIANTS[0].filename}.metadata.json`), JSON.stringify({
+    schemaVersion: 1,
+    edition: "full",
+    platform: "windows",
+    arch: "x86_64",
+    installedSizeBytes: 100,
+  }));
   assert.throws(
-    () => generateUpdaterManifest({
-      assetsDirectory: root,
-      repository: "owner/repository",
-      tag: "v1.3.0",
-    }),
-    /Missing exact macOS Full updater bundle: JudgeDesk_1\.3\.0_full_aarch64\.app\.tar\.gz/,
+    () => generateUpdaterManifest({ assetsDirectory: root, repository: "owner/repository", tag: "v1.3.4" }),
+    /does not match windows\/x86_64\/core/,
   );
 });
 
 function createPublicAssets(t) {
+  const staging = createStaging(t);
+  const tag = "v1.3.4";
+  generateUpdaterManifest({
+    assetsDirectory: staging,
+    repository: "ducminh25/judgedesk",
+    tag,
+    publicationDate: new Date("2026-08-13T00:00:00.000Z"),
+  });
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-public-assets-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  const tag = "v1.3.2";
-  const version = tag.slice(1);
-  const windowsBundle = `JudgeDesk_${version}_full_x64_en-US.msi`;
-  const macBundle = `JudgeDesk_${version}_full_aarch64.app.tar.gz`;
-  const manifest = {
-    version,
-    platforms: {
-      "windows-x86_64": {
-        signature: "windows-signature",
-        url: `https://github.com/ducminh25/judgedesk/releases/download/${tag}/${windowsBundle}`,
-      },
-      "darwin-aarch64": {
-        signature: "mac-signature",
-        url: `https://github.com/ducminh25/judgedesk/releases/download/${tag}/${macBundle}`,
-      },
-    },
-  };
-
   for (const filename of expectedPublicReleaseAssets(tag)) {
     if (filename === "SHA256SUMS") continue;
-    const contents = filename === "latest.json"
-      ? `${JSON.stringify(manifest, null, 2)}\n`
-      : `fixture:${filename}`;
-    fs.writeFileSync(path.join(root, filename), contents);
+    fs.copyFileSync(path.join(staging, filename), path.join(root, filename));
   }
   const checksumTargets = expectedPublicReleaseAssets(tag)
     .filter((filename) => filename !== "SHA256SUMS")
     .sort();
   const checksumLines = checksumTargets.map((filename) => {
-    const hash = crypto
-      .createHash("sha256")
+    const hash = crypto.createHash("sha256")
       .update(fs.readFileSync(path.join(root, filename)))
       .digest("hex");
     return `${hash}  ${filename}`;
@@ -113,37 +135,38 @@ function createPublicAssets(t) {
   return { root, tag };
 }
 
-test("public release allowlist keeps the macOS updater archive but excludes standalone signatures", (t) => {
+test("public release requires both updater editions but excludes standalone signatures and metadata", (t) => {
   const { root, tag } = createPublicAssets(t);
   const result = verifyPublicReleaseAssets({ assetsDirectory: root, tag });
-
-  assert.equal(result.assets.length, 7);
-  assert.ok(result.assets.includes("JudgeDesk_1.3.2_full_aarch64.app.tar.gz"));
+  assert.equal(result.assets.length, 8);
+  assert.ok(result.assets.includes("JudgeDesk_1.3.4_core_aarch64.app.tar.gz"));
+  assert.ok(result.assets.includes("JudgeDesk_1.3.4_full_aarch64.app.tar.gz"));
   assert.ok(result.assets.every((filename) => !filename.endsWith(".sig")));
+  assert.ok(result.assets.every((filename) => !filename.endsWith(".metadata.json")));
 });
 
-test("public release allowlist rejects a standalone signature", (t) => {
-  const { root, tag } = createPublicAssets(t);
-  fs.writeFileSync(path.join(root, "JudgeDesk_1.3.2_full_x64_en-US.msi.sig"), "signature");
-
+test("public release gate rejects signatures, missing variants, and size drift", (t) => {
+  const first = createPublicAssets(t);
+  fs.writeFileSync(path.join(first.root, "JudgeDesk_1.3.4_full_x64_en-US.msi.sig"), "signature");
   assert.throws(
-    () => verifyPublicReleaseAssets({ assetsDirectory: root, tag }),
-    /Unexpected public release assets: JudgeDesk_1\.3\.2_full_x64_en-US\.msi\.sig/,
-  );
-});
-
-test("public release allowlist rejects a missing updater archive and checksum drift", (t) => {
-  const { root, tag } = createPublicAssets(t);
-  fs.rmSync(path.join(root, "JudgeDesk_1.3.2_full_aarch64.app.tar.gz"));
-  assert.throws(
-    () => verifyPublicReleaseAssets({ assetsDirectory: root, tag }),
-    /Missing public release assets: JudgeDesk_1\.3\.2_full_aarch64\.app\.tar\.gz/,
+    () => verifyPublicReleaseAssets({ assetsDirectory: first.root, tag: first.tag }),
+    /Unexpected public release assets/,
   );
 
-  const restored = createPublicAssets(t);
-  fs.appendFileSync(path.join(restored.root, "latest.json"), " ");
+  const second = createPublicAssets(t);
+  fs.rmSync(path.join(second.root, "JudgeDesk_1.3.4_core_aarch64.app.tar.gz"));
   assert.throws(
-    () => verifyPublicReleaseAssets({ assetsDirectory: restored.root, tag: restored.tag }),
-    /SHA-256 mismatch for latest\.json/,
+    () => verifyPublicReleaseAssets({ assetsDirectory: second.root, tag: second.tag }),
+    /Missing public release assets/,
+  );
+
+  const third = createPublicAssets(t);
+  const manifestPath = path.join(third.root, "latest.json");
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  manifest.platforms["windows-x86_64-core"].judgedesk.downloadSizeBytes += 1;
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest));
+  assert.throws(
+    () => verifyPublicReleaseAssets({ assetsDirectory: third.root, tag: third.tag }),
+    /invalid JudgeDesk metadata/,
   );
 });

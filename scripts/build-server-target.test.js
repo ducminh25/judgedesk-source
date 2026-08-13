@@ -331,7 +331,7 @@ test("GitHub release workflow verifies tagged source without building platform a
     ),
   );
   assert.deepEqual(coreMacConfig.bundle.targets, ["app", "dmg"]);
-  assert.equal(coreMacConfig.bundle.createUpdaterArtifacts, false);
+  assert.equal(coreMacConfig.bundle.createUpdaterArtifacts, true);
   assert.equal(coreMacConfig.bundle.macOS.signingIdentity, "-");
   assert.equal(fullMacConfig.bundle.createUpdaterArtifacts, true);
   assert.equal(fullMacConfig.bundle.macOS.signingIdentity, "-");
@@ -581,7 +581,7 @@ test("signed toolchain publication targets the public distribution repository", 
   assert.match(publishJob, /--repo "\$PUBLIC_RELEASE_REPOSITORY"/);
 });
 
-test("release contracts stage Core and Full while updater selection remains Full-only", () => {
+test("release contracts stage signed Core and Full updater choices with size metadata", () => {
   const codemagic = fs.readFileSync(
     new URL("../codemagic.yaml", import.meta.url),
     "utf8",
@@ -596,6 +596,8 @@ test("release contracts stage Core and Full while updater selection remains Full
   );
   assert.match(codemagic, /TAURI_SIGNING_PRIVATE_KEY/);
   assert.match(codemagic, /JudgeDesk_\*_core_aarch64\.dmg/);
+  assert.match(codemagic, /JudgeDesk_\*_core_aarch64\.app\.tar\.gz\.sig/);
+  assert.match(codemagic, /JudgeDesk_\*_core_aarch64\.app\.tar\.gz\.metadata\.json/);
   assert.match(codemagic, /JudgeDesk_\*_full_aarch64\.dmg/);
   assert.match(codemagic, /JudgeDesk_\*_full_aarch64\.app\.tar\.gz\.sig/);
   assert.match(codemagic, /JudgeDesk_\$\{version\}_\$\{variant\}_x64_en-US\.msi/);
@@ -603,8 +605,13 @@ test("release contracts stage Core and Full while updater selection remains Full
   assert.match(macBundleScript, /distribution_variant.*core \| full/s);
   assert.match(macBundleScript, /Expected exactly one JudgeDesk DMG/);
   assert.match(macBundleScript, /Expected exactly one macOS updater bundle/);
-  assert.match(updaterManifest, /JudgeDesk_\$\{version\}_full_x64_en-US\.msi/);
-  assert.match(updaterManifest, /JudgeDesk_\$\{version\}_full_aarch64\.app\.tar\.gz/);
+  assert.match(macBundleScript, /installedSizeBytes/);
+  assert.match(updaterManifest, /windows-x86_64-core/);
+  assert.match(updaterManifest, /windows-x86_64-full/);
+  assert.match(updaterManifest, /darwin-aarch64-core/);
+  assert.match(updaterManifest, /darwin-aarch64-full/);
+  assert.match(updaterManifest, /downloadSizeBytes/);
+  assert.match(updaterManifest, /installedSizeBytes/);
 });
 
 test("Codemagic builds verified Apple Silicon release artifacts on M2", () => {
@@ -636,6 +643,7 @@ test("Codemagic builds verified Apple Silicon release artifacts on M2", () => {
   assert.match(codemagic, /--target aarch64-apple-darwin/);
   assert.match(codemagic, /TAURI_SIGNING_PRIVATE_KEY_PASSWORD/);
   assert.match(codemagic, /JudgeDesk_\*_core_aarch64\.dmg/);
+  assert.match(codemagic, /JudgeDesk_\*_core_aarch64\.app\.tar\.gz\.sig/);
   assert.match(codemagic, /JudgeDesk_\*_full_aarch64\.dmg/);
   assert.match(codemagic, /JudgeDesk_\*_full_aarch64\.app\.tar\.gz\.sig/);
   assert.match(codemagic, /distribution:sync:core/);
@@ -679,6 +687,8 @@ test("Windows release builder creates distinct local Core and Full candidates", 
   assert.match(releaseScript, /JudgeDesk_\$\{version\}_\$\{variant\}_x64_en-US\.msi/);
   assert.match(releaseScript, /Get-AuthenticodeSignature/);
   assert.match(releaseScript, /SHA256SUMS-windows/);
+  assert.match(releaseScript, /Get-MsiInstalledSizeBytes/);
+  assert.match(releaseScript, /installedSizeBytes/);
   assert.match(releaseScript, /\$repoChildPrefix/);
   assert.match(
     releaseScript,
@@ -709,4 +719,5 @@ test("Codemagic can sign a locally built Windows MSI with the existing updater k
   );
   assert.match(signingWorkflow, /tauri signer sign/);
   assert.match(signingWorkflow, /JudgeDesk_\*\.msi\.sig/);
+  assert.match(signingWorkflow, /JudgeDesk_\*\.msi\.metadata\.json/);
 });

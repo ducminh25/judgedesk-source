@@ -358,7 +358,7 @@
   "updates": {
     "check": "Check for updates",
     "checking": "Checking...",
-    "available": "Download {{version}}",
+    "available": "Version {{version}} available",
     "download": "Update",
     "downloading": "Downloading {{percent}}%",
     "installQuestion": "Install update",
@@ -373,7 +373,41 @@
     "installFailed": "Update installation failed",
     "restartRequired": "The judging service was stopped to prepare the update, but installation did not complete. Restart JudgeDesk before continuing to judge submissions.",
     "restartNow": "Restart JudgeDesk",
-    "restarting": "Restarting..."
+    "restarting": "Restarting...",
+    "chooseTitle": "Choose JudgeDesk {{version}}",
+    "chooseMessage": "Choose the edition for this computer. JudgeDesk will download the matching installer without asking you to uninstall the current edition.",
+    "currentEdition": "Current",
+    "recommended": "Recommended",
+    "downloadSize": "Download size",
+    "installedSize": "Size after installation",
+    "downloadCleanupHint": "If you close JudgeDesk before selecting Install, the downloaded update is discarded and will not keep using storage.",
+    "confirmDownload": "Confirm and download",
+    "editions": {
+      "core": {
+        "name": "Core",
+        "description": "Smaller. Use compilers already on this computer or download only the toolchains needed in JudgeDesk."
+      },
+      "full": {
+        "name": "Full",
+        "description": "Includes JudgeDesk-tested toolchains; suited to contest rooms, classrooms, and computers that must judge offline."
+      }
+    },
+    "editionChange": {
+      "coreToFull": {
+        "title": "Switch from Core to Full?",
+        "message": "JudgeDesk will install the Full edition's built-in toolchains and prefer them for supported languages. Custom compiler paths remain saved and can be selected again under Tools."
+      },
+      "fullToCore": {
+        "title": "Switch from Full to Core?",
+        "message": "The Full edition's built-in toolchains will be removed from the application folder. Separately downloaded toolchains and custom compiler paths are not deleted; languages without a compiler may need configuring again."
+      }
+    }
+  },
+  "donation": {
+    "tooltip": "Buy me a coffee? (Support the project?)",
+    "openTitle": "Open QR page?",
+    "openMessage": "JudgeDesk will open the donation QR page in your default browser.",
+    "openAction": "Open QR page"
   },
   "languages": {
     "c": "C",

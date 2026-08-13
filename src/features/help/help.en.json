@@ -109,11 +109,11 @@
       "editions": {
         "full": {
           "term": "JudgeDesk Full",
-          "description": "Includes supported managed packages and selects them automatically on first launch. On macOS, bundled packages cover Python, Pascal, and Java; C/C++ still requires Apple Clang and the macOS SDK from Xcode Command Line Tools."
+          "description": "Includes supported managed packages and selects them automatically on first launch. Choose Full during an update to replace bundled packages with those from the new release. On macOS, bundled packages cover Python, Pascal, and Java; C/C++ still requires Apple Clang and the macOS SDK from Xcode Command Line Tools."
         },
         "core": {
           "term": "JudgeDesk Core",
-          "description": "Does not bundle every compiler/runtime. It probes PATH first, then a bounded list of standard locations, and shows the detected version and executable path."
+          "description": "Does not bundle every compiler/runtime. It probes PATH first, then a bounded list of standard locations, and shows the detected version and executable path. Choosing Core during an update preserves the selected compiler sources and paths."
         }
       },
       "statusesTitle": "Status meanings",

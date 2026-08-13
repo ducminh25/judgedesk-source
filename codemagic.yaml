@@ -133,9 +133,13 @@ workflows:
           npm run test:macos-process-supervisor
     artifacts:
       - release-assets-mac/JudgeDesk_*_core_aarch64.dmg
+      - release-assets-mac/JudgeDesk_*_core_aarch64.app.tar.gz
+      - release-assets-mac/JudgeDesk_*_core_aarch64.app.tar.gz.sig
+      - release-assets-mac/JudgeDesk_*_core_aarch64.app.tar.gz.metadata.json
       - release-assets-mac/JudgeDesk_*_full_aarch64.dmg
       - release-assets-mac/JudgeDesk_*_full_aarch64.app.tar.gz
       - release-assets-mac/JudgeDesk_*_full_aarch64.app.tar.gz.sig
+      - release-assets-mac/JudgeDesk_*_full_aarch64.app.tar.gz.metadata.json
       - release-assets-mac/SHA256SUMS-macos
 
   windows-updater-signing:
@@ -173,6 +177,9 @@ workflows:
             msi_name="JudgeDesk_${version}_${variant}_x64_en-US.msi"
             staging_url="https://github.com/ducminh25/judgedesk/releases/download/${staging_tag}/${msi_name}"
             curl --proto '=https' --tlsv1.2 -fL "$staging_url" -o "release-assets-windows/$msi_name"
+            metadata_name="${msi_name}.metadata.json"
+            metadata_url="https://github.com/ducminh25/judgedesk/releases/download/${staging_tag}/${metadata_name}"
+            curl --proto '=https' --tlsv1.2 -fL "$metadata_url" -o "release-assets-windows/$metadata_name"
             case "$variant" in
               core) expected="$WINDOWS_CORE_MSI_SHA256" ;;
               full) expected="$WINDOWS_FULL_MSI_SHA256" ;;
@@ -201,4 +208,5 @@ workflows:
     artifacts:
       - release-assets-windows/JudgeDesk_*.msi
       - release-assets-windows/JudgeDesk_*.msi.sig
+      - release-assets-windows/JudgeDesk_*.msi.metadata.json
       - release-assets-windows/SHA256SUMS-windows

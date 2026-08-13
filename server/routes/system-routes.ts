@@ -4,6 +4,7 @@ import { getHostStatus } from "../platform/host-status.js";
 import { cancelAllActiveJudgeJobs } from "../jobs.js";
 import { serverLifecycle } from "../platform/server-lifecycle.js";
 import { executorClient } from "../executor/client.js";
+import { getJudgeDeskDistribution } from "../distribution.js";
 
 export const ACTIVE_JUDGE_DRAIN_TIMEOUT_MS = 4_000;
 
@@ -75,6 +76,14 @@ export function registerSystemRoutes(
 ): void {
   app.get("/api/status", (_req, res) => {
     res.json(getHostStatus());
+  });
+
+  app.get("/api/distribution", (_req, res) => {
+    res.json({
+      distribution: getJudgeDeskDistribution(),
+      platform: process.platform,
+      arch: process.arch,
+    });
   });
 
   app.post("/api/shutdown", async (_req, res) => {

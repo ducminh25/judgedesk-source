@@ -41,6 +41,15 @@ import { useTranslation } from "react-i18next";
 import ToolchainManager from "./features/toolchains/ToolchainManager.js";
 import type { ToolchainState } from "./features/toolchains/useToolchains.js";
 import { useAppUpdater } from "./features/updates/useAppUpdater.js";
+import {
+  requiresEditionChange,
+  type UpdateEdition,
+} from "./features/updates/catalog.js";
+import {
+  DonationConfirmDialog,
+  UpdateEditionChangeDialog,
+  UpdateEditionDialog,
+} from "./features/updates/UpdateDialogs.js";
 import UnsavedContestDialog from "./components/UnsavedContestDialog";
 import ScoreDeleteConfirmDialog from "./components/ScoreDeleteConfirmDialog";
 import ContestSaveProgressDialog from "./components/ContestSaveProgressDialog";
@@ -55,6 +64,7 @@ import {
 } from "./features/contest/dirty-state";
 
 type PendingContestAction = "new" | "open" | "close";
+const DONATION_QR_URL = "https://img.vietqr.io/image/MB-0835385259-compact.png?amount=&addInfo=JudgeDesk%20Donation";
 type PendingScoreDeletion =
   | { type: "selected"; contestantNames: string[]; problemNames: string[] }
   | { type: "result"; contestantName: string; problemName: string }
@@ -114,6 +124,9 @@ export default function App() {
   const [openToolchains, setOpenToolchains] = useState(false);
   const [helpSection, setHelpSection] = useState<HelpSectionId | null>(null);
   const [showInstallUpdate, setShowInstallUpdate] = useState(false);
+  const [showUpdateChoices, setShowUpdateChoices] = useState(false);
+  const [pendingUpdateEdition, setPendingUpdateEdition] = useState<UpdateEdition | null>(null);
+  const [showDonationConfirm, setShowDonationConfirm] = useState(false);
   const [isInstallingUpdate, setIsInstallingUpdate] = useState(false);
   const [updateRestartError, setUpdateRestartError] = useState("");
   const [contestFilePath, setContestFilePath] = useState<string | null>(null);
@@ -380,20 +393,29 @@ export default function App() {
     if (isTauri) {
       void (async () => {
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
-        const stopListening = await getCurrentWindow().onCloseRequested((event) => {
+        const currentWindow = getCurrentWindow();
+        const stopListening = await currentWindow.onCloseRequested((event) => {
           if (interactionLockedRef.current || saveOperationRef.current) {
             event.preventDefault();
             setErrorMessage(t("actions.unavailableWhileBusy"));
             return;
           }
           const counts = contestDataCountsRef.current;
-          if (!shouldPromptForUnsavedContest(
+          if (shouldPromptForUnsavedContest(
             contestDirtyRef.current,
             counts.contestants,
             counts.problems,
-          )) return;
+          )) {
+            event.preventDefault();
+            setPendingContestAction("close");
+            return;
+          }
           event.preventDefault();
-          setPendingContestAction("close");
+          void updater.discardUpdate()
+            .then(() => currentWindow.destroy())
+            .catch((error) => {
+              setErrorMessage(error instanceof Error ? error.message : String(error));
+            });
         });
         if (disposed) stopListening();
         else unlisten = stopListening;
@@ -405,7 +427,7 @@ export default function App() {
       if (useBrowserBeforeUnload) window.removeEventListener("beforeunload", beforeUnload);
       else window.removeEventListener("keydown", blockDesktopReload, true);
     };
-  }, [t]);
+  }, [t, updater.discardUpdate]);
 
   const handleSaveContest = async (): Promise<boolean> => {
     if (interactionLockedRef.current || saveOperationRef.current) return false;
@@ -450,6 +472,7 @@ export default function App() {
         // The close request was already confirmed. Destroying avoids emitting
         // another closeRequested event and works consistently on Windows and
         // macOS (where the title-bar close control follows the same path).
+        await updater.discardUpdate();
         await getCurrentWindow().destroy();
         return true;
       } catch (error) {
@@ -701,11 +724,14 @@ export default function App() {
           void handleSaveContest();
         }}
         onOpenHelp={() => setHelpSection("quick-start")}
+        onOpenDonation={() => setShowDonationConfirm(true)}
         onOpenToolchains={() => setOpenToolchains(true)}
         onRequestHostStatus={requestHostStatus}
         updateState={updater.state}
         onCheckUpdates={() => void updater.checkForUpdates()}
-        onDownloadUpdate={() => void updater.downloadUpdate()}
+        onOpenUpdateChoices={() => {
+          if (updater.state.status === "available") setShowUpdateChoices(true);
+        }}
         onRequestInstall={() => setShowInstallUpdate(true)}
       />
 
@@ -932,6 +958,61 @@ export default function App() {
 
       {isSavingContest && <ContestSaveProgressDialog />}
       </div>
+
+      {showUpdateChoices && updater.state.status === "available" && (
+        <UpdateEditionDialog
+          version={updater.state.version}
+          currentEdition={updater.state.currentEdition}
+          candidates={updater.state.candidates}
+          onCancel={() => setShowUpdateChoices(false)}
+          onChoose={(edition) => {
+            if (!requiresEditionChange(updater.state.currentEdition, edition)) {
+              setShowUpdateChoices(false);
+              void updater.downloadUpdate(edition);
+              return;
+            }
+            setShowUpdateChoices(false);
+            setPendingUpdateEdition(edition);
+          }}
+        />
+      )}
+
+      {pendingUpdateEdition && updater.state.status === "available" && (
+        <UpdateEditionChangeDialog
+          currentEdition={updater.state.currentEdition}
+          candidate={updater.state.candidates[pendingUpdateEdition]}
+          onCancel={() => {
+            setPendingUpdateEdition(null);
+            setShowUpdateChoices(true);
+          }}
+          onConfirm={() => {
+            const edition = pendingUpdateEdition;
+            setPendingUpdateEdition(null);
+            void updater.downloadUpdate(edition);
+          }}
+        />
+      )}
+
+      {showDonationConfirm && (
+        <DonationConfirmDialog
+          onCancel={() => setShowDonationConfirm(false)}
+          onConfirm={() => {
+            setShowDonationConfirm(false);
+            void (async () => {
+              try {
+                if ("__TAURI_INTERNALS__" in window) {
+                  const { openUrl } = await import("@tauri-apps/plugin-opener");
+                  await openUrl(DONATION_QR_URL);
+                } else {
+                  window.open(DONATION_QR_URL, "_blank", "noopener,noreferrer");
+                }
+              } catch (error) {
+                setErrorMessage(error instanceof Error ? error.message : String(error));
+              }
+            })();
+          }}
+        />
+      )}
 
       {showInstallUpdate && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">

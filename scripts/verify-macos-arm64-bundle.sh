@@ -95,18 +95,23 @@ mkdir -p release-assets-mac
 release_version="$(node -p "require('./package.json').version")"
 asset_prefix="JudgeDesk_${release_version}_${distribution_variant}_aarch64"
 cp "$dmg_file" "release-assets-mac/${asset_prefix}.dmg"
-
-if [[ "$distribution_variant" == "full" ]]; then
-  updater_bundles=("$target_root"/macos/*.app.tar.gz)
-  if [[ "${#updater_bundles[@]}" -ne 1 ]]; then
-    echo "Expected exactly one macOS updater bundle, found ${#updater_bundles[@]}." >&2
-    exit 1
-  fi
-  updater_bundle="${updater_bundles[0]}"
-  test -s "${updater_bundle}.sig"
-  cp "$updater_bundle" "release-assets-mac/${asset_prefix}.app.tar.gz"
-  cp "${updater_bundle}.sig" "release-assets-mac/${asset_prefix}.app.tar.gz.sig"
+updater_bundles=("$target_root"/macos/*.app.tar.gz)
+if [[ "${#updater_bundles[@]}" -ne 1 ]]; then
+  echo "Expected exactly one macOS updater bundle, found ${#updater_bundles[@]}." >&2
+  exit 1
 fi
+updater_bundle="${updater_bundles[0]}"
+test -s "${updater_bundle}.sig"
+cp "$updater_bundle" "release-assets-mac/${asset_prefix}.app.tar.gz"
+cp "${updater_bundle}.sig" "release-assets-mac/${asset_prefix}.app.tar.gz.sig"
+installed_size_bytes="$(( $(du -sk "$app_bundle" | awk '{print $1}') * 1024 ))"
+if [[ "$installed_size_bytes" -le 0 ]]; then
+  echo "The packaged app did not report a positive installed size." >&2
+  exit 1
+fi
+printf '{\n  "schemaVersion": 1,\n  "edition": "%s",\n  "platform": "darwin",\n  "arch": "aarch64",\n  "installedSizeBytes": %s\n}\n' \
+  "$distribution_variant" "$installed_size_bytes" \
+  >"release-assets-mac/${asset_prefix}.app.tar.gz.metadata.json"
 
 (
   cd release-assets-mac

@@ -109,11 +109,11 @@
       "editions": {
         "full": {
           "term": "JudgeDesk Full",
-          "description": "Có các gói managed được hỗ trợ và tự chọn chúng khi mở lần đầu. Trên macOS, Python, Pascal và Java dùng gói đi kèm; C/C++ vẫn cần Apple Clang và macOS SDK từ Xcode Command Line Tools."
+          "description": "Có các gói managed được hỗ trợ và tự chọn chúng khi mở lần đầu. Khi có update, chọn Full để thay các gói tích hợp bằng bản của release mới. Trên macOS, Python, Pascal và Java dùng gói đi kèm; C/C++ vẫn cần Apple Clang và macOS SDK từ Xcode Command Line Tools."
         },
         "core": {
           "term": "JudgeDesk Core",
-          "description": "Không đóng gói mọi compiler/runtime. App dò PATH trước, sau đó một danh sách vị trí chuẩn có giới hạn, rồi hiển thị version và đường dẫn file thực thi."
+          "description": "Không đóng gói mọi compiler/runtime. App dò PATH trước, sau đó một danh sách vị trí chuẩn có giới hạn, rồi hiển thị version và đường dẫn file thực thi. Chọn Core khi update sẽ giữ nguyên nguồn và đường dẫn compiler đã chọn."
         }
       },
       "statusesTitle": "Ý nghĩa trạng thái",
