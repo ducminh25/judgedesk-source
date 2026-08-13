@@ -363,6 +363,8 @@ function Wait-RuntimeReady {
     param([System.Diagnostics.Process]$Primary)
     $primaryIdentity = $Primary.JudgeDeskIdentity
     $deadline = [DateTime]::UtcNow.AddSeconds($StartupTimeoutSeconds)
+    # The native executor is intentionally lazy and starts with the first judge
+    # workload. The packaged resource gate separately proves that lifecycle.
     do {
         if (-not (Test-StartedProcessAlive -Process $Primary)) {
             throw "JudgeDesk primary $($primaryIdentity.ProcessId) exited before runtime readiness."
@@ -375,13 +377,13 @@ function Wait-RuntimeReady {
             $inventory.Guis.Count -eq 1 -and
             $inventory.Helpers.Count -eq 1 -and
             $inventory.Servers.Count -eq 1 -and
-            $inventory.Executors.Count -eq 1
+            $inventory.Executors.Count -eq 0
         ) {
             return $inventory
         }
         Start-Sleep -Milliseconds 100
     } while ([DateTime]::UtcNow -lt $deadline)
-    throw "JudgeDesk runtime did not reach 1 GUI + 1 supervisor + 1 backend + 1 executor."
+    throw "JudgeDesk idle runtime did not reach 1 GUI + 1 supervisor + 1 backend + 0 executors."
 }
 
 function Wait-OwnedProcessesExit {
@@ -469,7 +471,7 @@ try {
     $result.InitialPrimaryPid = $primary.Id
     $result.InitialHelperPid = $inventory.Helpers[0].ProcessId
     $result.InitialBackendPid = $inventory.Servers[0].ProcessId
-    $result.InitialExecutorPid = $inventory.Executors[0].ProcessId
+    $result.ExecutorStartedAtIdle = $inventory.Executors.Count -gt 0
     $result.PrimaryWorkingSetMiB = [Math]::Round(
         (Get-Process -Id $primary.Id).WorkingSet64 / 1MB,
         1
@@ -482,11 +484,6 @@ try {
         (Get-Process -Id $inventory.Servers[0].ProcessId).WorkingSet64 / 1MB,
         1
     )
-    $result.ExecutorWorkingSetMiB = [Math]::Round(
-        (Get-Process -Id $inventory.Executors[0].ProcessId).WorkingSet64 / 1MB,
-        1
-    )
-
     $gatePhase = "secondary activation and focus"
     $primary.Refresh()
     $windowHandle = $primary.MainWindowHandle
@@ -550,7 +547,7 @@ try {
         $inventory.Guis.Count -ne 1 -or
         $inventory.Helpers.Count -ne 1 -or
         $inventory.Servers.Count -ne 1 -or
-        $inventory.Executors.Count -ne 1
+        $inventory.Executors.Count -ne 0
     ) {
         throw "Sequential launches changed the stable runtime inventory."
     }
@@ -572,7 +569,7 @@ try {
             -Processes @(
                 @($inventory.Servers) + @($inventory.Executors)
             ) `
-            -ExpectedCount 2 `
+            -ExpectedCount 1 `
             -Label "old judge tree"
     )
     Stop-OwnedProcess -Identity $primary.JudgeDeskIdentity
@@ -604,7 +601,7 @@ try {
             $replacementInventory.Guis.Count -eq 1 -and
             $replacementInventory.Helpers.Count -eq 1 -and
             $replacementInventory.Servers.Count -eq 1 -and
-            $replacementInventory.Executors.Count -eq 1
+            $replacementInventory.Executors.Count -eq 0
         if (-not $replacementReady) {
             Start-Sleep -Milliseconds 25
         }
@@ -634,7 +631,7 @@ try {
                 @($replacementInventory.Servers) +
                     @($replacementInventory.Executors)
             ) `
-            -ExpectedCount 2 `
+            -ExpectedCount 1 `
             -Label "replacement judge tree"
     )
     Stop-OwnedProcess -Identity $replacementHelperIdentity
@@ -656,7 +653,7 @@ try {
                     @($finalInventory.Servers) +
                     @($finalInventory.Executors)
             ) `
-            -ExpectedCount 3 `
+            -ExpectedCount 2 `
             -Label "final protected runtime"
     )
     $finalTrackedIdentities = @(
