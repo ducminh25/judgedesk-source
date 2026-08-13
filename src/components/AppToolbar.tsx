@@ -3,6 +3,7 @@ import {
   CheckCircle2,
   CircleHelp,
   ClipboardList,
+  Coffee,
   Download,
   FilePlus2,
   FileSpreadsheet,
@@ -50,11 +51,12 @@ interface Props {
   onRun: () => void;
   onSaveContest: () => void;
   onOpenHelp: () => void;
+  onOpenDonation: () => void;
   onOpenToolchains: () => void;
   onRequestHostStatus: () => void;
   updateState: AppUpdateState;
   onCheckUpdates: () => void;
-  onDownloadUpdate: () => void;
+  onOpenUpdateChoices: () => void;
   onRequestInstall: () => void;
 }
 
@@ -84,11 +86,12 @@ export default function AppToolbar({
   onRun,
   onSaveContest,
   onOpenHelp,
+  onOpenDonation,
   onOpenToolchains,
   onRequestHostStatus,
   updateState,
   onCheckUpdates,
-  onDownloadUpdate,
+  onOpenUpdateChoices,
   onRequestInstall,
 }: Props) {
   const [utilityMenuOpen, setUtilityMenuOpen] = useState(false);
@@ -208,7 +211,8 @@ export default function AppToolbar({
           </div>
         )}
         <HelpButton onOpen={onOpenHelp} />
-        <UpdateButton state={updateState} disabled={interactionLocked} onCheck={onCheckUpdates} onDownload={onDownloadUpdate} onInstall={onRequestInstall} />
+        <UpdateButton state={updateState} disabled={interactionLocked} onCheck={onCheckUpdates} onChoose={onOpenUpdateChoices} onInstall={onRequestInstall} />
+        <DonationButton onOpen={onOpenDonation} disabled={interactionLocked} />
 
         <div ref={utilityMenuRef} className="relative flex-none">
           <button
@@ -266,16 +270,35 @@ export function HelpButton({ onOpen }: { onOpen: () => void }) {
   );
 }
 
-export function UpdateButton({ state, disabled, onCheck, onDownload, onInstall }: {
+export function DonationButton({ onOpen, disabled }: {
+  onOpen: () => void;
+  disabled: boolean;
+}) {
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      disabled={disabled}
+      title={t("donation.tooltip")}
+      aria-label={t("donation.tooltip")}
+      className="flex h-9 w-9 flex-none items-center justify-center rounded border border-surface-border bg-surface-elevated text-amber-600 transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-40 dark:text-amber-300"
+    >
+      <Coffee className="h-4 w-4" />
+    </button>
+  );
+}
+
+export function UpdateButton({ state, disabled, onCheck, onChoose, onInstall }: {
   state: AppUpdateState;
   disabled: boolean;
   onCheck: () => void;
-  onDownload: () => void;
+  onChoose: () => void;
   onInstall: () => void;
 }) {
   const { t } = useTranslation();
   const isBusy = state.status === "checking" || state.status === "downloading";
-  const onClick = state.status === "available" ? onDownload : state.status === "downloaded" ? onInstall : onCheck;
+  const onClick = state.status === "available" ? onChoose : state.status === "downloaded" ? onInstall : onCheck;
   const label = (() => {
     switch (state.status) {
       case "checking": return t("updates.checking");

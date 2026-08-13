@@ -1,7 +1,7 @@
 {
   "bundle": {
     "targets": ["app", "dmg"],
-    "createUpdaterArtifacts": false,
+    "createUpdaterArtifacts": true,
     "resources": {
       "../build/distribution-resources/": ""
     },

@@ -10,6 +10,7 @@ export function expectedPublicReleaseAssets(tag) {
   }
 
   return [
+    `JudgeDesk_${version}_core_aarch64.app.tar.gz`,
     `JudgeDesk_${version}_core_aarch64.dmg`,
     `JudgeDesk_${version}_core_x64_en-US.msi`,
     `JudgeDesk_${version}_full_aarch64.app.tar.gz`,
@@ -46,16 +47,49 @@ export function verifyPublicReleaseAssets({ assetsDirectory, tag }) {
   }
 
   const version = tag.startsWith("v") ? tag.slice(1) : tag;
-  const windowsBundle = `JudgeDesk_${version}_full_x64_en-US.msi`;
-  const macBundle = `JudgeDesk_${version}_full_aarch64.app.tar.gz`;
   const manifest = JSON.parse(fs.readFileSync(path.join(assetsDirectory, "latest.json"), "utf8"));
   if (manifest.version !== version) {
     throw new Error(`latest.json version mismatch: expected ${version}, got ${manifest.version}`);
   }
-  verifyManifestPlatform(manifest, "windows-x86_64", windowsBundle, tag);
-  verifyManifestPlatform(manifest, "darwin-aarch64", macBundle, tag);
+  verifyManifestPlatform(
+    manifest,
+    "windows-x86_64-core",
+    `JudgeDesk_${version}_core_x64_en-US.msi`,
+    "core",
+    assetsDirectory,
+    tag,
+  );
+  verifyManifestPlatform(
+    manifest,
+    "windows-x86_64-full",
+    `JudgeDesk_${version}_full_x64_en-US.msi`,
+    "full",
+    assetsDirectory,
+    tag,
+  );
+  verifyManifestPlatform(
+    manifest,
+    "darwin-aarch64-core",
+    `JudgeDesk_${version}_core_aarch64.app.tar.gz`,
+    "core",
+    assetsDirectory,
+    tag,
+  );
+  verifyManifestPlatform(
+    manifest,
+    "darwin-aarch64-full",
+    `JudgeDesk_${version}_full_aarch64.app.tar.gz`,
+    "full",
+    assetsDirectory,
+    tag,
+  );
   const platformNames = Object.keys(manifest.platforms || {}).sort();
-  if (platformNames.join(",") !== "darwin-aarch64,windows-x86_64") {
+  if (platformNames.join(",") !== [
+    "darwin-aarch64-core",
+    "darwin-aarch64-full",
+    "windows-x86_64-core",
+    "windows-x86_64-full",
+  ].join(",")) {
     throw new Error(`latest.json has unexpected platforms: ${platformNames.join(", ")}`);
   }
 
@@ -66,7 +100,7 @@ export function verifyPublicReleaseAssets({ assetsDirectory, tag }) {
   const checksumNames = [...checksums.keys()].sort();
   if (checksumNames.join("\n") !== checksumTargets.join("\n")) {
     throw new Error(
-      `SHA256SUMS must cover exactly the six public assets other than itself; got: ${checksumNames.join(", ")}`,
+      `SHA256SUMS must cover exactly the public assets other than itself; got: ${checksumNames.join(", ")}`,
     );
   }
   for (const filename of checksumTargets) {
@@ -79,7 +113,14 @@ export function verifyPublicReleaseAssets({ assetsDirectory, tag }) {
   return { assets: expected, checksumTargets };
 }
 
-function verifyManifestPlatform(manifest, platform, expectedFilename, tag) {
+function verifyManifestPlatform(
+  manifest,
+  platform,
+  expectedFilename,
+  expectedEdition,
+  assetsDirectory,
+  tag,
+) {
   const entry = manifest.platforms?.[platform];
   if (!entry || typeof entry.signature !== "string" || entry.signature.trim() === "") {
     throw new Error(`latest.json is missing an embedded signature for ${platform}`);
@@ -93,6 +134,17 @@ function verifyManifestPlatform(manifest, platform, expectedFilename, tag) {
   const expectedSuffix = `/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(expectedFilename)}`;
   if (!url.pathname.endsWith(expectedSuffix)) {
     throw new Error(`latest.json must select ${expectedFilename} for ${platform}`);
+  }
+  if (
+    entry.judgedesk?.edition !== expectedEdition
+    || !Number.isSafeInteger(entry.judgedesk?.downloadSizeBytes)
+    || entry.judgedesk.downloadSizeBytes !== fs.statSync(
+      path.join(assetsDirectory, expectedFilename),
+    ).size
+    || !Number.isSafeInteger(entry.judgedesk?.installedSizeBytes)
+    || entry.judgedesk.installedSizeBytes <= 0
+  ) {
+    throw new Error(`latest.json has invalid JudgeDesk metadata for ${platform}`);
   }
 }
 

@@ -16,7 +16,7 @@ Repository này chứa mã nguồn nội bộ của JudgeDesk. Trang công khai 
 - **[BUILDING.md](BUILDING.md)**: Hướng dẫn build từ mã nguồn.
 - **[RELEASING.md](RELEASING.md)**: Quy trình đóng gói và phát hành.
 - **[docs/CONTEST-FORMAT.md](docs/CONTEST-FORMAT.md)**: Định dạng file kỳ thi `.judgedesk`.
-- **[docs/v1.3.3-release-context.md](docs/v1.3.3-release-context.md)**: Phạm vi, artefact và ledger xác minh release v1.3.3.
+- **[docs/v1.3.4-release-context.md](docs/v1.3.4-release-context.md)**: Phạm vi, artefact và ledger xác minh release v1.3.4.
 - **[docs/v1.3.2-toolchains-help-implementation-plan.md](docs/v1.3.2-toolchains-help-implementation-plan.md)**: Thiết kế toolchain, flags theo từng bài và Help Center của v1.3.2.
 - **[docs/portable-compatibility-v1.3.2.md](docs/portable-compatibility-v1.3.2.md)**: Audit khả năng portable; không phải artefact được hỗ trợ trong v1.3.2.
 
@@ -31,9 +31,10 @@ Repository này chứa mã nguồn nội bộ của JudgeDesk. Trang công khai 
   tương thích nhanh. Chế độ local ít cô lập hơn là một opt-in có cảnh báo.
 
 Hai biến thể dùng cùng application identity và dữ liệu, vì vậy không cài song
-song. Cài Core lên Full hoặc Full lên Core được xem là nâng cấp/thay thế cùng
-một JudgeDesk. Full là artifact updater chuẩn để cập nhật không làm mất các
-toolchain tích hợp.
+song. Từ v1.3.4, khi có update, JudgeDesk hiển thị cả Core và Full, đánh dấu
+edition hiện tại và tự tải đúng bộ cài người dùng chọn. Cập nhật cùng edition
+giữ nguyên lựa chọn compiler tùy chỉnh; đổi edition luôn có giải thích và xác
+nhận trước khi tải.
 
 ## Lưu ý cập nhật từ phiên bản 1.1.x/1.2.x
 
@@ -44,6 +45,9 @@ toolchain tích hợp.
   package managed đi kèm đúng một lần. Các thay đổi thủ công sau lần bootstrap
   đó vẫn được giữ nguyên.
 - Trên macOS, bộ cập nhật tự động cập nhật bundle tại chỗ nên không thể đổi tên thư mục `/Applications/ThemisV2.app` đang chạy. Để hoàn tất đổi tên, bạn có thể tải file `.dmg` mới nhất, kéo `JudgeDesk.app` vào Applications để thay thế bản cũ.
+- v1.3.4 là mốc bắt đầu updater Core/Full mới. Người dùng bản cũ cần tải và cài
+  v1.3.4 thủ công một lần; từ v1.3.4 trở đi, ứng dụng tự hiển thị hai edition
+  mỗi khi tìm thấy phiên bản mới nhất.
 
 ## Môi trường phát triển
 

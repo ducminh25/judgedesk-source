@@ -358,7 +358,7 @@
   "updates": {
     "check": "Kiểm tra cập nhật",
     "checking": "Đang kiểm tra...",
-    "available": "Tải bản {{version}}",
+    "available": "Có bản {{version}}",
     "download": "Cập nhật",
     "downloading": "Đang tải {{percent}}%",
     "installQuestion": "Cài bản cập nhật",
@@ -373,7 +373,41 @@
     "installFailed": "Cài đặt bản cập nhật thất bại",
     "restartRequired": "Dịch vụ chấm đã được dừng để chuẩn bị cập nhật, nhưng quá trình cài đặt chưa hoàn tất. Bạn cần khởi động lại JudgeDesk trước khi tiếp tục chấm bài.",
     "restartNow": "Khởi động lại JudgeDesk",
-    "restarting": "Đang khởi động lại..."
+    "restarting": "Đang khởi động lại...",
+    "chooseTitle": "Chọn bản JudgeDesk {{version}}",
+    "chooseMessage": "Chọn bản phù hợp với máy này. JudgeDesk sẽ tự tải đúng bộ cài và không yêu cầu gỡ bản hiện tại.",
+    "currentEdition": "Đang dùng",
+    "recommended": "Khuyên dùng",
+    "downloadSize": "Dung lượng tải về",
+    "installedSize": "Dung lượng sau khi cài",
+    "downloadCleanupHint": "Nếu đóng JudgeDesk trước khi bấm Cài đặt, gói đã tải sẽ được bỏ và không chiếm dung lượng lâu dài.",
+    "confirmDownload": "Xác nhận và tải về",
+    "editions": {
+      "core": {
+        "name": "Core",
+        "description": "Nhẹ hơn. Dùng compiler đã cài trên máy hoặc tải từng toolchain cần thiết trong JudgeDesk."
+      },
+      "full": {
+        "name": "Full",
+        "description": "Có sẵn các toolchain đã được JudgeDesk kiểm tra; phù hợp phòng thi, lớp học và máy cần chấm offline."
+      }
+    },
+    "editionChange": {
+      "coreToFull": {
+        "title": "Chuyển từ Core sang Full?",
+        "message": "JudgeDesk sẽ cài các toolchain tích hợp của bản Full và ưu tiên chúng cho các ngôn ngữ được hỗ trợ. Đường dẫn compiler tùy chỉnh vẫn được ghi nhớ và có thể chọn lại trong Công cụ."
+      },
+      "fullToCore": {
+        "title": "Chuyển từ Full sang Core?",
+        "message": "Các toolchain tích hợp của bản Full sẽ được gỡ khỏi thư mục ứng dụng. Toolchain tải riêng và đường dẫn compiler tùy chỉnh không bị xóa; ngôn ngữ còn thiếu compiler có thể cần được cấu hình lại."
+      }
+    }
+  },
+  "donation": {
+    "tooltip": "Buy me a coffee? (Ủng hộ dự án?)",
+    "openTitle": "Mở trang hiển thị QR?",
+    "openMessage": "JudgeDesk sẽ mở trang QR ủng hộ trong trình duyệt mặc định của bạn.",
+    "openAction": "Mở trang QR"
   },
   "languages": {
     "c": "C",

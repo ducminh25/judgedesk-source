@@ -14,30 +14,58 @@ export function generateUpdaterManifest({
   if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(version)) {
     throw new Error(`Invalid updater tag: ${tag}`);
   }
-  const windowsBundle = requireArtifact(
-    files,
-    `JudgeDesk_${version}_full_x64_en-US.msi`,
-    "Windows Full updater MSI",
-  );
-  const macBundle = requireArtifact(
-    files,
-    `JudgeDesk_${version}_full_aarch64.app.tar.gz`,
-    "macOS Full updater bundle",
-  );
   const releaseUrl = `https://github.com/${repository}/releases/download/${encodeURIComponent(tag)}`;
-  const platform = (fileName) => ({
-    signature: fs
-      .readFileSync(path.join(assetsDirectory, `${fileName}.sig`), "utf8")
-      .trim(),
-    url: `${releaseUrl}/${encodeURIComponent(fileName)}`,
-  });
+  const platform = ({ edition, platform, arch, fileName }) => {
+    requireArtifact(files, fileName, `${platform} ${edition} updater bundle`);
+    const signatureFile = `${fileName}.sig`;
+    requireArtifact(files, signatureFile, `${platform} ${edition} updater signature`);
+    const metadataFile = `${fileName}.metadata.json`;
+    requireArtifact(files, metadataFile, `${platform} ${edition} size metadata`);
+    const metadata = readBundleMetadata(
+      path.join(assetsDirectory, metadataFile),
+      { edition, platform, arch },
+    );
+    return {
+      signature: fs
+        .readFileSync(path.join(assetsDirectory, signatureFile), "utf8")
+        .trim(),
+      url: `${releaseUrl}/${encodeURIComponent(fileName)}`,
+      judgedesk: {
+        edition,
+        downloadSizeBytes: fs.statSync(path.join(assetsDirectory, fileName)).size,
+        installedSizeBytes: metadata.installedSizeBytes,
+      },
+    };
+  };
   const manifest = {
     version,
     notes: `JudgeDesk ${tag}. See the GitHub release notes for details.`,
     pub_date: publicationDate.toISOString(),
     platforms: {
-      "windows-x86_64": platform(windowsBundle),
-      "darwin-aarch64": platform(macBundle),
+      "windows-x86_64-core": platform({
+        edition: "core",
+        platform: "windows",
+        arch: "x86_64",
+        fileName: `JudgeDesk_${version}_core_x64_en-US.msi`,
+      }),
+      "windows-x86_64-full": platform({
+        edition: "full",
+        platform: "windows",
+        arch: "x86_64",
+        fileName: `JudgeDesk_${version}_full_x64_en-US.msi`,
+      }),
+      "darwin-aarch64-core": platform({
+        edition: "core",
+        platform: "darwin",
+        arch: "aarch64",
+        fileName: `JudgeDesk_${version}_core_aarch64.app.tar.gz`,
+      }),
+      "darwin-aarch64-full": platform({
+        edition: "full",
+        platform: "darwin",
+        arch: "aarch64",
+        fileName: `JudgeDesk_${version}_full_aarch64.app.tar.gz`,
+      }),
     },
   };
   const outputPath = path.join(assetsDirectory, "latest.json");
@@ -45,12 +73,35 @@ export function generateUpdaterManifest({
   return { manifest, outputPath };
 }
 
+function readBundleMetadata(filePath, expected) {
+  let value;
+  try {
+    value = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  } catch (error) {
+    throw new Error(`Invalid updater size metadata '${path.basename(filePath)}': ${error.message}`);
+  }
+  if (
+    !value
+    || typeof value !== "object"
+    || Array.isArray(value)
+    || value.schemaVersion !== 1
+    || value.edition !== expected.edition
+    || value.platform !== expected.platform
+    || value.arch !== expected.arch
+    || !Number.isSafeInteger(value.installedSizeBytes)
+    || value.installedSizeBytes <= 0
+  ) {
+    throw new Error(
+      `Updater size metadata '${path.basename(filePath)}' does not match ${expected.platform}/${expected.arch}/${expected.edition}`,
+    );
+  }
+  return value;
+}
+
 function requireArtifact(files, filename, label) {
   if (!files.includes(filename)) {
     throw new Error(`Missing exact ${label}: ${filename}`);
   }
-  const signature = `${filename}.sig`;
-  if (!files.includes(signature)) throw new Error(`Missing updater signature: ${signature}`);
   return filename;
 }
 

@@ -27,30 +27,32 @@ Every release supports Windows 10/11 x64 and macOS Apple Silicon only.
 
 Core and Full use the same application identity and cannot be installed side by
 side. Installing one variant upgrades/replaces the other while preserving JudgeDesk
-data. Full is the canonical updater payload because an automatic update must not
-silently remove toolchains that were included by a previous Full installation.
+data. From v1.3.4, the updater checks separate signed Core and Full targets, shows
+both choices, and requires confirmation before switching edition. Updating within
+the same edition must preserve explicit compiler/runtime preferences.
 
-For version `<version>`, upload exactly these seven public release assets:
+For version `<version>`, upload exactly these eight public release assets:
 
 - `JudgeDesk_<version>_core_x64_en-US.msi`
 - `JudgeDesk_<version>_full_x64_en-US.msi`
 - `JudgeDesk_<version>_core_aarch64.dmg`
 - `JudgeDesk_<version>_full_aarch64.dmg`
+- `JudgeDesk_<version>_core_aarch64.app.tar.gz`
 - `JudgeDesk_<version>_full_aarch64.app.tar.gz`
 - `SHA256SUMS` and `latest.json`
 
-`latest.json` must select only the signed Full MSI and Full macOS app archive.
-Core remains a manual installer choice; a Core installation may later update to
-Full through the normal updater.
+`latest.json` must contain exactly four signed targets:
+`windows-x86_64-core`, `windows-x86_64-full`, `darwin-aarch64-core`, and
+`darwin-aarch64-full`. Each entry includes strict JudgeDesk metadata for edition,
+download bytes and installed bytes. Missing, mismatched, stale or cross-architecture
+metadata blocks publication.
 
-The macOS `.app.tar.gz` is the actual automatic-updater payload and is therefore
-mandatory. Standalone `.sig` files are build/staging inputs, not public download
-assets: Tauri requires their contents in each `latest.json` platform entry and
-does not fetch a `.sig` URL. Keep and verify the Full MSI and macOS archive
-signatures until `latest.json` has been generated and the public downloads have
-passed signature verification, but do not upload any `.sig` file to the final
-release. A Core MSI signature may still be produced as staging evidence, but it
-is not used by the Full-only updater manifest.
+The Core and Full macOS `.app.tar.gz` files are automatic-updater payloads and
+are therefore mandatory. Standalone `.sig` and `.metadata.json` files are private
+build/staging inputs, not public download assets. Tauri requires signature contents
+inside `latest.json`; JudgeDesk uses the metadata to explain size and edition
+before download. Retain and verify all four signatures and metadata files until
+anonymous final verification completes.
 
 GitHub adds the two **Source code** links (`zip` and `tar.gz`) from the public
 release tag automatically. Confirm that both links work, but do not upload
@@ -118,7 +120,8 @@ Build both installers on the validated Windows host:
 npm run build:windows:release:local
 ```
 
-The command creates renamed Core/Full MSIs and `SHA256SUMS-windows` under
+The command creates renamed Core/Full MSIs, strict `.metadata.json` files with
+installed sizes read from each MSI File table, and `SHA256SUMS-windows` under
 `release-assets-windows`. Local MSIs do not contain Tauri updater signatures.
 
 Record Authenticode separately. A Tauri `.sig` authenticates updater downloads
@@ -127,7 +130,8 @@ MSI as code-signed. If no stable Authenticode certificate is configured, retain
 that limitation in release notes and obtain explicit publication approval.
 
 Create a temporary public prerelease/tag `v<version>-staging` and upload both
-MSIs. Run CodeMagic workflow `windows-updater-signing` against the exact source
+MSIs plus both `.metadata.json` files. Run CodeMagic workflow
+`windows-updater-signing` against the exact source
 commit. Pass the locally recorded lowercase hashes as build variables
 `WINDOWS_CORE_MSI_SHA256` and `WINDOWS_FULL_MSI_SHA256`. CodeMagic downloads and
 verifies both files before invoking the established Tauri updater key; a missing
@@ -147,7 +151,8 @@ commit. The workflow:
    Python, Pascal and Java with the packaged resources;
 5. runs packaged C++ and Python custom-checker/cancellation gates and the
    packaged process-supervisor gate;
-6. returns both DMGs, the signed Full `.app.tar.gz`, its `.sig` and checksums.
+6. returns both DMGs, both signed `.app.tar.gz` payloads, their `.sig`, strict
+   size metadata and checksums.
 
 The CodeMagic `themis_signing` group must contain
 `TAURI_SIGNING_PRIVATE_KEY` and, when applicable,
@@ -167,25 +172,27 @@ notarization unless `JUDGEDESK_REQUIRE_NOTARIZATION=1` passes in the actual buil
 3. Run CodeMagic Windows signing and macOS Core/Full workflows on that exact SHA.
 4. Put the verified installers, updater archive and standalone signatures in one
    clean private staging directory.
-5. Run `scripts/generate-updater-manifest.js`; it must select the Full artifacts
-   and embed the contents of their `.sig` files in `latest.json`.
+5. Run `scripts/generate-updater-manifest.js`; it must select all four exact
+   Core/Full updater artifacts, validate staging metadata and embed every `.sig`
+   plus measured size metadata in `latest.json`.
 6. Create a separate clean `public-release-assets` directory containing exactly
-   the seven-item allowlist above. Generate one combined `SHA256SUMS` over the
-   other six public assets; do not include standalone `.sig` files or GitHub's
-   generated source links.
+   the eight-item allowlist above. Generate one combined `SHA256SUMS` over the
+   other seven public assets; do not include standalone `.sig`, `.metadata.json`
+   files or GitHub's generated source links.
 7. Run
    `npm run release:verify-public-assets -- public-release-assets v<version>`.
    Any missing or extra file, including a standalone `.sig`, blocks publication.
 8. Create a draft `v<version>` release in public `ducminh25/judgedesk`, attach
    release notes and only `public-release-assets/*`, then verify each anonymous
    download URL plus both GitHub-generated Source code links.
-9. Verify checksums and verify the downloaded Full updater payloads using the
-   signatures embedded in the downloaded `latest.json`; include a tamper-negative
-   signature test. Do not depend on unpublished local `.sig` files for this gate.
+9. Verify checksums and all four downloaded updater payloads using the signatures
+   embedded in the downloaded `latest.json`; include a tamper-negative signature
+   test for every edition/platform. Verify the published byte sizes match manifest
+   metadata. Do not depend on unpublished local `.sig` files for this gate.
 10. Publish the draft only after both operating-system matrices pass. Remove the
     temporary staging release afterward.
 
-Existing v1.3.0 and v1.3.2 users can receive v1.3.3 through the updater. `latest.json`
-continues to select only the Full Windows MSI and Full macOS updater archive so
-an automatic update never removes managed toolchains included by a previous
-Full installation.
+v1.3.4 is a deliberate manual cutover to the four-target manifest. Versions
+before v1.3.4 do not understand the edition targets and must be upgraded with a
+manual MSI/DMG once. From v1.3.4 onward, skipping releases is supported because
+the stable endpoint always serves the latest version with both editions.
