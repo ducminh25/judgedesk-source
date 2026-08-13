@@ -1,8 +1,14 @@
 param(
-    [string]$OutputDirectory = "release-assets-windows"
+    [string]$OutputDirectory = "release-assets-windows",
+    [switch]$FinalizeOnly
 )
 
 $ErrorActionPreference = "Stop"
+
+# Resolve this optional diagnostic before the build subprocesses run. Some npm
+# child environments do not expose the inbox Security module, so release gates
+# verify the resulting MSI signatures again from a clean PowerShell process.
+$getAuthenticodeSignature = Get-Command Get-AuthenticodeSignature -ErrorAction SilentlyContinue
 
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $outputRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $OutputDirectory))
@@ -91,59 +97,91 @@ function Get-MsiInstalledSizeBytes([string]$MsiPath) {
     }
 }
 
+function Get-Sha256([string]$FilePath) {
+    $stream = [System.IO.File]::OpenRead($FilePath)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return [System.BitConverter]::ToString(
+            $sha256.ComputeHash($stream)
+        ).Replace("-", "").ToLowerInvariant()
+    }
+    finally {
+        $sha256.Dispose()
+        $stream.Dispose()
+    }
+}
+
 Push-Location $repoRoot
 try {
-    if (Test-Path -LiteralPath $outputRoot) {
-        Remove-Item -LiteralPath $outputRoot -Recurse -Force
+    if (-not $FinalizeOnly) {
+        if (Test-Path -LiteralPath $outputRoot) {
+            Remove-Item -LiteralPath $outputRoot -Recurse -Force
+        }
+        New-Item -ItemType Directory -Path $outputRoot | Out-Null
+
+        & npm.cmd run release:check-version
+        if ($LASTEXITCODE -ne 0) { throw "Version verification failed." }
+        & npm.cmd run build:executor
+        if ($LASTEXITCODE -ne 0) { throw "Native executor build failed." }
+        & npm.cmd run build:server
+        if ($LASTEXITCODE -ne 0) { throw "Server sidecar build failed." }
+
+        foreach ($variant in @("core", "full")) {
+            & npm.cmd run "distribution:sync:$variant"
+            if ($LASTEXITCODE -ne 0) { throw "Preparing $variant distribution resources failed." }
+
+            if (Test-Path -LiteralPath $targetBundleRoot) {
+                Remove-Item -LiteralPath $targetBundleRoot -Recurse -Force
+            }
+
+            $configPath = "src-tauri/tauri.windows.$variant.local.conf.json"
+            & npx.cmd tauri build --config $configPath --target x86_64-pc-windows-msvc
+            if ($LASTEXITCODE -ne 0) { throw "Building the Windows $variant MSI failed." }
+
+            $msiDirectory = Join-Path $targetBundleRoot "msi"
+            $msiFiles = @(Get-ChildItem -LiteralPath $msiDirectory -Filter "JudgeDesk_*.msi" -File)
+            if ($msiFiles.Count -ne 1) {
+                throw "Expected exactly one $variant MSI, found $($msiFiles.Count)."
+            }
+
+            $destinationName = "JudgeDesk_${version}_${variant}_x64_en-US.msi"
+            $destinationPath = Join-Path $outputRoot $destinationName
+            Copy-Item -LiteralPath $msiFiles[0].FullName -Destination $destinationPath
+
+            $metadata = [ordered]@{
+                schemaVersion = 1
+                edition = $variant
+                platform = "windows"
+                arch = "x86_64"
+                installedSizeBytes = Get-MsiInstalledSizeBytes $destinationPath
+            }
+            $metadata | ConvertTo-Json | Set-Content -LiteralPath "${destinationPath}.metadata.json" -Encoding utf8
+
+            if ($null -ne $getAuthenticodeSignature) {
+                $signature = & $getAuthenticodeSignature -LiteralPath $destinationPath
+                Write-Host "$destinationName Authenticode: $($signature.Status)"
+            }
+            else {
+                Write-Warning "Authenticode diagnostic unavailable in this build shell; verify $destinationName separately."
+            }
+        }
     }
-    New-Item -ItemType Directory -Path $outputRoot | Out-Null
-
-    & npm.cmd run release:check-version
-    if ($LASTEXITCODE -ne 0) { throw "Version verification failed." }
-    & npm.cmd run build:executor
-    if ($LASTEXITCODE -ne 0) { throw "Native executor build failed." }
-    & npm.cmd run build:server
-    if ($LASTEXITCODE -ne 0) { throw "Server sidecar build failed." }
-
-    foreach ($variant in @("core", "full")) {
-        & npm.cmd run "distribution:sync:$variant"
-        if ($LASTEXITCODE -ne 0) { throw "Preparing $variant distribution resources failed." }
-
-        if (Test-Path -LiteralPath $targetBundleRoot) {
-            Remove-Item -LiteralPath $targetBundleRoot -Recurse -Force
+    else {
+        foreach ($variant in @("core", "full")) {
+            $destinationPath = Join-Path $outputRoot "JudgeDesk_${version}_${variant}_x64_en-US.msi"
+            if (-not (Test-Path -LiteralPath $destinationPath -PathType Leaf)) {
+                throw "Cannot finalize missing Windows $variant MSI: $destinationPath"
+            }
+            if (-not (Test-Path -LiteralPath "${destinationPath}.metadata.json" -PathType Leaf)) {
+                throw "Cannot finalize missing Windows $variant metadata: ${destinationPath}.metadata.json"
+            }
         }
-
-        $configPath = "src-tauri/tauri.windows.$variant.local.conf.json"
-        & npx.cmd tauri build --config $configPath --target x86_64-pc-windows-msvc
-        if ($LASTEXITCODE -ne 0) { throw "Building the Windows $variant MSI failed." }
-
-        $msiDirectory = Join-Path $targetBundleRoot "msi"
-        $msiFiles = @(Get-ChildItem -LiteralPath $msiDirectory -Filter "JudgeDesk_*.msi" -File)
-        if ($msiFiles.Count -ne 1) {
-            throw "Expected exactly one $variant MSI, found $($msiFiles.Count)."
-        }
-
-        $destinationName = "JudgeDesk_${version}_${variant}_x64_en-US.msi"
-        $destinationPath = Join-Path $outputRoot $destinationName
-        Copy-Item -LiteralPath $msiFiles[0].FullName -Destination $destinationPath
-
-        $metadata = [ordered]@{
-            schemaVersion = 1
-            edition = $variant
-            platform = "windows"
-            arch = "x86_64"
-            installedSizeBytes = Get-MsiInstalledSizeBytes $destinationPath
-        }
-        $metadata | ConvertTo-Json | Set-Content -LiteralPath "${destinationPath}.metadata.json" -Encoding utf8
-
-        $signature = Get-AuthenticodeSignature -LiteralPath $destinationPath
-        Write-Host "$destinationName Authenticode: $($signature.Status)"
     }
 
     Get-ChildItem -LiteralPath $outputRoot -Filter "JudgeDesk_*.msi" -File |
         Sort-Object Name |
         ForEach-Object {
-            $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            $hash = Get-Sha256 $_.FullName
             "$hash  $($_.Name)"
         } | Set-Content -LiteralPath (Join-Path $outputRoot "SHA256SUMS-windows") -Encoding ascii
 
