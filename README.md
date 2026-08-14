@@ -1,102 +1,72 @@
 # JudgeDesk
 
-JudgeDesk là ứng dụng desktop chấm bài lập trình dành cho kỳ thi và lớp học. Ứng dụng chạy cục bộ trên Windows x64 và macOS Apple Silicon, tích hợp sẵn bảng điểm, cấu hình nhóm test, giao diện sáng/tối và hỗ trợ tiếng Việt/tiếng Anh. Dòng phát hành v1.3 hỗ trợ C++, C, Python, Pascal và Java bằng native secure runner, không fallback âm thầm sang compiler/runtime khác.
+JudgeDesk là ứng dụng desktop chấm bài lập trình cục bộ phục vụ các kỳ thi và lớp học, chạy trên Windows x64 và macOS Apple Silicon (ARM64). Ứng dụng hoạt động offline, hỗ trợ bảng điểm trực tiếp, cấu hình nhóm test, giao diện sáng/tối cùng hai ngôn ngữ giao diện tiếng Việt và tiếng Anh.
 
-Repository này chứa mã nguồn nội bộ của JudgeDesk. Trang công khai dành cho tải
-ứng dụng, hướng dẫn cài đặt, release notes và hỗ trợ người dùng được duy trì tại
-[`ducminh25/judgedesk`](https://github.com/ducminh25/judgedesk).
+Hệ thống chấm hỗ trợ 5 ngôn ngữ: C++, C, Python, Pascal và Java thông qua trình thực thi an toàn (native runner) của từng hệ điều hành, không tự động chuyển đổi sang compiler khác khi gặp lỗi cấu hình.
 
-## Tài liệu
-
-- **[INSTALL.md](INSTALL.md)**: Hướng dẫn tải và cài đặt cho Windows/macOS.
-- **[TOOLCHAINS.md](TOOLCHAINS.md)**: Danh sách và nguồn gốc GCC, Python, Free Pascal và Java do ứng dụng quản lý.
-- **[SECURITY.md](SECURITY.md)**: Chính sách bảo mật và cách báo lỗi an toàn.
-- **[SUPPORT.md](SUPPORT.md)**: Hướng dẫn báo lỗi và hỗ trợ người dùng.
-- **[CHANGELOG.md](CHANGELOG.md)**: Lịch sử cập nhật qua các phiên bản.
-- **[BUILDING.md](BUILDING.md)**: Hướng dẫn build từ mã nguồn.
-- **[RELEASING.md](RELEASING.md)**: Quy trình đóng gói và phát hành.
-- **[docs/CONTEST-FORMAT.md](docs/CONTEST-FORMAT.md)**: Định dạng file kỳ thi `.judgedesk`.
-- **[docs/v1.3.4-release-context.md](docs/v1.3.4-release-context.md)**: Phạm vi, artefact và ledger xác minh release v1.3.4.
-- **[docs/v1.3.2-toolchains-help-implementation-plan.md](docs/v1.3.2-toolchains-help-implementation-plan.md)**: Thiết kế toolchain, flags theo từng bài và Help Center của v1.3.2.
-- **[docs/portable-compatibility-v1.3.2.md](docs/portable-compatibility-v1.3.2.md)**: Audit khả năng portable; không phải artefact được hỗ trợ trong v1.3.2.
+Mã nguồn chính thức được lưu trữ tại [`ducminh25/judgedesk`](https://github.com/ducminh25/judgedesk).
 
 ## Bản phân phối Core và Full
 
-- **Full (khuyến nghị cho giáo viên/phòng thi):** cài xong có sẵn toàn bộ
-  managed toolchain được duyệt cho hệ điều hành. Windows còn kèm WebView2
-  offline. Trên macOS, Full kèm Python/FPC/Temurin nhưng C/C++ dùng Apple Clang
-  và macOS SDK từ Xcode Command Line Tools hoặc Xcode.
-- **Core:** chỉ chứa máy chấm và danh mục gói đã ký. Người dùng có thể tải
-  managed toolchain từ giao diện hoặc dùng C/C++/Python local đã qua kiểm tra
-  tương thích nhanh. Chế độ local ít cô lập hơn là một opt-in có cảnh báo.
+JudgeDesk phát hành hai gói cài đặt độc lập:
 
-Hai biến thể dùng cùng application identity và dữ liệu, vì vậy không cài song
-song. Từ v1.3.4, khi có update, JudgeDesk hiển thị cả Core và Full, đánh dấu
-edition hiện tại và tự tải đúng bộ cài người dùng chọn. Cập nhật cùng edition
-giữ nguyên lựa chọn compiler tùy chỉnh; đổi edition luôn có giải thích và xác
-nhận trước khi tải.
+Bản **Full** tích hợp sẵn toàn bộ trình biên dịch và runtime do ứng dụng quản lý (GCC, CPython, Free Pascal, Eclipse Temurin OpenJDK). Trên Windows, gói cài đặt chứa cả WebView2 runtime offline. Trên macOS, bản Full đi kèm Python, FPC và Java, riêng C/C++ sử dụng Apple Clang từ Xcode Command Line Tools. Đây là bản phù hợp cho phòng thi, máy giáo viên và môi trường không có kết nối mạng.
 
-## Lưu ý cập nhật từ phiên bản 1.1.x/1.2.x
+Bản **Core** chỉ gồm phần mềm chấm thi. Người dùng có thể tải thêm các gói compiler đã ký từ giao diện hoặc chọn compiler có sẵn trên máy sau khi ứng dụng kiểm tra độ tương thích.
 
-- Bản `1.3.0` giữ nguyên application identifier và thư mục dữ liệu cũ. Với đợt
-  phát hành này, người dùng cũ nhận bộ cài mới trực tiếp thay vì đi qua
-  auto-update từ v1.2.7.
-- Khi chuyển Core → Full ở v1.3.2, JudgeDesk ghi đè nguồn ngôn ngữ cũ sang các
-  package managed đi kèm đúng một lần. Các thay đổi thủ công sau lần bootstrap
-  đó vẫn được giữ nguyên.
-- Trên macOS, bộ cập nhật tự động cập nhật bundle tại chỗ nên không thể đổi tên thư mục `/Applications/ThemisV2.app` đang chạy. Để hoàn tất đổi tên, bạn có thể tải file `.dmg` mới nhất, kéo `JudgeDesk.app` vào Applications để thay thế bản cũ.
-- v1.3.4 là mốc bắt đầu updater Core/Full mới. Người dùng bản cũ cần tải và cài
-  v1.3.4 thủ công một lần; từ v1.3.4 trở đi, ứng dụng tự hiển thị hai edition
-  mỗi khi tìm thấy phiên bản mới nhất.
+Cả hai bản dùng chung định danh ứng dụng và vị trí lưu trữ dữ liệu. Khi có bản cập nhật mới, ứng dụng hiển thị cả hai tùy chọn Core và Full kèm dung lượng tải về để người dùng quyết định trực tiếp.
+
+## Tài liệu hướng dẫn
+
+- **[INSTALL.md](INSTALL.md)**: Hướng dẫn cài đặt và xác minh tệp cài đặt cho Windows và macOS.
+- **[TOOLCHAINS.md](TOOLCHAINS.md)**: Danh mục phiên bản compiler/runtime, cờ biên dịch chuẩn và cơ chế xác thực gói.
+- **[SECURITY.md](SECURITY.md)**: Chính sách bảo mật và quy trình báo cáo lỗ hổng an toàn.
+- **[SUPPORT.md](SUPPORT.md)**: Quy trình gửi phản hồi và báo lỗi kỹ thuật.
+- **[CHANGELOG.md](CHANGELOG.md)**: Lịch sử thay đổi chi tiết theo từng phiên bản.
+- **[BUILDING.md](BUILDING.md)**: Thiết lập môi trường và quy trình build từ mã nguồn.
+- **[RELEASING.md](RELEASING.md)**: Quy trình đóng gói và xuất bản release.
+- **[docs/CONTEST-FORMAT.md](docs/CONTEST-FORMAT.md)**: Đặc tả cấu trúc tệp kỳ thi `.judgedesk`.
 
 ## Môi trường phát triển
 
-- **Node.js/npm**: đúng `24.19.0` / `11.17.0`; Node trở thành SEA backend nên release không dùng alias `latest`.
-- **Rust**: đúng `1.97.1` với `rustfmt`, được khóa bởi `rust-toolchain.toml`.
-- **Tauri**: dòng v2 theo dependency lock của repository; không nâng trôi tự do trong lúc đóng gói release.
-- **Windows**: Visual Studio Build Tools với workload **Desktop development with C++**.
-- **macOS**: Xcode Command Line Tools.
+- **Node.js**: `24.19.0` (kèm npm `11.17.0`, quản lý qua `.nvmrc` hoặc Volta).
+- **Rust**: `1.97.1` (khóa qua `rust-toolchain.toml`).
+- **Tauri**: CLI v2 theo lockfile dự án.
+- **Windows**: Visual Studio C++ Build Tools và WebView2 Runtime.
+- **macOS**: Xcode Command Line Tools (`xcode-select --install`).
 
-Compiler/runtime trên hệ thống là tùy chọn ở Windows khi dùng Full. Trên macOS,
-C/C++ vẫn cần Apple Clang + SDK từ Xcode Command Line Tools hoặc Xcode; các
-runtime còn lại có thể dùng gói Full đi kèm, gói managed tải từ repository hoặc
-đường dẫn cục bộ phù hợp với policy của từng ngôn ngữ.
+## Lệnh kiểm thử và build
 
-## Các lệnh kiểm thử và build
+Cài đặt dependencies và chạy kiểm thử tự động:
 
 ```powershell
 npm ci
-npm run test:desktop
 npm run lint
 npm run test:server
-npm run build
+npm run test:desktop
 ```
 
-Chạy stress test với server:
+Chạy stress test kiểm tra tải chấm:
 
 ```powershell
 $env:STRESS_TEST_ROOT='D:\Minh\Code\stress_test_judge'
 npm run test:stress
 ```
-*(Nếu server không chạy tại `http://127.0.0.1:3000`, đặt thêm biến môi trường `JUDGE_SERVER_URL`)*
 
-Build hai MSI release candidate trên Windows:
+Đóng gói bộ cài Windows cục bộ:
 
 ```powershell
 npm run build:windows:release:local
 ```
 
-Các lệnh `build:windows:core:local`, `build:windows:full:local`,
-`build:macos:core:local` và `build:macos:full:local` vẫn dùng cho kiểm tra từng
-biến thể. Bundle macOS release chính thức phải được tạo bằng workflow
-`macos-arm64-release` trên CodeMagic.
+Lệnh này tạo hai tệp MSI (Core và Full) trong thư mục `release-assets-windows`. Gói phát hành macOS chính thức được tạo qua pipeline CodeMagic `macos-arm64-release`.
 
 ## Cấu trúc mã nguồn
 
-- `shared/`: Kiểu dữ liệu và định dạng cấu hình dùng chung giữa frontend và backend.
-- `src/features/`: Giao diện và logic frontend theo từng tính năng.
-- `server/judge/`: Quản lý compiler, discovery, runner, checker và tính điểm.
-- `server/toolchains/`: Tải, xác thực SHA-256 và quản lý toolchain độc lập.
-- `server/platform/`: Tương tác với API hệ điều hành (Windows/macOS).
-- `server/sandbox/`: Cơ chế cách ly (native, WSL2, Docker).
-- `src-tauri/`: Cửa sổ desktop và quản lý tiến trình backend sidecar.
+- `shared/`: Định nghĩa kiểu dữ liệu và cấu hình giao tiếp frontend/backend.
+- `src/`: Giao diện React, các tính năng quản lý bài thi, bảng điểm và Help Center.
+- `server/judge/`: Quản lý compiler, bộ phát hiện bài làm, cơ chế chấm, checker và tính điểm.
+- `server/toolchains/`: Quản lý tải xuống, lưu trữ và xác thực chữ ký SHA-256/Ed25519 cho toolchains.
+- `server/platform/`: Tương tác API hệ điều hành (Windows AppContainer / macOS Sandbox).
+- `native-executor/`: Module Rust thực thi mã nguồn thí sinh trong môi trường cách ly an toàn.
+- `src-tauri/`: Cấu hình cửa sổ desktop Tauri và tiến trình backend sidecar.
