@@ -114,10 +114,9 @@ function Get-Sha256([string]$FilePath) {
 Push-Location $repoRoot
 try {
     if (-not $FinalizeOnly) {
-        if (Test-Path -LiteralPath $outputRoot) {
-            Remove-Item -LiteralPath $outputRoot -Recurse -Force
+        if (-not (Test-Path -LiteralPath $outputRoot)) {
+            New-Item -ItemType Directory -Path $outputRoot | Out-Null
         }
-        New-Item -ItemType Directory -Path $outputRoot | Out-Null
 
         & npm.cmd run release:check-version
         if ($LASTEXITCODE -ne 0) { throw "Version verification failed." }
@@ -146,7 +145,7 @@ try {
 
             $destinationName = "JudgeDesk_${version}_${variant}_x64_en-US.msi"
             $destinationPath = Join-Path $outputRoot $destinationName
-            Copy-Item -LiteralPath $msiFiles[0].FullName -Destination $destinationPath
+            Copy-Item -LiteralPath $msiFiles[0].FullName -Destination $destinationPath -Force
 
             $metadata = [ordered]@{
                 schemaVersion = 1
