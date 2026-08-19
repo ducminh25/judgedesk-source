@@ -76,7 +76,7 @@ export function generateUpdaterManifest({
 function readBundleMetadata(filePath, expected) {
   let value;
   try {
-    value = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    value = JSON.parse(fs.readFileSync(filePath, "utf8").replace(/^\uFEFF/, ""));
   } catch (error) {
     throw new Error(`Invalid updater size metadata '${path.basename(filePath)}': ${error.message}`);
   }
@@ -105,7 +105,7 @@ function requireArtifact(files, filename, label) {
   return filename;
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   generateUpdaterManifest({
     assetsDirectory: path.resolve(process.argv[2] || "release-assets"),
     repository: process.env.PUBLIC_RELEASE_REPOSITORY,

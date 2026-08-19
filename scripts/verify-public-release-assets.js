@@ -165,7 +165,7 @@ function sha256(filePath) {
   return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const assetsDirectory = path.resolve(process.argv[2] || "public-release-assets");
   const tag = process.argv[3] || process.env.GITHUB_REF_NAME;
   const result = verifyPublicReleaseAssets({ assetsDirectory, tag });
