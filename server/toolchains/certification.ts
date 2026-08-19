@@ -9,7 +9,7 @@ import type {
 import {
   CPP_LANGUAGE_PROFILE_ID,
 } from "../languages/registry.js";
-import { createExecutorWorkspace, importExecutorArtifact } from "../executor/workspace.js";
+import { createExecutorWorkspace } from "../executor/workspace.js";
 import { executorClient } from "../executor/client.js";
 import { runReservedExecutor } from "../jobs.js";
 import {
@@ -231,9 +231,11 @@ async function runNativeArtifact(
   role: "submission" | "checker",
   options: { args?: string[]; stage?: Record<string, string> } = {},
 ): Promise<{ evidenceDigest: string; stdout: string; stderr: string }> {
-  const artifact = await importExecutorArtifact(binaryPath);
   const workspace = await createExecutorWorkspace();
   const runId = `cert_${role}_${crypto.randomUUID().replaceAll("-", "_")}`;
+  const artifactName = process.platform === "win32" ? "cert_artifact.exe" : "cert_artifact";
+  workspace.stage(binaryPath, artifactName, true);
+  const executableId = workspace.relative(artifactName);
   try {
     for (const [name, contents] of Object.entries(options.stage || {})) {
       const source = path.join(workspace.path, `.stage-${crypto.randomUUID()}`);
@@ -251,7 +253,7 @@ async function runNativeArtifact(
       ? buildSubmissionExecutorRunSpec({
           runId,
           workspaceId: workspace.id,
-          executableId: artifact.executableId,
+          executableId,
           args,
           environment: {},
           timeLimitMs: 2_000,
@@ -260,7 +262,7 @@ async function runNativeArtifact(
       : buildCheckerExecutorRunSpec({
           runId,
           workspaceId: workspace.id,
-          executableId: artifact.executableId,
+          executableId,
           args,
           environment: {},
           runtimeBacked: false,

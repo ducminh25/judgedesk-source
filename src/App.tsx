@@ -37,6 +37,7 @@ import HelpCenter, {
   isHelpShortcut,
   type HelpSectionId,
 } from "./features/help/HelpCenter.js";
+import { isMacOS, matchShortcut } from "./features/shortcuts/shortcuts.js";
 import { useTranslation } from "react-i18next";
 import ToolchainManager from "./features/toolchains/ToolchainManager.js";
 import type { ToolchainState } from "./features/toolchains/useToolchains.js";
@@ -290,16 +291,16 @@ export default function App() {
     requestHostStatus();
   }, [requestHostStatus]);
 
-  useEffect(() => {
-    const openHelpOnF1 = (event: KeyboardEvent) => {
-      if (!isHelpShortcut(event) || updateHandoffActive) return;
-      event.preventDefault();
-      event.stopPropagation();
-      setHelpSection((current) => current ?? "quick-start");
-    };
-    window.addEventListener("keydown", openHelpOnF1, true);
-    return () => window.removeEventListener("keydown", openHelpOnF1, true);
-  }, [updateHandoffActive]);
+  const [activeContestant, setActiveContestant] = useState<string | null>(null);
+  const [activeProblem, setActiveProblem] = useState<string | null>(null);
+
+  const handleReloadFolders = useCallback(async () => {
+    await Promise.all([
+      handleFetchContestants(undefined, { preserveSelection: true }),
+      handleFetchProblems(undefined, { preserveSelection: true }),
+    ]);
+    markContestDirty();
+  }, [handleFetchContestants, handleFetchProblems, markContestDirty]);
 
   useEffect(() => {
     activeLoadModalRef.current = loadModal;
@@ -429,7 +430,7 @@ export default function App() {
     };
   }, [t, updater.discardUpdate]);
 
-  const handleSaveContest = async (): Promise<boolean> => {
+  const handleSaveContest = async (forceSaveAs: boolean = false): Promise<boolean> => {
     if (interactionLockedRef.current || saveOperationRef.current) return false;
     if (!thisinhPath.trim() && !testPath.trim()) return false;
     saveOperationRef.current = true;
@@ -444,7 +445,7 @@ export default function App() {
         judgeResult,
       }, contestCreatedAt);
       const savedPath = await saveContestArchive({
-        currentPath: contestFilePath,
+        currentPath: forceSaveAs ? null : contestFilePath,
         contestantsPath: thisinhPath,
         testsPath: testPath,
         manifest,
@@ -667,6 +668,232 @@ export default function App() {
     }
   };
 
+  const handleExport = useCallback(() => {
+    void handleExportExcel();
+  }, []);
+
+  useEffect(() => {
+    const isMac = isMacOS(hostStatus?.platform);
+
+    const handleGlobalKeyDown = (event: KeyboardEvent) => {
+      if (updateHandoffActive) return;
+
+      if (!isHelpShortcut(event)) {
+        const action = matchShortcut(event, isMac);
+        if (!action) return;
+
+        // Escape closes any active modal or menu
+        if (action === "escape") {
+          if (actionMenu) {
+            event.preventDefault();
+            setActionMenu(null);
+            return;
+          }
+          if (activeDetails) {
+            event.preventDefault();
+            setActiveDetails(null);
+            return;
+          }
+          if (activeConfigProblem) {
+            event.preventDefault();
+            setActiveConfigProblem(null);
+            return;
+          }
+          if (activeLog) {
+            event.preventDefault();
+            setActiveLog(null);
+            return;
+          }
+          if (loadModal) {
+            event.preventDefault();
+            setLoadModal(null);
+            return;
+          }
+          if (helpSection) {
+            event.preventDefault();
+            setHelpSection(null);
+            return;
+          }
+          if (openToolchains) {
+            event.preventDefault();
+            setOpenToolchains(false);
+            return;
+          }
+          if (pendingScoreDeletion) {
+            event.preventDefault();
+            setPendingScoreDeletion(null);
+            return;
+          }
+          if (pendingContestAction) {
+            event.preventDefault();
+            setPendingContestAction(null);
+            return;
+          }
+          return;
+        }
+
+        const isAnyModalOpen =
+          !!loadModal ||
+          !!helpSection ||
+          openToolchains ||
+          !!pendingContestAction ||
+          !!pendingScoreDeletion ||
+          !!activeConfigProblem ||
+          !!activeDetails ||
+          !!activeLog ||
+          !!actionMenu;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        switch (action) {
+          case "loadProblems":
+            if (!interactionLocked && !isAnyModalOpen) {
+              setLoadModal("tests");
+              setModalPath(testsPickerPath);
+            }
+            break;
+          case "loadContestants":
+            if (!interactionLocked && !isAnyModalOpen) {
+              setLoadModal("contestants");
+              setModalPath(contestantsPickerPath);
+            }
+            break;
+          case "reload":
+            if (!interactionLocked && !isAnyModalOpen) void handleReloadFolders();
+            break;
+          case "toolchains":
+            if (!interactionLocked && !isAnyModalOpen) setOpenToolchains(true);
+            break;
+          case "judge":
+            if (!interactionLocked && !isAnyModalOpen && canRun) void runJudge();
+            break;
+          case "exportExcel":
+            if (!interactionLocked && !isAnyModalOpen && canExportScoreboard(contestantsList, problemsList)) {
+              handleExport();
+            }
+            break;
+          case "newContest":
+            if (!interactionLocked && !isAnyModalOpen) requestContestAction("new");
+            break;
+          case "openContest":
+            if (!interactionLocked && !isAnyModalOpen) requestContestAction("open");
+            break;
+          case "saveContest":
+            if (!interactionLocked && !isAnyModalOpen && isContestDirty && hasContestData) {
+              void handleSaveContest(false);
+            }
+            break;
+          case "saveContestAs":
+            if (!interactionLocked && !isAnyModalOpen && isContestDirty && hasContestData) {
+              void handleSaveContest(true);
+            }
+            break;
+          case "selectAllContestants":
+            if (!isAnyModalOpen) {
+              setSelectedContestants((prev) => ({
+                ...prev,
+                ...Object.fromEntries(contestantsList.map((name) => [name, true])),
+              }));
+              markContestDirty();
+            }
+            break;
+          case "deselectAllContestants":
+            if (!isAnyModalOpen) {
+              setSelectedContestants((prev) => ({
+                ...prev,
+                ...Object.fromEntries(contestantsList.map((name) => [name, false])),
+              }));
+              markContestDirty();
+            }
+            break;
+          case "toggleActiveContestant":
+            if (!isAnyModalOpen) {
+              const target = activeContestant || displayedContestants[0];
+              if (target) {
+                setSelectedContestants((prev) => ({
+                  ...prev,
+                  [target]: !prev[target],
+                }));
+                markContestDirty();
+              }
+            }
+            break;
+          case "selectAllProblems":
+            if (!isAnyModalOpen) {
+              setSelectedProblems((prev) => ({
+                ...prev,
+                ...Object.fromEntries(problemsList.map((name) => [name, true])),
+              }));
+              markContestDirty();
+            }
+            break;
+          case "deselectAllProblems":
+            if (!isAnyModalOpen) {
+              setSelectedProblems((prev) => ({
+                ...prev,
+                ...Object.fromEntries(problemsList.map((name) => [name, false])),
+              }));
+              markContestDirty();
+            }
+            break;
+          case "toggleActiveProblem":
+            if (!isAnyModalOpen) {
+              const target = activeProblem || displayedProblems[0];
+              if (target) {
+                setSelectedProblems((prev) => ({
+                  ...prev,
+                  [target]: !prev[target],
+                }));
+                markContestDirty();
+              }
+            }
+            break;
+        }
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      setHelpSection((current) => current ?? "quick-start");
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown, true);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown, true);
+  }, [
+    actionMenu,
+    activeConfigProblem,
+    activeContestant,
+    activeDetails,
+    activeLog,
+    activeProblem,
+    canRun,
+    contestantsList,
+    contestantsPickerPath,
+    displayedContestants,
+    displayedProblems,
+    handleExport,
+    handleReloadFolders,
+    handleSaveContest,
+    hasContestData,
+    helpSection,
+    hostStatus?.platform,
+    interactionLocked,
+    isContestDirty,
+    loadModal,
+    markContestDirty,
+    openToolchains,
+    pendingContestAction,
+    pendingScoreDeletion,
+    problemsList,
+    requestContestAction,
+    runJudge,
+    setSelectedContestants,
+    setSelectedProblems,
+    testsPickerPath,
+    updateHandoffActive,
+  ]);
+
   return (
     <div
       id="local-online-judge"
@@ -696,9 +923,7 @@ export default function App() {
             problemNames: selectedProblemNames,
           });
         }}
-        onExport={() => {
-          void handleExportExcel();
-        }}
+        onExport={handleExport}
         onNewContest={() => requestContestAction("new")}
         onOpenContest={() => requestContestAction("open")}
         onOpenContestants={() => {
@@ -710,18 +935,13 @@ export default function App() {
           setModalPath(testsPickerPath);
         }}
         onReload={() => {
-          void Promise.all([
-            handleFetchContestants(undefined, { preserveSelection: true }),
-            handleFetchProblems(undefined, { preserveSelection: true }),
-          ]).then(() => {
-            markContestDirty();
-          });
+          void handleReloadFolders();
         }}
         onRun={() => {
           void runJudge();
         }}
         onSaveContest={() => {
-          void handleSaveContest();
+          void handleSaveContest(false);
         }}
         onOpenHelp={() => setHelpSection("quick-start")}
         onOpenDonation={() => setShowDonationConfirm(true)}
@@ -744,6 +964,12 @@ export default function App() {
         selectedContestants={selectedContestants}
         selectedProblems={selectedProblems}
         interactionLocked={interactionLocked}
+        activeContestant={activeContestant}
+        activeProblem={activeProblem}
+        onActiveTargetChange={(contestant, problem) => {
+          setActiveContestant(contestant);
+          setActiveProblem(problem);
+        }}
         setContestantSort={setContestantSort}
         setSelectedContestants={updateSelectedContestants}
         setSelectedProblems={updateSelectedProblems}

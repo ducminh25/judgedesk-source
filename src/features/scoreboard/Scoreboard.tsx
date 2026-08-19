@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type Dispatch,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type SetStateAction,
 } from "react";
@@ -38,6 +39,9 @@ interface Props {
   selectedContestants: Record<string, boolean>;
   selectedProblems: Record<string, boolean>;
   interactionLocked: boolean;
+  activeContestant?: string | null;
+  activeProblem?: string | null;
+  onActiveTargetChange?: (contestant: string | null, problem: string | null) => void;
   setContestantSort: Dispatch<SetStateAction<"default" | "asc" | "desc" | "score">>;
   setSelectedContestants: Dispatch<SetStateAction<Record<string, boolean>>>;
   setSelectedProblems: Dispatch<SetStateAction<Record<string, boolean>>>;
@@ -64,6 +68,9 @@ function Scoreboard({
   selectedContestants,
   selectedProblems,
   interactionLocked,
+  activeContestant,
+  activeProblem,
+  onActiveTargetChange,
   setContestantSort,
   setSelectedContestants,
   setSelectedProblems,
@@ -72,7 +79,14 @@ function Scoreboard({
 }: Props) {
   const { t } = useTranslation();
   const viewportRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<HTMLTableElement>(null);
   const [viewport, setViewport] = useState<ViewportSize>({ width: 1280, height: 700 });
+
+  // Keyboard navigation focus state:
+  // focusedRow: -1 (header row) or 0..contestants.length-1
+  // focusedCol: -1 (contestant column), 0..problems.length-1 (problem columns), problems.length (total column)
+  const [focusedRow, setFocusedRow] = useState<number>(0);
+  const [focusedCol, setFocusedCol] = useState<number>(-1);
 
   useEffect(() => {
     const element = viewportRef.current;
@@ -89,6 +103,28 @@ function Scoreboard({
     () => new Set(Object.keys(selectedProblems).filter((problem) => selectedProblems[problem]).map((name) => name.toLowerCase())),
     [selectedProblems],
   );
+
+  const updateActiveTarget = useCallback((row: number, col: number) => {
+    if (!onActiveTargetChange) return;
+    const contestant = (row >= 0 && row < contestants.length) ? contestants[row] : null;
+    const problem = (col >= 0 && col < problems.length) ? problems[col] : null;
+    onActiveTargetChange(contestant, problem);
+  }, [contestants, onActiveTargetChange, problems]);
+
+  // Sync external activeContestant / activeProblem when changed from outside
+  useEffect(() => {
+    if (activeContestant) {
+      const rowIndex = contestants.indexOf(activeContestant);
+      if (rowIndex >= 0) setFocusedRow(rowIndex);
+    }
+  }, [activeContestant, contestants]);
+
+  useEffect(() => {
+    if (activeProblem) {
+      const colIndex = problems.indexOf(activeProblem);
+      if (colIndex >= 0) setFocusedCol(colIndex);
+    }
+  }, [activeProblem, problems]);
 
   const contestantColumnWidth = Math.max(170, Math.min(260, Math.round(viewport.width * 0.2)));
   const totalColumnWidth = Math.max(86, Math.min(110, Math.round(viewport.width * 0.075)));
@@ -123,6 +159,65 @@ function Scoreboard({
     });
   }, [onOpenActions]);
 
+  const handleTableKeyDown = (event: ReactKeyboardEvent) => {
+    if (interactionLocked) return;
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setFocusedRow((curr) => {
+        const next = Math.min(contestants.length - 1, curr + 1);
+        updateActiveTarget(next, focusedCol);
+        return next;
+      });
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setFocusedRow((curr) => {
+        const next = Math.max(0, curr - 1);
+        updateActiveTarget(next, focusedCol);
+        return next;
+      });
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      setFocusedCol((curr) => {
+        const next = Math.min(problems.length, curr + 1);
+        updateActiveTarget(focusedRow, next);
+        return next;
+      });
+    } else if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      setFocusedCol((curr) => {
+        const next = Math.max(-1, curr - 1);
+        updateActiveTarget(focusedRow, next);
+        return next;
+      });
+    } else if (event.key === " " || event.key === "Spacebar") {
+      event.preventDefault();
+      if (focusedRow >= 0 && focusedRow < contestants.length) {
+        const contestant = contestants[focusedRow];
+        if (focusedCol >= 0 && focusedCol < problems.length) {
+          const problem = problems[focusedCol];
+          // If on problem column, toggle problem selection or contestant
+          setSelectedContestants((prev) => ({ ...prev, [contestant]: !prev[contestant] }));
+        } else {
+          setSelectedContestants((prev) => ({ ...prev, [contestant]: !prev[contestant] }));
+        }
+      }
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      if (focusedRow >= 0 && focusedRow < contestants.length && focusedCol >= 0 && focusedCol < problems.length) {
+        const contestant = contestants[focusedRow];
+        const problemName = problems[focusedCol];
+        const contestantResult = resultIndex.contestants.get(contestant);
+        const problem = contestantResult?.problems.find(
+          (p) => p.problemName.toLowerCase() === problemName.toLowerCase(),
+        );
+        if (problem && problem.compileStatus !== "SKIPPED") {
+          onOpenDetails(contestant, problem);
+        }
+      }
+    }
+  };
+
   return (
     <main
       className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-surface"
@@ -130,7 +225,9 @@ function Scoreboard({
     >
       <div
         ref={viewportRef}
-        className="min-h-0 flex-1 overflow-auto bg-surface select-none"
+        className="min-h-0 flex-1 overflow-auto bg-surface select-none outline-none"
+        tabIndex={0}
+        onKeyDown={handleTableKeyDown}
         onDragStart={(event) => event.preventDefault()}
       >
         {allContestants.length === 0 && problems.length === 0 ? (
@@ -140,6 +237,7 @@ function Scoreboard({
           </div>
         ) : (
           <table
+            ref={tableRef}
             className="relative border-collapse text-left"
             style={{ width: tableWidth, tableLayout: "fixed", fontSize }}
           >
@@ -177,11 +275,16 @@ function Scoreboard({
                     </button>
                   </div>
                 </th>
-                {problems.map((problemName) => {
+                {problems.map((problemName, colIdx) => {
                   const hasResults = resultIndex.problemsWithResults.has(problemName.toLowerCase());
+                  const isColFocused = focusedCol === colIdx;
                   return (
                     <th
                       key={problemName}
+                      onClick={() => {
+                        setFocusedCol(colIdx);
+                        updateActiveTarget(focusedRow, colIdx);
+                      }}
                       onContextMenu={(event) => openContextMenu(event, {
                         type: "problem",
                         name: problemName,
@@ -189,7 +292,7 @@ function Scoreboard({
                         hasResults,
                         canRegrade: contestants.length > 0,
                       })}
-                      className="border-b border-l border-surface-border bg-surface-elevated px-1.5 text-center font-semibold text-text-primary hover:bg-surface-hover"
+                      className={`border-b border-l border-surface-border bg-surface-elevated px-1.5 text-center font-semibold text-text-primary hover:bg-surface-hover ${isColFocused ? "bg-indigo-50/50 dark:bg-indigo-950/30" : ""}`}
                     >
                       <div className="flex min-w-0 items-center justify-center gap-1">
                         <input
@@ -239,9 +342,12 @@ function Scoreboard({
               </tr>
             </thead>
             <tbody>
-              {contestants.map((contestantName) => (
+              {contestants.map((contestantName, rowIdx) => (
                 <ScoreboardRow
                   key={contestantName}
+                  rowIndex={rowIdx}
+                  focusedRow={focusedRow}
+                  focusedCol={focusedCol}
                   contestantName={contestantName}
                   contestantResult={resultIndex.contestants.get(contestantName)}
                   selected={!!selectedContestants[contestantName]}
@@ -249,6 +355,11 @@ function Scoreboard({
                   problems={problems}
                   interactionLocked={interactionLocked}
                   rowHeight={rowHeight}
+                  onSelectCell={(r, c) => {
+                    setFocusedRow(r);
+                    setFocusedCol(c);
+                    updateActiveTarget(r, c);
+                  }}
                   setSelectedContestants={setSelectedContestants}
                   openContextMenu={openContextMenu}
                   onOpenDetails={onOpenDetails}
@@ -263,6 +374,9 @@ function Scoreboard({
 }
 
 interface ScoreboardRowProps {
+  rowIndex: number;
+  focusedRow: number;
+  focusedCol: number;
   contestantName: string;
   contestantResult: ContestantResult | undefined;
   selected: boolean;
@@ -270,12 +384,16 @@ interface ScoreboardRowProps {
   problems: string[];
   interactionLocked: boolean;
   rowHeight: number;
+  onSelectCell: (row: number, col: number) => void;
   setSelectedContestants: Dispatch<SetStateAction<Record<string, boolean>>>;
   openContextMenu: OpenContextMenu;
   onOpenDetails: (contestant: string, problem: ProblemResult) => void;
 }
 
 const ScoreboardRow = memo(function ScoreboardRow({
+  rowIndex,
+  focusedRow,
+  focusedCol,
   contestantName,
   contestantResult,
   selected,
@@ -283,6 +401,7 @@ const ScoreboardRow = memo(function ScoreboardRow({
   problems,
   interactionLocked,
   rowHeight,
+  onSelectCell,
   setSelectedContestants,
   openContextMenu,
   onOpenDetails,
@@ -304,11 +423,14 @@ const ScoreboardRow = memo(function ScoreboardRow({
     canRegrade: problems.length > 0,
   };
 
+  const isRowFocused = focusedRow === rowIndex;
+
   return (
-    <tr className={selected ? "hover:bg-surface-hover/40" : "opacity-50"}>
+    <tr className={`${selected ? "hover:bg-surface-hover/40" : "opacity-50"} ${isRowFocused ? "bg-indigo-50/30 dark:bg-indigo-950/20" : ""}`}>
       <td
+        onClick={() => onSelectCell(rowIndex, -1)}
         onContextMenu={(event) => openContextMenu(event, contestantTarget)}
-        className="sticky left-0 z-10 cursor-default border-b border-r border-surface-border bg-surface px-2 font-mono text-text-primary"
+        className={`sticky left-0 z-10 cursor-default border-b border-r border-surface-border bg-surface px-2 font-mono text-text-primary ${isRowFocused && focusedCol === -1 ? "ring-2 ring-indigo-500 ring-inset" : ""}`}
         style={{ height: rowHeight }}
       >
         <div className="flex min-w-0 items-center gap-1.5">
@@ -334,8 +456,9 @@ const ScoreboardRow = memo(function ScoreboardRow({
           </button>
         </div>
       </td>
-      {problems.map((problemName) => {
+      {problems.map((problemName, colIdx) => {
         const problem = problemResults.get(problemName.toLowerCase());
+        const isCellFocused = isRowFocused && focusedCol === colIdx;
         let displayText: string | number = "-";
         let colorClass = "text-text-muted";
         if (problem) {
@@ -357,6 +480,7 @@ const ScoreboardRow = memo(function ScoreboardRow({
         return (
           <td
             key={problemName}
+            onClick={() => onSelectCell(rowIndex, colIdx)}
             onContextMenu={(event) => openContextMenu(event, {
               type: "result",
               name: `${contestantName} · ${problemName}`,
@@ -370,7 +494,7 @@ const ScoreboardRow = memo(function ScoreboardRow({
                 onOpenDetails(contestantName, problem);
               }
             }}
-            className={`border-b border-l border-surface-border px-2 text-center align-middle transition-[filter] hover:brightness-95 dark:hover:brightness-110 ${problem ? "cursor-pointer" : "cursor-default"} ${colorClass}`}
+            className={`border-b border-l border-surface-border px-2 text-center align-middle transition-[filter] hover:brightness-95 dark:hover:brightness-110 ${problem ? "cursor-pointer" : "cursor-default"} ${colorClass} ${isCellFocused ? "ring-2 ring-indigo-500 ring-inset" : ""}`}
             style={{ height: rowHeight }}
             title={problem ? t("scoreboard.resultStatus", {
               status: problem.summary.status,
@@ -382,8 +506,9 @@ const ScoreboardRow = memo(function ScoreboardRow({
         );
       })}
       <td
+        onClick={() => onSelectCell(rowIndex, problems.length)}
         onContextMenu={(event) => openContextMenu(event, contestantTarget)}
-        className="sticky right-0 z-10 cursor-default border-b border-l border-surface-border bg-total-column px-2 text-center font-bold text-indigo-700 dark:text-indigo-300"
+        className={`sticky right-0 z-10 cursor-default border-b border-l border-surface-border bg-total-column px-2 text-center font-bold text-indigo-700 dark:text-indigo-300 ${isRowFocused && focusedCol === problems.length ? "ring-2 ring-indigo-500 ring-inset" : ""}`}
         style={{ height: rowHeight }}
       >
         {contestantResult ? totalScore.toFixed(2) : "-"}

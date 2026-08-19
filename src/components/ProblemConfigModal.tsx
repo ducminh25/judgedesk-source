@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertCircle, Settings, X } from "lucide-react";
 import { ProblemConfig } from "../types";
 import { BasicProblemSettings } from "../features/problem-config/BasicProblemSettings";
@@ -49,6 +49,24 @@ export default function ProblemConfigModal({
   const [batchPointsTotal, setBatchPointsTotal] = useState("");
   const [confirmingSave, setConfirmingSave] = useState(false);
   const [compileConfigValid, setCompileConfigValid] = useState(true);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (confirmingSave) {
+          setConfirmingSave(false);
+        } else if (popover) {
+          setPopover(null);
+        } else {
+          onClose();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [confirmingSave, onClose, popover]);
 
   const closePopover = () => setPopover(null);
   const savePopover = () => {

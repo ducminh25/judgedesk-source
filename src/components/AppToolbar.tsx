@@ -154,25 +154,25 @@ export default function AppToolbar({
           </div>
         </div>
 
-        <button type="button" onClick={onOpenTests} disabled={interactionLocked} className={iconCommandButton} title={t("toolbar.loadTests")} aria-label={t("toolbar.loadTests")}>
+        <button type="button" onClick={onOpenTests} disabled={interactionLocked} className={iconCommandButton} title={`${t("toolbar.loadTests")} (F2)`} aria-label={`${t("toolbar.loadTests")} (F2)`}>
           <ClipboardList className="h-4 w-4 text-amber-500" />
         </button>
-        <button type="button" onClick={onOpenContestants} disabled={interactionLocked} className={iconCommandButton} title={t("toolbar.loadContestants")} aria-label={t("toolbar.loadContestants")}>
+        <button type="button" onClick={onOpenContestants} disabled={interactionLocked} className={iconCommandButton} title={`${t("toolbar.loadContestants")} (F3)`} aria-label={`${t("toolbar.loadContestants")} (F3)`}>
           <UsersRound className="h-4 w-4 text-sky-500" />
         </button>
-        <button type="button" onClick={onReload} disabled={interactionLocked} className={commandButton} title={t("toolbar.reloadHint")}>
+        <button type="button" onClick={onReload} disabled={interactionLocked} className={commandButton} title={`${t("toolbar.reloadHint")} (F5)`}>
           <RefreshCw className="h-4 w-4" />
           <span>{t("toolbar.refresh")}</span>
         </button>
 
         <div className="mx-1 h-7 w-px flex-none bg-surface-border" />
-        <button type="button" onClick={onNewContest} disabled={interactionLocked} className={iconCommandButton} title={t("contest.new")} aria-label={t("contest.new")}>
+        <button type="button" onClick={onNewContest} disabled={interactionLocked} className={iconCommandButton} title={`${t("contest.new")} (Ctrl+N / ⌘N)`} aria-label={`${t("contest.new")} (Ctrl+N / ⌘N)`}>
           <FilePlus2 className="h-4 w-4 text-text-muted" />
         </button>
-        <button type="button" onClick={onOpenContest} disabled={interactionLocked} className={iconCommandButton} title={t("contest.open")} aria-label={t("contest.open")}>
+        <button type="button" onClick={onOpenContest} disabled={interactionLocked} className={iconCommandButton} title={`${t("contest.open")} (Ctrl+O / ⌘O)`} aria-label={`${t("contest.open")} (Ctrl+O / ⌘O)`}>
           <FolderOpen className="h-4 w-4 text-amber-500" />
         </button>
-        <button type="button" onClick={onSaveContest} disabled={!canSaveContest || interactionLocked} className={iconCommandButton} title={t("contest.save")} aria-label={t("contest.save")}>
+        <button type="button" onClick={onSaveContest} disabled={!canSaveContest || interactionLocked} className={iconCommandButton} title={`${t("contest.save")} (Ctrl+S / ⌘S)`} aria-label={`${t("contest.save")} (Ctrl+S / ⌘S)`}>
           {isSavingContest ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4 text-sky-600 dark:text-sky-400" />}
         </button>
 
@@ -181,13 +181,13 @@ export default function AppToolbar({
           type="button"
           onClick={onRun}
           disabled={interactionLocked || !canRun}
-          title={!canRun ? t("actions.missingData") : undefined}
+          title={!canRun ? t("actions.missingData") : `${t("toolbar.run")} (F9)`}
           className="flex h-9 flex-none items-center gap-2 rounded bg-indigo-600 px-4 text-xs font-bold text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isJudging ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
           <span>{isJudging ? t("status.judging") : t("toolbar.run")}</span>
         </button>
-        <button type="button" onClick={onExport} disabled={!canExport || interactionLocked || isExporting} className={commandButton}>
+        <button type="button" onClick={onExport} disabled={!canExport || interactionLocked || isExporting} className={commandButton} title={`${t("scoreboard.export")} (F12)`}>
           {isExporting
             ? <RefreshCw className="h-4 w-4 animate-spin" />
             : <FileSpreadsheet className="h-4 w-4 text-emerald-500" />}
@@ -427,8 +427,8 @@ export function HostStatusMenu({
         <button type="button" onClick={onOpenRepository} className="flex items-center gap-2 rounded px-2 py-2 text-xs text-text-primary hover:bg-surface-hover">
           <Github className="h-3.5 w-3.5" /> GitHub
         </button>
-        <button type="button" onClick={onOpenToolchains} className="flex items-center gap-2 rounded px-2 py-2 text-xs text-text-primary hover:bg-surface-hover">
-          <Wrench className="h-3.5 w-3.5" /> {t("toolchains.managerTitle")}
+        <button type="button" onClick={onOpenToolchains} className="flex items-center gap-2 rounded px-2 py-2 text-xs text-text-primary hover:bg-surface-hover" title={`${t("toolchains.managerTitle")} (F6)`}>
+          <Wrench className="h-3.5 w-3.5" /> {t("toolchains.managerTitle")} (F6)
         </button>
       </div>
     </div>

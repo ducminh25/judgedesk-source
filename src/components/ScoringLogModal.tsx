@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { FileText, X } from "lucide-react";
 import { ContestantResult } from "../types";
 import { useTranslation } from "react-i18next";
@@ -19,6 +20,19 @@ export default function ScoringLogModal({
   onClose,
 }: Props) {
   const { t } = useTranslation();
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [onClose]);
+
   const rows = contestants
     .filter(
       (contestant) =>

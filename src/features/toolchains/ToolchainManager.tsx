@@ -47,6 +47,18 @@ export default function ToolchainManager({ onClose, firstRun = false }: Props) {
     certify,
   } = useToolchains();
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [onClose]);
+
   return (
     <div className={`fixed inset-0 ${firstRun ? "z-[90]" : "z-50"} flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm`}>
       <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-lg border border-surface-border bg-surface shadow-2xl">
