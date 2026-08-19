@@ -19,11 +19,17 @@ export type ShortcutAction =
   | "toggleActiveProblem";
 
 export function isMacOS(platform?: string): boolean {
-  if (platform === "darwin") return true;
-  if (typeof navigator !== "undefined") {
+  if (platform !== undefined) {
+    const p = platform.toLowerCase();
+    return p === "darwin" || p.includes("mac");
+  }
+  if (typeof navigator !== "undefined" && (navigator.platform || navigator.userAgent)) {
     const p = (navigator.platform || "").toUpperCase();
     const ua = (navigator.userAgent || "").toUpperCase();
     return p.includes("MAC") || ua.includes("MAC") || ua.includes("IPHONE") || ua.includes("IPAD");
+  }
+  if (typeof process !== "undefined" && process.platform) {
+    return process.platform === "darwin";
   }
   return false;
 }
