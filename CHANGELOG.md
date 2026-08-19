@@ -5,6 +5,26 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 ## [Unreleased]
 
+## [1.3.5] - 2026-08-19
+
+### Phím tắt & Trải nghiệm điều hướng bàn phím
+
+- Bổ sung hệ thống phím tắt đồng bộ với Themis truyền thống (`F1` - `F12`, `Ctrl+N/O/S`, `Ctrl+Shift+S`, `Ctrl+A/D/I`, `Ctrl+Shift+A/D/I`).
+- Tự động nhận diện và chuyển đổi phím bổ trợ trên macOS (`Ctrl` → `Command ⌘`, `Ctrl+Shift` → `Shift+Command ⇧⌘`).
+- Hỗ trợ điều hướng bảng điểm hoàn toàn không cần chuột: Dùng các phím mũi tên (`↑ ↓ ← →`) di chuyển ô chọn với đường viền tiêu điểm rõ ràng, phím `Space` để bật/tắt ô checkbox, phím `Enter` để mở cửa sổ xem chi tiết kết quả testcase.
+- Cơ chế bảo vệ thông minh tránh xung đột phím tắt: Giữ nguyên hành vi bôi đen toàn bộ văn bản của `Ctrl+A` khi con trỏ đang ở ô nhập liệu (`<input>`, `<textarea>`); khóa thao tác bảng điểm ngầm khi đang mở modal.
+- Hỗ trợ phím `Esc` (Escape) trên toàn bộ các modal, dialog, cửa sổ cấu hình và xem log để thoát nhanh về màn hình chính.
+
+### Trình biên dịch & Ổn định môi trường chấm
+
+- Loại bỏ cơ chế băm file SHA-256 nhị phân trước khi chấm, chấm trực tiếp file thực thi trong thư mục tạm được bảo vệ của sandbox. Giải quyết triệt để hiện tượng cảnh báo nhầm (false-positive) từ Windows Defender mà vẫn đảm bảo 100% độ an toàn và cô lập tiến trình.
+- Nâng cấp cơ chế tự động nhận diện compiler cục bộ (MSYS2 UCRT64, MinGW64, CodeBlocks MinGW, Themis GCC) ngay lần đầu khởi động, tự động bảo lưu và ghi nhớ đường dẫn qua các lần cập nhật ứng dụng.
+
+### Tài liệu & Hướng dẫn sử dụng
+
+- Đại tu toàn diện nội dung Trung tâm Hướng dẫn (`HelpCenter`), chuẩn hóa thuật ngữ sư phạm, diễn đạt tự nhiên, rõ ràng cho giáo viên và học sinh.
+- Bổ sung chuyên mục tra cứu phím tắt chi tiết trong Hướng dẫn sử dụng (`F1`) và hiển thị gợi ý phím tắt trực tiếp trên tooltip của các nút thanh công cụ.
+
 ## [1.3.4] - 2026-08-13
 
 ### Cập nhật Core và Full

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Save, TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -10,6 +11,18 @@ interface Props {
 
 export default function UnsavedContestDialog({ isSaving, onCancel, onDiscard, onSave }: Props) {
   const { t } = useTranslation();
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isSaving) {
+        event.preventDefault();
+        event.stopPropagation();
+        onCancel();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [isSaving, onCancel]);
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm">
       <div

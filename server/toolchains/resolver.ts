@@ -931,14 +931,6 @@ export function resolveToolchain(kind: ToolchainKind): ResolvedToolchain {
       "AUTO_DETECT_NOT_FOUND",
     );
   }
-  if (candidates.length > 1) {
-    return unavailableToolchain(
-      kind,
-      "system",
-      "Multiple local candidates were detected; choose one explicitly.",
-      "AUTO_DETECT_AMBIGUOUS",
-    );
-  }
   return resolveSelectedLocalExecutable(
     kind,
     "system",

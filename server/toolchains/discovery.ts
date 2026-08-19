@@ -867,11 +867,11 @@ async function collectWindowsCandidates(
   if (kind === "cpp" || kind === "c") {
     const executable = kind === "cpp" ? "g++.exe" : "gcc.exe";
     return [
+      path.join(String.raw`C:\msys64\ucrt64\bin`, executable),
+      path.join(String.raw`C:\msys64\mingw64\bin`, executable),
       path.join(programFiles, "Themis", "GCC", "bin", executable),
       path.join(programFilesX86, "Themis", "GCC", "bin", executable),
       path.join(String.raw`C:\Themis\GCC\bin`, executable),
-      path.join(String.raw`C:\msys64\ucrt64\bin`, executable),
-      path.join(String.raw`C:\msys64\mingw64\bin`, executable),
       path.join(programFiles, "CodeBlocks", "MinGW", "bin", executable),
       path.join(programFilesX86, "CodeBlocks", "MinGW", "bin", executable),
       path.join(localAppData, "Programs", "CodeBlocks", "MinGW", "bin", executable),

@@ -5,7 +5,7 @@ import path from "node:path";
 import { executorClient } from "../server/executor/client.js";
 import { DEFAULT_EXECUTOR_LIMITS } from "../server/executor/protocol.js";
 import { executorResultToVerdict } from "../server/executor/verdict-mapper.js";
-import { createExecutorWorkspace, importExecutorArtifact } from "../server/executor/workspace.js";
+import { createExecutorWorkspace } from "../server/executor/workspace.js";
 import {
   buildSubmissionCompilerArgs,
   compileSubmission,
@@ -88,14 +88,15 @@ try {
     throw new Error(`macOS compiler smoke failed: ${compilation.compileError}\nVerbose retry: ${verboseError}`);
   }
 
-  const artifact = await importExecutorArtifact(compilation.executablePath);
   const workspace = await createExecutorWorkspace();
+  const submissionExe = "submission";
+  workspace.stage(compilation.executablePath, submissionExe, true);
   try {
     const run = await executorClient.run({
       runId: `macos_compiler_smoke_${crypto.randomUUID().replaceAll("-", "_")}`,
       role: "submission",
       workspaceId: workspace.id,
-      executableId: artifact.executableId,
+      executableId: workspace.relative(submissionExe),
       args: [],
       stdoutFile: "stdout.txt",
       stderrFile: "stderr.txt",
@@ -139,14 +140,14 @@ try {
     throw new Error(`macOS runtime-abort probe failed to compile: ${runtimeAbortCompilation.compileError}`);
   }
 
-  const runtimeAbortArtifact = await importExecutorArtifact(runtimeAbortCompilation.executablePath);
   const runtimeAbortWorkspace = await createExecutorWorkspace();
+  runtimeAbortWorkspace.stage(runtimeAbortCompilation.executablePath, submissionExe, true);
   try {
     const run = await executorClient.run({
       runId: `macos_runtime_abort_smoke_${crypto.randomUUID().replaceAll("-", "_")}`,
       role: "submission",
       workspaceId: runtimeAbortWorkspace.id,
-      executableId: runtimeAbortArtifact.executableId,
+      executableId: runtimeAbortWorkspace.relative(submissionExe),
       args: [],
       stdoutFile: "stdout.txt",
       stderrFile: "stderr.txt",

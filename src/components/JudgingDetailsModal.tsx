@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   X,
   CheckCircle2,
@@ -30,6 +30,18 @@ export default function JudgingDetailsModal({
 }: Props) {
   const { t } = useTranslation();
   const [filter, setFilter] = useState<ResultFilter>("ALL");
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [onClose]);
   const filters: Array<{ value: ResultFilter; label: string }> = [
     { value: "ALL", label: t("judgingDetails.filters.all") },
     { value: "CORRECT", label: t("judgingDetails.filters.correct") },

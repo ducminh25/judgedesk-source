@@ -20,8 +20,8 @@
     "commit": "Commit",
     "edition": "Edition",
     "platform": "Operating system / architecture",
-    "appData": "Application data (default)",
-    "toolchains": "Managed toolchains (default)",
+    "appData": "Application data",
+    "toolchains": "Managed toolchains",
     "temporary": "Temporary workspace",
     "problems": "Loaded problems",
     "contestants": "Loaded contestants"
@@ -44,62 +44,158 @@
   "sections": {
     "quickStart": {
       "title": "Quick start",
-      "summary": "Go from two folders to a checked scoreboard",
-      "intro": "JudgeDesk is a local, offline contest judge. Prepare one problems folder and one contestants folder, then follow this short workflow.",
+      "summary": "Go from two folders to a checked scoreboard in 5 easy steps",
+      "intro": "JudgeDesk is a fast, safe, local offline programming contest judge. Prepare a problems folder and a contestants folder, then follow this simple 5-step workflow.",
       "stepsTitle": "First contest in five steps",
       "steps": {
-        "loadProblems": "Choose Load problems and select the folder whose direct child folders are the contest problems.",
-        "loadContestants": "Choose Load contestants and select the folder whose direct child folders identify contestants.",
-        "configure": "Review each problem's input/output mode, limits, points, checker, and compile profile. Leave only the problems and contestants you want to grade checked.",
-        "judge": "Choose Judge. Only checked contestant/problem intersections are graded. Double-click a scored cell for test-by-test details.",
-        "save": "Save a .judgedesk contest archive when you need to resume later, and export the current selected scoreboard to Excel when needed."
+        "loadProblems": "Step 1 - Load problems: Choose «Load problems» on the toolbar and select the folder whose direct child directories represent contest problems.",
+        "loadContestants": "Step 2 - Load contestants: Choose «Load contestants» and select the folder whose direct child directories contain contestant submissions.",
+        "configure": "Step 3 - Configure problems: Open «Problem configuration» to review or adjust Input/Output modes (File I/O vs Standard I/O), Time/Memory limits, points, and checkers.",
+        "judge": "Step 4 - Grade submissions: Choose «Judge» on the toolbar. JudgeDesk compiles and executes only the checked contestant/problem intersections with real-time progress.",
+        "save": "Step 5 - Inspect & save: Double-click any score cell for test-by-test details. Save a .judgedesk contest archive or export the scoreboard to Excel (.xlsx)."
       },
-      "offlineNote": "All instructions in this Help Center are packaged with JudgeDesk. Grading does not require an internet connection; downloads and update checks are separate actions."
+      "offlineNote": "All instructions in this Help Center are packaged offline with JudgeDesk. Contest grading operates completely without an internet connection."
     },
     "foldersReload": {
       "title": "Folders, loading & Reload",
-      "summary": "Contest layout and non-destructive discovery",
-      "intro": "Problems and contestant submissions live in separate directory trees. You can use the toolbar buttons, browse from the folder dialog, or drop a folder onto that dialog.",
-      "layoutTitle": "Expected layout",
+      "summary": "Contest directory structure and non-destructive reload",
+      "intro": "Problems and contestant submissions are organized into two separate directory trees. You can select them using the folder dialogs or drag-and-drop folders directly into the app.",
+      "layoutTitle": "Expected folder layout",
       "layout": {
-        "problems": "Problems root: one direct child directory per problem. The child directory name is the problem name.",
-        "tests": "Problem directory: test subdirectories plus optional Config.cfg and supported custom checker source files.",
-        "contestants": "Contestants root: one direct child directory per contestant. The child directory name is shown on the scoreboard.",
-        "submissions": "Contestant directory: source filenames use the problem name and a supported language extension."
+        "problems": "Problems root (Problems): One direct child folder per problem. The folder name serves as the problem code (e.g., BAI1, SUM, PRIME...).",
+        "tests": "Individual problem directory: Subdirectories for each test (Test01, Test02... or 1, 2...), containing input/output files (e.g., BAI1.INP/BAI1.OUT), Config.cfg, and optional custom checker source files.",
+        "contestants": "Contestants root (Contestants): One direct child folder per contestant. The folder name appears on the scoreboard (e.g., NguyenVanA, TranThiB, HS01...).",
+        "submissions": "Contestant submission files: Named following the pattern <ProblemCode>.<extension> (e.g., BAI1.cpp, BAI1.py, BAI1.pas, BAI1.c, BAI1.java). Filenames are case-insensitive."
       },
-      "reloadTitle": "What Reload does",
-      "reloadDescription": "Reload discovers the current contents of both remembered roots. It adds new problem/contestant names and removes entries no longer present without replacing the whole contest.",
-      "selectionNote": "Reload preserves every existing checked or unchecked choice. Newly discovered problems and contestants start checked. It does not silently reset the scoreboard selection."
+      "reloadTitle": "What Reload (F5) does",
+      "reloadDescription": "When contestants submit new files or test cases are updated, click «Reload» (or press F5) to rescan the directories without losing existing scores or problem configurations.",
+      "selectionNote": "Reload preserves all your existing checked/unchecked selections. Newly discovered problems and contestants start checked by default so you can grade them immediately."
     },
     "problemCheckers": {
       "title": "Problem & checker configuration",
       "summary": "Input/output, limits, points, groups, and checkers",
-      "intro": "Open a problem's action menu and choose Problem configuration. Settings belong to that problem, not to the global compiler manager.",
+      "intro": "Right-click a problem column or open its action menu and choose «Problem configuration». Settings belong specifically to that problem and are saved to its Config.cfg file.",
       "items": {
-        "io": "Choose standard input/output independently, or provide the exact input and output filenames used by file-based submissions.",
-        "limits": "Set time and memory limits deliberately. Test-specific time and point values override the problem defaults where configured.",
-        "points": "Use per-test points or grouped scoring. Group dependencies and complete-group policy are evaluated from the saved problem configuration.",
-        "checkers": "Built-in text/word/binary checkers cover common exact-output rules. Read each checker description before selecting it.",
-        "customCheckers": "Custom problem checkers are source files in the problem directory. JudgeDesk accepts supported C++ (.cpp) and Python (.py) checker sources; legacy .exe checkers are not accepted."
+        "io": "Input/Output mode: Choose Standard I/O (cin/cout, stdin/stdout) or File I/O (specify exact .INP and .OUT filenames).",
+        "limits": "Resource limits: Configure Time Limit (milliseconds) and Memory Limit (megabytes). Test-specific limits can override problem defaults where needed.",
+        "points": "Scoring method: Supports per-test scoring or grouped scoring (Subtasks - requiring all tests in a group to pass to receive points).",
+        "checkers": "Built-in checkers: Word-by-word (ignores extra whitespace and trailing newlines, most common), Line-by-line, Exact binary, or Floating-point (with customizable tolerance).",
+        "customCheckers": "Custom checkers: Supports custom checkers written in C++ (using standard testlib.h or Themis argument signatures) or Python (.py). Place the checker source directly in the problem directory."
       },
-      "configFileNote": "Saving writes the problem settings to Config.cfg inside that problem directory so the configuration travels with the test data.",
-      "resultWarning": "Changing settings that affect judging invalidates the meaning of existing scores. JudgeDesk asks for confirmation and clears that problem's previous results when the change is saved."
+      "configFileNote": "Saving writes problem settings to Config.cfg inside the problem directory, making contest problem packages completely portable.",
+      "resultWarning": "Changing settings that affect judging (such as I/O mode, checker, or points) invalidates previous scores. JudgeDesk asks for confirmation and clears that problem's old scores/logs when saved."
     },
     "judgingResults": {
       "title": "Judging & results",
       "summary": "Selections, verdicts, details, regrading, and export",
-      "intro": "JudgeDesk grades only the currently checked rows and columns after the native runner and required language profiles are ready.",
+      "intro": "JudgeDesk grades checked rows and columns inside a secure native sandbox, strictly enforcing execution limits.",
       "items": {
-        "selection": "Use the checkboxes in the contestant column and problem headers to choose the grading scope.",
-        "progress": "The progress window identifies the active contestant, problem, and stage. Stop cancels the active session and cleans supervised processes.",
-        "details": "Double-click a result cell to inspect compilation status, each test verdict, timing, memory, score, and checker feedback.",
-        "actions": "Use row, column, or cell context menus to regrade or delete only the intended results.",
-        "export": "Export to Excel uses the currently selected contestants and problems and includes diagnostic metadata.",
-        "archive": "Save contest packages problems, submissions, configuration, selections, and available results into a .judgedesk archive."
+        "selection": "Grading scope: Use checkboxes in the contestant column and problem headers to grade all or specific subsets of submissions.",
+        "progress": "Judging progress: Displays active contestant, problem, testcase progress, and verdicts in real-time. Click «Stop» to cancel safely.",
+        "details": "Inspect details: Double-click any scored cell to inspect compilation status, individual test verdicts, execution time, memory usage, score, and checker feedback.",
+        "actions": "Context menu actions: Right-click rows, columns, or cells to regrade, view details, or clear results.",
+        "export": "Export to Excel: Export selected contestants and problems to a standardized Excel (.xlsx) workbook with full score summaries and metadata.",
+        "archive": "Contest archive (.judgedesk): Package problems, submissions, configuration, and judging results into a single file for archival or sharing."
       },
       "verdictsTitle": "Common verdicts",
-      "verdicts": "AC accepted; WA wrong answer; PE presentation error; CE compilation error; RE runtime error; TLE time limit; MLE memory limit; OLE output limit; JE judge error; PARTIAL partial score.",
-      "archivePrivacy": "A .judgedesk archive is a ZIP-compatible container, not encrypted storage. Protect it like the original contestant sources and unpublished tests."
+      "verdicts": "• AC (Accepted): Solution produced the exact expected output.\n• WA (Wrong Answer): Output differed from expected answer.\n• CE (Compilation Error): Code failed to compile (double-click cell to inspect compiler logs).\n• RE (Runtime Error): Program crashed or exited abnormally (segmentation fault, division by zero, stack overflow).\n• TLE (Time Limit Exceeded): Program exceeded time limit.\n• MLE (Memory Limit Exceeded): Program exceeded memory limit.\n• OLE (Output Limit Exceeded): Program produced excessive output.\n• PE (Presentation Error): Output formatting error (extra spaces/newlines).\n• JE (Judge Error): Environment or execution engine error.\n• PARTIAL: Partial score granted by custom checker.",
+      "archivePrivacy": "A .judgedesk archive is a ZIP-compatible container. Protect it carefully if the contest contains confidential test cases or unpublished problems."
+    },
+    "shortcuts": {
+      "title": "Keyboard shortcuts & Navigation",
+      "summary": "Themis-compatible shortcuts and full mouse-free keyboard navigation",
+      "intro": "JudgeDesk provides a full set of keyboard shortcuts matching traditional Themis, allowing rapid operation and full scoreboard navigation without a mouse.",
+      "functionKeysTitle": "Function keys (F1 - F12)",
+      "contestTitle": "Contest management (Ctrl / Cmd)",
+      "selectionTitle": "Contestant & problem selection",
+      "navigationTitle": "Closing dialogs & Mouse-free navigation",
+      "macNote": "On macOS, the Ctrl key is automatically mapped to Command (⌘). For example, ⌘N to create a new contest, ⌘S to save, and ⇧⌘S for Save As.",
+      "items": {
+        "f1": {
+          "term": "F1",
+          "description": "Open Help Center & product diagnostics."
+        },
+        "f2": {
+          "term": "F2",
+          "description": "Open Problems directory picker dialog."
+        },
+        "f3": {
+          "term": "F3",
+          "description": "Open Contestants directory picker dialog."
+        },
+        "f5": {
+          "term": "F5",
+          "description": "Reload problems and contestants from disk, preserving active checkbox selections."
+        },
+        "f6": {
+          "term": "F6",
+          "description": "Open Toolchain & Compiler Manager."
+        },
+        "f9": {
+          "term": "F9",
+          "description": "Start judging (or continue judging un-scored problems)."
+        },
+        "f12": {
+          "term": "F12",
+          "description": "Export scoreboard results to an Excel (.xlsx) file."
+        },
+        "ctrlN": {
+          "term": "Ctrl + N (⌘N)",
+          "description": "Create a new contest workspace."
+        },
+        "ctrlO": {
+          "term": "Ctrl + O (⌘O)",
+          "description": "Open an existing .judgedesk contest archive."
+        },
+        "ctrlS": {
+          "term": "Ctrl + S (⌘S)",
+          "description": "Save current contest to .judgedesk file."
+        },
+        "ctrlShiftS": {
+          "term": "Ctrl + Shift + S (⇧⌘S)",
+          "description": "Save current contest under a new file name (Save As...)."
+        },
+        "ctrlA": {
+          "term": "Ctrl + A (⌘A)",
+          "description": "Select all contestants."
+        },
+        "ctrlD": {
+          "term": "Ctrl + D (⌘D)",
+          "description": "Deselect all contestants."
+        },
+        "ctrlI": {
+          "term": "Ctrl + I (⌘I)",
+          "description": "Toggle selection of the currently focused contestant."
+        },
+        "ctrlShiftA": {
+          "term": "Ctrl + Shift + A (⇧⌘A)",
+          "description": "Select all problems."
+        },
+        "ctrlShiftD": {
+          "term": "Ctrl + Shift + D (⇧⌘D)",
+          "description": "Deselect all problems."
+        },
+        "ctrlShiftI": {
+          "term": "Ctrl + Shift + I (⇧⌘I)",
+          "description": "Toggle selection of the currently focused problem."
+        },
+        "esc": {
+          "term": "Esc (Escape)",
+          "description": "Immediately close any open modal, dialog, or popover menu."
+        },
+        "arrows": {
+          "term": "Arrow keys (↑ ↓ ← →)",
+          "description": "Navigate focus between contestant rows and problem columns on the scoreboard."
+        },
+        "space": {
+          "term": "Space bar",
+          "description": "Toggle checkbox of the currently focused contestant or problem."
+        },
+        "enter": {
+          "term": "Enter key",
+          "description": "Open testcase details window when focused on a scored cell."
+        }
+      }
     },
     "toolchains": {
       "title": "Languages & toolchains",

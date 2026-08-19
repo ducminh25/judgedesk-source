@@ -1,4 +1,4 @@
-import { useState, type DragEvent } from "react";
+import { useEffect, useState, type DragEvent } from "react";
 import { FolderOpen, X } from "lucide-react";
 import { selectDirectory } from "../platform/directory-picker";
 import { useTranslation } from "react-i18next";
@@ -24,6 +24,18 @@ export default function DirectoryPickerModal({
 }: Props) {
   const [isDragging, setIsDragging] = useState(false);
   const { t } = useTranslation();
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [onClose]);
 
   const handleDrop = (event: DragEvent) => {
     event.preventDefault();
