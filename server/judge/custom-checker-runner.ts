@@ -1,7 +1,10 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { createExecutorWorkspace } from "../executor/workspace.js";
+import {
+  createExecutorWorkspace,
+  importExecutorArtifact,
+} from "../executor/workspace.js";
 import {
   attachExecutorRun,
   detachExecutorRun,
@@ -61,7 +64,7 @@ export async function runCustomChecker(options: RunCustomCheckerOptions): Promis
           options.pythonExecutablePath,
           options.pythonToolchain,
         )
-      : prepareNativeChecker(workspace, options.checkerPath);
+      : await prepareNativeChecker(options.checkerPath);
     workspace.stage(options.inputPath, "input.txt");
     workspace.stage(options.actualOutputPath, "actual.txt");
     workspace.stage(options.expectedOutputPath, "expected.txt");
@@ -130,19 +133,17 @@ function checkerResultFromExit(
   };
 }
 
-function prepareNativeChecker(
-  workspace: Awaited<ReturnType<typeof createExecutorWorkspace>>,
+async function prepareNativeChecker(
   checkerPath: string,
-): {
+): Promise<{
   executableId: string;
   args: string[];
   environment: Record<string, string>;
   toolchain?: never;
   localToolchain?: never;
-} {
-  const checkerName = process.platform === "win32" ? "checker.exe" : "checker";
-  workspace.stage(checkerPath, checkerName, true);
-  return { executableId: workspace.relative(checkerName), args: [], environment: {} };
+}> {
+  const artifact = await importExecutorArtifact(checkerPath);
+  return { executableId: artifact.executableId, args: [], environment: {} };
 }
 
 function readBounded(filePath: string): string {

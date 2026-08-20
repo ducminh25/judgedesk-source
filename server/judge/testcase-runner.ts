@@ -4,6 +4,7 @@ import path from "node:path";
 import type { ExecutorRunResult } from "../executor/protocol.js";
 import {
   createExecutorWorkspace,
+  importExecutorArtifact,
 } from "../executor/workspace.js";
 import {
   executorDiagnostic,
@@ -198,10 +199,9 @@ async function prepareSubmission(
   toolchain?: import("../executor/protocol.js").ExecutorToolchainIdentity;
   localToolchain?: import("../executor/protocol.js").ExecutorLocalToolchainIdentity;
 }> {
-  const submissionExecutableName = process.platform === "win32" ? "submission.exe" : "submission";
   if (options.program?.kind === "native") {
-    workspace.stage(options.program.artifactPath, submissionExecutableName, true);
-    return { executableId: workspace.relative(submissionExecutableName), args: [], environment: {} };
+    const artifact = await importExecutorArtifact(options.program.artifactPath);
+    return { executableId: artifact.executableId, args: [], environment: {} };
   }
   if (
     options.program?.kind === "script-runtime"
@@ -240,8 +240,8 @@ async function prepareSubmission(
     );
   }
   if (options.language === "cpp" || options.language === "c") {
-    workspace.stage(options.executablePath, submissionExecutableName, true);
-    return { executableId: workspace.relative(submissionExecutableName), args: [], environment: {} };
+    const artifact = await importExecutorArtifact(options.executablePath);
+    return { executableId: artifact.executableId, args: [], environment: {} };
   }
 
   if (options.language === "python") {
