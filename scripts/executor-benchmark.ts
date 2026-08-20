@@ -26,7 +26,7 @@ const ownedMacosTreeGuard = provisionMacosTreeGuard();
 const [
   { executorClient },
   { DEFAULT_EXECUTOR_LIMITS },
-  { createExecutorWorkspace },
+  { createExecutorWorkspace, importExecutorArtifact },
   { compileSubmission, resolveCompilationToolchain },
 ] = await Promise.all([
   import("../server/executor/client.js"),
@@ -66,15 +66,16 @@ try {
     cppToolchain: benchmarkToolchain,
   });
   if (compilation.compileStatus !== "OK") throw new Error(`Benchmark compilation failed: ${compilation.compileError}`);
+  const artifact = await importExecutorArtifact(compilation.executablePath);
 
-  for (let index = 0; index < warmups; index += 1) await measure(compilation.executablePath);
+  for (let index = 0; index < warmups; index += 1) await measure(artifact.executableId);
   const rssBefore = process.memoryUsage().rss;
   const suiteReports = [];
   const allSamples: Sample[] = [];
   for (let suite = 0; suite < suites; suite += 1) {
     const samples: Sample[] = [];
     const started = performance.now();
-    for (let index = 0; index < iterations; index += 1) samples.push(await measure(compilation.executablePath));
+    for (let index = 0; index < iterations; index += 1) samples.push(await measure(artifact.executableId));
     const durationMs = performance.now() - started;
     allSamples.push(...samples);
     suiteReports.push({
@@ -235,13 +236,10 @@ function releaseMacosTreeGuard(owned: OwnedMacosTreeGuard | null): void {
   fs.rmSync(owned.directory, { recursive: true, force: true });
 }
 
-async function measure(binaryPath: string): Promise<Sample> {
+async function measure(executableId: string): Promise<Sample> {
   const endToEndStarted = performance.now();
   const stagingStarted = performance.now();
   const workspace = await createExecutorWorkspace();
-  const exeName = process.platform === "win32" ? "submission.exe" : "submission";
-  workspace.stage(binaryPath, exeName, true);
-  const executableId = workspace.relative(exeName);
   const stagingMs = performance.now() - stagingStarted;
   try {
     const dispatchStarted = performance.now();

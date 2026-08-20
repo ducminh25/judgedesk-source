@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   createExecutorWorkspace,
+  importExecutorArtifact,
 } from "../executor/workspace.js";
 import { runReservedExecutor } from "../jobs.js";
 import type { ResolvedToolchain } from "../toolchains/types.js";
@@ -41,14 +42,13 @@ async function runCertifiedLocalCppSessionProbe(
       throw new Error(compilation.compileError || "compiler probe failed");
     }
     binaryPath = compilation.executablePath;
+    const artifact = await importExecutorArtifact(binaryPath);
     const workspace = await createExecutorWorkspace();
-    const probeExeName = process.platform === "win32" ? "session_probe.exe" : "session_probe";
-    workspace.stage(binaryPath, probeExeName, true);
     try {
       const spec = buildSubmissionExecutorRunSpec({
         runId: `cpp_session_probe_${token}`,
         workspaceId: workspace.id,
-        executableId: workspace.relative(probeExeName),
+        executableId: artifact.executableId,
         args: [],
         environment: {},
         timeLimitMs: 2_000,

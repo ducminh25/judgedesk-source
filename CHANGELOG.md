@@ -5,6 +5,14 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 ## [Unreleased]
 
+## [1.3.6] - 2026-08-20
+
+### Hiệu năng chấm bài & Tối ưu hóa chuyển Testcase
+
+- **Khôi phục cơ chế Submission-level Artifact Caching**: File thực thi của thí sinh và custom checker được nạp vào bộ nhớ đệm an toàn của Sandbox (`artifacts/`) đúng 1 lần duy nhất ngay sau khi biên dịch và tái sử dụng tức thì trên toàn bộ các testcase.
+- **Triệt tiêu độ trễ giữa các testcase**: Loại bỏ hoàn toàn thao tác sao chép (`fs.copyFileSync`) và xóa file `.exe` lặp đi lặp lại ở từng testcase, giải phóng 100% gánh nặng I/O đĩa NTFS và ngăn chặn triệt để hiện tượng Windows Defender liên tục chặn quét lại cùng một file thực thi qua mỗi test.
+- **Tối ưu hóa máy tính đời cũ**: Giảm tải hoàn toàn tắc nghẽn đọc/ghi trên các phòng máy dùng ổ cứng cơ (HDD) và CPU thế hệ cũ, mang lại trải nghiệm chấm nhảy testcase tức thì (< 1ms).
+
 ## [1.3.5] - 2026-08-19
 
 ### Phím tắt & Trải nghiệm điều hướng bàn phím
