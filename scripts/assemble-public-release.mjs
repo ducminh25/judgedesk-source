@@ -10,13 +10,16 @@ if (fs.existsSync(publicDir)) {
 }
 fs.mkdirSync(publicDir, { recursive: true });
 
+const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+const version = pkg.version;
+
 const publicFiles = [
-  "JudgeDesk_1.3.5_core_aarch64.app.tar.gz",
-  "JudgeDesk_1.3.5_core_aarch64.dmg",
-  "JudgeDesk_1.3.5_core_x64_en-US.msi",
-  "JudgeDesk_1.3.5_full_aarch64.app.tar.gz",
-  "JudgeDesk_1.3.5_full_aarch64.dmg",
-  "JudgeDesk_1.3.5_full_x64_en-US.msi",
+  `JudgeDesk_${version}_core_aarch64.app.tar.gz`,
+  `JudgeDesk_${version}_core_aarch64.dmg`,
+  `JudgeDesk_${version}_core_x64_en-US.msi`,
+  `JudgeDesk_${version}_full_aarch64.app.tar.gz`,
+  `JudgeDesk_${version}_full_aarch64.dmg`,
+  `JudgeDesk_${version}_full_x64_en-US.msi`,
   "latest.json",
 ];
 
