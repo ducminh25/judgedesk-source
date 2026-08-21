@@ -12,6 +12,7 @@ interface Props {
   onDropPath: (path: string) => void;
   onClose: () => void;
   onLoad: () => void;
+  isDraggingExternal?: boolean;
 }
 
 export default function DirectoryPickerModal({
@@ -21,10 +22,13 @@ export default function DirectoryPickerModal({
   onDropPath,
   onClose,
   onLoad,
+  isDraggingExternal = false,
 }: Props) {
   const [isDragging, setIsDragging] = useState(false);
   const [pickerError, setPickerError] = useState<string | null>(null);
   const { t } = useTranslation();
+
+  const activeDragging = isDragging || isDraggingExternal;
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -122,16 +126,31 @@ export default function DirectoryPickerModal({
           )}
 
           <div
-            className={`border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center gap-2 transition-all ${isDragging ? "border-indigo-500 bg-indigo-500/10 scale-[1.02]" : "border-surface-border-strong bg-surface hover:border-surface-border"}`}
+            className={`border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center gap-2.5 transition-all duration-200 ${
+              activeDragging
+                ? "border-indigo-500 bg-indigo-500/10 ring-2 ring-indigo-500/30 scale-[1.02] shadow-lg shadow-indigo-500/10"
+                : "border-surface-border-strong bg-surface hover:border-surface-border"
+            }`}
           >
             <FolderOpen
-              className={`w-8 h-8 transition-colors ${isDragging ? "text-indigo-400" : "text-text-muted"}`}
+              className={`w-9 h-9 transition-all duration-200 ${
+                activeDragging ? "text-indigo-500 dark:text-indigo-400 animate-bounce" : "text-text-muted"
+              }`}
             />
-            <span
-              className={`text-xs font-medium transition-colors ${isDragging ? "text-indigo-500 dark:text-indigo-400 font-bold" : "text-text-muted"}`}
-            >
-              {t("directoryPicker.dropTarget")}
-            </span>
+            <div className="text-center">
+              <p
+                className={`text-xs font-medium transition-colors ${
+                  activeDragging ? "text-indigo-600 dark:text-indigo-400 font-bold" : "text-text-muted"
+                }`}
+              >
+                {t("directoryPicker.dropTarget")}
+              </p>
+              <p className="text-[11px] text-text-muted/70 mt-0.5">
+                {kind === "tests"
+                  ? t("directoryPicker.dropTestsHint", "Thả thư mục chứa các bài thi và testcases vào đây")
+                  : t("directoryPicker.dropContestantsHint", "Thả thư mục chứa mã nguồn của các thí sinh vào đây")}
+              </p>
+            </div>
           </div>
         </div>
 

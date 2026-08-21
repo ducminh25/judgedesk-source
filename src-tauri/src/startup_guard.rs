@@ -15,7 +15,7 @@ const ACTIVATION_METADATA_FILE: &str = "activation";
 const ACTIVATION_METADATA_HEADER: &str = "JUDGEDESK_ACTIVATION/2";
 const ACTIVATION_REQUEST_PREFIX: &str = "JUDGEDESK_ACTIVATE/1 ";
 const ACTIVATION_ACK: &[u8] = b"OK\n";
-const MAX_ACTIVATION_BYTES: u64 = 384;
+const MAX_ACTIVATION_BYTES: u64 = 4096;
 const ACTIVATION_CLIENT_IO_TIMEOUT: Duration = Duration::from_secs(3);
 const ACTIVATION_SERVER_IO_TIMEOUT: Duration = Duration::from_millis(500);
 const ACTIVATION_FOCUS_TIMEOUT: Duration = Duration::from_secs(2);
@@ -31,7 +31,7 @@ const ACTIVATION_STARTING: u8 = 0;
 const ACTIVATION_READY: u8 = 1;
 const ACTIVATION_DRAINING: u8 = 2;
 
-type ActivationCallback = dyn Fn() -> io::Result<()> + Send + Sync + 'static;
+type ActivationCallback = dyn Fn(Option<String>) -> io::Result<()> + Send + Sync + 'static;
 
 struct ActivationTarget {
     callback: Mutex<Option<Arc<ActivationCallback>>>,
@@ -50,7 +50,7 @@ impl Default for ActivationTarget {
 }
 
 impl ActivationTarget {
-    fn request(&self) -> io::Result<()> {
+    fn request(&self, file_path: Option<String>) -> io::Result<()> {
         if self.state.load(Ordering::Acquire) != ACTIVATION_READY {
             return Err(io::Error::new(
                 io::ErrorKind::WouldBlock,
@@ -68,7 +68,7 @@ impl ActivationTarget {
                     "primary window is not ready for activation",
                 )
             })?;
-        callback()
+        callback(file_path)
     }
 
     fn acknowledge(&self, output: &mut impl Write) -> io::Result<()> {
@@ -356,16 +356,33 @@ fn handle_activation_connection(
         .by_ref()
         .take(MAX_ACTIVATION_BYTES + 1)
         .read_until(b'\n', &mut request)?;
-    let expected = format!("{ACTIVATION_REQUEST_PREFIX}{nonce}\n");
-    if request.len() as u64 > MAX_ACTIVATION_BYTES
-        || !constant_time_eq(&request, expected.as_bytes())
-    {
+    if request.len() as u64 > MAX_ACTIVATION_BYTES {
         return Err(io::Error::new(
             io::ErrorKind::PermissionDenied,
-            "invalid activation request",
+            "invalid activation request: payload exceeds limit",
         ));
     }
-    target.request()?;
+    let request_str = String::from_utf8(request)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid UTF-8 in activation request"))?;
+    let trimmed = request_str.trim_end_matches(&['\r', '\n'][..]);
+    let without_prefix = trimmed.strip_prefix(ACTIVATION_REQUEST_PREFIX).ok_or_else(|| {
+        io::Error::new(io::ErrorKind::PermissionDenied, "invalid activation request prefix")
+    })?;
+    let (req_nonce, file_path) = match without_prefix.split_once(' ') {
+        Some((n, p)) => {
+            let clean_p = p.trim();
+            let clean_p = clean_p.strip_prefix('"').and_then(|s| s.strip_suffix('"')).unwrap_or(clean_p);
+            (n, if clean_p.is_empty() { None } else { Some(clean_p.to_string()) })
+        }
+        None => (without_prefix, None),
+    };
+    if !constant_time_eq(req_nonce.as_bytes(), nonce.as_bytes()) {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "invalid activation request nonce",
+        ));
+    }
+    target.request(file_path)?;
     target.acknowledge(&mut stream)
 }
 
@@ -490,14 +507,18 @@ fn allow_primary_foreground(owner_pid: u32) {
 #[cfg(not(windows))]
 fn allow_primary_foreground(_owner_pid: u32) {}
 
-fn notify_primary_once(metadata_path: &Path) -> io::Result<()> {
+fn notify_primary_once(metadata_path: &Path, file_path: Option<&str>) -> io::Result<()> {
     let metadata = read_activation_metadata(metadata_path)?;
     allow_primary_foreground(metadata.owner_pid);
     let address = SocketAddrV4::new(Ipv4Addr::LOCALHOST, metadata.port).into();
     let mut stream = TcpStream::connect_timeout(&address, ACTIVATION_CLIENT_IO_TIMEOUT)?;
     stream.set_read_timeout(Some(ACTIVATION_CLIENT_IO_TIMEOUT))?;
     stream.set_write_timeout(Some(ACTIVATION_CLIENT_IO_TIMEOUT))?;
-    stream.write_all(format!("{ACTIVATION_REQUEST_PREFIX}{}\n", metadata.nonce).as_bytes())?;
+    let message = match file_path {
+        Some(path) => format!("{ACTIVATION_REQUEST_PREFIX}{} {}\n", metadata.nonce, path),
+        None => format!("{ACTIVATION_REQUEST_PREFIX}{}\n", metadata.nonce),
+    };
+    stream.write_all(message.as_bytes())?;
     let mut acknowledgement = [0_u8; ACTIVATION_ACK.len()];
     stream.read_exact(&mut acknowledgement)?;
     if acknowledgement != ACTIVATION_ACK {
@@ -512,6 +533,7 @@ fn notify_primary_once(metadata_path: &Path) -> io::Result<()> {
 fn acquire_in_directory_with_timeout(
     directory: &Path,
     recovery_timeout: Duration,
+    file_path: Option<&str>,
 ) -> io::Result<AcquireOutcome> {
     fs::create_dir_all(directory)?;
     #[cfg(unix)]
@@ -525,7 +547,7 @@ fn acquire_in_directory_with_timeout(
     loop {
         match FileExt::try_lock(&file) {
             Ok(()) => return start_primary(file, directory),
-            Err(TryLockError::WouldBlock) => match notify_primary_once(&metadata_path) {
+            Err(TryLockError::WouldBlock) => match notify_primary_once(&metadata_path, file_path) {
                 Ok(()) => {
                     return Ok(AcquireOutcome::Secondary(SecondaryOutcome::Activated));
                 }
@@ -543,27 +565,33 @@ fn acquire_in_directory_with_timeout(
     }
 }
 
-fn acquire_in_directory(directory: &Path) -> io::Result<AcquireOutcome> {
-    acquire_in_directory_with_timeout(directory, ACTIVATION_RECOVERY_TIMEOUT)
+fn acquire_in_directory(directory: &Path, file_path: Option<&str>) -> io::Result<AcquireOutcome> {
+    acquire_in_directory_with_timeout(directory, ACTIVATION_RECOVERY_TIMEOUT, file_path)
 }
 
-pub(crate) fn acquire(identifier: &str) -> io::Result<AcquireOutcome> {
+pub(crate) fn acquire(identifier: &str, file_path: Option<&str>) -> io::Result<AcquireOutcome> {
     let base_directory = dirs::data_local_dir().ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::NotFound,
             "local application data directory is unavailable",
         )
     })?;
-    acquire_in_directory(&base_directory.join(identifier))
+    acquire_in_directory(&base_directory.join(identifier), file_path)
 }
 
 impl InstanceCoordinator {
     pub(crate) fn attach(&self, app: tauri::AppHandle) -> io::Result<()> {
-        self.activation.target.install(Arc::new(move || {
+        use tauri::Emitter;
+
+        self.activation.target.install(Arc::new(move |file_path: Option<String>| {
             let (result_sender, result_receiver) = mpsc::sync_channel(1);
             let focus_handle = app.clone();
             app.run_on_main_thread(move || {
-                let _ = result_sender.send(focus_primary(&focus_handle));
+                let focus_result = focus_primary(&focus_handle);
+                if let Some(path) = file_path {
+                    let _ = focus_handle.emit("open_contest_file", path);
+                }
+                let _ = result_sender.send(focus_result);
             })
             .map_err(|error| {
                 io::Error::other(format!("failed to schedule JudgeDesk activation: {error}"))
@@ -702,7 +730,7 @@ mod tests {
     use std::path::{Path, PathBuf};
     use std::process::{Child, Command, Stdio};
     use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
     use std::time::{Duration, Instant};
 
     static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -800,19 +828,19 @@ mod tests {
     #[test]
     fn a_second_lease_is_contended_until_the_first_is_dropped() {
         let directory = TestDirectory::new("contention");
-        let first = match acquire_in_directory(directory.path()).expect("first acquisition") {
+        let first = match acquire_in_directory(directory.path(), None).expect("first acquisition") {
             AcquireOutcome::Primary(lease) => lease,
             AcquireOutcome::Secondary(_) => panic!("first acquisition must not be contended"),
         };
 
         assert!(matches!(
-            acquire_in_directory(directory.path()).expect("second acquisition"),
+            acquire_in_directory(directory.path(), None).expect("second acquisition"),
             AcquireOutcome::Secondary(_)
         ));
 
         drop(first);
         assert!(matches!(
-            acquire_in_directory(directory.path()).expect("acquisition after drop"),
+            acquire_in_directory(directory.path(), None).expect("acquisition after drop"),
             AcquireOutcome::Primary(_)
         ));
     }
@@ -820,7 +848,7 @@ mod tests {
     #[test]
     fn a_secondary_request_activates_the_primary_and_the_listener_survives_bad_input() {
         let directory = TestDirectory::new("activation");
-        let primary = match acquire_in_directory(directory.path()).expect("primary acquisition") {
+        let primary = match acquire_in_directory(directory.path(), None).expect("primary acquisition") {
             AcquireOutcome::Primary(coordinator) => coordinator,
             AcquireOutcome::Secondary(_) => panic!("first acquisition must be primary"),
         };
@@ -829,7 +857,7 @@ mod tests {
         primary
             .activation
             .target
-            .install(Arc::new(move || {
+            .install(Arc::new(move |_file_path| {
                 callback_activations.fetch_add(1, Ordering::AcqRel);
                 Ok(())
             }))
@@ -850,7 +878,7 @@ mod tests {
         assert_ne!(invalid.read(&mut reply).unwrap_or_default(), reply.len());
 
         assert!(matches!(
-            acquire_in_directory(directory.path()).expect("secondary acquisition"),
+            acquire_in_directory(directory.path(), None).expect("secondary acquisition"),
             AcquireOutcome::Secondary(SecondaryOutcome::Activated)
         ));
         let deadline = Instant::now() + Duration::from_secs(1);
@@ -861,6 +889,38 @@ mod tests {
     }
 
     #[test]
+    fn a_secondary_request_forwards_the_contest_file_path() {
+        let directory = TestDirectory::new("file-activation");
+        let primary = match acquire_in_directory(directory.path(), None).expect("primary acquisition") {
+            AcquireOutcome::Primary(coordinator) => coordinator,
+            AcquireOutcome::Secondary(_) => panic!("first acquisition must be primary"),
+        };
+        let received_path = Arc::new(Mutex::new(None));
+        let cb_path = Arc::clone(&received_path);
+        primary
+            .activation
+            .target
+            .install(Arc::new(move |file_path| {
+                *cb_path.lock().unwrap() = file_path;
+                Ok(())
+            }))
+            .expect("install activation callback");
+
+        assert!(matches!(
+            acquire_in_directory(directory.path(), Some(r"C:\Contests\sample.judgedesk")).expect("secondary acquisition"),
+            AcquireOutcome::Secondary(SecondaryOutcome::Activated)
+        ));
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while received_path.lock().unwrap().is_none() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(
+            received_path.lock().unwrap().as_deref(),
+            Some(r"C:\Contests\sample.judgedesk")
+        );
+    }
+
+    #[test]
     fn activation_is_acknowledged_only_while_the_primary_is_ready() {
         let target = super::ActivationTarget::default();
         let activations = Arc::new(AtomicUsize::new(0));
@@ -868,18 +928,18 @@ mod tests {
 
         assert_eq!(
             target
-                .request()
+                .request(None)
                 .expect_err("starting must not acknowledge")
                 .kind(),
             std::io::ErrorKind::WouldBlock
         );
         target
-            .install(Arc::new(move || {
+            .install(Arc::new(move |_| {
                 callback_activations.fetch_add(1, Ordering::AcqRel);
                 Ok(())
             }))
             .expect("install activation callback");
-        target.request().expect("ready activation");
+        target.request(None).expect("ready activation");
         let mut acknowledgement = Vec::new();
         target
             .acknowledge(&mut acknowledgement)
@@ -890,7 +950,7 @@ mod tests {
         target.clear();
         assert_eq!(
             target
-                .request()
+                .request(None)
                 .expect_err("draining must not acknowledge")
                 .kind(),
             std::io::ErrorKind::WouldBlock
@@ -914,7 +974,7 @@ mod tests {
         fs::write(&file_instead_of_directory, b"block create_dir_all")
             .expect("create path blocker");
 
-        let error = acquire_in_directory(&file_instead_of_directory)
+        let error = acquire_in_directory(&file_instead_of_directory, None)
             .expect_err("unexpected I/O failures must fail closed");
         assert_ne!(error.kind(), std::io::ErrorKind::WouldBlock);
     }
@@ -957,7 +1017,7 @@ mod tests {
 
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
-            match acquire_in_directory(&descendant_directory)
+            match acquire_in_directory(&descendant_directory, None)
                 .expect("probe descendant lifetime lock")
             {
                 AcquireOutcome::Primary(_lease) => break,
@@ -985,7 +1045,7 @@ mod tests {
             std::env::var("JUDGEDESK_GUARD_TEST_RELEASE").expect("guard child release path"),
         );
 
-        match acquire_in_directory(Path::new(&directory)).expect("guard child acquisition") {
+        match acquire_in_directory(Path::new(&directory), None).expect("guard child acquisition") {
             AcquireOutcome::Secondary(_) => {
                 fs::write(result_path, b"SECONDARY").expect("write secondary result");
             }
@@ -1059,7 +1119,7 @@ mod tests {
         let result_path = PathBuf::from(
             std::env::var("JUDGEDESK_JOB_TEST_RESULT").expect("job descendant result path"),
         );
-        let _lease = match acquire_in_directory(&directory).expect("descendant lifetime lock") {
+        let _lease = match acquire_in_directory(&directory, None).expect("descendant lifetime lock") {
             AcquireOutcome::Primary(lease) => lease,
             AcquireOutcome::Secondary(_) => panic!("descendant lifetime lock was contended"),
         };

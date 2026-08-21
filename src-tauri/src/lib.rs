@@ -15,9 +15,33 @@ pub fn try_run_internal_process_supervisor() -> Option<i32> {
     process_supervisor::try_run_internal_mode()
 }
 
+pub fn get_cli_contest_file() -> Option<String> {
+    for arg in std::env::args_os().skip(1) {
+        let path = std::path::PathBuf::from(&arg);
+        if let Some(ext) = path.extension() {
+            if ext.eq_ignore_ascii_case("judgedesk") {
+                if let Ok(abs) = std::path::absolute(&path) {
+                    if abs.is_file() {
+                        return Some(abs.to_string_lossy().to_string());
+                    }
+                }
+                if path.is_file() {
+                    return Some(path.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
 #[tauri::command]
 fn get_backend_port(port: tauri::State<'_, backend::BackendPort>) -> u16 {
     port.0
+}
+
+#[tauri::command]
+fn get_initial_contest_file() -> Option<String> {
+    get_cli_contest_file()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -25,7 +49,12 @@ pub fn run() {
     let context = tauri::generate_context!();
 
     #[cfg(desktop)]
-    let instance_coordinator = match startup_guard::acquire(&context.config().identifier) {
+    let initial_contest_file = get_cli_contest_file();
+    #[cfg(desktop)]
+    let instance_coordinator = match startup_guard::acquire(
+        &context.config().identifier,
+        initial_contest_file.as_deref(),
+    ) {
         Ok(startup_guard::AcquireOutcome::Primary(coordinator)) => coordinator,
         Ok(startup_guard::AcquireOutcome::Secondary(
             startup_guard::SecondaryOutcome::Activated,
@@ -74,6 +103,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_backend_port,
+            get_initial_contest_file,
             backend::prepare_for_update,
             checker_sources::open_checker_source,
             contest_archive::open_contest_archive,

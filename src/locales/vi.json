@@ -61,7 +61,9 @@
     "saveChangesMessage": "Kỳ thi hiện tại có thay đổi chưa được lưu. Bạn có muốn lưu toàn bộ đề, source thí sinh và kết quả chấm không?",
     "discard": "Không lưu",
     "saveFailed": "Không thể lưu kỳ thi",
-    "openFailed": "Không thể mở kỳ thi"
+    "openFailed": "Không thể mở kỳ thi",
+    "dropToOpenTitle": "Thả file kỳ thi .judgedesk hoặc thư mục",
+    "dropToOpenSubtitle": "Mở kỳ thi đã lưu kèm đề bài, thí sinh và kết quả chấm"
   },
   "actions": {
     "configProblem": "Cấu hình Bài tập",
@@ -110,7 +112,9 @@
     "dropTarget": "Kéo thả thư mục vào đây",
     "load": "Tải dữ liệu",
     "testsPlaceholder": "Đường dẫn tới thư mục bộ test",
-    "contestantsPlaceholder": "Đường dẫn tới thư mục bài thi"
+    "contestantsPlaceholder": "Đường dẫn tới thư mục bài thi",
+    "dropTestsHint": "Thả thư mục chứa các bài thi và testcases vào đây",
+    "dropContestantsHint": "Thả thư mục chứa mã nguồn của các thí sinh vào đây"
   },
   "problemConfig": {
     "title": "Cấu hình Bài tập",
@@ -651,16 +655,26 @@
     "badgeLabel": "OSD",
     "activeTooltip": "Chấm trực tuyến đang BẬT. Hàng đợi: {{queue}} bài. Nhấn để xem cài đặt (F8).",
     "inactiveTooltip": "Chấm bài trực tuyến qua mạng LAN (OSD) - Phím tắt F8",
-    "statusActive": "Đang lắng nghe nộp bài",
+    "statusActive": "Đang theo dõi bài nộp mới",
     "statusInactive": "Chấm trực tuyến đang tắt",
     "stats": "Hàng đợi: {{queue}} bài | Đã xử lý: {{total}} bài",
-    "startButton": "Bắt đầu lắng nghe",
-    "stopButton": "Dừng lắng nghe",
+    "startButton": "Bắt đầu theo dõi",
+    "stopButton": "Dừng theo dõi",
     "pathRequired": "Vui lòng chọn thư mục nộp bài OSD.",
     "workspaceRequired": "Cần nạp Thư mục Thí sinh và Thư mục Đề thi trước khi bật Chấm trực tuyến.",
     "folderLabel": "Thư mục nộp bài chung (OSD Shared Folder)",
     "folderHelp": "Thí sinh nộp file bài làm vào thư mục này theo định dạng *[MãThíSinh][TênBài].EXT.",
     "enableLogLabel": "Tự động tạo biên bản chấm chi tiết vào thư mục OSD/Logs/[TênFile].log",
     "guideTitle": "Hướng dẫn chia sẻ mạng LAN cho kỳ thi"
+  },
+  "changelog": {
+    "modalTitle": "Có gì mới trong JudgeDesk",
+    "modalSubtitle": "Nhật ký các thay đổi và cải tiến của phiên bản",
+    "currentVersion": "Phiên bản hiện tại",
+    "allVersions": "Lịch sử cập nhật",
+    "releaseDate": "Phát hành: {{date}}",
+    "viewFullNotes": "Xem release trên GitHub",
+    "gotIt": "Đã hiểu",
+    "viewChangelog": "Nhật ký thay đổi"
   }
 }

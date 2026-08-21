@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useState, useMemo, useRef, useReducer } from "react";
-import { X } from "lucide-react";
+import { FolderOpen, X } from "lucide-react";
 import { HostStatus, ProblemResult } from "./types";
 import ProblemConfigModal from "./components/ProblemConfigModal";
 import ProgressWindow from "./components/ProgressWindow";
 import JudgingDetailsModal from "./components/JudgingDetailsModal";
 import ScoringLogModal from "./components/ScoringLogModal";
 import { apiFetch } from "./api";
-import { buildScoreExport } from "./features/export/score-workbook-client";
+import { buildScoreExport, hostStatusToRunMetadata } from "./features/export/score-workbook-client";
 import {
   encodeScoreExportPayload,
   SCORE_EXPORT_CONTENT_TYPE,
@@ -58,6 +58,7 @@ import ContestSaveProgressDialog from "./components/ContestSaveProgressDialog";
 import {
   buildContestManifest,
   chooseAndOpenContestArchive,
+  openContestArchiveFromPath,
   saveContestArchive,
 } from "./features/contest/contest-file";
 import {
@@ -68,8 +69,11 @@ import OsdSettingsModal from "./features/osd/OsdSettingsModal";
 import { useOsdSession } from "./features/osd/useOsdSession";
 import AppErrorToast from "./components/AppErrorToast";
 import { formatAppError, type AppError } from "./features/errors/app-error";
+import ChangelogModal from "./features/changelog/ChangelogModal.js";
+import { preferencesStorage } from "./features/preferences/storage.js";
+import { APP_VERSION } from "./version.js";
 
-type PendingContestAction = "new" | "open" | "close";
+type PendingContestAction = "new" | "open" | "close" | { type: "open_path"; path: string };
 const DONATION_QR_URL = "https://img.vietqr.io/image/MB-0835385259-compact.png?amount=&addInfo=JudgeDesk%20Donation";
 type PendingScoreDeletion =
   | { type: "selected"; contestantNames: string[]; problemNames: string[] }
@@ -142,6 +146,8 @@ export default function App() {
   const [isContestDirty, setIsContestDirty] = useState(false);
   const [isSavingContest, setIsSavingContest] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isWindowDragging, setIsWindowDragging] = useState(false);
+  const [showChangelog, setShowChangelog] = useState(false);
   const [pendingContestAction, setPendingContestAction] = useState<PendingContestAction | null>(null);
   const [pendingScoreDeletion, setPendingScoreDeletion] = useState<PendingScoreDeletion | null>(null);
   const contestDirtyRef = useRef(false);
@@ -151,6 +157,18 @@ export default function App() {
   const saveOperationRef = useRef(false);
   const exportOperationRef = useRef(false);
   const updater = useAppUpdater();
+
+  useEffect(() => {
+    const lastSeen = preferencesStorage.getLastSeenVersion();
+    if (lastSeen !== APP_VERSION) {
+      setShowChangelog(true);
+    }
+  }, []);
+
+  const handleCloseChangelog = useCallback(() => {
+    preferencesStorage.setLastSeenVersion(APP_VERSION);
+    setShowChangelog(false);
+  }, []);
   const updateRequiresRestart =
     updater.state.status === "error" &&
     (updater.state.phase === "prepare" ||
@@ -523,7 +541,7 @@ export default function App() {
     }
   };
 
-  const executeContestAction = async (action: PendingContestAction): Promise<boolean> => {
+  const executeContestAction = useCallback(async (action: PendingContestAction): Promise<boolean> => {
     if (action === "close") {
       try {
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
@@ -555,7 +573,9 @@ export default function App() {
     }
 
     try {
-      const opened = await chooseAndOpenContestArchive();
+      const opened = typeof action === "object" && action.type === "open_path"
+        ? await openContestArchiveFromPath(action.path)
+        : await chooseAndOpenContestArchive();
       if (!opened) return false;
       const workspace = opened.manifest.workspace;
       await restoreWorkspace({
@@ -579,29 +599,101 @@ export default function App() {
       showError(error, { code: "CONTEST_OPEN_FAILED", title: t("appErrors.contestOpenFailed.title") });
       return false;
     }
-  };
+  }, [dispatchJudgeResults, resetWorkspace, restoreWorkspace, setContestDirty, showError, t, updater]);
 
-  const requestContestAction = (action: PendingContestAction) => {
+  const requestContestAction = useCallback((action: PendingContestAction) => {
     if (interactionLockedRef.current || saveOperationRef.current) return;
     if (shouldPromptForUnsavedContest(
       contestDirtyRef.current,
-      contestantsList.length,
-      problemsList.length,
+      contestDataCountsRef.current.contestants,
+      contestDataCountsRef.current.problems,
     )) {
       setPendingContestAction(action);
       return;
     }
     void executeContestAction(action);
-  };
+  }, [executeContestAction]);
 
   const continuePendingAction = async (saveFirst: boolean) => {
     const action = pendingContestAction;
     if (!action) return;
     if (saveFirst && !(await handleSaveContest())) return;
     setPendingContestAction(null);
-    if (!saveFirst && action !== "open") setContestDirty(false);
+    if (!saveFirst && action !== "open" && !(typeof action === "object" && action.type === "open_path")) {
+      setContestDirty(false);
+    }
     await executeContestAction(action);
   };
+
+  const openContestFileByPath = useCallback((path: string) => {
+    requestContestAction({ type: "open_path", path });
+  }, [requestContestAction]);
+
+  useEffect(() => {
+    async function checkInitialContest() {
+      try {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const initialFile = await invoke<string | null>("get_initial_contest_file");
+        if (initialFile) {
+          void executeContestAction({ type: "open_path", path: initialFile });
+        }
+      } catch (e) {
+        // Not running in Tauri or no initial file
+      }
+    }
+    void checkInitialContest();
+  }, [executeContestAction]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    async function listenOpenContest() {
+      try {
+        const { listen } = await import("@tauri-apps/api/event");
+        unlisten = await listen<string>("open_contest_file", (event) => {
+          if (event.payload) {
+            openContestFileByPath(event.payload);
+          }
+        });
+      } catch (e) {
+        // Not running in Tauri
+      }
+    }
+    void listenOpenContest();
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [openContestFileByPath]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    async function setupDragDrop() {
+      try {
+        const { getCurrentWebview } = await import("@tauri-apps/api/webview");
+        unlisten = await getCurrentWebview().onDragDropEvent((event) => {
+          if (event.payload.type === "over") {
+            setIsWindowDragging(true);
+          } else if (event.payload.type === "drop") {
+            setIsWindowDragging(false);
+            const paths = event.payload.paths;
+            if (paths && paths.length > 0) {
+              const file = paths[0];
+              if (file.toLowerCase().endsWith(".judgedesk")) {
+                openContestFileByPath(file);
+              }
+            }
+          } else {
+            setIsWindowDragging(false);
+          }
+        });
+      } catch (e) {
+        // Not running in Tauri webview
+      }
+    }
+    void setupDragDrop();
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [openContestFileByPath]);
 
   const runJudge = (
     contestantsOverride?: string[],
@@ -699,11 +791,13 @@ export default function App() {
       const activeContestants = displayedContestants.filter(
         (contestant) => selectedContestants[contestant],
       );
+      const fallbackMetadata = hostStatusToRunMetadata(hostStatus);
       const scoreExport = await buildScoreExport(
         judgeResult ?? { success: true, contestants: [] },
         activeContestants,
         activeProblems,
         t,
+        fallbackMetadata,
       );
       const payload = encodeScoreExportPayload(
         scoreExport.workbook,
@@ -1250,6 +1344,10 @@ export default function App() {
             setHelpSection(null);
             setOpenToolchains(true);
           }}
+          onOpenChangelog={() => {
+            setHelpSection(null);
+            setShowChangelog(true);
+          }}
         />
       )}
 
@@ -1443,6 +1541,31 @@ export default function App() {
                   </button>
                 </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showChangelog && (
+        <ChangelogModal onClose={handleCloseChangelog} />
+      )}
+
+      {isWindowDragging && !loadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md pointer-events-none transition-all duration-300">
+          <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed border-indigo-500 bg-surface/95 px-12 py-10 shadow-2xl ring-4 ring-indigo-500/20 max-w-lg text-center animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-500/15 text-indigo-500 dark:text-indigo-400">
+              <FolderOpen className="h-9 w-9 animate-bounce" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-text-primary">
+                {t("contest.dropToOpenTitle", "Thả file kỳ thi .judgedesk hoặc thư mục")}
+              </h3>
+              <p className="mt-1 text-xs text-text-muted">
+                {t(
+                  "contest.dropToOpenSubtitle",
+                  "Mở kỳ thi đã lưu kèm đề bài, thí sinh và kết quả chấm",
+                )}
+              </p>
             </div>
           </div>
         </div>

@@ -13,6 +13,7 @@ import {
   Rocket,
   Search,
   Settings2,
+  Sparkles,
   Wrench,
   X,
   type LucideIcon,
@@ -105,6 +106,7 @@ interface Props {
   loadToolchains?: () => Promise<ToolchainState>;
   onClose: () => void;
   onOpenToolchains?: () => void;
+  onOpenChangelog?: () => void;
 }
 
 const COMPILE_CONFIG_EXAMPLE = `{
@@ -511,6 +513,7 @@ export default function HelpCenter({
   loadToolchains,
   onClose,
   onOpenToolchains,
+  onOpenChangelog,
 }: Props) {
   const { t } = useTranslation();
   const [activeSectionId, setActiveSectionId] = useState<HelpSectionId>(initialSection);
@@ -697,6 +700,7 @@ export default function HelpCenter({
                   }
                 }}
                 onOpenToolchains={onOpenToolchains}
+                onOpenChangelog={onOpenChangelog}
                 onSelectSection={selectSection}
               />
             ) : (
@@ -718,6 +722,7 @@ function HelpArticle({
   copyState,
   onCopy,
   onOpenToolchains,
+  onOpenChangelog,
   onSelectSection,
 }: {
   section: HelpSectionDefinition;
@@ -726,6 +731,7 @@ function HelpArticle({
   copyState: "idle" | "copied" | "failed";
   onCopy: () => void;
   onOpenToolchains?: () => void;
+  onOpenChangelog?: () => void;
   onSelectSection: (id: HelpSectionId) => void;
 }) {
   const { t } = useTranslation();
@@ -771,6 +777,7 @@ function HelpArticle({
           environmentError={environmentError}
           copyState={copyState}
           onCopy={onCopy}
+          onOpenChangelog={onOpenChangelog}
         />
       )}
 
@@ -858,11 +865,13 @@ function AboutDiagnostics({
   environmentError,
   copyState,
   onCopy,
+  onOpenChangelog,
 }: {
   diagnostics: HelpDiagnostics;
   environmentError: string;
   copyState: "idle" | "copied" | "failed";
   onCopy: () => void;
+  onOpenChangelog?: () => void;
 }) {
   const { t } = useTranslation();
   const rows = [
@@ -886,14 +895,26 @@ function AboutDiagnostics({
           </h4>
           <p className="mt-1 text-[11px] text-text-muted">{t("helpCenter.environmentSubtitle")}</p>
         </div>
-        <button
-          type="button"
-          onClick={onCopy}
-          className="inline-flex items-center gap-2 rounded-md border border-surface-border bg-input-bg px-3 py-2 text-xs font-semibold text-text-primary transition hover:bg-surface-hover"
-        >
-          {copyState === "copied" ? <Check className="h-4 w-4 text-emerald-500" /> : <ClipboardCopy className="h-4 w-4 text-indigo-500" />}
-          {t(`helpCenter.copy.${copyState}`)}
-        </button>
+        <div className="flex items-center gap-2">
+          {onOpenChangelog && (
+            <button
+              type="button"
+              onClick={onOpenChangelog}
+              className="inline-flex items-center gap-1.5 rounded-md border border-surface-border bg-input-bg px-3 py-2 text-xs font-semibold text-text-primary transition hover:bg-surface-hover"
+            >
+              <Sparkles className="h-4 w-4 text-indigo-500 dark:text-indigo-400" />
+              {t("changelog.viewChangelog", "Nhật ký thay đổi")}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onCopy}
+            className="inline-flex items-center gap-2 rounded-md border border-surface-border bg-input-bg px-3 py-2 text-xs font-semibold text-text-primary transition hover:bg-surface-hover"
+          >
+            {copyState === "copied" ? <Check className="h-4 w-4 text-emerald-500" /> : <ClipboardCopy className="h-4 w-4 text-indigo-500" />}
+            {t(`helpCenter.copy.${copyState}`)}
+          </button>
+        </div>
       </div>
       <dl className="mt-4 grid gap-x-5 gap-y-3 text-xs sm:grid-cols-2">
         {rows.map(([label, value]) => (
