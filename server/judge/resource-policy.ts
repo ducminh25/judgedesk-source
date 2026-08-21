@@ -48,3 +48,5 @@ export class SingleJudgeSessionGate {
     this.active = false;
   }
 }
+
+export const sharedJudgeSessionGate = new SingleJudgeSessionGate();

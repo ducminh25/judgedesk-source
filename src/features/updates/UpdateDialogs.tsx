@@ -44,15 +44,18 @@ export function UpdateEditionDialog({
                 <span className="text-base font-bold text-text-primary">
                   {t(`updates.editions.${edition}.name`)}
                 </span>
-                {isCurrent ? (
-                  <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold uppercase text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
-                    {t("updates.currentEdition")}
-                  </span>
-                ) : edition === "full" ? (
-                  <span className="rounded-full bg-indigo-100 px-2 py-1 text-[10px] font-bold uppercase text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
-                    {t("updates.recommended")}
-                  </span>
-                ) : null}
+                <div className="flex items-center gap-1.5">
+                  {isCurrent && (
+                    <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold uppercase text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                      {t("updates.currentEdition")}
+                    </span>
+                  )}
+                  {edition === "core" && (
+                    <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold uppercase text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                      {t("updates.recommended")}
+                    </span>
+                  )}
+                </div>
               </div>
               <p className="mt-2 min-h-12 text-xs leading-5 text-text-muted">
                 {t(`updates.editions.${edition}.description`)}

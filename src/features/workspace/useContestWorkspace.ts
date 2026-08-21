@@ -36,16 +36,25 @@ export interface RestoredContestWorkspace {
 
 async function fetchContestants(path: string): Promise<string[]> {
   const response = await apiFetch(`/api/fetch-contestants?path=${encodeURIComponent(path)}`);
-  const data = (await response.json()) as ContestantsResponse;
-  if (!data.success || !data.data) return [];
+  const data = (await response.json()) as ContestantsResponse & { code?: string; message?: string };
+  if (!response.ok || !data.success || !data.data) {
+    const error = new Error(data.message || "Failed to load contestants");
+    (error as any).code = data.code || (response.status === 404 ? "DIRECTORY_NOT_FOUND" : "DIRECTORY_ACCESS_ERROR");
+    throw error;
+  }
   return data.data;
 }
 
 async function fetchProblems(path: string): Promise<Required<Pick<ProblemsResponse, "data" | "customCheckers">>> {
   const response = await apiFetch(`/api/fetch-problems?path=${encodeURIComponent(path)}`);
-  const data = (await response.json()) as ProblemsResponse;
+  const data = (await response.json()) as ProblemsResponse & { code?: string; message?: string };
+  if (!response.ok || !data.success || !data.data) {
+    const error = new Error(data.message || "Failed to load problems");
+    (error as any).code = data.code || (response.status === 404 ? "DIRECTORY_NOT_FOUND" : "DIRECTORY_ACCESS_ERROR");
+    throw error;
+  }
   return {
-    data: data.success && data.data ? data.data : [],
+    data: data.data,
     customCheckers: data.customCheckers || {},
   };
 }
@@ -79,7 +88,7 @@ export function useContestWorkspace() {
       return data;
     } catch (error) {
       console.error("Failed to load contestants", error);
-      return [];
+      throw error;
     }
   }, [contestantsPath]);
 
@@ -106,14 +115,14 @@ export function useContestWorkspace() {
       return data.data;
     } catch (error) {
       console.error("Failed to load problems", error);
-      return [];
+      throw error;
     }
   }, [testPath]);
 
   const restoreWorkspace = useCallback(async (workspace: RestoredContestWorkspace) => {
     const [loadedContestants, loadedProblems] = await Promise.all([
-      fetchContestants(workspace.contestantsPath),
-      fetchProblems(workspace.testsPath),
+      fetchContestants(workspace.contestantsPath).catch(() => []),
+      fetchProblems(workspace.testsPath).catch(() => ({ data: [], customCheckers: {} })),
     ]);
     setContestantsPathMemory((memory) => activateWorkspacePath(memory, workspace.contestantsPath, false));
     setTestPathMemory((memory) => activateWorkspacePath(memory, workspace.testsPath, false));
@@ -159,6 +168,11 @@ export function useContestWorkspace() {
     preferencesStorage.setTestsPath(path);
   }, []);
 
+  const addContestant = useCallback((name: string) => {
+    setContestants((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    setSelectedContestants((prev) => ({ ...prev, [name]: true }));
+  }, []);
+
   return {
     contestants,
     contestantsPath,
@@ -179,5 +193,6 @@ export function useContestWorkspace() {
     setTestPath,
     testPath,
     testsPickerPath: workspacePickerPath(testPathMemory),
+    addContestant,
   };
 }

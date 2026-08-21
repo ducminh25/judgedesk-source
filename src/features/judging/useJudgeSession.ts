@@ -58,15 +58,15 @@ export function useJudgeSession({
   const runJudge = async (targetContestants: string[], targetProblems: string[]) => {
     if (activeRunRef.current) return;
     if (!contestantsPath.trim()) {
-      setErrorMessage("Please enter the path to the contestants folder.");
+      setErrorMessage("MISSING_CONTESTANTS_PATH");
       return;
     }
     if (!testPath.trim()) {
-      setErrorMessage("Please enter the path to the testcases folder.");
+      setErrorMessage("MISSING_TESTS_PATH");
       return;
     }
     if (targetContestants.length === 0 || targetProblems.length === 0) {
-      setErrorMessage("Select at least one contestant and one problem to grade.");
+      setErrorMessage("NO_TARGETS_SELECTED");
       return;
     }
 

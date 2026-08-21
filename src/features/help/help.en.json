@@ -101,6 +101,19 @@
       "verdicts": "• AC (Accepted): Solution produced the exact expected output.\n• WA (Wrong Answer): Output differed from expected answer.\n• CE (Compilation Error): Code failed to compile (double-click cell to inspect compiler logs).\n• RE (Runtime Error): Program crashed or exited abnormally (segmentation fault, division by zero, stack overflow).\n• TLE (Time Limit Exceeded): Program exceeded time limit.\n• MLE (Memory Limit Exceeded): Program exceeded memory limit.\n• OLE (Output Limit Exceeded): Program produced excessive output.\n• PE (Presentation Error): Output formatting error (extra spaces/newlines).\n• JE (Judge Error): Environment or execution engine error.\n• PARTIAL: Partial score granted by custom checker.",
       "archivePrivacy": "A .judgedesk archive is a ZIP-compatible container. Protect it carefully if the contest contains confidential test cases or unpublished problems."
     },
+    "onlineJudge": {
+      "title": "Online LAN Judge (OSD)",
+      "summary": "Auto-detect submissions from LAN shared folder, continuous judging queue and log generation",
+      "intro": "The Online Submission Directory (OSD) feature allows teachers to set up a shared drop folder on the local network. Contestants or submission clients drop their source files into this folder, and JudgeDesk automatically detects, ingests, queues, and grades submissions in real time.",
+      "items": {
+        "sharing": "LAN Folder Sharing: Create a drop folder (e.g. D:/Submit) and enable network sharing (Windows File Sharing or macOS File Sharing) with Read/Write permissions for Everyone.",
+        "naming": "Themis Filename Convention: *[ContestantId][ProblemName].EXT (e.g., [HS01][SUM].cpp, 001[Mon][BAI1].pas, 2026[LeA][PROB1].py).",
+        "ingestion": "Ingestion & Archiving: Valid submissions are moved into contestant folders, and older submissions are safely archived to $History/ to prevent conflicts.",
+        "queue": "FIFO Judge Queue: Submissions are queued and judged sequentially within the isolated Sandbox with precise CPU and memory measurements.",
+        "logs": "Detailed Log Generation (.log): Detailed testcase logs are automatically written to OSD/Logs/[FileName].log for client applications to inspect results.",
+        "coordination": "Shortcuts & Session Coordination: Press F8 to configure OSD. When running manual batch judging (F9), OSD queue pauses and automatically resumes when finished."
+      }
+    },
     "shortcuts": {
       "title": "Keyboard shortcuts & Navigation",
       "summary": "Themis-compatible shortcuts and full mouse-free keyboard navigation",
@@ -130,6 +143,10 @@
         "f6": {
           "term": "F6",
           "description": "Open Toolchain & Compiler Manager."
+        },
+        "f8": {
+          "term": "F8",
+          "description": "Toggle & configure Online LAN Judge (OSD)."
         },
         "f9": {
           "term": "F9",

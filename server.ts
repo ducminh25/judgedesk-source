@@ -8,6 +8,7 @@ import { registerExportRoutes } from "./server/routes/export-routes.js";
 import { registerProblemRoutes } from "./server/routes/problem-routes.js";
 import { registerSystemRoutes } from "./server/routes/system-routes.js";
 import { registerToolchainRoutes } from "./server/routes/toolchain-routes.js";
+import { registerOsdRoutes } from "./server/routes/osd-routes.js";
 import { startParentWatchdog } from "./server/platform/parent-watchdog.js";
 import { startInitialToolchainDiscovery } from "./server/toolchains/discovery.js";
 
@@ -70,6 +71,7 @@ async function startServer() {
   startInitialToolchainDiscovery();
 
   registerBatchJudgeRoute(app);
+  registerOsdRoutes(app);
 
   // Setup Vite development server or serve build files
   if (!IS_PRODUCTION) {

@@ -348,6 +348,83 @@
   "errors": {
     "backendConnection": "Không thể kết nối dịch vụ chấm bài. Vui lòng khởi động lại ứng dụng."
   },
+  "appErrors": {
+    "generic": {
+      "title": "Đã xảy ra sự cố",
+      "reason": "Thao tác không thể hoàn tất.",
+      "action": "Vui lòng kiểm tra lại dữ liệu và thử lại."
+    },
+    "backendConnection": {
+      "title": "Không thể kết nối dịch vụ chấm bài",
+      "reason": "Dịch vụ xử lý nền (Backend Service) chưa sẵn sàng hoặc bị chặn bởi phần mềm bảo mật.",
+      "action": "Hãy kiểm tra quyền ứng dụng và khởi động lại JudgeDesk."
+    },
+    "missingContestantsPath": {
+      "title": "Chưa nạp thư mục Thí sinh",
+      "reason": "Đường dẫn thư mục chứa bài làm của thí sinh đang để trống.",
+      "action": "Nhấn «Nạp danh sách thí sinh» (phím F3) để chọn thư mục."
+    },
+    "missingTestsPath": {
+      "title": "Chưa nạp thư mục Đề bài",
+      "reason": "Đường dẫn thư mục chứa các bài tập đang để trống.",
+      "action": "Nhấn «Nạp danh sách bài thi» (phím F2) để chọn thư mục đề."
+    },
+    "noTargetsSelected": {
+      "title": "Chưa chọn mục nào để chấm",
+      "reason": "Chưa có thí sinh hoặc bài thi nào được tích chọn trên bảng điểm.",
+      "action": "Hãy tích chọn ít nhất 1 thí sinh và 1 bài thi trên bảng điểm."
+    },
+    "directoryNotFound": {
+      "title": "Không tìm thấy thư mục",
+      "reason": "Đường dẫn thư mục không tồn tại hoặc đã bị đổi tên, di chuyển.",
+      "action": "Vui lòng kiểm tra lại đường dẫn hoặc chọn thư mục khác."
+    },
+    "directoryEmpty": {
+      "title": "Thư mục không có dữ liệu hợp lệ",
+      "reason": "Thư mục đã chọn không chứa các thư mục con theo quy chuẩn bài thi hoặc thí sinh.",
+      "action": "Đảm bảo mỗi thí sinh hoặc mỗi bài tập là một thư mục con riêng biệt."
+    },
+    "permissionDenied": {
+      "title": "Không có quyền truy cập",
+      "reason": "Hệ điều hành từ chối quyền đọc/ghi vào thư mục hoặc tệp tin này.",
+      "action": "Hãy kiểm tra quyền phân quyền (Read/Write) của thư mục hoặc chạy ứng dụng với quyền phù hợp."
+    },
+    "fileLocked": {
+      "title": "Tệp tin đang bị khóa",
+      "reason": "Tệp tin đang được mở bởi một chương trình khác (như Excel, Word, Text Editor).",
+      "action": "Hãy đóng tệp tin trong các ứng dụng đang mở rồi thử lại."
+    },
+    "excelExportFailed": {
+      "title": "Không thể xuất bảng điểm Excel",
+      "reason": "Không thể khởi chạy ứng dụng xem bảng tính hoặc tệp tạm thời bị khóa.",
+      "action": "Hãy cài đặt ứng dụng đọc file Excel (.xlsx) hoặc đóng các file Excel đang mở."
+    },
+    "judgeBusy": {
+      "title": "Dịch vụ chấm đang bận",
+      "reason": "Một phiên chấm khác đang chiếm dụng tài nguyên hệ thống.",
+      "action": "Vui lòng chờ phiên hiện tại kết thúc hoặc bấm nút Dừng."
+    },
+    "toolchainMissing": {
+      "title": "Trình biên dịch chưa sẵn sàng",
+      "reason": "Máy tính chưa có compiler phù hợp hoặc compiler chưa được xác thực.",
+      "action": "Mở «Quản lý trình biên dịch» (F6) để tải hoặc cấu hình compiler."
+    },
+    "osdFailed": {
+      "title": "Không thể bật Chấm trực tuyến (OSD)",
+      "reason": "Thư mục nộp bài OSD không hợp lệ hoặc chưa nạp danh sách đề bài/thí sinh.",
+      "action": "Kiểm tra cấu hình OSD (F8) và nạp đầy đủ đề bài, thí sinh trước khi bật."
+    },
+    "contestSaveFailed": {
+      "title": "Không thể lưu tệp kỳ thi",
+      "reason": "Không thể đóng gói dữ liệu kỳ thi vào tệp lưu trữ.",
+      "action": "Kiểm tra dung lượng đĩa trống và quyền ghi tại vị trí lưu."
+    },
+    "contestOpenFailed": {
+      "title": "Không thể mở tệp kỳ thi",
+      "reason": "Tệp tin bị hỏng hoặc không đúng định dạng .judgedesk chuẩn.",
+      "action": "Hãy chọn đúng tệp gói kỳ thi hợp lệ."
+    }
+  },
   "compileDiagnostics": {
     "COMPILER_TIMEOUT": "Trình biên dịch đã quá thời gian 15 giây và bị buộc dừng.",
     "GENERATED_FILE_TOO_LARGE": "Quá trình biên dịch đã sinh file lớn hơn giới hạn 32 MiB và bị buộc dừng.",
@@ -384,22 +461,22 @@
     "confirmDownload": "Xác nhận và tải về",
     "editions": {
       "core": {
-        "name": "Core",
-        "description": "Nhẹ hơn. Dùng compiler đã cài trên máy hoặc tải từng toolchain cần thiết trong JudgeDesk."
+        "name": "Core (Cập nhật nhanh)",
+        "description": "Gói cập nhật siêu nhẹ (~39 MB). Tải và cài đặt trong vài giây, toàn bộ compiler trên máy được bảo lưu an toàn 100%."
       },
       "full": {
-        "name": "Full",
-        "description": "Có sẵn các toolchain đã được JudgeDesk kiểm tra; phù hợp phòng thi, lớp học và máy cần chấm offline."
+        "name": "Full (Gói đầy đủ)",
+        "description": "Gói trọn bộ chứa sẵn mọi toolchain (~800 MB); phù hợp cài đặt máy mới không có mạng hoặc sao chép qua USB."
       }
     },
     "editionChange": {
       "coreToFull": {
-        "title": "Chuyển từ Core sang Full?",
-        "message": "JudgeDesk sẽ cài các toolchain tích hợp của bản Full và ưu tiên chúng cho các ngôn ngữ được hỗ trợ. Đường dẫn compiler tùy chỉnh vẫn được ghi nhớ và có thể chọn lại trong Công cụ."
+        "title": "Tải bản Full trọn gói?",
+        "message": "JudgeDesk sẽ tải bản Full (~800 MB) chứa trọn bộ mọi toolchains. Quá trình tải và cài đặt có thể mất vài phút."
       },
       "fullToCore": {
-        "title": "Chuyển từ Full sang Core?",
-        "message": "Các toolchain tích hợp của bản Full sẽ được gỡ khỏi thư mục ứng dụng. Toolchain tải riêng và đường dẫn compiler tùy chỉnh không bị xóa; ngôn ngữ còn thiếu compiler có thể cần được cấu hình lại."
+        "title": "Cập nhật nhanh với bản Core?",
+        "message": "JudgeDesk sẽ tải gói cập nhật Core nhẹ (~39 MB) giúp cập nhật trong vài giây. Toàn bộ toolchain và compiler trên máy của bạn đã được bảo lưu an toàn và tiếp tục sẵn sàng chấm bài."
       }
     }
   },
@@ -568,5 +645,22 @@
       "installStartFailed": "Không thể bắt đầu cài đặt gói.",
       "back": "Quay lại"
     }
+  },
+  "osd": {
+    "title": "Chấm bài trực tuyến (Online Judge / OSD)",
+    "badgeLabel": "OSD",
+    "activeTooltip": "Chấm trực tuyến đang BẬT. Hàng đợi: {{queue}} bài. Nhấn để xem cài đặt (F8).",
+    "inactiveTooltip": "Chấm bài trực tuyến qua mạng LAN (OSD) - Phím tắt F8",
+    "statusActive": "Đang lắng nghe nộp bài",
+    "statusInactive": "Chấm trực tuyến đang tắt",
+    "stats": "Hàng đợi: {{queue}} bài | Đã xử lý: {{total}} bài",
+    "startButton": "Bắt đầu lắng nghe",
+    "stopButton": "Dừng lắng nghe",
+    "pathRequired": "Vui lòng chọn thư mục nộp bài OSD.",
+    "workspaceRequired": "Cần nạp Thư mục Thí sinh và Thư mục Đề thi trước khi bật Chấm trực tuyến.",
+    "folderLabel": "Thư mục nộp bài chung (OSD Shared Folder)",
+    "folderHelp": "Thí sinh nộp file bài làm vào thư mục này theo định dạng *[MãThíSinh][TênBài].EXT.",
+    "enableLogLabel": "Tự động tạo biên bản chấm chi tiết vào thư mục OSD/Logs/[TênFile].log",
+    "guideTitle": "Hướng dẫn chia sẻ mạng LAN cho kỳ thi"
   }
 }

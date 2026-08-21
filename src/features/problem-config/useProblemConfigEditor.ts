@@ -115,9 +115,10 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
   const addDependency = (groupName: string, dependency: string) => {
     if (groupName === dependency) return;
     if (createsGroupCycle(polygonConfig.groups, groupName, dependency)) {
-      alert("Cannot add dependency because of cyclic dependence");
+      setSaveError("Không thể thêm phụ thuộc vì sẽ tạo ra vòng lặp chu trình (cyclic dependency).");
       return;
     }
+    setSaveError("");
     setPolygonConfig(previous => setGroupDependency(previous, groupName, dependency, true));
   };
 

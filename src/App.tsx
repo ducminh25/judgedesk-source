@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useState, useMemo, useRef, useReducer } from "react";
+import { X } from "lucide-react";
 import { HostStatus, ProblemResult } from "./types";
 import ProblemConfigModal from "./components/ProblemConfigModal";
 import ProgressWindow from "./components/ProgressWindow";
@@ -63,6 +64,10 @@ import {
   hasSavableContestData,
   shouldPromptForUnsavedContest,
 } from "./features/contest/dirty-state";
+import OsdSettingsModal from "./features/osd/OsdSettingsModal";
+import { useOsdSession } from "./features/osd/useOsdSession";
+import AppErrorToast from "./components/AppErrorToast";
+import { formatAppError, type AppError } from "./features/errors/app-error";
 
 type PendingContestAction = "new" | "open" | "close";
 const DONATION_QR_URL = "https://img.vietqr.io/image/MB-0835385259-compact.png?amount=&addInfo=JudgeDesk%20Donation";
@@ -94,6 +99,7 @@ export default function App() {
     setTestPath,
     testPath,
     testsPickerPath,
+    addContestant,
   } = useContestWorkspace();
   const [searchTerm, setSearchTerm] = useState<string>("");
   const [contestantSort, setContestantSort] = useState<
@@ -123,6 +129,7 @@ export default function App() {
   );
   const [modalPath, setModalPath] = useState<string>("");
   const [openToolchains, setOpenToolchains] = useState(false);
+  const [showOsdModal, setShowOsdModal] = useState(false);
   const [helpSection, setHelpSection] = useState<HelpSectionId | null>(null);
   const [showInstallUpdate, setShowInstallUpdate] = useState(false);
   const [showUpdateChoices, setShowUpdateChoices] = useState(false);
@@ -184,6 +191,12 @@ export default function App() {
 
   const [hostStatus, setHostStatus] = useState<HostStatus | null>(null);
   const [backendErrorMessage, setBackendErrorMessage] = useState("");
+  const [appError, setAppError] = useState<AppError | null>(null);
+
+  const showError = useCallback((err: unknown, options?: Parameters<typeof formatAppError>[1]) => {
+    setAppError(formatAppError(err, options, t));
+  }, [t]);
+
   const [judgeResult, dispatchJudgeResults] = useReducer(
     judgeResultsReducer,
     null,
@@ -274,12 +287,13 @@ export default function App() {
       } catch (error) {
         console.error("Failed to load host status", error);
         setBackendErrorMessage(t("errors.backendConnection"));
+        showError(error, { code: "BACKEND_CONNECTION" });
       } finally {
         hostStatusRequestRef.current = null;
       }
     })();
     hostStatusRequestRef.current = request;
-  }, [t]);
+  }, [showError, t]);
 
   const loadHelpToolchains = useCallback(async (): Promise<ToolchainState> => {
     const response = await apiFetch("/api/toolchains");
@@ -295,12 +309,21 @@ export default function App() {
   const [activeProblem, setActiveProblem] = useState<string | null>(null);
 
   const handleReloadFolders = useCallback(async () => {
-    await Promise.all([
-      handleFetchContestants(undefined, { preserveSelection: true }),
-      handleFetchProblems(undefined, { preserveSelection: true }),
-    ]);
-    markContestDirty();
-  }, [handleFetchContestants, handleFetchProblems, markContestDirty]);
+    try {
+      const [loadedContestants, loadedProblems] = await Promise.all([
+        handleFetchContestants(undefined, { preserveSelection: true }),
+        handleFetchProblems(undefined, { preserveSelection: true }),
+      ]);
+      markContestDirty();
+      if (thisinhPath && loadedContestants.length === 0) {
+        showError(null, { code: "DIRECTORY_EMPTY" });
+      } else if (testPath && loadedProblems.length === 0) {
+        showError(null, { code: "DIRECTORY_EMPTY" });
+      }
+    } catch (error) {
+      showError(error);
+    }
+  }, [handleFetchContestants, handleFetchProblems, markContestDirty, showError, testPath, thisinhPath]);
 
   useEffect(() => {
     activeLoadModalRef.current = loadModal;
@@ -361,9 +384,43 @@ export default function App() {
     problemConfigs,
     dispatchResults,
   });
+
+  const {
+    status: osdStatus,
+    startOsd,
+    stopOsd,
+  } = useOsdSession({
+    contestantsPath: thisinhPath,
+    testPath,
+    problemConfigs,
+    onContestantDiscovered: (contestant) => {
+      addContestant(contestant);
+    },
+    onProblemCompleted: (contestant, problemResult) => {
+      addContestant(contestant);
+      dispatchResults({
+        type: "merge_problem",
+        contestant,
+        problemResult,
+      });
+    },
+  });
+
   const interactionLocked =
     isJudging || isSavingContest || updateHandoffActive;
   interactionLockedRef.current = interactionLocked;
+
+  const clearError = useCallback(() => {
+    setAppError(null);
+    setBackendErrorMessage("");
+    setErrorMessage("");
+  }, [setErrorMessage]);
+
+  useEffect(() => {
+    if (errorMessage) {
+      showError(errorMessage);
+    }
+  }, [errorMessage, showError]);
 
   useEffect(() => {
     const useBrowserBeforeUnload = shouldRegisterBrowserBeforeUnload(window);
@@ -455,10 +512,10 @@ export default function App() {
       setContestCreatedAt(manifest.createdAt);
       setContestDirty(false);
       setErrorMessage("");
+      setAppError(null);
       return true;
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setErrorMessage(`${t("contest.saveFailed")}: ${message}`);
+      showError(error, { code: "CONTEST_SAVE_FAILED", title: t("appErrors.contestSaveFailed.title") });
       return false;
     } finally {
       saveOperationRef.current = false;
@@ -478,7 +535,7 @@ export default function App() {
         return true;
       } catch (error) {
         setContestDirty(true);
-        setErrorMessage(error instanceof Error ? error.message : String(error));
+        showError(error);
         return false;
       }
     }
@@ -492,6 +549,7 @@ export default function App() {
       setContestantSort("default");
       setProblemSort("default");
       setErrorMessage("");
+      setAppError(null);
       setContestDirty(false);
       return true;
     }
@@ -514,11 +572,11 @@ export default function App() {
       setContestantSort("default");
       setProblemSort("default");
       setErrorMessage("");
+      setAppError(null);
       setContestDirty(false);
       return true;
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setErrorMessage(`${t("contest.openFailed")}: ${message}`);
+      showError(error, { code: "CONTEST_OPEN_FAILED", title: t("appErrors.contestOpenFailed.title") });
       return false;
     }
   };
@@ -660,8 +718,10 @@ export default function App() {
         const failure = await response.json().catch(() => null) as { message?: string } | null;
         throw new Error(failure?.message || `HTTP ${response.status}`);
       }
+      setErrorMessage("");
+      setAppError(null);
     } catch (error: any) {
-      setErrorMessage(error.message || "Failed to open the Excel workbook.");
+      showError(error, { code: "EXCEL_EXPORT_FAILED", title: t("appErrors.excelExportFailed.title") });
     } finally {
       exportOperationRef.current = false;
       setIsExporting(false);
@@ -719,6 +779,11 @@ export default function App() {
             setOpenToolchains(false);
             return;
           }
+          if (showOsdModal) {
+            event.preventDefault();
+            setShowOsdModal(false);
+            return;
+          }
           if (pendingScoreDeletion) {
             event.preventDefault();
             setPendingScoreDeletion(null);
@@ -736,6 +801,7 @@ export default function App() {
           !!loadModal ||
           !!helpSection ||
           openToolchains ||
+          showOsdModal ||
           !!pendingContestAction ||
           !!pendingScoreDeletion ||
           !!activeConfigProblem ||
@@ -764,6 +830,9 @@ export default function App() {
             break;
           case "toolchains":
             if (!interactionLocked && !isAnyModalOpen) setOpenToolchains(true);
+            break;
+          case "toggleOsd":
+            if (!interactionLocked) setShowOsdModal((prev) => !prev);
             break;
           case "judge":
             if (!interactionLocked && !isAnyModalOpen && canRun) void runJudge();
@@ -916,6 +985,8 @@ export default function App() {
         isJudging={isJudging}
         isExporting={isExporting}
         isSavingContest={isSavingContest}
+        osdStatus={osdStatus}
+        onOpenOsd={() => setShowOsdModal(true)}
         onDeleteSelected={() => {
           setPendingScoreDeletion({
             type: "selected",
@@ -995,27 +1066,55 @@ export default function App() {
           path={modalPath}
           onPathChange={setModalPath}
           onClose={() => setLoadModal(null)}
-          onDropPath={(path) => {
-            if (loadModal === "tests") {
-              setTestPath(path);
-              void handleFetchProblems(path);
-              markContestDirty();
-            } else {
-              setThisinhPath(path);
-              void handleFetchContestants(path);
-              markContestDirty();
+          onDropPath={async (path) => {
+            try {
+              if (loadModal === "tests") {
+                setTestPath(path);
+                const loaded = await handleFetchProblems(path);
+                markContestDirty();
+                if (loaded.length === 0) {
+                  showError(null, { code: "DIRECTORY_EMPTY" });
+                } else {
+                  setAppError(null);
+                }
+              } else {
+                setThisinhPath(path);
+                const loaded = await handleFetchContestants(path);
+                markContestDirty();
+                if (loaded.length === 0) {
+                  showError(null, { code: "DIRECTORY_EMPTY" });
+                } else {
+                  setAppError(null);
+                }
+              }
+            } catch (error) {
+              showError(error);
             }
             setLoadModal(null);
           }}
-          onLoad={() => {
-            if (loadModal === "tests") {
-              setTestPath(modalPath);
-              void handleFetchProblems(modalPath);
-              markContestDirty();
-            } else {
-              setThisinhPath(modalPath);
-              void handleFetchContestants(modalPath);
-              markContestDirty();
+          onLoad={async () => {
+            try {
+              if (loadModal === "tests") {
+                setTestPath(modalPath);
+                const loaded = await handleFetchProblems(modalPath);
+                markContestDirty();
+                if (loaded.length === 0) {
+                  showError(null, { code: "DIRECTORY_EMPTY" });
+                } else {
+                  setAppError(null);
+                }
+              } else {
+                setThisinhPath(modalPath);
+                const loaded = await handleFetchContestants(modalPath);
+                markContestDirty();
+                if (loaded.length === 0) {
+                  showError(null, { code: "DIRECTORY_EMPTY" });
+                } else {
+                  setAppError(null);
+                }
+              }
+            } catch (error) {
+              showError(error);
             }
             setLoadModal(null);
           }}
@@ -1160,6 +1259,17 @@ export default function App() {
         />
       )}
 
+      {showOsdModal && (
+        <OsdSettingsModal
+          status={osdStatus}
+          contestantsPath={thisinhPath}
+          testPath={testPath}
+          onStart={startOsd}
+          onStop={stopOsd}
+          onClose={() => setShowOsdModal(false)}
+        />
+      )}
+
       {pendingContestAction && (
         <UnsavedContestDialog
           isSaving={isSavingContest}
@@ -1241,29 +1351,38 @@ export default function App() {
       )}
 
       {showInstallUpdate && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="install-update-title"
-            className="w-full max-w-md overflow-hidden rounded-lg border border-surface-border bg-surface shadow-2xl"
-          >
-            <div className="border-b border-surface-border bg-surface-elevated px-5 py-4">
-              <h2 id="install-update-title" className="text-sm font-bold text-text-primary">
-                {t("updates.installTitle")}
-              </h2>
-            </div>
-            <div className="px-5 py-5 text-sm leading-6 text-text-muted">
-              <p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md overflow-hidden rounded-xl border border-surface-border bg-surface shadow-2xl">
+            <div className="flex items-center justify-between border-b border-surface-border bg-surface-elevated px-5 py-4">
+              <h3 className="text-sm font-bold text-text-primary">
                 {updateRequiresRestart
-                  ? t("updates.restartRequired")
-                  : t("updates.installMessage")}
-              </p>
-              {updateRequiresRestart && (
-                <p className="mt-3 rounded border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-200">
-                  {updateRestartError ||
-                    (updater.state.status === "error"
-                      ? updater.state.message
+                  ? t("updates.restartNow")
+                  : t("updates.installTitle")}
+              </h3>
+              {!isInstallingUpdate && (
+                <button
+                  type="button"
+                  onClick={() => setShowInstallUpdate(false)}
+                  className="p-1 text-text-muted hover:text-text-primary"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+            <div className="p-5 text-xs text-text-muted">
+              {updateRequiresRestart
+                ? t("updates.restartRequired")
+                : t("updates.installMessage")}
+              {updateRestartError && (
+                <p className="mt-2 text-rose-500">
+                  {updateRestartError}
+                  {updateRestartError.includes("failed to spawn")
+                    ? " " +
+                      (isMacOS(hostStatus?.platform)
+                        ? t("updates.relaunchFailedHintMac")
+                        : t("updates.relaunchFailedHintWindows"))
+                    : (isMacOS(hostStatus?.platform)
+                      ? " " + t("updates.relaunchGenericHintMac")
                       : "")}
                 </p>
               )}
@@ -1328,6 +1447,8 @@ export default function App() {
           </div>
         </div>
       )}
+
+      <AppErrorToast error={appError} onClose={clearError} />
     </div>
   );
 }

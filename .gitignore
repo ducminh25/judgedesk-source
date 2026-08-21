@@ -8,6 +8,8 @@ release-downloads/
 release-assets/
 release-assets-mac/
 release-assets-windows/
+public-release-assets/
+release-staging/
 release-v*/
 src-tauri/target/
 src-tauri/gen/

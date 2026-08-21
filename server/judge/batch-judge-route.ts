@@ -10,13 +10,13 @@ import { createRunWorkspace } from "./run-workspace.js";
 import { executorClient } from "../executor/client.js";
 import { createRunMetadata } from "../platform/run-metadata.js";
 import { serverLifecycle } from "../platform/server-lifecycle.js";
-import { SingleJudgeSessionGate } from "./resource-policy.js";
+import { SingleJudgeSessionGate, sharedJudgeSessionGate } from "./resource-policy.js";
 import { toolchainMaintenanceGate } from "../toolchains/maintenance-gate.js";
 import { listRegisteredLanguageProfiles } from "../languages/registry.js";
 import type { PinnedJudgeToolchains } from "./toolchain-preflight.js";
 
 export function registerBatchJudgeRoute(app: Express): void {
-  const sessionGate = new SingleJudgeSessionGate();
+  const sessionGate = sharedJudgeSessionGate;
   // Batch Judge Endpoint
   app.post("/api/batch-judge", async (req, res) => {
     const events = createJudgeEventWriter(res);
