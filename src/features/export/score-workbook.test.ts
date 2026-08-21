@@ -155,3 +155,77 @@ test("score export wire format rejects invalid or truncated payloads", () => {
   new DataView(payload.buffer).setUint32(8, payload.byteLength, true);
   assert.throws(() => decodeScoreExportPayload(payload), /truncated/);
 });
+
+test("score export matches contestant and problem names case-insensitively", async () => {
+  const result: BatchJudgeResult = {
+    success: true,
+    contestants: [{
+      contestantName: "alice",
+      problems: [{
+        problemName: "SUM",
+        language: "cpp",
+        compileStatus: "OK",
+        compileError: "",
+        compileTime: 10,
+        testCases: [{
+          name: "01",
+          status: "AC",
+          executionTime: 12,
+          score: 10,
+        }],
+        summary: { total: 1, passed: 1, maxScore: 10, score: 10, status: "AC" },
+      }],
+    }],
+  };
+  const mockT = (key: string) => key;
+  const workbookBytes = await buildScoreWorkbookBytes(
+    result,
+    ["Alice"],
+    ["sum"],
+    createScoreWorkbookLabels(mockT as any),
+  );
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(Buffer.from(workbookBytes));
+
+  const summarySheet = workbook.getWorksheet("export.scoreboardTitle")!;
+  assert.equal(summarySheet.getCell("A2").value, "Alice");
+  assert.equal(summarySheet.getCell("B2").value, 10);
+  assert.equal(summarySheet.getCell("C2").value, 10);
+});
+
+test("score export uses fallbackMetadata when judgeResult has no metadata", async () => {
+  const fallbackMetadata = {
+    startedAt: "2026-08-21T00:00:00.000Z",
+    platform: "win32",
+    arch: "x64",
+    build: {
+      appVersion: "1.3.7",
+      gitCommit: "def456",
+      buildNumber: "100",
+      builtAt: "2026-08-21T00:00:00.000Z",
+    },
+    executor: { mode: "windows-lpac-job", version: "1.3.7", ready: true },
+    toolchains: {
+      cpp: { source: "managed", version: "13.2.0", submissionReady: true, checkerReady: true },
+      python: { source: "system", version: "3.12.0", submissionReady: true, checkerReady: true },
+    },
+  };
+  const mockT = (key: string) => key;
+  const workbookBytes = await buildScoreWorkbookBytes(
+    { success: true, contestants: [] },
+    [],
+    [],
+    createScoreWorkbookLabels(mockT as any),
+    fallbackMetadata,
+  );
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(Buffer.from(workbookBytes));
+
+  const metadataSheet = workbook.getWorksheet("Run Metadata")!;
+  assert.equal(metadataSheet.getCell("B2").value, "2026-08-21T00:00:00.000Z");
+  assert.equal(metadataSheet.getCell("B3").value, "1.3.7");
+  assert.equal(metadataSheet.getCell("B4").value, "def456");
+
+  const summarySheet = workbook.getWorksheet("export.scoreboardTitle")!;
+  assert.equal(summarySheet.rowCount, 1); // Only header
+});

@@ -5,6 +5,44 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 ## [Unreleased]
 
+## [1.3.8] - 2026-08-22
+
+### Trải nghiệm Cập nhật & Thông tin Phát hành
+
+- **Tự động hiển thị "Có gì mới trong JudgeDesk"**: Sau khi cập nhật lên phiên bản mới, ứng dụng tự động hiển thị cửa sổ giới thiệu các tính năng mới và cải tiến một lần duy nhất; tự động ghi nhớ để không làm phiền ở các lần mở tiếp theo.
+- **Tra cứu Nhật ký thay đổi (Changelog)**: Bổ sung mục tra cứu toàn bộ lịch sử phát hành song ngữ (Tiếng Việt & Tiếng Anh) trực tiếp từ **Trung tâm Trợ giúp (`F1`)**.
+
+### Sửa lỗi Xuất Excel & Run Metadata
+
+- Sửa triệt để lỗi xuất Excel bảng điểm trống và thông báo "Run Metadata: Unavailable" khi xuất từ contest đã lưu hoặc sau khi chấm trực tuyến OSD.
+- Hỗ trợ so khớp tên thí sinh và bài thi không phân biệt hoa thường (`case-insensitive`), bảo toàn định dạng hiển thị.
+- Tự động tổng hợp dữ liệu môi trường thực tế (`hostStatus`) làm fallback khi chưa có metadata lượt chạy.
+
+### Mở kỳ thi & Kéo thả (Drag & Drop)
+
+- Hỗ trợ mở file kỳ thi `.judgedesk` trực tiếp khi bấm đúp từ File Explorer (Windows) và Finder (macOS), tự động nạp toàn bộ đề bài, thí sinh và bảng điểm.
+- Hỗ trợ chuyển giao mở file tức thì khi ứng dụng đang mở sẵn (single-instance IPC activation qua socket).
+- Thêm hiệu ứng overlay kéo thả file `.judgedesk` toàn màn hình và nâng cấp vùng thả thư mục trong hộp thoại chọn Đề thi / Thí sinh.
+
+## [1.3.7] - 2026-08-21
+
+### Chấm bài trực tuyến (Online Judge / OSD)
+
+- Tự động quét và nhận diện bài nộp mới theo thời gian thực từ thư mục nộp bài chung (OSD Shared Folder).
+- Hàng đợi chấm bài thông minh, cập nhật tiến độ, điểm số và chi tiết chấm tức thì trên bảng điểm.
+- Bổ sung nút trạng thái OSD và bảng điều khiển cấu hình tiện lợi trên thanh công cụ.
+
+### Sửa lỗi xuất Excel & Bảng điểm
+
+- Sửa triệt để lỗi xuất Excel bảng điểm trống và thông báo "Run Metadata: Unavailable" khi chấm bài trực tuyến hoặc nạp kỳ thi đã lưu.
+- Hỗ trợ so khớp tên thí sinh và bài thi không phân biệt hoa thường (`case-insensitive`), bảo toàn định dạng hiển thị.
+- Hỗ trợ xuất file Excel đầy đủ Run Metadata môi trường ngay cả khi không có hàng/cột nào được tích chọn.
+
+### Mở kỳ thi & Kéo thả (Drag & Drop)
+
+- Hỗ trợ mở kỳ thi trực tiếp khi bấm đúp file `.judgedesk` trên cả Windows và macOS, tự động nạp đề bài, thí sinh, cấu hình và kết quả chấm.
+- Cải thiện trải nghiệm trực quan khi kéo thả file kỳ thi `.judgedesk` với overlay toàn màn hình, và hiệu ứng nhận diện thư mục rõ ràng trong hộp thoại nạp Đề thi / Thí sinh.
+
 ## [1.3.6] - 2026-08-20
 
 ### Hiệu năng chấm bài & Tối ưu hóa chuyển Testcase

@@ -13,11 +13,11 @@ const resources = {
       osd: {
         title: "Chấm bài trực tuyến (Online Judge / OSD)",
         badgeLabel: "OSD",
-        statusActive: "Đang lắng nghe nộp bài",
+        statusActive: "Đang theo dõi bài nộp mới",
         statusInactive: "Chấm trực tuyến đang tắt",
         stats: "Hàng đợi: {{queue}} bài | Đã xử lý: {{total}} bài",
-        startButton: "Bắt đầu lắng nghe",
-        stopButton: "Dừng lắng nghe",
+        startButton: "Bắt đầu theo dõi",
+        stopButton: "Dừng theo dõi",
         folderLabel: "Thư mục nộp bài chung (OSD Shared Folder)",
       },
       common: {
@@ -115,7 +115,7 @@ describe("OSD UI components", () => {
     );
 
     assert.match(html, /Chấm bài trực tuyến/);
-    assert.match(html, /Bắt đầu lắng nghe/);
+    assert.match(html, /Bắt đầu theo dõi/);
     assert.match(html, /Thư mục nộp bài chung/);
   });
 });

@@ -71,6 +71,12 @@ describe("preferencesStorage", () => {
     assert.strictEqual(preferencesStorage.isToolchainSetupCompleted(), true);
   });
 
+  it("should persist the last seen version", () => {
+    assert.strictEqual(preferencesStorage.getLastSeenVersion(), null);
+    preferencesStorage.setLastSeenVersion("1.3.7");
+    assert.strictEqual(preferencesStorage.getLastSeenVersion(), "1.3.7");
+  });
+
   it("should handle localStorage throwing errors gracefully", (context) => {
     const originalGet = (global as any).localStorage.getItem;
     const originalConsoleError = console.error;

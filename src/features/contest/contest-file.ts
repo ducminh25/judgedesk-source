@@ -127,24 +127,26 @@ export function ensureContestExtension(path: string): string {
   return path.toLowerCase().endsWith(".judgedesk") ? path : `${path}.judgedesk`;
 }
 
+export async function openContestArchiveFromPath(path: string): Promise<OpenedContestArchive> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  const native = await invoke<NativeOpenedArchive>("open_contest_archive", { path });
+  return {
+    path,
+    contestantsPath: native.contestantsPath,
+    testsPath: native.testsPath,
+    manifest: validateContestManifest(native.manifest),
+  };
+}
+
 export async function chooseAndOpenContestArchive(): Promise<OpenedContestArchive | null> {
-  const [{ open }, { invoke }] = await Promise.all([
-    import("@tauri-apps/plugin-dialog"),
-    import("@tauri-apps/api/core"),
-  ]);
+  const { open } = await import("@tauri-apps/plugin-dialog");
   const selected = await open({
     directory: false,
     multiple: false,
     filters: [{ name: "JudgeDesk Contest", extensions: ["judgedesk"] }],
   });
   if (!selected || Array.isArray(selected)) return null;
-  const native = await invoke<NativeOpenedArchive>("open_contest_archive", { path: selected });
-  return {
-    path: selected,
-    contestantsPath: native.contestantsPath,
-    testsPath: native.testsPath,
-    manifest: validateContestManifest(native.manifest),
-  };
+  return openContestArchiveFromPath(selected);
 }
 
 export async function saveContestArchive(options: {

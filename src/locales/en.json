@@ -61,7 +61,9 @@
     "saveChangesMessage": "The current contest has unsaved changes. Save all problems, contestant sources, and judging results?",
     "discard": "Don't save",
     "saveFailed": "Could not save the contest",
-    "openFailed": "Could not open the contest"
+    "openFailed": "Could not open the contest",
+    "dropToOpenTitle": "Drop .judgedesk contest file or folder",
+    "dropToOpenSubtitle": "Open saved contest with problems, contestants, and judging results"
   },
   "actions": {
     "configProblem": "Config Problem",
@@ -110,7 +112,9 @@
     "dropTarget": "Drop a folder here",
     "load": "Load",
     "testsPlaceholder": "Path to the test cases directory",
-    "contestantsPlaceholder": "Path to the contestants directory"
+    "contestantsPlaceholder": "Path to the contestants directory",
+    "dropTestsHint": "Drop the directory containing problems and test cases here",
+    "dropContestantsHint": "Drop the directory containing contestants' source codes here"
   },
   "problemConfig": {
     "title": "Problem Configuration",
@@ -662,5 +666,15 @@
     "folderHelp": "Contestants drop code files into this folder named as *[ContestantId][ProblemName].EXT.",
     "enableLogLabel": "Automatically generate detailed evaluation logs into OSD/Logs/[FileName].log",
     "guideTitle": "LAN Folder Sharing Instructions"
+  },
+  "changelog": {
+    "modalTitle": "What's New in JudgeDesk",
+    "modalSubtitle": "Release notes and latest improvements",
+    "currentVersion": "Current version",
+    "allVersions": "Version history",
+    "releaseDate": "Released: {{date}}",
+    "viewFullNotes": "View release on GitHub",
+    "gotIt": "Got it",
+    "viewChangelog": "What's New"
   }
 }

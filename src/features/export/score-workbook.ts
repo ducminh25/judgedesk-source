@@ -1,5 +1,5 @@
 import type ExcelJS from "exceljs";
-import type { BatchJudgeResult, ContestantResult } from "../../types";
+import type { BatchJudgeResult, ContestantResult, RunMetadata } from "../../types";
 import { describeTestResult } from "../judging/verdict";
 
 export interface ScoreWorkbookLabels {
@@ -23,6 +23,7 @@ export interface ScoreExportBuildRequest {
   contestantNames: string[];
   problemNames: string[];
   labels: ScoreWorkbookLabels;
+  fallbackMetadata?: RunMetadata;
 }
 
 type WorkbookCellValue = string | number | null;
@@ -32,10 +33,14 @@ export async function buildScoreWorkbookBytes(
   contestantNames: string[],
   problemNames: string[],
   labels: ScoreWorkbookLabels,
+  fallbackMetadata?: RunMetadata,
 ): Promise<Uint8Array> {
-  const contestants = contestantNames.map(
-    name => judgeResult.contestants.find(item => item.contestantName === name) || emptyContestant(name)
-  );
+  const contestants = contestantNames.map((name) => {
+    const match = judgeResult.contestants.find(
+      (item) => item.contestantName.trim().toLowerCase() === name.trim().toLowerCase(),
+    );
+    return match ? { ...match, contestantName: name } : emptyContestant(name);
+  });
   const ExcelJSRuntime = (await import("exceljs")).default;
   const workbook = new ExcelJSRuntime.Workbook();
   addSheet(workbook, labels.scoreboardTitle, [labels.candidate, ...problemNames, labels.total], buildSummaryRows(contestants, problemNames, labels));
@@ -69,7 +74,7 @@ export async function buildScoreWorkbookBytes(
     ],
     buildDetailRows(contestants, problemNames, labels),
   );
-  addRunMetadataSheet(workbook, judgeResult);
+  addRunMetadataSheet(workbook, judgeResult, fallbackMetadata);
   const buffer = await workbook.xlsx.writeBuffer();
   return new Uint8Array(buffer);
 }
@@ -78,14 +83,18 @@ export function buildDiagnosticJson(
   judgeResult: BatchJudgeResult,
   contestantNames: string[],
   problemNames: string[],
+  fallbackMetadata?: RunMetadata,
 ): string {
-  const contestants = contestantNames.map(
-    (name) => judgeResult.contestants.find((item) => item.contestantName === name) || emptyContestant(name),
-  );
+  const contestants = contestantNames.map((name) => {
+    const match = judgeResult.contestants.find(
+      (item) => item.contestantName.trim().toLowerCase() === name.trim().toLowerCase(),
+    );
+    return match ? { ...match, contestantName: name } : emptyContestant(name);
+  });
   return JSON.stringify({
     schemaVersion: 1,
     exportedAt: new Date().toISOString(),
-    metadata: judgeResult.metadata,
+    metadata: judgeResult.metadata ?? fallbackMetadata,
     selection: {
       contestants: contestantNames,
       problems: problemNames,
@@ -93,7 +102,7 @@ export function buildDiagnosticJson(
     contestants: contestants.map((contestant) => ({
       ...contestant,
       problems: contestant.problems.filter((problem) =>
-        problemNames.some((name) => name.toLowerCase() === problem.problemName.toLowerCase()),
+        problemNames.some((name) => name.trim().toLowerCase() === problem.problemName.trim().toLowerCase()),
       ),
     })),
   }, null, 2);
@@ -121,8 +130,9 @@ function addSheet(
 function addRunMetadataSheet(
   workbook: ExcelJS.Workbook,
   judgeResult: BatchJudgeResult,
+  fallbackMetadata?: RunMetadata,
 ): void {
-  const metadata = judgeResult.metadata;
+  const metadata = judgeResult.metadata ?? fallbackMetadata;
   const rows: Array<Record<string, string | number>> = metadata
     ? [
         { Field: "Run started at", Value: metadata.startedAt },
@@ -190,7 +200,7 @@ function buildDetailRows(
   const rows: Array<Record<string, WorkbookCellValue>> = [];
   for (const contestant of contestants) {
     const problems = contestant.problems.filter(problem =>
-      problemNames.some(name => name.toLowerCase() === problem.problemName.toLowerCase())
+      problemNames.some(name => name.trim().toLowerCase() === problem.problemName.trim().toLowerCase())
     );
     rows.push({
       [labels.candidate]: contestant.contestantName,
@@ -250,7 +260,7 @@ function buildDetailRows(
 }
 
 function findProblem(contestant: ContestantResult, problemName: string) {
-  return contestant.problems.find(problem => problem.problemName.toLowerCase() === problemName.toLowerCase());
+  return contestant.problems.find(problem => problem.problemName.trim().toLowerCase() === problemName.trim().toLowerCase());
 }
 
 function emptyContestant(contestantName: string): ContestantResult {

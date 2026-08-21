@@ -23,11 +23,13 @@ globalThis.onmessage = async (event: MessageEvent<ScoreExportBuildRequest>) => {
       request.contestantNames,
       request.problemNames,
       request.labels,
+      request.fallbackMetadata,
     );
     const diagnosticJson = buildDiagnosticJson(
       request.judgeResult,
       request.contestantNames,
       request.problemNames,
+      request.fallbackMetadata,
     );
     const response: ScoreExportWorkerSuccess = {
       success: true,

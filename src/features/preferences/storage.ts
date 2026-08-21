@@ -4,6 +4,7 @@ const KEYS = {
   testsPath: "themisV2.workspace.testsPath",
   contestantsPath: "themisV2.workspace.contestantsPath",
   toolchainSetupCompleted: "themisV2.toolchainSetupCompleted",
+  lastSeenVersion: "themisV2.lastSeenVersion",
 } as const;
 
 export type Theme = "light" | "dark";
@@ -75,5 +76,14 @@ export const preferencesStorage = {
 
   setToolchainSetupCompleted(): void {
     setLocalStorageItem(KEYS.toolchainSetupCompleted, "true");
+  },
+
+  getLastSeenVersion(): string | null {
+    const val = getLocalStorageItem(KEYS.lastSeenVersion);
+    return val && val.trim() !== "" ? val : null;
+  },
+
+  setLastSeenVersion(version: string): void {
+    setLocalStorageItem(KEYS.lastSeenVersion, version);
   },
 };
