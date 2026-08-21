@@ -362,17 +362,36 @@ fn handle_activation_connection(
             "invalid activation request: payload exceeds limit",
         ));
     }
-    let request_str = String::from_utf8(request)
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "invalid UTF-8 in activation request"))?;
-    let trimmed = request_str.trim_end_matches(&['\r', '\n'][..]);
-    let without_prefix = trimmed.strip_prefix(ACTIVATION_REQUEST_PREFIX).ok_or_else(|| {
-        io::Error::new(io::ErrorKind::PermissionDenied, "invalid activation request prefix")
+    let request_str = String::from_utf8(request).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid UTF-8 in activation request",
+        )
     })?;
+    let trimmed = request_str.trim_end_matches(&['\r', '\n'][..]);
+    let without_prefix = trimmed
+        .strip_prefix(ACTIVATION_REQUEST_PREFIX)
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "invalid activation request prefix",
+            )
+        })?;
     let (req_nonce, file_path) = match without_prefix.split_once(' ') {
         Some((n, p)) => {
             let clean_p = p.trim();
-            let clean_p = clean_p.strip_prefix('"').and_then(|s| s.strip_suffix('"')).unwrap_or(clean_p);
-            (n, if clean_p.is_empty() { None } else { Some(clean_p.to_string()) })
+            let clean_p = clean_p
+                .strip_prefix('"')
+                .and_then(|s| s.strip_suffix('"'))
+                .unwrap_or(clean_p);
+            (
+                n,
+                if clean_p.is_empty() {
+                    None
+                } else {
+                    Some(clean_p.to_string())
+                },
+            )
         }
         None => (without_prefix, None),
     };
@@ -583,30 +602,33 @@ impl InstanceCoordinator {
     pub(crate) fn attach(&self, app: tauri::AppHandle) -> io::Result<()> {
         use tauri::Emitter;
 
-        self.activation.target.install(Arc::new(move |file_path: Option<String>| {
-            let (result_sender, result_receiver) = mpsc::sync_channel(1);
-            let focus_handle = app.clone();
-            app.run_on_main_thread(move || {
-                let focus_result = focus_primary(&focus_handle);
-                if let Some(path) = file_path {
-                    let _ = focus_handle.emit("open_contest_file", path);
-                }
-                let _ = result_sender.send(focus_result);
-            })
-            .map_err(|error| {
-                io::Error::other(format!("failed to schedule JudgeDesk activation: {error}"))
-            })?;
-            result_receiver
-                .recv_timeout(ACTIVATION_FOCUS_TIMEOUT)
-                .map_err(|error| match error {
-                    mpsc::RecvTimeoutError::Timeout => {
-                        io::Error::new(io::ErrorKind::TimedOut, "primary window focus timed out")
+        self.activation
+            .target
+            .install(Arc::new(move |file_path: Option<String>| {
+                let (result_sender, result_receiver) = mpsc::sync_channel(1);
+                let focus_handle = app.clone();
+                app.run_on_main_thread(move || {
+                    let focus_result = focus_primary(&focus_handle);
+                    if let Some(path) = file_path {
+                        let _ = focus_handle.emit("open_contest_file", path);
                     }
-                    mpsc::RecvTimeoutError::Disconnected => {
-                        io::Error::other("primary window focus task was disconnected")
-                    }
-                })?
-        }))
+                    let _ = result_sender.send(focus_result);
+                })
+                .map_err(|error| {
+                    io::Error::other(format!("failed to schedule JudgeDesk activation: {error}"))
+                })?;
+                result_receiver
+                    .recv_timeout(ACTIVATION_FOCUS_TIMEOUT)
+                    .map_err(|error| match error {
+                        mpsc::RecvTimeoutError::Timeout => io::Error::new(
+                            io::ErrorKind::TimedOut,
+                            "primary window focus timed out",
+                        ),
+                        mpsc::RecvTimeoutError::Disconnected => {
+                            io::Error::other("primary window focus task was disconnected")
+                        }
+                    })?
+            }))
     }
 
     pub(crate) fn begin_shutdown(&self) -> io::Result<()> {
@@ -848,10 +870,11 @@ mod tests {
     #[test]
     fn a_secondary_request_activates_the_primary_and_the_listener_survives_bad_input() {
         let directory = TestDirectory::new("activation");
-        let primary = match acquire_in_directory(directory.path(), None).expect("primary acquisition") {
-            AcquireOutcome::Primary(coordinator) => coordinator,
-            AcquireOutcome::Secondary(_) => panic!("first acquisition must be primary"),
-        };
+        let primary =
+            match acquire_in_directory(directory.path(), None).expect("primary acquisition") {
+                AcquireOutcome::Primary(coordinator) => coordinator,
+                AcquireOutcome::Secondary(_) => panic!("first acquisition must be primary"),
+            };
         let activations = Arc::new(AtomicUsize::new(0));
         let callback_activations = Arc::clone(&activations);
         primary
@@ -891,10 +914,11 @@ mod tests {
     #[test]
     fn a_secondary_request_forwards_the_contest_file_path() {
         let directory = TestDirectory::new("file-activation");
-        let primary = match acquire_in_directory(directory.path(), None).expect("primary acquisition") {
-            AcquireOutcome::Primary(coordinator) => coordinator,
-            AcquireOutcome::Secondary(_) => panic!("first acquisition must be primary"),
-        };
+        let primary =
+            match acquire_in_directory(directory.path(), None).expect("primary acquisition") {
+                AcquireOutcome::Primary(coordinator) => coordinator,
+                AcquireOutcome::Secondary(_) => panic!("first acquisition must be primary"),
+            };
         let received_path = Arc::new(Mutex::new(None));
         let cb_path = Arc::clone(&received_path);
         primary
@@ -907,7 +931,8 @@ mod tests {
             .expect("install activation callback");
 
         assert!(matches!(
-            acquire_in_directory(directory.path(), Some(r"C:\Contests\sample.judgedesk")).expect("secondary acquisition"),
+            acquire_in_directory(directory.path(), Some(r"C:\Contests\sample.judgedesk"))
+                .expect("secondary acquisition"),
             AcquireOutcome::Secondary(SecondaryOutcome::Activated)
         ));
         let deadline = Instant::now() + Duration::from_secs(1);
@@ -1119,7 +1144,8 @@ mod tests {
         let result_path = PathBuf::from(
             std::env::var("JUDGEDESK_JOB_TEST_RESULT").expect("job descendant result path"),
         );
-        let _lease = match acquire_in_directory(&directory, None).expect("descendant lifetime lock") {
+        let _lease = match acquire_in_directory(&directory, None).expect("descendant lifetime lock")
+        {
             AcquireOutcome::Primary(lease) => lease,
             AcquireOutcome::Secondary(_) => panic!("descendant lifetime lock was contended"),
         };
