@@ -505,24 +505,54 @@ export default function App() {
     };
   }, [t, updater.discardUpdate]);
 
+  const saveStateRef = useRef({
+    contestantsList,
+    problemsList,
+    problemConfigs,
+    selectedContestants,
+    selectedProblems,
+    judgeResult,
+    thisinhPath,
+    testPath,
+    contestFilePath,
+    contestCreatedAt,
+    t,
+    showError,
+  });
+  saveStateRef.current = {
+    contestantsList,
+    problemsList,
+    problemConfigs,
+    selectedContestants,
+    selectedProblems,
+    judgeResult,
+    thisinhPath,
+    testPath,
+    contestFilePath,
+    contestCreatedAt,
+    t,
+    showError,
+  };
+
   const handleSaveContest = async (forceSaveAs: boolean = false): Promise<boolean> => {
     if (interactionLockedRef.current || saveOperationRef.current) return false;
-    if (!thisinhPath.trim() && !testPath.trim()) return false;
+    const state = saveStateRef.current;
+    if (!state.thisinhPath.trim() && !state.testPath.trim()) return false;
     saveOperationRef.current = true;
     setIsSavingContest(true);
     try {
       const manifest = buildContestManifest({
-        contestants: contestantsList,
-        problems: problemsList,
-        problemConfigs,
-        selectedContestants,
-        selectedProblems,
-        judgeResult,
-      }, contestCreatedAt);
+        contestants: state.contestantsList,
+        problems: state.problemsList,
+        problemConfigs: state.problemConfigs,
+        selectedContestants: state.selectedContestants,
+        selectedProblems: state.selectedProblems,
+        judgeResult: state.judgeResult,
+      }, state.contestCreatedAt);
       const savedPath = await saveContestArchive({
-        currentPath: forceSaveAs ? null : contestFilePath,
-        contestantsPath: thisinhPath,
-        testsPath: testPath,
+        currentPath: forceSaveAs ? null : state.contestFilePath,
+        contestantsPath: state.thisinhPath,
+        testsPath: state.testPath,
         manifest,
       });
       if (!savedPath) return false;
@@ -533,7 +563,7 @@ export default function App() {
       setAppError(null);
       return true;
     } catch (error) {
-      showError(error, { code: "CONTEST_SAVE_FAILED", title: t("appErrors.contestSaveFailed.title") });
+      state.showError(error, { code: "CONTEST_SAVE_FAILED", title: state.t("appErrors.contestSaveFailed.title") });
       return false;
     } finally {
       saveOperationRef.current = false;
@@ -775,6 +805,31 @@ export default function App() {
         (problem) => problem.problemName.toLowerCase() === problemName.toLowerCase(),
       );
 
+  const exportStateRef = useRef({
+    displayedProblems,
+    displayedContestants,
+    selectedProblems,
+    selectedContestants,
+    problemsList,
+    contestantsList,
+    judgeResult,
+    hostStatus,
+    showError,
+    t,
+  });
+  exportStateRef.current = {
+    displayedProblems,
+    displayedContestants,
+    selectedProblems,
+    selectedContestants,
+    problemsList,
+    contestantsList,
+    judgeResult,
+    hostStatus,
+    showError,
+    t,
+  };
+
   const handleExportExcel = async () => {
     if (
       interactionLockedRef.current
@@ -785,46 +840,47 @@ export default function App() {
     setIsExporting(true);
     setErrorMessage("");
     try {
+      const state = exportStateRef.current;
       const isProblemSelected = (p: string) => {
-        if (selectedProblems[p] !== undefined) return !!selectedProblems[p];
+        if (state.selectedProblems[p] !== undefined) return !!state.selectedProblems[p];
         const lower = p.trim().toLowerCase();
-        for (const [k, v] of Object.entries(selectedProblems)) {
+        for (const [k, v] of Object.entries(state.selectedProblems)) {
           if (k.trim().toLowerCase() === lower) return !!v;
         }
         return false;
       };
-      const activeProblems = displayedProblems.filter(isProblemSelected);
+      const activeProblems = state.displayedProblems.filter(isProblemSelected);
       const effectiveProblems = activeProblems.length > 0
         ? activeProblems
-        : (displayedProblems.length > 0
-            ? displayedProblems
-            : (problemsList.length > 0
-                ? problemsList
-                : (judgeResult ? Array.from(new Set(judgeResult.contestants.flatMap((c) => c.problems.map((p) => p.problemName)))) : [])));
+        : (state.displayedProblems.length > 0
+            ? state.displayedProblems
+            : (state.problemsList.length > 0
+                ? state.problemsList
+                : (state.judgeResult ? Array.from(new Set(state.judgeResult.contestants.flatMap((c) => c.problems.map((p) => p.problemName)))) : [])));
 
       const isContestantSelected = (c: string) => {
-        if (selectedContestants[c] !== undefined) return !!selectedContestants[c];
+        if (state.selectedContestants[c] !== undefined) return !!state.selectedContestants[c];
         const lower = c.trim().toLowerCase();
-        for (const [k, v] of Object.entries(selectedContestants)) {
+        for (const [k, v] of Object.entries(state.selectedContestants)) {
           if (k.trim().toLowerCase() === lower) return !!v;
         }
         return false;
       };
-      const activeContestants = displayedContestants.filter(isContestantSelected);
+      const activeContestants = state.displayedContestants.filter(isContestantSelected);
       const effectiveContestants = activeContestants.length > 0
         ? activeContestants
-        : (displayedContestants.length > 0
-            ? displayedContestants
-            : (contestantsList.length > 0
-                ? contestantsList
-                : (judgeResult ? judgeResult.contestants.map((c) => c.contestantName) : [])));
+        : (state.displayedContestants.length > 0
+            ? state.displayedContestants
+            : (state.contestantsList.length > 0
+                ? state.contestantsList
+                : (state.judgeResult ? state.judgeResult.contestants.map((c) => c.contestantName) : [])));
 
-      const fallbackMetadata = hostStatusToRunMetadata(hostStatus);
+      const fallbackMetadata = hostStatusToRunMetadata(state.hostStatus);
       const scoreExport = await buildScoreExport(
-        judgeResult ?? { success: true, contestants: [] },
+        state.judgeResult ?? { success: true, contestants: [] },
         effectiveContestants,
         effectiveProblems,
-        t,
+        state.t,
         fallbackMetadata,
       );
       const payload = encodeScoreExportPayload(
@@ -843,7 +899,7 @@ export default function App() {
       setErrorMessage("");
       setAppError(null);
     } catch (error: any) {
-      showError(error, { code: "EXCEL_EXPORT_FAILED", title: t("appErrors.excelExportFailed.title") });
+      exportStateRef.current.showError(error, { code: "EXCEL_EXPORT_FAILED", title: exportStateRef.current.t("appErrors.excelExportFailed.title") });
     } finally {
       exportOperationRef.current = false;
       setIsExporting(false);
