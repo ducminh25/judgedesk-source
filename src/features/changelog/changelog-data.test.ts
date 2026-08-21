@@ -6,11 +6,12 @@ import {
   getChangelogForLanguage,
 } from "./changelog-data.js";
 
-test("changelog data contains versions from 1.3.8 down to 1.2.5 in descending order", () => {
+test("changelog data contains versions from 1.3.9 down to 1.2.5 in descending order", () => {
   const versionsVi = CHANGELOG_DATA_VI.map((r) => r.version);
   const versionsEn = CHANGELOG_DATA_EN.map((r) => r.version);
 
   const expectedVersions = [
+    "1.3.9",
     "1.3.8",
     "1.3.7",
     "1.3.6",
@@ -46,6 +47,6 @@ test("every version has sections and non-empty bullet items", () => {
 test("getChangelogForLanguage returns appropriate language release list", () => {
   const vi = getChangelogForLanguage("vi");
   const en = getChangelogForLanguage("en");
-  assert.equal(vi[0].sections[0].title, "Trải nghiệm Cập nhật & Thông tin Phát hành");
-  assert.equal(en[0].sections[0].title, "Update Experience & Release Information");
+  assert.equal(vi[0].sections[0].title, "Sửa triệt để Xuất Excel & Tối ưu Bảng điểm");
+  assert.equal(en[0].sections[0].title, "Excel Export & Scoreboard Enhancements");
 });

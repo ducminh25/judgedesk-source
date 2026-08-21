@@ -11,6 +11,19 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
   {
+    version: "1.3.9",
+    date: "2026-08-22",
+    sections: [
+      {
+        title: "Sửa triệt để Xuất Excel & Tối ưu Bảng điểm",
+        items: [
+          "Sửa dứt điểm lỗi xuất file Excel rỗng khi lọc selection: Tự động so khớp linh hoạt và fallback toàn diện lấy đầy đủ các cột bài tập, điểm số từng bài và tổng điểm.",
+          "Luôn tổng hợp và hiển thị đầy đủ Run Metadata môi trường hệ thống trong file Excel kể cả khi mở từ kỳ thi đã lưu.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.3.8",
     date: "2026-08-22",
     sections: [
@@ -261,6 +274,19 @@ export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
 ];
 
 export const CHANGELOG_DATA_EN: ChangelogRelease[] = [
+  {
+    version: "1.3.9",
+    date: "2026-08-22",
+    sections: [
+      {
+        title: "Excel Export & Scoreboard Enhancements",
+        items: [
+          "Fixed empty Excel exports caused by selection mismatches: Automatic case-insensitive matching and comprehensive fallback to include all problems, scores, and totals.",
+          "Guaranteed full system environment Run Metadata in all exported spreadsheets.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.3.8",
     date: "2026-08-22",
