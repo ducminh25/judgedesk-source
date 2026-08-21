@@ -49,7 +49,7 @@ async function createI18n(lng = "vi") {
 }
 
 describe("ChangelogModal", () => {
-  it("renders current version 1.3.7 and past versions down to 1.2.5 in Vietnamese", async () => {
+  it("renders latest version and past versions down to 1.2.5 in Vietnamese", async () => {
     const i18n = await createI18n("vi");
     const html = renderToStaticMarkup(
       <I18nextProvider i18n={i18n}>
@@ -58,9 +58,8 @@ describe("ChangelogModal", () => {
     );
 
     assert.match(html, /Có gì mới trong JudgeDesk/);
-    assert.match(html, /JudgeDesk v1\.3\.7/);
-    assert.match(html, /Chấm bài trực tuyến \(Online Judge \/ OSD\)/);
-    assert.match(html, /v1\.3\.6/);
+    assert.match(html, /Trải nghiệm Cập nhật &amp; Thông tin Phát hành/);
+    assert.match(html, /v1\.3\.7/);
     assert.match(html, /v1\.2\.5/);
     assert.match(html, /Đã hiểu/);
   });
@@ -86,7 +85,7 @@ describe("ChangelogModal", () => {
     );
 
     assert.match(html, /What&#x27;s New in JudgeDesk/);
-    assert.match(html, /Online Judging \(OSD Mode\)/);
+    assert.match(html, /Update Experience &amp; Release Information/);
     assert.match(html, /Got it/);
   });
 });

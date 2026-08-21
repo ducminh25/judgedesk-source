@@ -785,17 +785,45 @@ export default function App() {
     setIsExporting(true);
     setErrorMessage("");
     try {
-      const activeProblems = displayedProblems.filter(
-        (problem) => selectedProblems[problem],
-      );
-      const activeContestants = displayedContestants.filter(
-        (contestant) => selectedContestants[contestant],
-      );
+      const isProblemSelected = (p: string) => {
+        if (selectedProblems[p] !== undefined) return !!selectedProblems[p];
+        const lower = p.trim().toLowerCase();
+        for (const [k, v] of Object.entries(selectedProblems)) {
+          if (k.trim().toLowerCase() === lower) return !!v;
+        }
+        return false;
+      };
+      const activeProblems = displayedProblems.filter(isProblemSelected);
+      const effectiveProblems = activeProblems.length > 0
+        ? activeProblems
+        : (displayedProblems.length > 0
+            ? displayedProblems
+            : (problemsList.length > 0
+                ? problemsList
+                : (judgeResult ? Array.from(new Set(judgeResult.contestants.flatMap((c) => c.problems.map((p) => p.problemName)))) : [])));
+
+      const isContestantSelected = (c: string) => {
+        if (selectedContestants[c] !== undefined) return !!selectedContestants[c];
+        const lower = c.trim().toLowerCase();
+        for (const [k, v] of Object.entries(selectedContestants)) {
+          if (k.trim().toLowerCase() === lower) return !!v;
+        }
+        return false;
+      };
+      const activeContestants = displayedContestants.filter(isContestantSelected);
+      const effectiveContestants = activeContestants.length > 0
+        ? activeContestants
+        : (displayedContestants.length > 0
+            ? displayedContestants
+            : (contestantsList.length > 0
+                ? contestantsList
+                : (judgeResult ? judgeResult.contestants.map((c) => c.contestantName) : [])));
+
       const fallbackMetadata = hostStatusToRunMetadata(hostStatus);
       const scoreExport = await buildScoreExport(
         judgeResult ?? { success: true, contestants: [] },
-        activeContestants,
-        activeProblems,
+        effectiveContestants,
+        effectiveProblems,
         t,
         fallbackMetadata,
       );

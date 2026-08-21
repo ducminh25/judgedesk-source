@@ -28,6 +28,8 @@ export interface ScoreExportBuildRequest {
 
 type WorkbookCellValue = string | number | null;
 
+import { APP_VERSION } from "../../version";
+
 export async function buildScoreWorkbookBytes(
   judgeResult: BatchJudgeResult,
   contestantNames: string[],
@@ -35,7 +37,15 @@ export async function buildScoreWorkbookBytes(
   labels: ScoreWorkbookLabels,
   fallbackMetadata?: RunMetadata,
 ): Promise<Uint8Array> {
-  const contestants = contestantNames.map((name) => {
+  const effectiveProblemNames = problemNames.length > 0
+    ? problemNames
+    : Array.from(new Set(judgeResult.contestants.flatMap((c) => c.problems.map((p) => p.problemName))));
+
+  const effectiveContestantNames = contestantNames.length > 0
+    ? contestantNames
+    : judgeResult.contestants.map((c) => c.contestantName);
+
+  const contestants = effectiveContestantNames.map((name) => {
     const match = judgeResult.contestants.find(
       (item) => item.contestantName.trim().toLowerCase() === name.trim().toLowerCase(),
     );
@@ -43,7 +53,7 @@ export async function buildScoreWorkbookBytes(
   });
   const ExcelJSRuntime = (await import("exceljs")).default;
   const workbook = new ExcelJSRuntime.Workbook();
-  addSheet(workbook, labels.scoreboardTitle, [labels.candidate, ...problemNames, labels.total], buildSummaryRows(contestants, problemNames, labels));
+  addSheet(workbook, labels.scoreboardTitle, [labels.candidate, ...effectiveProblemNames, labels.total], buildSummaryRows(contestants, effectiveProblemNames, labels));
   addSheet(
     workbook,
     labels.detailsTitle,
@@ -72,7 +82,7 @@ export async function buildScoreWorkbookBytes(
       "Created files",
       "Executor diagnostic",
     ],
-    buildDetailRows(contestants, problemNames, labels),
+    buildDetailRows(contestants, effectiveProblemNames, labels),
   );
   addRunMetadataSheet(workbook, judgeResult, fallbackMetadata);
   const buffer = await workbook.xlsx.writeBuffer();
@@ -85,7 +95,15 @@ export function buildDiagnosticJson(
   problemNames: string[],
   fallbackMetadata?: RunMetadata,
 ): string {
-  const contestants = contestantNames.map((name) => {
+  const effectiveProblemNames = problemNames.length > 0
+    ? problemNames
+    : Array.from(new Set(judgeResult.contestants.flatMap((c) => c.problems.map((p) => p.problemName))));
+
+  const effectiveContestantNames = contestantNames.length > 0
+    ? contestantNames
+    : judgeResult.contestants.map((c) => c.contestantName);
+
+  const contestants = effectiveContestantNames.map((name) => {
     const match = judgeResult.contestants.find(
       (item) => item.contestantName.trim().toLowerCase() === name.trim().toLowerCase(),
     );
@@ -96,13 +114,13 @@ export function buildDiagnosticJson(
     exportedAt: new Date().toISOString(),
     metadata: judgeResult.metadata ?? fallbackMetadata,
     selection: {
-      contestants: contestantNames,
-      problems: problemNames,
+      contestants: effectiveContestantNames,
+      problems: effectiveProblemNames,
     },
     contestants: contestants.map((contestant) => ({
       ...contestant,
       problems: contestant.problems.filter((problem) =>
-        problemNames.some((name) => name.trim().toLowerCase() === problem.problemName.trim().toLowerCase()),
+        effectiveProblemNames.some((name) => name.trim().toLowerCase() === problem.problemName.trim().toLowerCase()),
       ),
     })),
   }, null, 2);
@@ -158,7 +176,12 @@ function addRunMetadataSheet(
         { Field: "Python submission ready", Value: String(metadata.toolchains.python.submissionReady) },
         { Field: "Python checker ready", Value: String(metadata.toolchains.python.checkerReady) },
       ]
-    : [{ Field: "Metadata", Value: "Unavailable (legacy or incomplete run)" }];
+    : [
+        { Field: "Exported at", Value: new Date().toISOString() },
+        { Field: "App version", Value: APP_VERSION },
+        { Field: "Status", Value: judgeResult.contestants.length > 0 ? "Contest results available" : "No judging runs" },
+        { Field: "Total contestants in run", Value: judgeResult.contestants.length },
+      ];
   addSheet(workbook, "Run Metadata", ["Field", "Value"], rows);
 }
 

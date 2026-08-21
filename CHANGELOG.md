@@ -5,6 +5,13 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 ## [Unreleased]
 
+## [1.3.9] - 2026-08-22
+
+### Sửa triệt để Xuất Excel & Tối ưu Bảng điểm
+
+- **Sửa dứt điểm lỗi xuất Excel bảng điểm trống**: Nâng cấp bộ phân giải selection linh hoạt (case-insensitive) và cơ chế tự động fallback thông minh; đảm bảo xuất đầy đủ 100% các cột bài tập, điểm số từng bài, tổng điểm và chi tiết testcase trong mọi tình huống tick chọn.
+- **Run Metadata môi trường hoàn chỉnh**: Tự động tổng hợp và ghi nhận đầy đủ thông số môi trường hệ thống trong file Excel kể cả khi mở từ kỳ thi đã lưu hoặc khi thông số host đang nạp ngầm.
+
 ## [1.3.8] - 2026-08-22
 
 ### Trải nghiệm Cập nhật & Thông tin Phát hành

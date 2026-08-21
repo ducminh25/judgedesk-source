@@ -229,3 +229,36 @@ test("score export uses fallbackMetadata when judgeResult has no metadata", asyn
   const summarySheet = workbook.getWorksheet("export.scoreboardTitle")!;
   assert.equal(summarySheet.rowCount, 1); // Only header
 });
+
+test("score export auto-discovers problem and contestant names when selection is empty", async () => {
+  const result: BatchJudgeResult = {
+    success: true,
+    contestants: [{
+      contestantName: "C01_Nguyen Anh Duy",
+      problems: [{
+        problemName: "CAPNTO",
+        language: "cpp",
+        compileStatus: "OK",
+        compileError: "",
+        compileTime: 10,
+        testCases: [{ name: "01", status: "AC", executionTime: 12, score: 9 }],
+        summary: { total: 1, passed: 1, maxScore: 10, score: 9, status: "AC" },
+      }],
+    }],
+  };
+  const mockT = (key: string) => key;
+  const workbookBytes = await buildScoreWorkbookBytes(
+    result,
+    [],
+    [],
+    createScoreWorkbookLabels(mockT as any),
+  );
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(Buffer.from(workbookBytes));
+
+  const summarySheet = workbook.getWorksheet("export.scoreboardTitle")!;
+  assert.equal(summarySheet.rowCount, 2);
+  assert.equal(summarySheet.getCell("A2").value, "C01_Nguyen Anh Duy");
+  assert.equal(summarySheet.getCell("B2").value, 9);
+  assert.equal(summarySheet.getCell("C2").value, 9);
+});
