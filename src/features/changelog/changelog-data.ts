@@ -11,7 +11,7 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
   {
-    version: "1.3.9",
+    version: "1.3.81",
     date: "2026-08-22",
     sections: [
       {
@@ -275,7 +275,7 @@ export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
 
 export const CHANGELOG_DATA_EN: ChangelogRelease[] = [
   {
-    version: "1.3.9",
+    version: "1.3.81",
     date: "2026-08-22",
     sections: [
       {
