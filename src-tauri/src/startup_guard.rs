@@ -821,7 +821,10 @@ mod tests {
         let deadline = Instant::now() + Duration::from_secs(5);
         loop {
             if let Ok(result) = fs::read_to_string(path) {
-                return result;
+                let trimmed = result.trim();
+                if !trimmed.is_empty() {
+                    return trimmed.to_string();
+                }
             }
             assert!(
                 Instant::now() < deadline,
