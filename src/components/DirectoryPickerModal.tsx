@@ -23,6 +23,7 @@ export default function DirectoryPickerModal({
   onLoad,
 }: Props) {
   const [isDragging, setIsDragging] = useState(false);
+  const [pickerError, setPickerError] = useState<string | null>(null);
   const { t } = useTranslation();
 
   useEffect(() => {
@@ -40,6 +41,7 @@ export default function DirectoryPickerModal({
   const handleDrop = (event: DragEvent) => {
     event.preventDefault();
     setIsDragging(false);
+    setPickerError(null);
     const file = event.dataTransfer.files[0] as
       (File & { path?: string }) | undefined;
     if (file?.path) {
@@ -49,11 +51,12 @@ export default function DirectoryPickerModal({
   };
 
   const browse = async () => {
+    setPickerError(null);
     try {
       const selectedPath = await selectDirectory(path);
       if (selectedPath) onPathChange(selectedPath);
     } catch (error) {
-      console.error("Browse directory failed:", error);
+      setPickerError(t("appErrors.directoryNotFound.reason", "Không thể mở hộp thoại chọn thư mục."));
     }
   };
 
@@ -92,7 +95,10 @@ export default function DirectoryPickerModal({
             <input
               type="text"
               value={path}
-              onChange={(event) => onPathChange(event.target.value)}
+              onChange={(event) => {
+                setPickerError(null);
+                onPathChange(event.target.value);
+              }}
               placeholder={
                 kind === "tests"
                   ? t("directoryPicker.testsPlaceholder")
@@ -108,6 +114,12 @@ export default function DirectoryPickerModal({
               {t("directoryPicker.browse")}
             </button>
           </div>
+
+          {pickerError && (
+            <div className="rounded border border-rose-500/40 bg-rose-50 dark:bg-rose-950/60 p-2.5 text-xs text-rose-700 dark:text-rose-300">
+              {pickerError}
+            </div>
+          )}
 
           <div
             className={`border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center gap-2 transition-all ${isDragging ? "border-indigo-500 bg-indigo-500/10 scale-[1.02]" : "border-surface-border-strong bg-surface hover:border-surface-border"}`}

@@ -16,7 +16,8 @@ export type ShortcutAction =
   | "toggleActiveContestant"
   | "selectAllProblems"
   | "deselectAllProblems"
-  | "toggleActiveProblem";
+  | "toggleActiveProblem"
+  | "toggleOsd";
 
 export function isMacOS(platform?: string): boolean {
   if (platform !== undefined) {
@@ -69,6 +70,7 @@ export function matchShortcut(event: ShortcutEventLike, isMac: boolean): Shortcu
     if (key === "F3") return "loadContestants";
     if (key === "F5") return "reload";
     if (key === "F6") return "toolchains";
+    if (key === "F8") return "toggleOsd";
     if (key === "F9") return "judge";
     if (key === "F12") return "exportExcel";
   }
@@ -115,6 +117,7 @@ export function formatShortcut(action: ShortcutAction, isMac: boolean): string {
     case "loadContestants": return "F3";
     case "reload": return "F5";
     case "toolchains": return "F6";
+    case "toggleOsd": return "F8";
     case "judge": return "F9";
     case "exportExcel": return "F12";
     case "newContest": return `${mod}N`;

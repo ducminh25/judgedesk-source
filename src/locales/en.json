@@ -348,6 +348,83 @@
   "errors": {
     "backendConnection": "Failed to connect to the backend service. Please restart the application."
   },
+  "appErrors": {
+    "generic": {
+      "title": "Something Went Wrong",
+      "reason": "The requested operation could not be completed.",
+      "action": "Please check your inputs and try again."
+    },
+    "backendConnection": {
+      "title": "Cannot Connect to Grading Service",
+      "reason": "The background backend service is not running or is blocked by security software.",
+      "action": "Please check permissions and restart JudgeDesk."
+    },
+    "missingContestantsPath": {
+      "title": "Contestants Folder Not Loaded",
+      "reason": "The path to the contestants directory is empty.",
+      "action": "Click «Load Contestants» (F3) to choose a folder."
+    },
+    "missingTestsPath": {
+      "title": "Problems Folder Not Loaded",
+      "reason": "The path to the problems directory is empty.",
+      "action": "Click «Load Problems» (F2) to choose a folder."
+    },
+    "noTargetsSelected": {
+      "title": "No Targets Selected for Grading",
+      "reason": "No contestants or problems are checked on the scoreboard.",
+      "action": "Check at least one contestant and one problem to grade."
+    },
+    "directoryNotFound": {
+      "title": "Folder Not Found",
+      "reason": "The specified folder path does not exist, was renamed, or was moved.",
+      "action": "Please check the path or select another folder."
+    },
+    "directoryEmpty": {
+      "title": "Folder Contains No Valid Subdirectories",
+      "reason": "The selected directory does not contain contestant or problem subfolders.",
+      "action": "Ensure each contestant or problem is located in its own subfolder."
+    },
+    "permissionDenied": {
+      "title": "Access Denied",
+      "reason": "The operating system denied read/write permissions for this path.",
+      "action": "Check file permissions (Read/Write) or run the app with appropriate rights."
+    },
+    "fileLocked": {
+      "title": "File Is Locked",
+      "reason": "The file is currently opened in another program (e.g. Excel, Word, Text Editor).",
+      "action": "Please close the file in other programs and try again."
+    },
+    "excelExportFailed": {
+      "title": "Cannot Open Excel Scoreboard",
+      "reason": "Unable to launch the spreadsheet viewer or the temporary file is locked.",
+      "action": "Install an Excel spreadsheet viewer (.xlsx) or close open Excel files."
+    },
+    "judgeBusy": {
+      "title": "Judge Service Is Busy",
+      "reason": "Another judging session is currently occupying system resources.",
+      "action": "Please wait for the active session to finish or click Stop."
+    },
+    "toolchainMissing": {
+      "title": "Compiler Not Ready",
+      "reason": "No verified compiler found for the required programming language.",
+      "action": "Open «Toolchain Manager» (F6) to install or configure a compiler."
+    },
+    "osdFailed": {
+      "title": "Cannot Start Online Judge (OSD)",
+      "reason": "The OSD drop directory is invalid or workspace folders are not loaded.",
+      "action": "Check OSD settings (F8) and load problems/contestants before starting."
+    },
+    "contestSaveFailed": {
+      "title": "Cannot Save Contest File",
+      "reason": "Failed to package contest workspace data to destination archive.",
+      "action": "Check disk space and write permissions at target location."
+    },
+    "contestOpenFailed": {
+      "title": "Cannot Open Contest File",
+      "reason": "The archive file is corrupted or not a valid .judgedesk contest file.",
+      "action": "Please select a valid .judgedesk contest archive."
+    }
+  },
   "compileDiagnostics": {
     "COMPILER_TIMEOUT": "Compiler timed out after 15 seconds. The compiler process was terminated.",
     "GENERATED_FILE_TOO_LARGE": "Compilation generated a file larger than the 32 MiB limit. The compiler process was terminated.",
@@ -384,22 +461,22 @@
     "confirmDownload": "Confirm and download",
     "editions": {
       "core": {
-        "name": "Core",
-        "description": "Smaller. Use compilers already on this computer or download only the toolchains needed in JudgeDesk."
+        "name": "Core (Fast Update)",
+        "description": "Lightweight update (~39 MB). Downloads and installs in seconds; all existing compilers and toolchains are safely preserved."
       },
       "full": {
-        "name": "Full",
-        "description": "Includes JudgeDesk-tested toolchains; suited to contest rooms, classrooms, and computers that must judge offline."
+        "name": "Full (All-in-One Pack)",
+        "description": "Complete bundle with all toolchains prepackaged (~800 MB); ideal for fresh installs on offline computer labs or via USB."
       }
     },
     "editionChange": {
       "coreToFull": {
-        "title": "Switch from Core to Full?",
-        "message": "JudgeDesk will install the Full edition's built-in toolchains and prefer them for supported languages. Custom compiler paths remain saved and can be selected again under Tools."
+        "title": "Download Full Pack?",
+        "message": "JudgeDesk will download the complete Full package (~800 MB) with all bundled toolchains. The download may take a few minutes."
       },
       "fullToCore": {
-        "title": "Switch from Full to Core?",
-        "message": "The Full edition's built-in toolchains will be removed from the application folder. Separately downloaded toolchains and custom compiler paths are not deleted; languages without a compiler may need configuring again."
+        "title": "Fast Update with Core?",
+        "message": "JudgeDesk will download the lightweight Core update (~39 MB) in seconds. All existing compilers and toolchains on your computer are safely preserved and remain ready to grade."
       }
     }
   },
@@ -568,5 +645,22 @@
       "installStartFailed": "The package installation could not be started.",
       "back": "Back"
     }
+  },
+  "osd": {
+    "title": "Online LAN Judge (OSD)",
+    "badgeLabel": "OSD",
+    "activeTooltip": "Online Judge is ACTIVE. Queue: {{queue}} submissions. Click to configure (F8).",
+    "inactiveTooltip": "Online LAN Judge (OSD) - Shortcut F8",
+    "statusActive": "Listening for submissions",
+    "statusInactive": "Online Judge is inactive",
+    "stats": "Queue: {{queue}} | Processed: {{total}}",
+    "startButton": "Start Listening",
+    "stopButton": "Stop Listening",
+    "pathRequired": "Please specify an OSD drop directory.",
+    "workspaceRequired": "Contestants and Problems folders must be loaded before starting Online Judge.",
+    "folderLabel": "OSD Shared Drop Folder",
+    "folderHelp": "Contestants drop code files into this folder named as *[ContestantId][ProblemName].EXT.",
+    "enableLogLabel": "Automatically generate detailed evaluation logs into OSD/Logs/[FileName].log",
+    "guideTitle": "LAN Folder Sharing Instructions"
   }
 }

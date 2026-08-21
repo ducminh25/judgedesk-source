@@ -27,6 +27,8 @@ import { useTranslation } from "react-i18next";
 import { useTheme } from "../contexts/ThemeContext";
 import { APP_VERSION } from "../version";
 import type { AppUpdateState } from "../features/updates/useAppUpdater";
+import OsdStatusBadge from "../features/osd/OsdStatusBadge";
+import type { OsdStatusState } from "../features/osd/useOsdSession";
 
 const PUBLIC_REPOSITORY = "https://github.com/ducminh25/judgedesk";
 
@@ -41,6 +43,8 @@ interface Props {
   isExporting: boolean;
   isJudging: boolean;
   isSavingContest: boolean;
+  osdStatus: OsdStatusState;
+  onOpenOsd: () => void;
   onDeleteSelected: () => void;
   onExport: () => void;
   onNewContest: () => void;
@@ -76,6 +80,8 @@ export default function AppToolbar({
   isExporting,
   isJudging,
   isSavingContest,
+  osdStatus,
+  onOpenOsd,
   onDeleteSelected,
   onExport,
   onNewContest,
@@ -203,6 +209,12 @@ export default function AppToolbar({
         >
           <Trash2 className="h-4 w-4 text-rose-500" />
         </button>
+
+        <OsdStatusBadge
+          status={osdStatus}
+          onClick={onOpenOsd}
+          disabled={interactionLocked}
+        />
 
         <div className="min-w-3 flex-1" />
         {errorMessage && (

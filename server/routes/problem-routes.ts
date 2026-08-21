@@ -11,27 +11,34 @@ import { listTestDirectories, resolveTestCaseFiles } from "../judge/testcase-dis
 export function registerProblemRoutes(app: Express): void {
   app.get("/api/fetch-contestants", (req, res) => {
     const dirPath = req.query.path as string;
-    if (!dirPath) return res.status(400).json({ success: false, message: "Path required" });
+    if (!dirPath) return res.status(400).json({ success: false, code: "PATH_REQUIRED", message: "Path required" });
     try {
       const resolved = path.resolve(dirPath);
-      if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
-        return res.json({ success: true, data: [] });
+      if (!fs.existsSync(resolved)) {
+        return res.status(404).json({ success: false, code: "DIRECTORY_NOT_FOUND", message: "Directory not found" });
+      }
+      if (!fs.statSync(resolved).isDirectory()) {
+        return res.status(400).json({ success: false, code: "NOT_A_DIRECTORY", message: "Path is not a directory" });
       }
       const dirs = fs.readdirSync(resolved).filter((dir) => fs.statSync(path.join(resolved, dir)).isDirectory());
       dirs.sort(naturalSort);
       return res.json({ success: true, data: dirs });
     } catch (error: any) {
-      return res.status(500).json({ success: false, message: error.message });
+      const code = error?.code || "DIRECTORY_ACCESS_ERROR";
+      return res.status(500).json({ success: false, code, message: "Failed to access contestants directory" });
     }
   });
 
   app.get("/api/fetch-problems", (req, res) => {
     const dirPath = req.query.path as string;
-    if (!dirPath) return res.status(400).json({ success: false, message: "Path required" });
+    if (!dirPath) return res.status(400).json({ success: false, code: "PATH_REQUIRED", message: "Path required" });
     try {
       const resolved = path.resolve(dirPath);
-      if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
-        return res.json({ success: true, data: [] });
+      if (!fs.existsSync(resolved)) {
+        return res.status(404).json({ success: false, code: "DIRECTORY_NOT_FOUND", message: "Directory not found" });
+      }
+      if (!fs.statSync(resolved).isDirectory()) {
+        return res.status(400).json({ success: false, code: "NOT_A_DIRECTORY", message: "Path is not a directory" });
       }
       const dirs = fs.readdirSync(resolved).filter((dir) => fs.statSync(path.join(resolved, dir)).isDirectory());
       dirs.sort(naturalSort);
@@ -44,22 +51,27 @@ export function registerProblemRoutes(app: Express): void {
 
       return res.json({ success: true, data: dirs, customCheckers });
     } catch (error: any) {
-      return res.status(500).json({ success: false, message: error.message });
+      const code = error?.code || "DIRECTORY_ACCESS_ERROR";
+      return res.status(500).json({ success: false, code, message: "Failed to access problems directory" });
     }
   });
 
   app.get("/api/fetch-tests", (req, res) => {
     const dirPath = req.query.path as string;
-    if (!dirPath) return res.status(400).json({ success: false, message: "Path required" });
+    if (!dirPath) return res.status(400).json({ success: false, code: "PATH_REQUIRED", message: "Path required" });
     try {
       const resolved = path.resolve(dirPath);
-      if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
-        return res.json({ success: true, data: [] });
+      if (!fs.existsSync(resolved)) {
+        return res.status(404).json({ success: false, code: "DIRECTORY_NOT_FOUND", message: "Directory not found" });
+      }
+      if (!fs.statSync(resolved).isDirectory()) {
+        return res.status(400).json({ success: false, code: "NOT_A_DIRECTORY", message: "Path is not a directory" });
       }
       const dirs = listTestDirectories(resolved);
       return res.json({ success: true, data: dirs });
     } catch (error: any) {
-      return res.status(500).json({ success: false, message: error.message });
+      const code = error?.code || "DIRECTORY_ACCESS_ERROR";
+      return res.status(500).json({ success: false, code, message: "Failed to access test directories" });
     }
   });
 
@@ -67,13 +79,16 @@ export function registerProblemRoutes(app: Express): void {
     const dirPath = req.query.path as string;
     const problemName = req.query.problem as string;
     if (!dirPath || !problemName) {
-      return res.status(400).json({ success: false, message: "Path and problem name required" });
+      return res.status(400).json({ success: false, code: "PATH_REQUIRED", message: "Path and problem name required" });
     }
 
     try {
       const resolved = path.resolve(dirPath);
-      if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
-        return res.json({ success: true, data: [] });
+      if (!fs.existsSync(resolved)) {
+        return res.status(404).json({ success: false, code: "DIRECTORY_NOT_FOUND", message: "Directory not found" });
+      }
+      if (!fs.statSync(resolved).isDirectory()) {
+        return res.status(400).json({ success: false, code: "NOT_A_DIRECTORY", message: "Path is not a directory" });
       }
 
       const dirs = listTestDirectories(resolved);
@@ -97,17 +112,19 @@ export function registerProblemRoutes(app: Express): void {
 
       return res.json({ success: true, data: result });
     } catch (error: any) {
-      return res.status(500).json({ success: false, message: error.message });
+      const code = error?.code || "DIRECTORY_ACCESS_ERROR";
+      return res.status(500).json({ success: false, code, message: "Failed to access testcases" });
     }
   });
 
   app.get("/api/polygon-config", (req, res) => {
     const dirPath = req.query.path as string;
-    if (!dirPath) return res.status(400).json({ success: false, message: "Path required" });
+    if (!dirPath) return res.status(400).json({ success: false, code: "PATH_REQUIRED", message: "Path required" });
     try {
       return res.json({ success: true, data: readStoredProblemConfig(dirPath) });
     } catch (error: any) {
-      return res.status(500).json({ success: false, message: error.message });
+      const code = error?.code || "CONFIG_READ_ERROR";
+      return res.status(500).json({ success: false, code, message: "Failed to read problem configuration" });
     }
   });
 
@@ -115,13 +132,14 @@ export function registerProblemRoutes(app: Express): void {
     const dirPath = req.body.path as string;
     const config = req.body.config;
     if (!dirPath || !config) {
-      return res.status(400).json({ success: false, message: "Path and config required" });
+      return res.status(400).json({ success: false, code: "PARAMS_REQUIRED", message: "Path and config required" });
     }
     try {
       writeStoredProblemConfig(dirPath, config);
       return res.json({ success: true });
     } catch (error: any) {
-      return res.status(500).json({ success: false, message: error.message });
+      const code = error?.code || "CONFIG_WRITE_ERROR";
+      return res.status(500).json({ success: false, code, message: "Failed to write problem configuration" });
     }
   });
 }

@@ -268,11 +268,13 @@ export function createInitialToolchainPreferences(): ToolchainPreferencesV2 {
     const builtInManagedAvailable = isBuiltInManagedPackageAvailable(
       entry.toolchainKind,
     );
+    const anyManagedAvailable = isAnyManagedPackageAvailable(
+      entry.toolchainKind,
+    );
     profiles[entry.profile.ref.id] = {
       mode:
-        distribution === "full"
-        && entry.profile.stability === "stable"
-        && builtInManagedAvailable
+        (entry.profile.stability === "stable" && anyManagedAvailable)
+        || (distribution === "full" && entry.profile.stability === "stable" && builtInManagedAvailable)
           ? "managed"
           : entry.freshInstallMode,
     };

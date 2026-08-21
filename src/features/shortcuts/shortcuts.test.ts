@@ -24,6 +24,7 @@ describe("shortcuts module", () => {
       ["F3", "loadContestants"],
       ["F5", "reload"],
       ["F6", "toolchains"],
+      ["F8", "toggleOsd"],
       ["F9", "judge"],
       ["F12", "exportExcel"],
     ];
