@@ -1,6 +1,6 @@
 [package]
 name = "themis-v2"
-version = "1.3.81"
+version = "1.3.82"
 description = "ThemisV2 - Local Online Judge"
 authors = ["Mon"]
 edition = "2021"
