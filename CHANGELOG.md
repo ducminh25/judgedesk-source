@@ -5,7 +5,7 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 ## [Unreleased]
 
-## [1.3.9] - 2026-08-22
+## [1.3.81] - 2026-08-22
 
 ### Sửa triệt để Xuất Excel & Tối ưu Bảng điểm
 
