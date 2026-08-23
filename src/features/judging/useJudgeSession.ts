@@ -77,7 +77,6 @@ export function useJudgeSession({
     dispatchResults({ type: "initialize" });
     const newJobId = globalThis.crypto.randomUUID();
     setJobId(newJobId);
-    setProgressState({ contestant: "", problem: "", action: "Initializing...", percent: 0 });
 
     try {
       abortControllerRef.current = new AbortController();
@@ -112,13 +111,14 @@ export function useJudgeSession({
 
   const terminate = async () => {
     if (!jobId) return;
+    const currentJobId = jobId;
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
     try {
       await apiFetch("/api/batch-judge/cancel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jobId })
+        body: JSON.stringify({ jobId: currentJobId })
       });
     } finally {
       progressSchedulerRef.current?.cancel();
@@ -133,6 +133,7 @@ export function useJudgeSession({
     if (event.type === "progress") {
       progressSchedulerRef.current?.schedule(event.data);
     } else if (event.type === "metadata") {
+      setProgressState((prev) => prev ?? { contestant: "", problem: "", action: "Initializing...", percent: 0 });
       dispatchResults({ type: "set_metadata", metadata: event.data });
     } else if (event.type === "problem_completed") {
       dispatchResults({

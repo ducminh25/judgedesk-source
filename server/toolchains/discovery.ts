@@ -962,12 +962,18 @@ async function collectDarwinCandidates(
     candidates.push(
       ...(kind === "cpp"
         ? [
+            "/Library/Developer/CommandLineTools/usr/bin/clang++",
+            "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang++",
+            "/Applications/Xcode.app/Contents/Developer/usr/bin/clang++",
             "/opt/homebrew/bin/clang++",
             "/opt/homebrew/bin/g++",
             "/usr/local/bin/clang++",
             "/usr/local/bin/g++",
           ]
         : [
+            "/Library/Developer/CommandLineTools/usr/bin/clang",
+            "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/clang",
+            "/Applications/Xcode.app/Contents/Developer/usr/bin/clang",
             "/opt/homebrew/bin/clang",
             "/opt/homebrew/bin/gcc",
             "/usr/local/bin/clang",

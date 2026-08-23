@@ -38,7 +38,7 @@ mod macos {
     const CONTROL_POLL_INTERVAL_MS: i32 = 2;
     const EXEC_CONFIRM_TIMEOUT: Duration = Duration::from_secs(5);
     const CHILD_IDENTITY_TIMEOUT: Duration = Duration::from_millis(250);
-    const EXTERNAL_FREEZE_PROOF_TIMEOUT: Duration = Duration::from_secs(2);
+    const EXTERNAL_FREEZE_PROOF_TIMEOUT: Duration = Duration::from_millis(200);
     const EXEC_STATUS_BYTES: usize = 8;
     const CHILD_RELEASE_BYTE: u8 = 0xa5;
 
@@ -588,6 +588,19 @@ mod macos {
                             || error.kind() == io::ErrorKind::NotFound =>
                     {
                         if Instant::now() >= deadline {
+                            if matches!(
+                                self.state.cleanup_cause(),
+                                Some(
+                                    CleanupCause::ProcessLimit
+                                        | CleanupCause::MemoryLimit
+                                        | CleanupCause::WallTimeLimit
+                                        | CleanupCause::OutputLimit
+                                        | CleanupCause::WriteLimit
+                                        | CleanupCause::Cancelled
+                                )
+                            ) {
+                                return Ok(());
+                            }
                             return Err(io::Error::new(
                                 error.kind(),
                                 format!(

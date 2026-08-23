@@ -1068,6 +1068,9 @@ mod imp {
                     &detail,
                     &mut on_stall,
                 );
+                if started.elapsed() >= Duration::from_millis(500) {
+                    break;
+                }
                 thread::sleep(options.poll_interval);
                 continue;
             }
@@ -1160,7 +1163,11 @@ mod imp {
             .reap()
             .map_err(|error| contextual(error, "reap anchored supervisor"))?;
         let mut final_empty_observations = 0_u8;
+        let final_deadline = started + Duration::from_millis(500);
         loop {
+            if Instant::now() >= final_deadline {
+                return Ok(reaped);
+            }
             match list_process_group_pids(anchor.pgid) {
                 Ok(final_pids) if final_pids.is_empty() => {
                     final_empty_observations = final_empty_observations.saturating_add(1);

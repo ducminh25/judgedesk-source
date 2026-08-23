@@ -341,17 +341,10 @@ pub(crate) fn prepare_launcher_spec(
                 paths.executable.clone()
             };
 
-        let address_space_slack = spec
-            .limits
-            .memory_bytes
-            .saturating_mul(8)
-            .max(512 * 1024 * 1024);
-        let guardian_virtual_size = process_virtual_memory_bytes(std::process::id() as i32);
-        let address_space_bytes = (guardian_virtual_size > 0).then(|| {
-            guardian_virtual_size
-                .saturating_mul(2)
-                .max(guardian_virtual_size.saturating_add(address_space_slack))
-        });
+        // Darwin enforces resident physical memory limits via proc_taskinfo in the guardian
+        // monitor. Virtual address space limits (RLIMIT_AS) crash 64-bit ARM HotSpot JVM
+        // and modern toolchain runtimes that reserve 64-bit sparse address space on startup.
+        let address_space_bytes = None;
 
         // Seatbelt must allow fork because sandbox-exec itself forks before exec. The guardian
         // takes this real-user snapshot before spawning the trusted supervisor, so reserve that

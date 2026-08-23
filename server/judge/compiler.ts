@@ -62,16 +62,22 @@ declare const __JUDGEDESK_TESTLIB__: string;
 
 export const COMPILE_TIMEOUT_MS = 15_000;
 export const MAX_GENERATED_FILE_BYTES = 32 * 1024 * 1024;
-// A freshly installed Full distribution can still be under antivirus scan when
-// the first static C++ checker is compiled. This watchdog is not a contestant
-// runtime limit; keep it bounded but leave enough headroom for modest school
-// hardware and cold managed-toolchain files.
-export const CHECKER_COMPILE_TIMEOUT_MS = 60_000;
-export const CHECKER_COMPILE_MEMORY_LIMIT_BYTES = 768 * 1024 * 1024;
 const MAX_COMPILER_DIAGNOSTIC_BYTES = 256 * 1024;
 const gccProgramDirectoryCache = new Map<string, string>();
 const gccLibraryDirectoryCache = new Map<string, string[]>();
 const gccIncludeDirectoryCache = new Map<string, string[]>();
+
+export {
+  CHECKER_COMPILE_TIMEOUT_MS,
+  CHECKER_COMPILE_MEMORY_LIMIT_BYTES,
+  CHECKER_COMPILE_LIMITS,
+  getBundledTestlibSource,
+  buildCustomCheckerCompilerArgs,
+  compileCustomChecker,
+  resolveChecker,
+  type CompiledChecker,
+  type ResolveCheckerOptions,
+} from "./checker-compiler.js";
 
 export interface CompileLimits {
   timeoutMs: number;
@@ -85,30 +91,6 @@ const DEFAULT_COMPILE_LIMITS: CompileLimits = {
   timeoutMs: COMPILE_TIMEOUT_MS,
   maxGeneratedFileBytes: MAX_GENERATED_FILE_BYTES,
 };
-
-const CHECKER_COMPILE_LIMITS: CompileLimits = {
-  timeoutMs: CHECKER_COMPILE_TIMEOUT_MS,
-  maxGeneratedFileBytes: MAX_GENERATED_FILE_BYTES,
-  memoryBytes: CHECKER_COMPILE_MEMORY_LIMIT_BYTES,
-};
-
-export interface CompiledChecker {
-  path: string | null;
-  runtime?: "native" | "python";
-  pythonExecutablePath?: string;
-  pythonToolchain?: Readonly<ResolvedToolchain>;
-  error?: string;
-}
-
-interface ResolveCheckerOptions {
-  checkerType: string;
-  problemName: string;
-  problemDirectory: string;
-  tempDirectory: string;
-  jobId?: string;
-  cppToolchain?: ResolvedToolchain;
-  pythonToolchain?: ResolvedToolchain;
-}
 
 interface CompileSubmissionOptions {
   language: SubmissionLanguage;
@@ -141,75 +123,6 @@ interface PreparedCompiler {
   compatibilityHeaderPath?: string;
   toolchain?: ExecutorToolchainIdentity;
   localToolchain?: ExecutorLocalToolchainIdentity;
-}
-
-export function getBundledTestlibSource(): string {
-  if (typeof __JUDGEDESK_TESTLIB__ !== "undefined" && __JUDGEDESK_TESTLIB__.length > 0) return __JUDGEDESK_TESTLIB__;
-  const developmentPath = path.join(process.cwd(), "judgers", "testlib.h");
-  if (fs.existsSync(developmentPath)) return fs.readFileSync(developmentPath, "utf8");
-  throw new Error("Bundled testlib.h was not found.");
-}
-
-export async function resolveChecker(options: ResolveCheckerOptions): Promise<CompiledChecker> {
-  const { checkerType, problemName, problemDirectory, tempDirectory, jobId } = options;
-  if (isBuiltInChecker(checkerType)) return { path: null };
-  if (checkerType.toLowerCase().endsWith(".cpp")) {
-    return compileCustomChecker(
-      checkerType,
-      problemName,
-      problemDirectory,
-      tempDirectory,
-      jobId,
-      options.cppToolchain,
-    );
-  }
-  if (checkerType.toLowerCase().endsWith(".py")) {
-    const checkerPath = path.join(problemDirectory, checkerType);
-    if (!fs.existsSync(checkerPath)) {
-      return { path: null, error: `Custom checker ${checkerType} not found.` };
-    }
-    const python = options.pythonToolchain ?? await resolveCompilationToolchain("python");
-    if (!python.ready) {
-      return {
-        path: null,
-        error: "CHECKER_TOOLCHAIN_UNAVAILABLE: cannot compile Python checker; Python is missing",
-      };
-    }
-    if (python.source !== "managed" && !python.localToolchain) {
-      return {
-        path: null,
-        error:
-          "CHECKER_TOOLCHAIN_NOT_SANDBOX_COMPATIBLE: select a native-executor compatible Python runtime",
-      };
-    }
-    try {
-      const pythonExecutionPath = python.executionPath || python.executablePath;
-      await validatePythonCheckerSource(
-        pythonExecutionPath,
-        checkerPath,
-        python,
-        jobId,
-      );
-      return {
-        path: checkerPath,
-        runtime: "python",
-        pythonExecutablePath: pythonExecutionPath,
-        pythonToolchain: python,
-      };
-    } catch (error) {
-      return {
-        path: null,
-        error: `PYTHON_CHECKER_COMPILE_ERROR: ${normalizeCompilerError(error)}`,
-      };
-    }
-  }
-  if (checkerType.toLowerCase().endsWith(".exe")) {
-    return {
-      path: null,
-      error: "Precompiled checker executables are not supported. Use a .cpp or .py source checker.",
-    };
-  }
-  return { path: null, error: `Unsupported checker type '${checkerType}'.` };
 }
 
 export async function compileSubmission(options: CompileSubmissionOptions): Promise<CompilationResult> {
@@ -372,11 +285,15 @@ async function compileManagedDirectorySubmission(
     }
     const compilerPath = toolchain.executionPath || toolchain.executablePath;
     if (language === "java") {
+      const entrypointCandidate = safeName(
+        path.basename(options.submissionPath, path.extname(options.submissionPath)),
+      ) || "Main";
+      const stagedSourceName = `${entrypointCandidate}.java`;
       await runDirectoryCompilerWithLimits({
         kind: "java",
         compilerPath,
         sourcePath: options.submissionPath,
-        stagedSourceName: "Main.java",
+        stagedSourceName,
         outputPath: artifactDirectory,
         jobId: options.jobId,
         limits: {
@@ -387,8 +304,13 @@ async function compileManagedDirectorySubmission(
         pinnedToolchain: toolchain,
         buildArgs: ({ sourcePath, outputDirectory }) =>
           buildJavaCompilationArgs(sourcePath, outputDirectory),
-        validateArtifact: validateJavaClassDirectory,
+        validateArtifact: (directory) =>
+          validateJavaClassDirectory(directory, entrypointCandidate),
       });
+      const resolvedEntrypoint = resolveJavaEntrypoint(
+        artifactDirectory,
+        entrypointCandidate,
+      );
       return {
         executablePath: artifactDirectory,
         compileStatus: "OK",
@@ -398,7 +320,7 @@ async function compileManagedDirectorySubmission(
           kind: "directory-runtime",
           language: "java",
           artifactDirectory,
-          entrypoint: "Main",
+          entrypoint: resolvedEntrypoint,
           runtimeKind: "java",
           runtimeToolchain: toolchain,
           runtimeComponentId: "java.runtime",
@@ -577,15 +499,36 @@ async function runDirectoryCompilerWithLimits(
   }
 }
 
-export function validateJavaClassDirectory(directory: string): void {
+export function resolveJavaEntrypoint(
+  directory: string,
+  candidate: string = "Main",
+): string {
   const entries = fs.readdirSync(directory, { withFileTypes: true });
   if (
-    !entries.some((entry) => entry.isFile() && entry.name === "Main.class")
+    entries.some((entry) => entry.isFile() && entry.name === `${candidate}.class`)
   ) {
-    throw new Error(
-      "JAVA_ENTRYPOINT_INVALID: source must declare public class Main without a package",
-    );
+    return candidate;
   }
+  if (entries.some((entry) => entry.isFile() && entry.name === "Main.class")) {
+    return "Main";
+  }
+  const firstClass = entries.find(
+    (entry) => entry.isFile() && entry.name.endsWith(".class"),
+  );
+  if (firstClass) {
+    return path.basename(firstClass.name, ".class");
+  }
+  throw new Error(
+    `JAVA_ENTRYPOINT_INVALID: source must declare public class ${candidate} or Main without a package`,
+  );
+}
+
+export function validateJavaClassDirectory(
+  directory: string,
+  candidate: string = "Main",
+): void {
+  resolveJavaEntrypoint(directory, candidate);
+  const entries = fs.readdirSync(directory, { withFileTypes: true });
   if (
     entries.some((entry) =>
       !entry.isFile()
@@ -743,52 +686,6 @@ const CSHARP_DEPS_FILE = `${JSON.stringify({
   },
 }, null, 2)}\n`;
 
-async function compileCustomChecker(
-  checkerType: string,
-  problemName: string,
-  problemDirectory: string,
-  tempDirectory: string,
-  jobId?: string,
-  pinnedCppToolchain?: ResolvedToolchain,
-): Promise<CompiledChecker> {
-  const checkerSourcePath = path.join(problemDirectory, checkerType);
-  if (!fs.existsSync(checkerSourcePath)) return { path: null, error: `Custom checker ${checkerType} not found.` };
-  const checkerBinaryPath = path.join(tempDirectory, `checker_${safeName(problemName)}_${safeName(checkerType)}.out`);
-  const checkerSupportDirectory = path.join(tempDirectory, `checker-support-${crypto.randomUUID()}`);
-  const bundledTestlibPath = path.join(checkerSupportDirectory, "testlib.h");
-  try {
-    fs.mkdirSync(checkerSupportDirectory, { recursive: true });
-    fs.writeFileSync(bundledTestlibPath, getBundledTestlibSource(), "utf8");
-    const cpp = pinnedCppToolchain ?? await resolveCompilationToolchain("cpp");
-    if (!cpp.ready) return { path: null, error: "TOOLCHAIN_CPP_MISSING" };
-    if (process.platform === "win32" && !isWindowsCppExecutionReady(cpp)) {
-      return { path: null, error: "TOOLCHAIN_NOT_SANDBOX_COMPATIBLE" };
-    }
-    const compilerPath = cpp.executionPath || cpp.executablePath;
-    await runCompilerPipelineWithLimits(
-      compilerPath,
-      buildCustomCheckerCompilerArgs(
-        os.platform(),
-        checkerSupportDirectory,
-        checkerSourcePath,
-        checkerBinaryPath,
-      ),
-      tempDirectory,
-      checkerBinaryPath,
-      jobId,
-      CHECKER_COMPILE_LIMITS,
-      "cpp",
-      {},
-      cpp,
-    );
-    return { path: checkerBinaryPath, runtime: "native" };
-  } catch (error) {
-    return { path: null, error: normalizeCompilerError(error) };
-  } finally {
-    fs.rmSync(checkerSupportDirectory, { recursive: true, force: true });
-  }
-}
-
 export async function resolveCompilationToolchain(
   kind: ToolchainKind,
 ): Promise<ResolvedToolchain> {
@@ -856,26 +753,6 @@ export function buildSubmissionCompilerArgs(
     outputPath,
     compile,
   ).args;
-}
-
-export function buildCustomCheckerCompilerArgs(
-  platform: NodeJS.Platform,
-  includeDirectory: string,
-  sourcePath: string,
-  outputPath: string,
-): string[] {
-  if (platform === "win32") {
-    return buildCertifiedWindowsCppCheckerArgs(
-      includeDirectory,
-      sourcePath,
-      outputPath,
-    );
-  }
-  const args = ["-std=c++14", "-pipe", "-O2", "-I", includeDirectory];
-  if (platform !== "darwin") args.push("-s", "-static", "-lm");
-  args.push("-x", "c++");
-  args.push(sourcePath, "-o", outputPath);
-  return args;
 }
 
 export async function runCompilerWithLimits(
@@ -981,7 +858,7 @@ export async function runCompilerWithLimits(
   }
 }
 
-async function runCompilerPipelineWithLimits(
+export async function runCompilerPipelineWithLimits(
   compilerPath: string,
   args: string[],
   cwd: string | undefined,
@@ -1369,7 +1246,6 @@ export function resolveDarwinCompilerSupport(
   return {
     argumentPrefix: [
       kind === "cpp" ? "--driver-mode=g++" : "--driver-mode=gcc",
-      "-fintegrated-cc1",
       // Seatbelt can prevent the driver from inferring this directory through realpath.
       // Pin it to the Apple toolchain path already validated by the native executor.
       "-ccc-install-dir",
@@ -1630,14 +1506,14 @@ function compilationFailure(executablePath: string, error: string, started: bigi
   return { executablePath, compileStatus: "CE", compileError: error, compileTime: elapsedMs(started) };
 }
 
-function normalizeCompilerError(error: unknown): string {
+export function normalizeCompilerError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes("GENERATED_FILE_TOO_LARGE")) return "GENERATED_FILE_TOO_LARGE";
   if (message.includes("COMPILER_TIMEOUT")) return "COMPILER_TIMEOUT";
   return message.trim() || "Compilation failed";
 }
 
-function safeName(value: string): string {
+export function safeName(value: string): string {
   return value.replaceAll(/[^A-Za-z0-9_.-]/g, "_").slice(0, 96) || "artifact";
 }
 
