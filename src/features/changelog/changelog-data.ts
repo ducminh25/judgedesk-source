@@ -11,6 +11,20 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
   {
+    version: "1.3.83",
+    date: "2026-08-24",
+    sections: [
+      {
+        title: "Tối ưu hóa macOS & Native Executor",
+        items: [
+          "Sửa triệt để lỗi treo khoá process-tree sau các bài thi đa tiến trình (forkbomb) trên macOS nhờ cơ chế bounded zombie drain timeout.",
+          "Hỗ trợ phân giải Symbolic Link cho Apple Clang++ và tự động nhận diện các bản cài đặt Xcode/CommandLineTools.",
+          "Cải thiện độ ổn định giao diện khi bấm Huỷ phiên chấm (Terminate) và loại bỏ hiện tượng nháy cửa sổ tiến độ.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.3.82",
     date: "2026-08-22",
     sections: [
@@ -274,6 +288,20 @@ export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
 ];
 
 export const CHANGELOG_DATA_EN: ChangelogRelease[] = [
+  {
+    version: "1.3.83",
+    date: "2026-08-24",
+    sections: [
+      {
+        title: "macOS Optimizations & Native Executor",
+        items: [
+          "Eliminated process-tree lock hangs after multi-process submissions (forkbomb) on macOS with bounded zombie drain timeout.",
+          "Added support for symbolic links in Clang++ resolution and automatic discovery for Xcode/CommandLineTools.",
+          "Enhanced judging session termination stability and eliminated progress modal flashing.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.3.82",
     date: "2026-08-22",

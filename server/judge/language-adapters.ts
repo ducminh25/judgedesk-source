@@ -53,13 +53,10 @@ export function buildNativeCompilationRecipe(
         compileConfig,
       ),
       environment: {},
-      // Both Apple clang and MinGW GCC need an explicit object path. On
-      // Windows this also prevents GCC's legacy temp-path conversion from
-      // attempting to write an intermediate object at the drive root. The
-      // budget covers two separately sandboxed compiler processes (compile
-      // and link), including their executor startup overhead and a possible
-      // first-run antivirus scan of a freshly installed managed compiler.
-      splitCompilerPhases: platform === "darwin" || platform === "win32",
+      // Windows MinGW GCC needs an explicit object path to prevent GCC's legacy
+      // temp-path conversion from attempting to write an intermediate object at
+      // the drive root. macOS Apple Clang compiles and links in a single unified step.
+      splitCompilerPhases: platform === "win32",
       timeoutMs: 60_000,
       maxGeneratedFileBytes: 32 * MIB,
     };
@@ -215,8 +212,7 @@ export function buildManagedPascalSupportArgs(
     platform === "win32" ? "-Twin64" : "-Tdarwin",
     `-Fu${path.join(toolchainRoot, "units", target, "*")}`,
     `-Fu${path.join(toolchainRoot, "units", target, "rtl")}`,
-    `-FD${binDirectory}`,
-    ...(platform === "win32" ? ["-XPx86_64-win64-"] : []),
+    ...(platform === "win32" ? [`-FD${binDirectory}`, "-XPx86_64-win64-"] : []),
   ];
 }
 

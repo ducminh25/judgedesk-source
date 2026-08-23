@@ -963,8 +963,8 @@ function resolveSelectedLocalExecutable(
     };
   }
   try {
-    const metadata = fs.lstatSync(executablePath);
-    if (!metadata.isFile() || metadata.isSymbolicLink()) throw new Error("not a regular file");
+    const metadata = fs.statSync(executablePath);
+    if (!metadata.isFile()) throw new Error("not a regular file");
   } catch {
     return {
       ...unavailableToolchain(

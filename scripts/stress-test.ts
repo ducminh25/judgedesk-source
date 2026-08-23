@@ -64,18 +64,36 @@ const candidates = [
 if (candidates.length === 0) throw new Error("No stress expectations matched this host/filter.");
 
 const hostStatus = await fetchJson<HostStatus>(`${serverUrl}/api/status`);
-const requiresManagedPython = candidates.some((item) =>
-  item.requiredCapabilities?.includes("managed-python")
-  || submissionExtension(item.contestant, item.problem) === ".py"
-);
-if (requiresManagedPython && hostStatus.python.submissionReady !== true) {
-  throw new Error(
-    "Selected stress cases include Python submissions, but managed Python is not ready. "
-    + "Install managed Python or filter STRESS_CASES to C++ cases.",
-  );
+const toolchainsResponse = await fetchJson<any>(`${serverUrl}/api/toolchains/v2`).catch(() => null);
+const readyLanguages = new Set<string>();
+if (hostStatus.gpp?.submissionReady) {
+  readyLanguages.add("cpp");
+  readyLanguages.add("c");
+}
+if (hostStatus.python?.submissionReady) {
+  readyLanguages.add("python");
+}
+if (toolchainsResponse?.profiles) {
+  for (const [profId, profState] of Object.entries(toolchainsResponse.profiles as Record<string, any>)) {
+    if (profState?.status === "ready" || profState?.activeToolchain) {
+      readyLanguages.add(profId);
+    }
+  }
 }
 
 for (const expectation of candidates.map(normalizeExpectation)) {
+  const item = expectation.source;
+  const ext = submissionExtension(item.contestant, item.problem);
+  const lang = ext === ".cpp" ? "cpp" : ext === ".c" ? "c" : ext === ".py" ? "python" : ext === ".pas" ? "pascal" : ext === ".java" ? "java" : null;
+
+  if (lang && !readyLanguages.has(lang)) {
+    const requiresInstalledToolchain = item.requiredCapabilities?.some(cap => cap.startsWith("managed-")) || (item.expected !== "CE" && (ext === ".pas" || ext === ".java"));
+    if (requiresInstalledToolchain) {
+      console.log(`SKIP ${item.contestant}/${item.problem}: requires ${lang} toolchain`);
+      continue;
+    }
+  }
+
   const result = await judge(expectation.source);
   assertResult(result, expectation);
   console.log(
@@ -87,7 +105,7 @@ for (const expectation of candidates.map(normalizeExpectation)) {
 
 function submissionExtension(contestant: string, problem: string): string | null {
   const contestantDirectory = path.join(stressRoot!, "contestants", contestant);
-  for (const extension of [".cpp", ".py"]) {
+  for (const extension of [".cpp", ".py", ".c", ".pas", ".java"]) {
     if (fs.existsSync(path.join(contestantDirectory, `${problem}${extension}`))) return extension;
   }
   return null;
