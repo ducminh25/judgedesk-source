@@ -103,17 +103,27 @@ impl MacosPlatform {
             // executable mappings from a sandbox-writable location before the target reaches
             // main(), even when Seatbelt otherwise permits process-exec for that exact path.
             let staged_exe = root.join("artifacts").join("security-probe");
-            fs::copy(&current_exe, &staged_exe)
-                .map_err(|error| format!("cannot stage security probe: {error}"))?;
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&staged_exe, fs::Permissions::from_mode(0o500))
-                .map_err(|error| format!("cannot make security probe executable: {error}"))?;
+            let need_copy = match (fs::metadata(&current_exe), fs::metadata(&staged_exe)) {
+                (Ok(src_meta), Ok(dst_meta)) => src_meta.len() != dst_meta.len(),
+                _ => true,
+            };
+            if need_copy {
+                let _ = fs::remove_file(&staged_exe);
+                fs::copy(&current_exe, &staged_exe)
+                    .map_err(|error| format!("cannot stage security probe: {error}"))?;
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(&staged_exe, fs::Permissions::from_mode(0o500))
+                    .map_err(|error| format!("cannot make security probe executable: {error}"))?;
+            }
+            let _ = fs::remove_file(workspace.join("probe.stdout"));
+            let _ = fs::remove_file(workspace.join("probe.stderr"));
 
             let sentinel = std::env::temp_dir().join(format!(
                 "judgedesk-sentinel-{}-{}.txt",
                 std::process::id(),
                 workspace_id
             ));
+            let _ = fs::remove_file(&sentinel);
             fs::write(&sentinel, b"JUDGEDESK_SENTINEL")
                 .map_err(|error| format!("cannot create security sentinel: {error}"))?;
             let spec = RunSpec {
@@ -132,7 +142,7 @@ impl MacosPlatform {
                 toolchain: None,
                 local_toolchain: None,
                 limits: RunLimits {
-                    wall_time_ms: 5_000,
+                    wall_time_ms: 20_000,
                     memory_bytes: 128 * 1024 * 1024,
                     // The probe forks short-lived children so each prohibited process-group
                     // operation is tested in isolation without changing the probe parent's PGID.

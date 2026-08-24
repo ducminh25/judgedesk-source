@@ -18,7 +18,7 @@ import type {
 } from "./protocol.js";
 
 const MAX_FRAME_BYTES = 1024 * 1024;
-const REQUEST_TIMEOUT_MS = 20_000;
+const REQUEST_TIMEOUT_MS = 45_000;
 const CANCEL_REQUEST_TIMEOUT_MS = 30_000;
 const STARTUP_SELF_TEST_ATTEMPTS = 3;
 const SHUTDOWN_REQUEST_TIMEOUT_MS = 10_000;
@@ -272,7 +272,7 @@ export class ExecutorClient {
         return health;
       }
       await this.stopChildForStartupRetry();
-      await delay(50 * attempt);
+      await delay(500 * attempt);
     }
     return health;
   }

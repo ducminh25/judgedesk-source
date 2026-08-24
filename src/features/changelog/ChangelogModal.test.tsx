@@ -58,7 +58,7 @@ describe("ChangelogModal", () => {
     );
 
     assert.match(html, /Có gì mới trong JudgeDesk/);
-    assert.match(html, /Tối ưu hóa macOS &amp; Native Executor/);
+    assert.match(html, /Sửa lỗi Tương tác Kỳ thi \.judgedesk/);
     assert.match(html, /v1\.3\.8/);
     assert.match(html, /v1\.2\.5/);
     assert.match(html, /Đã hiểu/);
@@ -85,7 +85,7 @@ describe("ChangelogModal", () => {
     );
 
     assert.match(html, /What&#x27;s New in JudgeDesk/);
-    assert.match(html, /macOS Optimizations &amp; Native Executor/);
+    assert.match(html, /Contest Archive \(\.judgedesk\) Interaction Fix/);
     assert.match(html, /Got it/);
   });
 });
