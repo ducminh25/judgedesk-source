@@ -49,6 +49,6 @@ test("every version has sections and non-empty bullet items", () => {
 test("getChangelogForLanguage returns appropriate language release list", () => {
   const vi = getChangelogForLanguage("vi");
   const en = getChangelogForLanguage("en");
-  assert.equal(vi[0].sections[0].title, "Tối ưu hóa macOS & Native Executor");
-  assert.equal(en[0].sections[0].title, "macOS Optimizations & Native Executor");
+  assert.equal(vi[0].sections[0].title, "Sửa lỗi Tương tác Kỳ thi .judgedesk");
+  assert.equal(en[0].sections[0].title, "Contest Archive (.judgedesk) Interaction Fix");
 });

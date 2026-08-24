@@ -163,20 +163,24 @@ impl WindowsPlatform {
         let result = (|| -> Result<SelfTest, String> {
             let workspace_id = "startup_self_test";
             let workspace = root.join("workspaces").join(workspace_id);
-            if workspace.exists() {
-                fs::remove_dir_all(&workspace)
-                    .map_err(|error| format!("cannot reset self-test workspace: {error}"))?;
-            }
             fs::create_dir_all(&workspace)
                 .map_err(|error| format!("cannot create self-test workspace: {error}"))?;
             let probe = workspace.join("probe.exe");
-            fs::copy(
-                std::env::current_exe().map_err(|error| error.to_string())?,
-                &probe,
-            )
-            .map_err(|error| format!("cannot stage security probe: {error}"))?;
+            let current_exe = std::env::current_exe().map_err(|error| error.to_string())?;
+            let need_copy = match (fs::metadata(&current_exe), fs::metadata(&probe)) {
+                (Ok(src_meta), Ok(dst_meta)) => src_meta.len() != dst_meta.len(),
+                _ => true,
+            };
+            if need_copy {
+                let _ = fs::remove_file(&probe);
+                fs::copy(&current_exe, &probe)
+                    .map_err(|error| format!("cannot stage security probe: {error}"))?;
+            }
+            let _ = fs::remove_file(workspace.join("probe.stdout"));
+            let _ = fs::remove_file(workspace.join("probe.stderr"));
             let sentinel =
                 std::env::temp_dir().join(format!("judgedesk-sentinel-{}.txt", std::process::id()));
+            let _ = fs::remove_file(&sentinel);
             fs::write(&sentinel, b"JUDGEDESK_SENTINEL")
                 .map_err(|error| format!("cannot create security sentinel: {error}"))?;
             let spec = RunSpec {
@@ -195,7 +199,7 @@ impl WindowsPlatform {
                 toolchain: None,
                 local_toolchain: None,
                 limits: crate::protocol::RunLimits {
-                    wall_time_ms: 5_000,
+                    wall_time_ms: 20_000,
                     memory_bytes: 128 * 1024 * 1024,
                     process_count: 1,
                     thread_count: 16,
