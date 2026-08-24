@@ -11,6 +11,35 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
   {
+    version: "1.3.9",
+    date: "2026-08-24",
+    sections: [
+      {
+        title: "Sửa lỗi Tương tác Kỳ thi .judgedesk",
+        items: [
+          "Khắc phục triệt để lỗi không thao tác được bảng điểm khi mở tệp .judgedesk bằng cách bấm đúp từ File Explorer (Windows) và Finder (macOS).",
+          "Cho phép tích chọn thí sinh, lọc bài tập, chấm bài, xoá điểm và cấu hình bài thi mượt mà sau khi mở file mà không bị ghi đè dữ liệu gốc.",
+          "Tự động phát hiện thay đổi và hỗ trợ lưu đè trực tiếp (Ctrl+S / ⌘S) hoặc lưu mới (Ctrl+Shift+S / ⌘Shift+S) vào chính file .judgedesk đang mở.",
+        ],
+      },
+      {
+        title: "Trải nghiệm Cập nhật 1-Click Siêu tốc",
+        items: [
+          "Đơn giản hóa luồng cập nhật: Bấm 1 click vào nút cập nhật trên thanh công cụ để tự động tải ngay gói Core siêu nhẹ (~20 MB) trong nền mà không cần qua hộp thoại lựa chọn.",
+          "Bảo lưu 100% các bộ toolchain, cấu hình và dữ liệu người dùng đã có trong máy sau mỗi lần cập nhật.",
+        ],
+      },
+      {
+        title: "Tối ưu hóa Trình chấm & Đa nền tảng",
+        items: [
+          "Chuẩn hóa quy trình biên dịch Java: Tự động trích xuất và staging theo tên public class thực tế, đảm bảo các bài nộp Java hoạt động chuẩn xác trên cả macOS và Windows.",
+          "Đồng nhất kết quả chia cho 0 trên macOS: Bổ sung bẫy SIGTRAP cho Apple Clang trên CPU ARM64, trả về lỗi chạy Runtime Error (0 điểm) chính xác 100% như trên x86 Windows.",
+          "Tự động khử trùng lặp Toolchain (Deduplication): Bản Full khởi động tức thì (< 1s) với cơ chế Zero-Copy và tự động dọn dẹp các thư mục duplicate trong AppData giúp giải phóng ~800 MB ổ cứng.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.3.83",
     date: "2026-08-24",
     sections: [
@@ -288,6 +317,35 @@ export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
 ];
 
 export const CHANGELOG_DATA_EN: ChangelogRelease[] = [
+  {
+    version: "1.3.9",
+    date: "2026-08-24",
+    sections: [
+      {
+        title: "Contest Archive (.judgedesk) Interaction Fix",
+        items: [
+          "Fixed scoreboard state freeze/reload loop when launching JudgeDesk via double-clicking a .judgedesk archive on Windows and macOS.",
+          "Fully restores contestant/problem selections, scoring details, and allows immediate judging, grading, and configuration without reset.",
+          "Seamless atomic save (Ctrl+S / ⌘S) and Save As (Ctrl+Shift+S / ⌘Shift+S) directly into the active .judgedesk file.",
+        ],
+      },
+      {
+        title: "1-Click Streamlined Core In-App Updates",
+        items: [
+          "Single-click update experience: Clicking the update button on the toolbar automatically downloads the lightweight Core package (~20 MB) in the background without modal prompts.",
+          "Preserves 100% of user toolchains, custom compilers, contest workspaces, and settings across upgrades.",
+        ],
+      },
+      {
+        title: "Cross-Platform Judge & Zero-Copy Enhancements",
+        items: [
+          "Dynamic Java entrypoint staging based on declared public classes, guaranteeing consistent multi-class Java judging across OS environments.",
+          "Apple Silicon divide-by-zero trap alignment using Clang sanitizers, matching x86 hardware Runtime Error (0 pts) semantics.",
+          "Zero-Copy runtime and toolchain deduplication: Full edition launches in <1s and automatically cleans duplicate AppData caches to free ~800 MB disk space.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.3.83",
     date: "2026-08-24",

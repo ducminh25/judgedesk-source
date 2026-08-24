@@ -85,6 +85,8 @@ test("macOS compiler recipes keep platform-independent flags and omit GNU link f
     "-std=gnu++20",
     "-O2",
     "-g",
+    "-fsanitize=integer-divide-by-zero",
+    "-fsanitize-trap=integer-divide-by-zero",
     "-x",
     "c++",
     "/workspace/source.cpp",

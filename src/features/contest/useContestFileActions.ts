@@ -248,20 +248,36 @@ export function useContestFileActions({
     requestContestAction({ type: "open_path", path });
   }, [requestContestAction]);
 
+  const initialContestCheckedRef = useRef(false);
+  const executeContestActionRef = useRef(executeContestAction);
+  executeContestActionRef.current = executeContestAction;
+  const openContestFileByPathRef = useRef(openContestFileByPath);
+  openContestFileByPathRef.current = openContestFileByPath;
+  const isLockedRef = useRef(isLocked);
+  isLockedRef.current = isLocked;
+  const setErrorMessageRef = useRef(setErrorMessage);
+  setErrorMessageRef.current = setErrorMessage;
+  const updaterRef = useRef(updater);
+  updaterRef.current = updater;
+  const tRef = useRef(t);
+  tRef.current = t;
+
   useEffect(() => {
+    if (initialContestCheckedRef.current) return;
+    initialContestCheckedRef.current = true;
     async function checkInitialContest() {
       try {
         const { invoke } = await import("@tauri-apps/api/core");
         const initialFile = await invoke<string | null>("get_initial_contest_file");
         if (initialFile) {
-          void executeContestAction({ type: "open_path", path: initialFile });
+          void executeContestActionRef.current({ type: "open_path", path: initialFile });
         }
       } catch (e) {
         // Not running in Tauri or no initial file
       }
     }
     void checkInitialContest();
-  }, [executeContestAction]);
+  }, []);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -270,7 +286,7 @@ export function useContestFileActions({
         const { listen } = await import("@tauri-apps/api/event");
         unlisten = await listen<string>("open_contest_file", (event) => {
           if (event.payload) {
-            openContestFileByPath(event.payload);
+            openContestFileByPathRef.current(event.payload);
           }
         });
       } catch (e) {
@@ -281,7 +297,7 @@ export function useContestFileActions({
     return () => {
       if (unlisten) unlisten();
     };
-  }, [openContestFileByPath]);
+  }, []);
 
   useEffect(() => {
     let unlisten: (() => void) | undefined;
@@ -297,7 +313,7 @@ export function useContestFileActions({
             if (paths && paths.length > 0) {
               const file = paths[0];
               if (file.toLowerCase().endsWith(".judgedesk")) {
-                openContestFileByPath(file);
+                openContestFileByPathRef.current(file);
               }
             }
           } else {
@@ -312,7 +328,7 @@ export function useContestFileActions({
     return () => {
       if (unlisten) unlisten();
     };
-  }, [openContestFileByPath]);
+  }, []);
 
   useEffect(() => {
     const useBrowserBeforeUnload = shouldRegisterBrowserBeforeUnload(window);
@@ -343,9 +359,9 @@ export function useContestFileActions({
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
         const currentWindow = getCurrentWindow();
         const stopListening = await currentWindow.onCloseRequested((event) => {
-          if (isLocked() || saveOperationRef.current) {
+          if (isLockedRef.current() || saveOperationRef.current) {
             event.preventDefault();
-            setErrorMessage(t("actions.unavailableWhileBusy"));
+            setErrorMessageRef.current(tRef.current("actions.unavailableWhileBusy"));
             return;
           }
           const counts = contestDataCountsRef.current;
@@ -359,10 +375,10 @@ export function useContestFileActions({
             return;
           }
           event.preventDefault();
-          void updater.discardUpdate()
+          void updaterRef.current.discardUpdate()
             .then(() => currentWindow.destroy())
             .catch((error) => {
-              setErrorMessage(error instanceof Error ? error.message : String(error));
+              setErrorMessageRef.current(error instanceof Error ? error.message : String(error));
             });
         });
         if (disposed) stopListening();
@@ -375,7 +391,7 @@ export function useContestFileActions({
       if (useBrowserBeforeUnload) window.removeEventListener("beforeunload", beforeUnload);
       else window.removeEventListener("keydown", blockDesktopReload, true);
     };
-  }, [isLocked, setErrorMessage, t, updater]);
+  }, []);
 
   return {
     contestFilePath,

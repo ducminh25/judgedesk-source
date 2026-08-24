@@ -55,6 +55,14 @@ Mỗi ngôn ngữ có 4 trạng thái cấu hình:
 
 Trình biên dịch cục bộ phải đáp ứng các bài kiểm tra thực thi an toàn của hệ điều hành trước khi được chấp nhận chấm bài.
 
+## Kiến trúc lưu trữ và tự động khử trùng lặp (Deduplication)
+
+JudgeDesk sử dụng mô hình 2 tầng lưu trữ độc lập:
+1. **Tầng Đóng gói sẵn (`built-in`)**: Nằm trong thư mục tài nguyên của ứng dụng (`resources/toolchains`). Bản Full sử dụng trực tiếp tầng này ở chế độ chỉ đọc (Read-Only), khởi động tức thì và dùng chung cho mọi User trên máy tính.
+2. **Tầng Tải về theo người dùng (`downloaded`)**: Nằm tại `%LOCALAPPDATA%\ThemisV2\toolchains` (Windows) hoặc `~/Library/Application Support/ThemisV2/toolchains` (macOS), dùng để lưu các compiler được tải thêm theo nhu cầu trên bản Core.
+
+Khi khởi động, JudgeDesk tự động đối soát: Nếu phát hiện một gói toolchain đã có sẵn trong tầng `built-in` mà vẫn tồn tại bản sao trong thư mục `AppData` của người dùng (do phiên bản cũ hoặc từng tải trước đó), hệ thống sẽ **tự động giải phóng bản sao thừa trong `AppData`**, tránh lãng phí dung lượng ổ đĩa.
+
 ## Xác thực tính toàn vẹn và bản quyền
 
 Mỗi gói toolchain được đóng gói kèm tệp giấy phép (License, Notices) và danh mục linh kiện phần mềm (SPDX SBOM).

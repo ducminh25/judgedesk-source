@@ -276,6 +276,9 @@ function buildGnuOrAppleClangArgs(
   if (platform === "darwin") {
     // Apple Clang cannot link the static/stack/math flags below. The protected
     // bits/stdc++.h compatibility include is injected by prepareCompiler.
+    // ARM64 hardware integer division (SDIV/UDIV) does not fault on division by zero;
+    // trap integer-divide-by-zero so behavior matches x86 hardware exceptions (RE).
+    args.push("-fsanitize=integer-divide-by-zero", "-fsanitize-trap=integer-divide-by-zero");
   } else {
     args.push("-static");
   }

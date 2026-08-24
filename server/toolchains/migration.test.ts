@@ -24,14 +24,17 @@ function withTempSandbox(
   }
 }
 
-test("migrateLegacyBundledToolchains moves legacy toolchains, preserves receipts, and deletes source", () => {
+test("migrateLegacyBundledToolchains removes AppData duplicate when built-in package is present", () => {
   withTempSandbox(({ builtInRoot, downloadedRoot }) => {
     const packageId = "gcc-windows-x64";
-    const srcPackageDir = path.join(builtInRoot, packageId);
-    fs.mkdirSync(path.join(srcPackageDir, "bin"), { recursive: true });
-    fs.writeFileSync(path.join(srcPackageDir, "bin", "g++.exe"), "dummy-compiler-binary");
+    const builtInPackageDir = path.join(builtInRoot, packageId);
+    const downloadedPackageDir = path.join(downloadedRoot, packageId);
+
+    // Setup built-in package
+    fs.mkdirSync(path.join(builtInPackageDir, "bin"), { recursive: true });
+    fs.writeFileSync(path.join(builtInPackageDir, "bin", "g++.exe"), "dummy-compiler-binary");
     fs.writeFileSync(
-      path.join(srcPackageDir, TOOLCHAIN_PACKAGE_RECEIPT),
+      path.join(builtInPackageDir, TOOLCHAIN_PACKAGE_RECEIPT),
       JSON.stringify({
         schemaVersion: 1,
         packageId,
@@ -49,48 +52,53 @@ test("migrateLegacyBundledToolchains moves legacy toolchains, preserves receipts
       }),
     );
 
+    // Setup duplicate in downloaded
+    fs.mkdirSync(path.join(downloadedPackageDir, "bin"), { recursive: true });
+    fs.writeFileSync(path.join(downloadedPackageDir, "bin", "g++.exe"), "dummy-duplicate");
+    fs.writeFileSync(path.join(downloadedPackageDir, TOOLCHAIN_PACKAGE_RECEIPT), "{}");
+
     const result = migrateLegacyBundledToolchains({ builtInRoot, downloadedRoot });
 
     assert.equal(result.errors.length, 0);
     assert.deepEqual(result.migratedPackages, [packageId]);
     assert.ok(result.freedBytes > 0);
 
-    const destPackageDir = path.join(downloadedRoot, packageId);
-    assert.ok(fs.existsSync(destPackageDir));
-    assert.ok(fs.existsSync(path.join(destPackageDir, TOOLCHAIN_PACKAGE_RECEIPT)));
-    assert.ok(fs.existsSync(path.join(destPackageDir, "bin", "g++.exe")));
+    // Built-in package MUST remain intact
+    assert.ok(fs.existsSync(builtInPackageDir));
+    assert.ok(fs.existsSync(path.join(builtInPackageDir, TOOLCHAIN_PACKAGE_RECEIPT)));
+    assert.ok(fs.existsSync(path.join(builtInPackageDir, "bin", "g++.exe")));
 
-    // Source directory should be deleted
-    assert.ok(!fs.existsSync(srcPackageDir));
+    // Downloaded duplicate directory should be removed to free disk space
+    assert.ok(!fs.existsSync(downloadedPackageDir));
   });
 });
 
-test("migrateLegacyBundledToolchains removes source when destination already exists with valid receipt", () => {
+test("migrateLegacyBundledToolchains preserves extra downloaded packages that are not built-in", () => {
   withTempSandbox(({ builtInRoot, downloadedRoot }) => {
-    const packageId = "python-windows-x64";
-    const srcPackageDir = path.join(builtInRoot, packageId);
-    const destPackageDir = path.join(downloadedRoot, packageId);
+    const builtInId = "gcc-windows-x64";
+    const extraDownloadedId = "rust-windows-x64";
 
-    fs.mkdirSync(srcPackageDir, { recursive: true });
-    fs.writeFileSync(path.join(srcPackageDir, "python.exe"), "dummy");
-    fs.writeFileSync(path.join(srcPackageDir, TOOLCHAIN_PACKAGE_RECEIPT), "{}");
+    const builtInPackageDir = path.join(builtInRoot, builtInId);
+    fs.mkdirSync(builtInPackageDir, { recursive: true });
+    fs.writeFileSync(path.join(builtInPackageDir, TOOLCHAIN_PACKAGE_RECEIPT), "{}");
 
-    fs.mkdirSync(destPackageDir, { recursive: true });
-    fs.writeFileSync(path.join(destPackageDir, "python.exe"), "dummy-dest");
-    fs.writeFileSync(path.join(destPackageDir, TOOLCHAIN_PACKAGE_RECEIPT), "{}");
+    const extraPackageDir = path.join(downloadedRoot, extraDownloadedId);
+    fs.mkdirSync(extraPackageDir, { recursive: true });
+    fs.writeFileSync(path.join(extraPackageDir, TOOLCHAIN_PACKAGE_RECEIPT), "{}");
 
     const result = migrateLegacyBundledToolchains({ builtInRoot, downloadedRoot });
 
     assert.equal(result.errors.length, 0);
-    assert.deepEqual(result.migratedPackages, [packageId]);
-    // Source should be removed
-    assert.ok(!fs.existsSync(srcPackageDir));
-    // Dest should still be there
-    assert.ok(fs.existsSync(destPackageDir));
+    assert.deepEqual(result.migratedPackages, []);
+
+    // Built-in remains
+    assert.ok(fs.existsSync(builtInPackageDir));
+    // Extra downloaded package remains
+    assert.ok(fs.existsSync(extraPackageDir));
   });
 });
 
-test("migrateLegacyBundledToolchains handles missing or empty builtInRoot gracefully", () => {
+test("migrateLegacyBundledToolchains handles missing or empty roots gracefully", () => {
   withTempSandbox(({ builtInRoot, downloadedRoot }) => {
     const nonExistent = path.join(builtInRoot, "does-not-exist");
     const result = migrateLegacyBundledToolchains({

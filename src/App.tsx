@@ -196,11 +196,11 @@ export default function App() {
     },
     setErrorMessage: (msg) => setErrorMessage(msg),
     showError,
-    onResetFilters: () => {
+    onResetFilters: useCallback(() => {
       setSearchTerm("");
       setContestantSort("default");
       setProblemSort("default");
-    },
+    }, []),
   });
 
   const dispatchResults = useCallback((action: JudgeResultsAction) => {
@@ -611,7 +611,9 @@ export default function App() {
           updateState={updater.state}
           onCheckUpdates={() => void updater.checkForUpdates()}
           onOpenUpdateChoices={() => {
-            if (updater.state.status === "available") setShowUpdateChoices(true);
+            if (updater.state.status === "available") {
+              void updater.downloadUpdate("core");
+            }
           }}
           onRequestInstall={() => setShowInstallUpdate(true)}
         />
