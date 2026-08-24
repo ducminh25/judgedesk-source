@@ -6,12 +6,12 @@ import {
   getChangelogForLanguage,
 } from "./changelog-data.js";
 
-test("changelog data contains versions from 1.3.9 down to 1.2.5 in descending order", () => {
+test("changelog data contains versions from 1.4.0 down to 1.2.5 in descending order", () => {
   const versionsVi = CHANGELOG_DATA_VI.map((r) => r.version);
   const versionsEn = CHANGELOG_DATA_EN.map((r) => r.version);
 
   const expectedVersions = [
-    "1.3.9",
+    "1.4.0",
     "1.3.83",
     "1.3.82",
     "1.3.8",
