@@ -718,20 +718,21 @@ pub(crate) fn focus_primary(app: &tauri::AppHandle) -> io::Result<()> {
     })?;
     #[cfg(windows)]
     {
-        use windows_sys::Win32::UI::WindowsAndMessaging::SetForegroundWindow;
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            SetForegroundWindow, ShowWindow, SW_RESTORE,
+        };
 
-        let window_handle = window.hwnd().map_err(|error| {
-            io::Error::other(format!(
-                "failed to resolve JudgeDesk window handle: {error}"
-            ))
-        })?;
-        if unsafe { SetForegroundWindow(window_handle.0) } == 0 {
-            let _ = window.request_user_attention(Some(tauri::UserAttentionType::Informational));
-            return Err(io::Error::new(
-                io::ErrorKind::PermissionDenied,
-                "Windows refused to foreground the JudgeDesk window",
-            ));
+        if let Ok(window_handle) = window.hwnd() {
+            unsafe {
+                ShowWindow(window_handle.0, SW_RESTORE);
+                if SetForegroundWindow(window_handle.0) == 0 {
+                    let _ = window.request_user_attention(Some(tauri::UserAttentionType::Informational));
+                }
+            }
         }
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
     }
     #[cfg(not(windows))]
     window
