@@ -42,9 +42,7 @@ fn get_backend_port(port: tauri::State<'_, backend::BackendPort>) -> u16 {
 }
 
 #[tauri::command]
-fn get_initial_contest_file(
-    initial_file: tauri::State<'_, InitialContestFile>,
-) -> Option<String> {
+fn get_initial_contest_file(initial_file: tauri::State<'_, InitialContestFile>) -> Option<String> {
     initial_file.0.lock().ok()?.take()
 }
 
@@ -90,7 +88,9 @@ pub fn run() {
     let builder = builder.manage(instance_coordinator);
 
     let app = builder
-        .manage(InitialContestFile(std::sync::Mutex::new(initial_contest_file)))
+        .manage(InitialContestFile(std::sync::Mutex::new(
+            initial_contest_file,
+        )))
         .manage(backend::BackendSidecar::default())
         .manage(backend::UpdateHandoff::default())
         .plugin(tauri_plugin_dialog::init())

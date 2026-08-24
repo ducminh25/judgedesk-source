@@ -726,7 +726,8 @@ pub(crate) fn focus_primary(app: &tauri::AppHandle) -> io::Result<()> {
             unsafe {
                 ShowWindow(window_handle.0, SW_RESTORE);
                 if SetForegroundWindow(window_handle.0) == 0 {
-                    let _ = window.request_user_attention(Some(tauri::UserAttentionType::Informational));
+                    let _ = window
+                        .request_user_attention(Some(tauri::UserAttentionType::Informational));
                 }
             }
         }
