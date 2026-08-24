@@ -34,21 +34,24 @@ pub fn get_cli_contest_file() -> Option<String> {
     None
 }
 
+pub struct InitialContestFile(pub std::sync::Mutex<Option<String>>);
+
 #[tauri::command]
 fn get_backend_port(port: tauri::State<'_, backend::BackendPort>) -> u16 {
     port.0
 }
 
 #[tauri::command]
-fn get_initial_contest_file() -> Option<String> {
-    get_cli_contest_file()
+fn get_initial_contest_file(
+    initial_file: tauri::State<'_, InitialContestFile>,
+) -> Option<String> {
+    initial_file.0.lock().ok()?.take()
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let context = tauri::generate_context!();
 
-    #[cfg(desktop)]
     let initial_contest_file = get_cli_contest_file();
     #[cfg(desktop)]
     let instance_coordinator = match startup_guard::acquire(
@@ -87,6 +90,7 @@ pub fn run() {
     let builder = builder.manage(instance_coordinator);
 
     let app = builder
+        .manage(InitialContestFile(std::sync::Mutex::new(initial_contest_file)))
         .manage(backend::BackendSidecar::default())
         .manage(backend::UpdateHandoff::default())
         .plugin(tauri_plugin_dialog::init())
@@ -117,6 +121,20 @@ pub fn run() {
         if matches!(event, tauri::RunEvent::Reopen { .. }) {
             if let Err(error) = startup_guard::focus_primary(handle) {
                 eprintln!("Failed to focus JudgeDesk after Dock reopen: {error}");
+            }
+        }
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::Opened { urls } = event {
+            use tauri::Emitter;
+            for url in urls {
+                if let Ok(file_path) = url.to_file_path() {
+                    if file_path
+                        .extension()
+                        .is_some_and(|ext| ext.eq_ignore_ascii_case("judgedesk"))
+                    {
+                        let _ = handle.emit("open_contest_file", file_path.to_string_lossy().to_string());
+                    }
+                }
             }
         }
         if matches!(event, tauri::RunEvent::Exit) {

@@ -267,7 +267,8 @@ test("compiler flags retain Windows limits and avoid unsupported macOS flags", (
   assert.equal(mac.includes("-static"), false);
   assert.equal(mac.includes("-lm"), false);
   assert.equal(mac.includes("-s"), false);
-  assert.equal(mac.some((flag) => flag.startsWith("-fsanitize")), false);
+  assert.ok(mac.includes("-fsanitize=integer-divide-by-zero"));
+  assert.ok(mac.includes("-fsanitize-trap=integer-divide-by-zero"));
   assert.equal(
     mac.some((flag) => flag.includes("--stack")),
     false,
