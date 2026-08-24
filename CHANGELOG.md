@@ -5,6 +5,26 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-08-25
+
+### Sửa lỗi Tương tác Kỳ thi .judgedesk
+
+- Khắc phục triệt để lỗi không thao tác được bảng điểm khi mở tệp .judgedesk bằng cách bấm đúp từ File Explorer (Windows) và Finder (macOS).
+- Cho phép tích chọn thí sinh, lọc bài tập, chấm bài, xoá điểm và cấu hình bài thi mượt mà sau khi mở file mà không bị ghi đè dữ liệu gốc.
+- Tự động phát hiện thay đổi và hỗ trợ lưu đè trực tiếp (Ctrl+S / ⌘S) hoặc lưu mới (Ctrl+Shift+S / ⌘Shift+S) vào chính file .judgedesk đang mở.
+
+### Trải nghiệm Cập nhật 1-Click Siêu tốc
+
+- Đơn giản hóa luồng cập nhật: Bấm 1 click vào nút cập nhật trên thanh công cụ để tự động tải ngay gói Core siêu nhẹ (~20 MB) trong nền mà không cần qua hộp thoại lựa chọn.
+- Bảo lưu 100% các bộ toolchain, cấu hình và dữ liệu người dùng đã có trong máy sau mỗi lần cập nhật.
+
+### Tối ưu hóa Trình chấm, Bảo mật & Đa nền tảng
+
+- Tối ưu hóa khởi động Native Sandbox Self-Test: Nâng thời gian chờ lên 20s và tái sử dụng probe.exe, giải quyết triệt để hiện tượng quét chậm của Windows Defender trên các máy Windows 10/11.
+- Chuẩn hóa quy trình biên dịch Java: Tự động trích xuất và staging theo tên public class thực tế, đảm bảo các bài nộp Java hoạt động chuẩn xác trên cả macOS và Windows.
+- Đồng nhất kết quả chia cho 0 trên macOS: Bổ sung bẫy SIGTRAP cho Apple Clang trên CPU ARM64, trả về lỗi chạy Runtime Error (0 điểm) chính xác 100% như trên x86 Windows.
+- Tự động khử trùng lặp Toolchain (Deduplication): Bản Full khởi động tức thì (< 1s) với cơ chế Zero-Copy và tự động dọn dẹp các thư mục duplicate trong AppData giúp giải phóng ~800 MB ổ cứng.
+
 ## [1.3.82] - 2026-08-22
 
 ### Sửa triệt để Xuất Excel & Tối ưu Bảng điểm

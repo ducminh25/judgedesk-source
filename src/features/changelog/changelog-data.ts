@@ -11,8 +11,8 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
   {
-    version: "1.3.9",
-    date: "2026-08-24",
+    version: "1.4.0",
+    date: "2026-08-25",
     sections: [
       {
         title: "Sửa lỗi Tương tác Kỳ thi .judgedesk",
@@ -318,8 +318,8 @@ export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
 
 export const CHANGELOG_DATA_EN: ChangelogRelease[] = [
   {
-    version: "1.3.9",
-    date: "2026-08-24",
+    version: "1.4.0",
+    date: "2026-08-25",
     sections: [
       {
         title: "Contest Archive (.judgedesk) Interaction Fix",
