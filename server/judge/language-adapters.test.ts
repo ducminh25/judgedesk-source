@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
@@ -10,6 +12,7 @@ import {
   buildJavaCompilationArgs,
   buildManagedPascalSupportArgs,
   buildNativeCompilationRecipe,
+  resolveJavaSubmissionStaging,
 } from "./language-adapters.js";
 
 test("C and C++ split compilation share an explicit two-phase budget", () => {
@@ -178,6 +181,41 @@ test("Java keeps the Themis javac default while isolating class artifacts", () =
     buildJavaCompilationArgs("Main.java", "classes"),
     ["-d", "classes", "Main.java"],
   );
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "jd-java-test-"));
+  try {
+    const sumFile = path.join(tmpDir, "SUM.java");
+
+    // 1. public class Main
+    fs.writeFileSync(sumFile, "public class Main { public static void main(String[] args) {} }");
+    assert.deepEqual(resolveJavaSubmissionStaging(sumFile, "SUM"), {
+      stagedSourceName: "Main.java",
+      entrypointCandidate: "Main",
+    });
+
+    // 2. public class SUM
+    fs.writeFileSync(sumFile, "public class SUM { public static void main(String[] args) {} }");
+    assert.deepEqual(resolveJavaSubmissionStaging(sumFile, "SUM"), {
+      stagedSourceName: "SUM.java",
+      entrypointCandidate: "SUM",
+    });
+
+    // 3. class Main (no public)
+    fs.writeFileSync(sumFile, "class Main { public static void main(String[] args) {} }");
+    assert.deepEqual(resolveJavaSubmissionStaging(sumFile, "SUM"), {
+      stagedSourceName: "SUM.java",
+      entrypointCandidate: "Main",
+    });
+
+    // 4. class Solution (no public)
+    fs.writeFileSync(sumFile, "class Solution { public static void main(String[] args) {} }");
+    assert.deepEqual(resolveJavaSubmissionStaging(sumFile, "SUM"), {
+      stagedSourceName: "SUM.java",
+      entrypointCandidate: "SUM",
+    });
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
 
 test("compiler adapters keep caches and package roots inside the executor contract", () => {

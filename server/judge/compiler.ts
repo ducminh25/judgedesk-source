@@ -55,6 +55,7 @@ import {
   buildManagedPascalSupportArgs,
   buildNativeCompilationRecipe,
   isNativeCompiledLanguage,
+  resolveJavaSubmissionStaging,
 } from "./language-adapters.js";
 import type { PreparedSubmissionProgram } from "./prepared-program.js";
 
@@ -285,10 +286,11 @@ async function compileManagedDirectorySubmission(
     }
     const compilerPath = toolchain.executionPath || toolchain.executablePath;
     if (language === "java") {
-      const entrypointCandidate = safeName(
+      const fallbackCandidate = safeName(
         path.basename(options.submissionPath, path.extname(options.submissionPath)),
       ) || "Main";
-      const stagedSourceName = `${entrypointCandidate}.java`;
+      const { stagedSourceName, entrypointCandidate } =
+        resolveJavaSubmissionStaging(options.submissionPath, fallbackCandidate);
       await runDirectoryCompilerWithLimits({
         kind: "java",
         compilerPath,

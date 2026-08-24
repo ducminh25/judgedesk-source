@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { getCompileFlags } from "../../shared/compile-config.js";
 import type { ProblemCompileConfig, SubmissionLanguage } from "../types.js";
@@ -196,6 +197,54 @@ export function buildJavaCompilationArgs(
   // directs class artifacts into its protected output directory so they can
   // be validated and moved atomically without exposing compiler work files.
   return ["-d", outputDirectory, sourcePath];
+}
+
+export function resolveJavaSubmissionStaging(
+  submissionPath: string,
+  fallbackBaseName?: string,
+): {
+  stagedSourceName: string;
+  entrypointCandidate: string;
+} {
+  const fallback = fallbackBaseName
+    || path.basename(submissionPath, path.extname(submissionPath))
+    || "Main";
+
+  try {
+    const rawContent = fs.readFileSync(submissionPath, "utf8");
+    const stripped = rawContent
+      .replace(/\/\*[\s\S]*?\*\//g, " ")
+      .replace(/\/\/.*$/gm, " ")
+      .replace(/"(?:[^"\\]|\\.)*"/g, '""');
+
+    const publicClassMatch = stripped.match(
+      /\bpublic\s+(?:final\s+|abstract\s+|sealed\s+|non-sealed\s+)*(?:class|interface|enum|record)\s+([A-Za-z_$][A-Za-z0-9_$]*)/,
+    );
+    if (publicClassMatch && publicClassMatch[1]) {
+      const publicName = publicClassMatch[1];
+      return {
+        stagedSourceName: `${publicName}.java`,
+        entrypointCandidate: publicName,
+      };
+    }
+
+    const mainClassMatch = stripped.match(
+      /\b(?:class|record)\s+(Main)\b/,
+    );
+    if (mainClassMatch && mainClassMatch[1]) {
+      return {
+        stagedSourceName: `${fallback}.java`,
+        entrypointCandidate: "Main",
+      };
+    }
+  } catch {
+    // Fallback if unreadable
+  }
+
+  return {
+    stagedSourceName: `${fallback}.java`,
+    entrypointCandidate: fallback,
+  };
 }
 
 export function buildManagedPascalSupportArgs(
