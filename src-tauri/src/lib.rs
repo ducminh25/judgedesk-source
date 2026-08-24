@@ -124,7 +124,7 @@ pub fn run() {
             }
         }
         #[cfg(target_os = "macos")]
-        if let tauri::RunEvent::Opened { urls } = event {
+        if let tauri::RunEvent::Opened { urls } = &event {
             use tauri::Emitter;
             for url in urls {
                 if let Ok(file_path) = url.to_file_path() {
@@ -132,7 +132,8 @@ pub fn run() {
                         .extension()
                         .is_some_and(|ext| ext.eq_ignore_ascii_case("judgedesk"))
                     {
-                        let _ = handle.emit("open_contest_file", file_path.to_string_lossy().to_string());
+                        let _ = handle
+                            .emit("open_contest_file", file_path.to_string_lossy().to_string());
                     }
                 }
             }
