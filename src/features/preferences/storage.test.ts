@@ -77,6 +77,21 @@ describe("preferencesStorage", () => {
     assert.strictEqual(preferencesStorage.getLastSeenVersion(), "1.3.7");
   });
 
+  it("should persist the Themis prompt choice", () => {
+    assert.strictEqual(preferencesStorage.hasThemisPromptChoice(), false);
+    assert.strictEqual(preferencesStorage.getThemisPromptChoice(), null);
+
+    preferencesStorage.setThemisPromptChoice("themis");
+    assert.strictEqual(preferencesStorage.hasThemisPromptChoice(), true);
+    assert.strictEqual(preferencesStorage.getThemisPromptChoice(), "themis");
+
+    preferencesStorage.setThemisPromptChoice("managed");
+    assert.strictEqual(preferencesStorage.getThemisPromptChoice(), "managed");
+
+    preferencesStorage.setThemisPromptChoice("dismissed");
+    assert.strictEqual(preferencesStorage.getThemisPromptChoice(), "dismissed");
+  });
+
   it("should handle localStorage throwing errors gracefully", (context) => {
     const originalGet = (global as any).localStorage.getItem;
     const originalConsoleError = console.error;
