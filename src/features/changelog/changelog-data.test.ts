@@ -6,11 +6,12 @@ import {
   getChangelogForLanguage,
 } from "./changelog-data.js";
 
-test("changelog data contains versions from 1.4.0 down to 1.2.5 in descending order", () => {
+test("changelog data contains versions from 1.4.1 down to 1.2.5 in descending order", () => {
   const versionsVi = CHANGELOG_DATA_VI.map((r) => r.version);
   const versionsEn = CHANGELOG_DATA_EN.map((r) => r.version);
 
   const expectedVersions = [
+    "1.4.1",
     "1.4.0",
     "1.3.83",
     "1.3.82",
@@ -49,6 +50,6 @@ test("every version has sections and non-empty bullet items", () => {
 test("getChangelogForLanguage returns appropriate language release list", () => {
   const vi = getChangelogForLanguage("vi");
   const en = getChangelogForLanguage("en");
-  assert.equal(vi[0].sections[0].title, "Sửa lỗi Tương tác Kỳ thi .judgedesk");
-  assert.equal(en[0].sections[0].title, "Contest Archive (.judgedesk) Interaction Fix");
+  assert.equal(vi[0].sections[0].title, "Tự động nhận diện & So sánh Bộ công cụ Themis");
+  assert.equal(en[0].sections[0].title, "Themis Toolchain Auto-detection & Comparison");
 });

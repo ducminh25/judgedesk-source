@@ -11,6 +11,25 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
   {
+    version: "1.4.1",
+    date: "2026-08-25",
+    sections: [
+      {
+        title: "Tự động nhận diện & So sánh Bộ công cụ Themis",
+        items: [
+          "Tự động phát hiện bộ công cụ Themis (GCC 9.2, FPC 3.0/3.2, Python, Java) khi mở ứng dụng lần đầu và hiển thị bảng so sánh trực quan với Chuẩn Olympic 64-bit.",
+          "Hỗ trợ áp dụng toàn bộ công cụ của Themis hoặc tinh chỉnh từng ngôn ngữ trong Cài đặt Bộ công cụ.",
+        ],
+      },
+      {
+        title: "Cải tiến Giao diện Cấu hình Bài thi",
+        items: [
+          "Căn giữa cửa sổ chỉnh sửa điểm (POINTS), thời gian chạy và nhóm test để thuận tiện thao tác, tránh bị tràn nút Lưu trên các màn hình kích thước nhỏ.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.4.0",
     date: "2026-08-25",
     sections: [
@@ -317,6 +336,25 @@ export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
 ];
 
 export const CHANGELOG_DATA_EN: ChangelogRelease[] = [
+  {
+    version: "1.4.1",
+    date: "2026-08-25",
+    sections: [
+      {
+        title: "Themis Toolchain Auto-detection & Comparison",
+        items: [
+          "Automatically detects existing Themis 32-bit compilers (GCC 9.2, FPC, Python, Java) on startup and presents a side-by-side comparison modal against Managed Olympic 64-bit standards.",
+          "One-click batch configuration to use Themis toolchains or customize individual languages under Toolchain Settings.",
+        ],
+      },
+      {
+        title: "Problem Configuration Modal UX Enhancements",
+        items: [
+          "Centered test point (POINTS), time limit, and group editing popover to prevent bottom-edge clipping and improve navigation across all display resolutions.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.4.0",
     date: "2026-08-25",
