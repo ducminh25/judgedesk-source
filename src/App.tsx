@@ -12,6 +12,10 @@ import EntityActionMenu from "./components/EntityActionMenu.js";
 import AppToolbar from "./components/AppToolbar.js";
 import HelpCenter, { isHelpShortcut, type HelpSectionId } from "./features/help/HelpCenter.js";
 import ToolchainManager from "./features/toolchains/ToolchainManager.js";
+import ThemisToolchainPromptModal, {
+  type DetectedThemisToolchain,
+  type ManagedToolchainInfo,
+} from "./features/toolchains/ThemisToolchainPromptModal.js";
 import type { ToolchainState } from "./features/toolchains/useToolchains.js";
 import { useAppUpdater } from "./features/updates/useAppUpdater.js";
 import {
@@ -117,6 +121,9 @@ export default function App() {
   const [isInstallingUpdate, setIsInstallingUpdate] = useState(false);
   const [updateRestartError, setUpdateRestartError] = useState("");
   const [showChangelog, setShowChangelog] = useState(false);
+  const [showThemisPromptModal, setShowThemisPromptModal] = useState(false);
+  const [themisDetectedToolchains, setThemisDetectedToolchains] = useState<DetectedThemisToolchain[]>([]);
+  const [managedToolchainsInfo, setManagedToolchainsInfo] = useState<ManagedToolchainInfo[]>([]);
 
   // Host & Error states
   const [hostStatus, setHostStatus] = useState<HostStatus | null>(null);
@@ -370,6 +377,140 @@ export default function App() {
   useEffect(() => {
     requestHostStatus();
   }, [requestHostStatus]);
+
+  // Themis Toolchain Detection Prompt on First Launch
+  useEffect(() => {
+    if (preferencesStorage.hasThemisPromptChoice()) return;
+
+    let isMounted = true;
+    const checkThemisDetection = async () => {
+      try {
+        const response = await apiFetch("/api/toolchains");
+        if (!response.ok) return;
+        const data = (await response.json()) as ToolchainState;
+        if (!isMounted) return;
+
+        const detected: DetectedThemisToolchain[] = [];
+        for (const profile of data.profiles || []) {
+          const themisCandidate = profile.candidates?.find(
+            (c) =>
+              c.canonicalPath.toLowerCase().includes("themis") ||
+              c.displayPath.toLowerCase().includes("themis"),
+          );
+          if (themisCandidate) {
+            const langName =
+              profile.kind === "cpp"
+                ? "C++ (g++)"
+                : profile.kind === "c"
+                  ? "C (gcc)"
+                  : profile.kind === "pascal"
+                    ? "Pascal (fpc)"
+                    : profile.kind === "python"
+                      ? "Python"
+                      : profile.kind === "java"
+                        ? "Java (javac)"
+                        : profile.displayNameKey || profile.kind;
+            detected.push({
+              profileId: profile.id,
+              kind: profile.kind,
+              name: langName,
+              path: themisCandidate.canonicalPath,
+              version: profile.active?.version || undefined,
+            });
+          }
+        }
+
+        const managed: ManagedToolchainInfo[] = (data.profiles || [])
+          .filter((p) => ["cpp", "c", "pascal", "python", "java"].includes(p.kind))
+          .map((p) => {
+            const langName =
+              p.kind === "cpp"
+                ? "C++ (g++)"
+                : p.kind === "c"
+                  ? "C (gcc)"
+                  : p.kind === "pascal"
+                    ? "Pascal (fpc)"
+                    : p.kind === "python"
+                      ? "Python"
+                      : p.kind === "java"
+                        ? "Java (javac)"
+                        : p.displayNameKey || p.kind;
+            const ver =
+              p.managedPackage?.version ||
+              (p.kind === "cpp" || p.kind === "c"
+                ? "14.2.0"
+                : p.kind === "pascal"
+                  ? "3.2.2"
+                  : p.kind === "python"
+                    ? "3.12.0"
+                    : "21.0.12");
+            return {
+              profileId: p.id,
+              kind: p.kind,
+              name: langName,
+              version: ver,
+            };
+          });
+
+        if (detected.length > 0 && isMounted) {
+          setThemisDetectedToolchains(detected);
+          setManagedToolchainsInfo(managed);
+          setShowThemisPromptModal(true);
+        }
+      } catch (err) {
+        console.warn("Failed to probe Themis toolchains:", err);
+      }
+    };
+
+    void checkThemisDetection();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleApplyThemisAll = useCallback(async () => {
+    for (const item of themisDetectedToolchains) {
+      try {
+        await apiFetch(`/api/toolchains/profiles/${encodeURIComponent(item.profileId)}/preference`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode: "local_path",
+            localPath: item.path,
+          }),
+        });
+      } catch (err) {
+        console.error(`Failed to set Themis toolchain for ${item.profileId}:`, err);
+      }
+    }
+    requestHostStatus();
+  }, [themisDetectedToolchains, requestHostStatus]);
+
+  const handleApplyManagedAll = useCallback(async () => {
+    for (const item of managedToolchainsInfo) {
+      try {
+        await apiFetch(`/api/toolchains/profiles/${encodeURIComponent(item.profileId)}/preference`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode: "managed",
+          }),
+        });
+      } catch (err) {
+        console.error(`Failed to set managed toolchain for ${item.profileId}:`, err);
+      }
+    }
+    requestHostStatus();
+  }, [managedToolchainsInfo, requestHostStatus]);
+
+  const handleThemisSuccessToast = useCallback((msg: string) => {
+    setAppError({
+      title: t("common.success", "Thành công"),
+      reason: msg,
+      severity: "info",
+    });
+  }, [t]);
 
   const handleReloadFolders = useCallback(async () => {
     try {
@@ -850,6 +991,18 @@ export default function App() {
         {openToolchains && (
           <ToolchainManager
             onClose={() => setOpenToolchains(false)}
+          />
+        )}
+
+        {showThemisPromptModal && (
+          <ThemisToolchainPromptModal
+            isOpen={showThemisPromptModal}
+            onClose={() => setShowThemisPromptModal(false)}
+            themisToolchains={themisDetectedToolchains}
+            managedToolchains={managedToolchainsInfo}
+            onApplyManaged={handleApplyManagedAll}
+            onApplyThemis={handleApplyThemisAll}
+            onSuccessToast={handleThemisSuccessToast}
           />
         )}
 

@@ -5,10 +5,12 @@ const KEYS = {
   contestantsPath: "themisV2.workspace.contestantsPath",
   toolchainSetupCompleted: "themisV2.toolchainSetupCompleted",
   lastSeenVersion: "themisV2.lastSeenVersion",
+  themisPromptChoice: "themisV2.themisPromptChoice",
 } as const;
 
 export type Theme = "light" | "dark";
 export type Language = "en" | "vi";
+export type ThemisPromptChoice = "managed" | "themis" | "dismissed";
 
 function getLocalStorageItem(key: string): string | null {
   try {
@@ -85,5 +87,21 @@ export const preferencesStorage = {
 
   setLastSeenVersion(version: string): void {
     setLocalStorageItem(KEYS.lastSeenVersion, version);
+  },
+
+  getThemisPromptChoice(): ThemisPromptChoice | null {
+    const val = getLocalStorageItem(KEYS.themisPromptChoice);
+    if (val === "managed" || val === "themis" || val === "dismissed") {
+      return val;
+    }
+    return null;
+  },
+
+  setThemisPromptChoice(choice: ThemisPromptChoice): void {
+    setLocalStorageItem(KEYS.themisPromptChoice, choice);
+  },
+
+  hasThemisPromptChoice(): boolean {
+    return getLocalStorageItem(KEYS.themisPromptChoice) !== null;
   },
 };

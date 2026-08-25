@@ -881,6 +881,9 @@ async function collectWindowsCandidates(
   }
   if (kind === "python") {
     const candidates = [
+      path.join(programFiles, "Themis", "Python", "python.exe"),
+      path.join(programFilesX86, "Themis", "Python", "python.exe"),
+      String.raw`C:\Themis\Python\python.exe`,
       String.raw`C:\Python313\python.exe`,
       String.raw`C:\Python312\python.exe`,
       String.raw`C:\Python311\python.exe`,
@@ -895,7 +898,11 @@ async function collectWindowsCandidates(
   }
   const configuredHome = configuredToolchainHome(kind);
   if (kind === "java") {
-    const candidates: string[] = [];
+    const candidates: string[] = [
+      path.join(programFiles, "Themis", "Java", "bin", "javac.exe"),
+      path.join(programFilesX86, "Themis", "Java", "bin", "javac.exe"),
+      String.raw`C:\Themis\Java\bin\javac.exe`,
+    ];
     if (configuredHome) candidates.push(path.join(configuredHome, "bin", "javac.exe"));
     for (const vendorRoot of [
       path.join(programFiles, "Eclipse Adoptium"),
@@ -913,6 +920,9 @@ async function collectWindowsCandidates(
     string[]
   > = {
     pascal: [
+      path.join(programFiles, "Themis", "fpc", "bin", "i386-win32", "fpc.exe"),
+      path.join(programFilesX86, "Themis", "fpc", "bin", "i386-win32", "fpc.exe"),
+      String.raw`C:\Themis\fpc\bin\i386-win32\fpc.exe`,
       String.raw`C:\FPC\3.2.2\bin\x86_64-win64\fpc.exe`,
       String.raw`C:\FPC\3.2.2\bin\i386-win32\fpc.exe`,
       String.raw`C:\lazarus\fpc\3.2.2\bin\x86_64-win64\fpc.exe`,
