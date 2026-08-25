@@ -5,6 +5,17 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-08-25
+
+### Tự động nhận diện & So sánh Bộ công cụ Themis
+
+- Tự động phát hiện bộ công cụ Themis (GCC 9.2, FPC 3.0/3.2, Python, Java) khi mở ứng dụng lần đầu và hiển thị bảng so sánh trực quan với Chuẩn Olympic 64-bit.
+- Hỗ trợ áp dụng toàn bộ công cụ của Themis hoặc tinh chỉnh từng ngôn ngữ trong Cài đặt Bộ công cụ.
+
+### Cải tiến Giao diện Cấu hình Bài thi
+
+- Căn giữa cửa sổ chỉnh sửa điểm (POINTS), thời gian chạy và nhóm test để thuận tiện thao tác, tránh bị tràn nút Lưu trên các màn hình kích thước nhỏ.
+
 ## [1.4.0] - 2026-08-25
 
 ### Sửa lỗi Tương tác Kỳ thi .judgedesk
