@@ -388,11 +388,17 @@ test("CPU loop and sleep both receive TLE", { timeout: 10_000 }, async () => {
 
 test("job-wide memory boundary is stable across 20 repetitions", { timeout: 60_000 }, async () => {
   for (let index = 0; index < 20; index += 1) {
-    const pass = await runHelper(["--test-allocate-mib", "48", "5"], { memoryBytes: 64 * MiB });
+    const pass = await runHelper(["--test-allocate-mib", "48", "5"], {
+      memoryBytes: 64 * MiB,
+      wallTimeMs: 5_000,
+    });
     assert.equal(pass.reason, "exited", `under-limit repetition ${index}: ${JSON.stringify(pass)}`);
   }
   for (let index = 0; index < 20; index += 1) {
-    const fail = await runHelper(["--test-allocate-mib", "80", "2000"], { memoryBytes: 64 * MiB });
+    const fail = await runHelper(["--test-allocate-mib", "80", "200"], {
+      memoryBytes: 64 * MiB,
+      wallTimeMs: 5_000,
+    });
     assert.equal(fail.reason, "memory_limit", `over-limit repetition ${index}: ${JSON.stringify(fail)}`);
     assert.ok((fail.peakMemoryBytes ?? 0) > 0);
     assert.ok(
