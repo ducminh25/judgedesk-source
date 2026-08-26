@@ -166,6 +166,31 @@ test("source selections and version policies have explicit non-fallback shapes",
       maxExclusive: "1.3.0",
       testedMajors: [1],
     },
+    {
+      kind: "minimum_only",
+      minInclusive: "9.0.0",
+    },
+    {
+      kind: "host_matrix",
+      rules: [
+        {
+          hosts: [{ platform: "win32", arch: "x64" }],
+          policy: {
+            kind: "bounded_range",
+            minInclusive: "9.0.0",
+            maxExclusive: "18.0.0",
+            testedMajors: [9],
+          },
+        },
+        {
+          hosts: [{ platform: "darwin", arch: "arm64" }],
+          policy: {
+            kind: "minimum_only",
+            minInclusive: "9.0.0",
+          },
+        },
+      ],
+    },
   ] satisfies readonly ToolchainVersionPolicy[];
 
   assert.deepEqual(selections.map((selection) => selection.mode), [
@@ -177,6 +202,8 @@ test("source selections and version policies have explicit non-fallback shapes",
   assert.deepEqual(policies.map((policy) => policy.kind), [
     "exact_allowlist",
     "bounded_range",
+    "minimum_only",
+    "host_matrix",
   ]);
 
   const acceptSelection = (_selection: ToolchainSourceSelection): void => {};

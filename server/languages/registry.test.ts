@@ -66,7 +66,7 @@ test("local version policies use bounded compatibility ranges before the native 
   assert.deepEqual(versions("java"), ["21.0.12"]);
 
   const cppPolicy = getRegisteredProfileForKind("cpp").localVersionPolicy;
-  assert.equal(cppPolicy.kind, "bounded_range");
+  assert.equal(cppPolicy.kind, "host_matrix");
   assert.equal(
     isToolchainVersionAllowed(
       "14.2.0",
@@ -91,8 +91,58 @@ test("local version policies use bounded compatibility ranges before the native 
     ),
     true,
   );
-  assert.equal(isToolchainVersionAllowed("8.5.0", cppPolicy), false);
-  assert.equal(isToolchainVersionAllowed("18.0.0", cppPolicy), false);
+  assert.equal(
+    isToolchainVersionAllowed(
+      "21.0.0",
+      cppPolicy,
+      { platform: "darwin", arch: "arm64" },
+    ),
+    true,
+  );
+  assert.equal(
+    isToolchainVersionAllowed(
+      "21.0.0",
+      cppPolicy,
+      { platform: "win32", arch: "x64" },
+    ),
+    false,
+  );
+  assert.equal(
+    isToolchainVersionAllowed(
+      "18.0.0",
+      cppPolicy,
+      { platform: "win32", arch: "x64" },
+    ),
+    false,
+  );
+  assert.equal(
+    isToolchainVersionAllowed(
+      "8.5.0",
+      cppPolicy,
+      { platform: "darwin", arch: "arm64" },
+    ),
+    false,
+  );
+  assert.equal(isToolchainVersionAllowed("14.2.0", cppPolicy), false);
+
+  const cPolicy = getRegisteredProfileForKind("c").localVersionPolicy;
+  assert.equal(cPolicy.kind, "host_matrix");
+  assert.equal(
+    isToolchainVersionAllowed(
+      "21.0.0",
+      cPolicy,
+      { platform: "darwin", arch: "arm64" },
+    ),
+    true,
+  );
+  assert.equal(
+    isToolchainVersionAllowed(
+      "21.0.0",
+      cPolicy,
+      { platform: "win32", arch: "x64" },
+    ),
+    false,
+  );
 
   const pythonPolicy = getRegisteredProfileForKind("python").localVersionPolicy;
   assert.equal(pythonPolicy.kind, "bounded_range");
