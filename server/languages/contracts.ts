@@ -59,16 +59,18 @@ export interface LanguageProfile {
   };
 }
 
+export interface ExactToolchainVersionHost {
+  platform: HostPlatform;
+  arch: HostArchitecture;
+}
+
 export interface ExactToolchainVersionIdentity {
   family: string;
   distributor?: string;
   version: string;
   build: string;
   identityPolicyId: string;
-  hosts: NonEmptyReadonlyArray<{
-    platform: HostPlatform;
-    arch: HostArchitecture;
-  }>;
+  hosts: NonEmptyReadonlyArray<ExactToolchainVersionHost>;
 }
 
 export type ToolchainVersionPolicy =
@@ -81,6 +83,17 @@ export type ToolchainVersionPolicy =
       minInclusive: string;
       maxExclusive: string;
       testedMajors: NonEmptyReadonlyArray<number>;
+    }
+  | {
+      kind: "minimum_only";
+      minInclusive: string;
+    }
+  | {
+      kind: "host_matrix";
+      rules: readonly {
+        hosts: readonly ExactToolchainVersionHost[];
+        policy: ToolchainVersionPolicy;
+      }[];
     };
 
 export type ToolchainSourceMode =

@@ -52,16 +52,46 @@ const BOTH_RELEASE_HOSTS = [WINDOWS_X64_HOST, MACOS_ARM64_HOST] as const;
 
 const LOCAL_VERSION_POLICIES = {
   cpp: {
-    kind: "bounded_range",
-    minInclusive: "9.0.0",
-    maxExclusive: "18.0.0",
-    testedMajors: [9, 10, 11, 12, 13, 14, 15, 16, 17],
+    kind: "host_matrix",
+    rules: [
+      {
+        hosts: [WINDOWS_X64_HOST],
+        policy: {
+          kind: "bounded_range",
+          minInclusive: "9.0.0",
+          maxExclusive: "18.0.0",
+          testedMajors: [9, 10, 11, 12, 13, 14, 15, 16, 17],
+        },
+      },
+      {
+        hosts: [MACOS_ARM64_HOST],
+        policy: {
+          kind: "minimum_only",
+          minInclusive: "9.0.0",
+        },
+      },
+    ],
   },
   c: {
-    kind: "bounded_range",
-    minInclusive: "9.0.0",
-    maxExclusive: "18.0.0",
-    testedMajors: [9, 10, 11, 12, 13, 14, 15, 16, 17],
+    kind: "host_matrix",
+    rules: [
+      {
+        hosts: [WINDOWS_X64_HOST],
+        policy: {
+          kind: "bounded_range",
+          minInclusive: "9.0.0",
+          maxExclusive: "18.0.0",
+          testedMajors: [9, 10, 11, 12, 13, 14, 15, 16, 17],
+        },
+      },
+      {
+        hosts: [MACOS_ARM64_HOST],
+        policy: {
+          kind: "minimum_only",
+          minInclusive: "9.0.0",
+        },
+      },
+    ],
   },
   python: {
     kind: "bounded_range",
@@ -545,10 +575,45 @@ function validateRegistry(
       ) {
         throw new Error(`Local version policy does not cover every host for '${id}'.`);
       }
+    } else if (entry.localVersionPolicy.kind === "host_matrix") {
+      const matrixHostKeys = new Set(
+        entry.localVersionPolicy.rules.flatMap((rule) =>
+          rule.hosts.map((host) => `${host.platform}:${host.arch}`)
+        ),
+      );
+      if (
+        matrixHostKeys.size !== hostKeys.size
+        || [...hostKeys].some((hostKey) => !matrixHostKeys.has(hostKey))
+        || [...matrixHostKeys].some((hostKey) => !hostKeys.has(hostKey))
+      ) {
+        throw new Error(`Local version policy host matrix does not cover every host for '${id}'.`);
+      }
     }
     ids.add(id);
     kinds.add(entry.toolchainKind);
   }
+}
+
+function freezePolicy(policy: ToolchainVersionPolicy): void {
+  if (policy.kind === "exact_allowlist") {
+    for (const identity of policy.entries) {
+      for (const host of identity.hosts) Object.freeze(host);
+      Object.freeze(identity.hosts);
+      Object.freeze(identity);
+    }
+    Object.freeze(policy.entries);
+  } else if (policy.kind === "bounded_range") {
+    Object.freeze(policy.testedMajors);
+  } else if (policy.kind === "host_matrix") {
+    for (const rule of policy.rules) {
+      for (const host of rule.hosts) Object.freeze(host);
+      Object.freeze(rule.hosts);
+      freezePolicy(rule.policy);
+      Object.freeze(rule);
+    }
+    Object.freeze(policy.rules);
+  }
+  Object.freeze(policy);
 }
 
 function freezeRegistry(registry: readonly RegisteredLanguageProfile[]): void {
@@ -566,17 +631,7 @@ function freezeRegistry(registry: readonly RegisteredLanguageProfile[]): void {
     Object.freeze(entry.profile.policies);
     Object.freeze(entry.profile.ref);
     Object.freeze(entry.profile);
-    if (entry.localVersionPolicy.kind === "exact_allowlist") {
-      for (const identity of entry.localVersionPolicy.entries) {
-        for (const host of identity.hosts) Object.freeze(host);
-        Object.freeze(identity.hosts);
-        Object.freeze(identity);
-      }
-      Object.freeze(entry.localVersionPolicy.entries);
-    } else {
-      Object.freeze(entry.localVersionPolicy.testedMajors);
-    }
-    Object.freeze(entry.localVersionPolicy);
+    freezePolicy(entry.localVersionPolicy);
     for (const localPolicy of entry.localExecution) Object.freeze(localPolicy);
     Object.freeze(entry.localExecution);
     Object.freeze(entry);

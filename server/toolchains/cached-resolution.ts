@@ -5,7 +5,10 @@ import {
   getRegisteredProfileForKind,
   type LocalExecutionMode,
 } from "../languages/registry.js";
-import { isToolchainVersionAllowed } from "../languages/version-policy.js";
+import {
+  isToolchainVersionAllowed,
+  resolveToolchainVersionPolicyForHost,
+} from "../languages/version-policy.js";
 import {
   getDiscoveredCandidates,
   getToolchainDiscoverySnapshot,
@@ -176,16 +179,18 @@ function isCandidateVersionAllowed(
   if (!host) return false;
   const policy = getRegisteredProfileForKind(kind).localVersionPolicy;
   if (!isToolchainVersionAllowed(candidate.version, policy, host)) return false;
-  return policy.kind !== "exact_allowlist"
-    || policy.entries.some((entry) =>
-      entry.family === candidate.family
-      && entry.version === candidate.version
-      && entry.hosts.some(
-        (candidateHost) =>
-          candidateHost.platform === host.platform
-          && candidateHost.arch === host.arch,
-      )
-    );
+  const leafPolicy = resolveToolchainVersionPolicyForHost(policy, host);
+  if (!leafPolicy) return false;
+  if (leafPolicy.kind !== "exact_allowlist") return true;
+  return leafPolicy.entries.some((entry) =>
+    entry.family === candidate.family
+    && entry.version === candidate.version
+    && entry.hosts.some(
+      (candidateHost) =>
+        candidateHost.platform === host.platform
+        && candidateHost.arch === host.arch,
+    )
+  );
 }
 
 function localExecutionMode(kind: ToolchainKind): LocalExecutionMode | undefined {

@@ -1,13 +1,11 @@
 import type {
+  ExactToolchainVersionHost,
   HostArchitecture,
   HostPlatform,
   ToolchainVersionPolicy,
 } from "./contracts.js";
 
-export interface ToolchainVersionHost {
-  platform: HostPlatform;
-  arch: HostArchitecture;
-}
+export type ToolchainVersionHost = ExactToolchainVersionHost;
 
 const VERSION_PATTERN = /^(0|[1-9]\d*)(?:\.(0|[1-9]\d*)){1,3}$/;
 
@@ -34,6 +32,26 @@ export function compareToolchainVersions(
   return 0;
 }
 
+export function resolveToolchainVersionPolicyForHost(
+  policy: ToolchainVersionPolicy,
+  host?: ToolchainVersionHost | null,
+): ToolchainVersionPolicy | null {
+  if (policy.kind !== "host_matrix") {
+    return policy;
+  }
+  if (!host) return null;
+  for (const rule of policy.rules) {
+    const matches = rule.hosts.some(
+      (candidate) =>
+        candidate.platform === host.platform && candidate.arch === host.arch,
+    );
+    if (matches) {
+      return resolveToolchainVersionPolicyForHost(rule.policy, host);
+    }
+  }
+  return null;
+}
+
 /**
  * Version membership is only the first quick-verification gate. A matching
  * version does not by itself grant readiness: family/build/target, support
@@ -46,6 +64,12 @@ export function isToolchainVersionAllowed(
 ): boolean {
   const parts = versionParts(version);
   if (!parts) return false;
+  if (policy.kind === "host_matrix") {
+    if (!host) return false;
+    const resolved = resolveToolchainVersionPolicyForHost(policy, host);
+    if (!resolved) return false;
+    return isToolchainVersionAllowed(version, resolved, host);
+  }
   if (policy.kind === "exact_allowlist") {
     return policy.entries.some((entry) =>
       entry.version === version
@@ -58,6 +82,9 @@ export function isToolchainVersionAllowed(
         )
       )
     );
+  }
+  if (policy.kind === "minimum_only") {
+    return compareToolchainVersions(version, policy.minInclusive) >= 0;
   }
   return (
     policy.testedMajors.includes(parts[0])
@@ -110,6 +137,41 @@ export function validateToolchainVersionPolicy(
     return;
   }
 
+  if (policy.kind === "minimum_only") {
+    if (!versionParts(policy.minInclusive)) {
+      throw new Error("Minimum toolchain version policy is invalid.");
+    }
+    return;
+  }
+
+  if (policy.kind === "host_matrix") {
+    if (!Array.isArray(policy.rules) || policy.rules.length === 0) {
+      throw new Error("Host matrix toolchain version policy must contain at least one rule.");
+    }
+    const seenHosts = new Set<string>();
+    for (const rule of policy.rules) {
+      if (!Array.isArray(rule.hosts) || rule.hosts.length === 0) {
+        throw new Error("Host matrix rule must contain at least one host.");
+      }
+      for (const host of rule.hosts) {
+        const key = `${host.platform}:${host.arch}`;
+        if (
+          seenHosts.has(key)
+          || (host.platform !== "win32" && host.platform !== "darwin")
+          || (host.arch !== "x64" && host.arch !== "arm64")
+        ) {
+          throw new Error("Host matrix contains invalid or duplicate host data.");
+        }
+        seenHosts.add(key);
+      }
+      if (!rule.policy) {
+        throw new Error("Host matrix rule contains invalid policy.");
+      }
+      validateToolchainVersionPolicy(rule.policy);
+    }
+    return;
+  }
+
   if (
     !versionParts(policy.minInclusive)
     || !versionParts(policy.maxExclusive)
@@ -130,23 +192,40 @@ export function toolchainVersionPolicyLabels(
   policy: ToolchainVersionPolicy,
   host?: ToolchainVersionHost,
 ): string[] {
-  return policy.kind === "exact_allowlist"
-    ? [
-        ...new Set(
-          policy.entries
-            .filter((entry) =>
-              !host
-              || entry.hosts.some(
-                (candidate) =>
-                  candidate.platform === host.platform
-                  && candidate.arch === host.arch,
-              )
-            )
-            .map((entry) => entry.version),
+  if (policy.kind === "host_matrix") {
+    if (host) {
+      const resolved = resolveToolchainVersionPolicyForHost(policy, host);
+      return resolved ? toolchainVersionPolicyLabels(resolved, host) : [];
+    }
+    return [
+      ...new Set(
+        policy.rules.flatMap((rule) =>
+          toolchainVersionPolicyLabels(rule.policy, host)
         ),
-      ]
-    : [
-        `${policy.minInclusive}–<${policy.maxExclusive}`,
-        `majors: ${policy.testedMajors.join(", ")}`,
-      ];
+      ),
+    ];
+  }
+  if (policy.kind === "minimum_only") {
+    return [`>=${policy.minInclusive}`];
+  }
+  if (policy.kind === "bounded_range") {
+    return [
+      `${policy.minInclusive}–<${policy.maxExclusive}`,
+      `majors: ${policy.testedMajors.join(", ")}`,
+    ];
+  }
+  return [
+    ...new Set(
+      policy.entries
+        .filter((entry) =>
+          !host
+          || entry.hosts.some(
+            (candidate) =>
+              candidate.platform === host.platform
+              && candidate.arch === host.arch,
+          )
+        )
+        .map((entry) => entry.version),
+    ),
+  ];
 }
