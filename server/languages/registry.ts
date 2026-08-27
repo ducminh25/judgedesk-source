@@ -58,9 +58,9 @@ const LOCAL_VERSION_POLICIES = {
         hosts: [WINDOWS_X64_HOST],
         policy: {
           kind: "bounded_range",
-          minInclusive: "9.0.0",
+          minInclusive: "4.8.0",
           maxExclusive: "18.0.0",
-          testedMajors: [9, 10, 11, 12, 13, 14, 15, 16, 17],
+          testedMajors: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
         },
       },
       {
@@ -79,9 +79,9 @@ const LOCAL_VERSION_POLICIES = {
         hosts: [WINDOWS_X64_HOST],
         policy: {
           kind: "bounded_range",
-          minInclusive: "9.0.0",
+          minInclusive: "4.8.0",
           maxExclusive: "18.0.0",
-          testedMajors: [9, 10, 11, 12, 13, 14, 15, 16, 17],
+          testedMajors: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
         },
       },
       {
@@ -95,20 +95,46 @@ const LOCAL_VERSION_POLICIES = {
   },
   python: {
     kind: "bounded_range",
-    minInclusive: "3.8.0",
+    minInclusive: "3.6.0",
     maxExclusive: "3.14.0",
     testedMajors: [3],
   },
   pascal: {
     kind: "exact_allowlist",
-    entries: [{
-      family: "free-pascal",
-      distributor: "Free Pascal",
-      version: "3.2.2",
-      build: "official-stable",
-      identityPolicyId: "fpc.target-units-linker-v1",
-      hosts: BOTH_RELEASE_HOSTS,
-    }],
+    entries: [
+      {
+        family: "free-pascal",
+        distributor: "Free Pascal",
+        version: "3.2.2",
+        build: "official-stable",
+        identityPolicyId: "fpc.target-units-linker-v1",
+        hosts: BOTH_RELEASE_HOSTS,
+      },
+      {
+        family: "free-pascal",
+        distributor: "Free Pascal",
+        version: "3.2.0",
+        build: "official-stable",
+        identityPolicyId: "fpc.target-units-linker-v1",
+        hosts: BOTH_RELEASE_HOSTS,
+      },
+      {
+        family: "free-pascal",
+        distributor: "Free Pascal",
+        version: "3.0.4",
+        build: "official-stable",
+        identityPolicyId: "fpc.target-units-linker-v1",
+        hosts: BOTH_RELEASE_HOSTS,
+      },
+      {
+        family: "free-pascal",
+        distributor: "Free Pascal",
+        version: "3.0.0",
+        build: "official-stable",
+        identityPolicyId: "fpc.target-units-linker-v1",
+        hosts: BOTH_RELEASE_HOSTS,
+      },
+    ],
   },
   go: {
     kind: "exact_allowlist",
@@ -123,14 +149,32 @@ const LOCAL_VERSION_POLICIES = {
   },
   java: {
     kind: "exact_allowlist",
-    entries: [{
-      family: "openjdk",
-      distributor: "Eclipse Temurin",
-      version: "21.0.12",
-      build: "21.0.12+8",
-      identityPolicyId: "temurin.jdk-javac-runtime-v1",
-      hosts: BOTH_RELEASE_HOSTS,
-    }],
+    entries: [
+      {
+        family: "openjdk",
+        distributor: "Eclipse Temurin",
+        version: "21.0.12",
+        build: "21.0.12+8",
+        identityPolicyId: "temurin.jdk-javac-runtime-v1",
+        hosts: BOTH_RELEASE_HOSTS,
+      },
+      {
+        family: "java",
+        distributor: "Themis JDK",
+        version: "1.7.0",
+        build: "official-internal",
+        identityPolicyId: "themis.jdk-javac-runtime-v1",
+        hosts: BOTH_RELEASE_HOSTS,
+      },
+      {
+        family: "java",
+        distributor: "Themis JDK",
+        version: "1.8.0",
+        build: "official-internal",
+        identityPolicyId: "themis.jdk-javac-runtime-v1",
+        hosts: BOTH_RELEASE_HOSTS,
+      },
+    ],
   },
   rust: {
     kind: "exact_allowlist",

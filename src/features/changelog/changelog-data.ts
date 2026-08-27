@@ -11,6 +11,28 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
   {
+    version: "1.4.2",
+    date: "2026-08-27",
+    sections: [
+      {
+        title: "Tương thích Custom Checker Đa Định dạng & Tự động Nạp Header",
+        items: [
+          "Hỗ trợ toàn diện Custom Checker định dạng .exe, .cpp và .py trong thư mục test bài tập trên Windows; tự động ưu tiên file .exe lên đầu danh sách chọn.",
+          "Tự động nạp toàn bộ header cục bộ trong thư mục bài tập (testlib.h, header Themis, v.v.) khi biên dịch C++ checker trên cả Windows và macOS, chấm dứt hoàn toàn lỗi CE do thiếu header.",
+          "Trên macOS: Tự động loại trừ các binary Windows .exe không tương thích, ưu tiên các checker mã nguồn .cpp và .py.",
+        ],
+      },
+      {
+        title: "Hoàn thiện Nhận diện Compiler Themis & Policy Tương thích",
+        items: [
+          "Khắc phục lỗi hiển thị sai phiên bản compiler Themis; hiển thị chính xác phiên bản thực tế của toàn bộ công cụ Themis phát hiện được (GCC 9.2.0, FPC 3.2.2, Python 3.12.4, Java 1.7.0).",
+          "Quét toàn diện trên mọi ổ đĩa chuẩn (C:\\Themis, D:\\Themis, E:\\Themis, Program Files (x86)\\Themis), phát hiện đầy đủ mọi toolchain mà không bị ngắt sớm do các compiler có sẵn trên PATH.",
+          "Mở rộng chính sách sandbox và cơ chế fallback Job Object an toàn cho các binary legacy 32-bit (x86 WOW64) của Themis MinGW GCC / FPC / Python, xóa bỏ hoàn toàn lỗi \"Không tương thích với policy máy chấm an toàn hiện tại\".",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.4.1",
     date: "2026-08-25",
     sections: [
@@ -336,6 +358,28 @@ export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
 ];
 
 export const CHANGELOG_DATA_EN: ChangelogRelease[] = [
+  {
+    version: "1.4.2",
+    date: "2026-08-27",
+    sections: [
+      {
+        title: "Multi-format Custom Checker (.exe, .cpp, .py) & Auto Header Staging",
+        items: [
+          "Comprehensive support for Custom Checkers (.exe, .cpp, .py) inside test folders on Windows with prioritized .exe placement.",
+          "Automatically stages local problem directory headers (testlib.h, Themis headers, etc.) for C++ checker compilation across Windows and macOS to prevent CE errors.",
+          "On macOS: Automatically filters out incompatible Windows .exe binaries in favor of .cpp and .py source checkers.",
+        ],
+      },
+      {
+        title: "Themis Toolchain Detection & Execution Policy Polish",
+        items: [
+          "Accurately reports real detected compiler versions for all Themis components (GCC 9.2.0, FPC 3.2.2, Python 3.12.4, Java 1.7.0).",
+          "Performs exhaustive multi-drive discovery without early termination from PATH compilers.",
+          "Extends sandbox policy and safe Job Object fallback for legacy 32-bit (WOW64) Themis binaries, eliminating incompatibility rejections.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.4.1",
     date: "2026-08-25",

@@ -5,6 +5,20 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 ## [Unreleased]
 
+## [1.4.2] - 2026-08-27
+
+### Tương thích Custom Checker Đa Định dạng & Tự động Nạp Header
+
+- Hỗ trợ toàn diện Custom Checker định dạng `.exe`, `.cpp` và `.py` trong thư mục test bài tập trên Windows; tự động ưu tiên file `.exe` lên đầu danh sách chọn.
+- Tự động nạp toàn bộ header cục bộ trong thư mục bài tập (`testlib.h`, header Themis, v.v.) khi biên dịch C++ checker trên cả Windows và macOS, chấm dứt hoàn toàn lỗi CE do thiếu header.
+- Trên macOS: Tự động loại trừ các binary Windows `.exe` không tương thích, ưu tiên các checker mã nguồn `.cpp` và `.py`.
+
+### Hoàn thiện Nhận diện Compiler Themis & Policy Tương thích
+
+- Khắc phục lỗi hiển thị sai phiên bản compiler Themis; hiển thị chính xác phiên bản thực tế của toàn bộ công cụ Themis phát hiện được (GCC 9.2.0, FPC 3.2.2, Python 3.12.4, Java 1.7.0).
+- Quét toàn diện trên mọi ổ đĩa chuẩn (`C:\Themis`, `D:\Themis`, `E:\Themis`, `Program Files (x86)\Themis`), phát hiện đầy đủ mọi toolchain mà không bị ngắt sớm do các compiler có sẵn trên `PATH`.
+- Mở rộng chính sách sandbox và cơ chế fallback Job Object an toàn cho các binary legacy 32-bit (x86 WOW64) của Themis MinGW GCC / FPC / Python, xóa bỏ hoàn toàn lỗi "Không tương thích với policy máy chấm an toàn hiện tại".
+
 ## [1.4.1] - 2026-08-25
 
 ### Tự động nhận diện & So sánh Bộ công cụ Themis

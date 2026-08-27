@@ -58,8 +58,8 @@ describe("ChangelogModal", () => {
     );
 
     assert.match(html, /Có gì mới trong JudgeDesk/);
-    assert.match(html, /Tự động nhận diện &amp; So sánh Bộ công cụ Themis/);
-    assert.match(html, /v1\.4\.1/);
+    assert.match(html, /Tương thích Custom Checker Đa Định dạng &amp; Tự động Nạp Header/);
+    assert.match(html, /v1\.4\.2/);
     assert.match(html, /v1\.2\.5/);
     assert.match(html, /Đã hiểu/);
   });
@@ -85,7 +85,7 @@ describe("ChangelogModal", () => {
     );
 
     assert.match(html, /What&#x27;s New in JudgeDesk/);
-    assert.match(html, /Themis Toolchain Auto-detection &amp; Comparison/);
+    assert.match(html, /Multi-format Custom Checker/);
     assert.match(html, /Got it/);
   });
 });

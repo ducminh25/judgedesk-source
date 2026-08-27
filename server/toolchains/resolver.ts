@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { execFileSync } from "child_process";
+import { execFileSync, spawnSync } from "child_process";
 import { ToolchainKind, ResolvedToolchain, ToolchainSource } from "./types.js";
 import { loadToolchainPreferenceSnapshot } from "./storage.js";
 import {
@@ -19,6 +19,7 @@ import { getStoredProfilePreference } from "./preferences-v2.js";
 import {
   getDiscoveredCandidates,
   getToolchainDiscoverySnapshot,
+  parseVersionOutput,
 } from "./discovery.js";
 import { resolveLocalCppCertificateReadiness } from "./certificate-readiness.js";
 import {
@@ -89,36 +90,68 @@ export function buildToolchainEnvironment(
   return environment;
 }
 
-// Extracts clean version from --version output
+// Extracts clean version from --version / -v output
 export function getExecutableVersion(
   executablePath: string,
   kind: ToolchainKind,
 ): string {
   try {
     if (!fs.existsSync(executablePath)) return "unknown";
-    const stdout = execFileSync(
+    const proc = spawnSync(
       executablePath,
       executableVersionArguments(kind),
       {
         encoding: "utf8",
         timeout: 2000,
-        stdio: ["ignore", "pipe", "ignore"],
+        stdio: ["ignore", "pipe", "pipe"],
         env: buildToolchainEnvironment(executablePath),
       },
     );
+    let combinedOutput = `${proc.stdout || ""}\n${proc.stderr || ""}`;
+    let parsed = parseVersionOutput(kind, combinedOutput);
+    if (parsed?.version) return parsed.version;
+
+    if (kind === "java") {
+      const legacyProc = spawnSync(
+        executablePath,
+        ["-version"],
+        {
+          encoding: "utf8",
+          timeout: 2000,
+          stdio: ["ignore", "pipe", "pipe"],
+          env: buildToolchainEnvironment(executablePath),
+        },
+      );
+      const legacyOutput = `${legacyProc.stdout || ""}\n${legacyProc.stderr || ""}`;
+      parsed = parseVersionOutput(kind, legacyOutput);
+      if (parsed?.version) return parsed.version;
+      combinedOutput += `\n${legacyOutput}`;
+    } else if (kind === "cpp" || kind === "c") {
+      const vProc = spawnSync(
+        executablePath,
+        ["-v"],
+        {
+          encoding: "utf8",
+          timeout: 2000,
+          stdio: ["ignore", "pipe", "pipe"],
+          env: buildToolchainEnvironment(executablePath),
+        },
+      );
+      const vOutput = `${vProc.stdout || ""}\n${vProc.stderr || ""}`;
+      parsed = parseVersionOutput(kind, vOutput);
+      if (parsed?.version) return parsed.version;
+      combinedOutput += `\n${vOutput}`;
+    }
 
     if (kind === "python") {
-      // "Python 3.12.8\n"
-      const match = stdout.match(/Python\s+([0-9.]+)/i);
+      const match = combinedOutput.match(/Python\s+([0-9.]+)/i);
       return match ? match[1] : "unknown";
-    } else {
-      // C++ (GCC/Clang): "g++ (GCC) 14.2.0\n"
-      const match = stdout.match(/(gcc|g\+\+|clang|version)\s+([0-9.]+)/i);
-      if (match) return match[2];
-
-      const genericMatch = stdout.match(/([0-9]+\.[0-9]+(?:\.[0-9]+)?)/);
-      return genericMatch ? genericMatch[1] : "unknown";
     }
+    const match = combinedOutput.match(/(gcc|g\+\+|clang|version)\s+([0-9.]+)/i);
+    if (match) return match[2];
+
+    const genericMatch = combinedOutput.match(/([0-9]+\.[0-9]+(?:\.[0-9]+)?)/);
+    return genericMatch ? genericMatch[1] : "unknown";
   } catch (error) {
     return "unknown";
   }

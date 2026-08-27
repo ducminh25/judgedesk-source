@@ -94,6 +94,12 @@ export interface DiscoveredToolchainCandidate {
   canonicalPath: string;
   displayPath: string;
   origin: "path" | "standard-location" | "selected-path";
+  pathRank?: number | null;
+  family?: string | null;
+  version?: string | null;
+  target?: string | null;
+  lastSeenAt?: string;
+  error?: string | null;
 }
 
 export interface LanguageProfileView {

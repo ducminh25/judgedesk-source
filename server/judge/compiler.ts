@@ -1515,8 +1515,8 @@ export function normalizeCompilerError(error: unknown): string {
   return message.trim() || "Compilation failed";
 }
 
-export function safeName(value: string): string {
-  return value.replaceAll(/[^A-Za-z0-9_.-]/g, "_").slice(0, 96) || "artifact";
+export function safeName(value: string | undefined | null): string {
+  return (value || "").replaceAll(/[^A-Za-z0-9_.-]/g, "_").slice(0, 96) || "artifact";
 }
 
 function elapsedMs(started: bigint): number {
