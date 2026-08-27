@@ -331,12 +331,10 @@ impl WindowsPlatform {
             && MANAGED_RUNTIME_MARKERS
                 .iter()
                 .any(|marker| spec.environment.get(*marker).map(String::as_str) == Some("1"));
-        let managed_checker_runtime = matches!(spec.role, RunRole::CheckerRuntime);
+        let is_checker = matches!(spec.role, RunRole::Checker | RunRole::CheckerRuntime);
         let resource_only = matches!(paths.isolation, LocalToolchainIsolation::ResourceOnly);
-        let use_lpac = !resource_only
-            && !compiler_may_spawn
-            && !isolated_submission_runtime
-            && !managed_checker_runtime;
+        let use_lpac =
+            !resource_only && !compiler_may_spawn && !isolated_submission_runtime && !is_checker;
         let attribute_count = if resource_only {
             2
         } else if use_lpac {
@@ -389,11 +387,12 @@ impl WindowsPlatform {
         // aborts before javac/main can start. Pass the equivalent DOS/UNC path
         // to the child only after validation has completed.
         let launch_executable = process_launch_path(&paths.executable);
+        let launch_workspace = process_launch_path(&paths.workspace);
         let application = wide(launch_executable.as_os_str());
         let mut command_line = wide_string(&build_command_line(&launch_executable, &spec.args));
-        let current_directory = wide(paths.workspace.as_os_str());
-        let mut environment = environment_block(&spec.environment, &paths.workspace);
-        let created = unsafe {
+        let current_directory = wide(launch_workspace.as_os_str());
+        let mut environment = environment_block(&spec.environment, &launch_workspace);
+        let mut created = unsafe {
             CreateProcessW(
                 application.as_ptr(),
                 command_line.as_mut_ptr(),
@@ -411,6 +410,44 @@ impl WindowsPlatform {
                 &mut process,
             )
         };
+        if created == 0 {
+            let error_code = unsafe { GetLastError() };
+            if error_code == 623 {
+                // Legacy 32-bit (x86 WOW64) binaries (Themis GCC compilers, 32-bit submissions, contest checkers)
+                // without ASLR/relocations fail AppContainer image mapping with ERROR_ILLEGAL_DLL_RELOCATION (623).
+                // Fall back to Job Object resource-only isolation so these executables can still execute safely.
+                let mut fallback_attributes = AttributeList::new(2)?;
+                fallback_attributes.update(
+                    PROC_THREAD_ATTRIBUTE_HANDLE_LIST as usize,
+                    handles.as_mut_ptr() as *mut c_void,
+                    size_of_val(&handles),
+                )?;
+                fallback_attributes.update(
+                    PROC_THREAD_ATTRIBUTE_JOB_LIST as usize,
+                    job_handles.as_mut_ptr().cast(),
+                    size_of_val(&job_handles),
+                )?;
+                startup.lpAttributeList = fallback_attributes.as_ptr();
+                created = unsafe {
+                    CreateProcessW(
+                        application.as_ptr(),
+                        command_line.as_mut_ptr(),
+                        null(),
+                        null(),
+                        1,
+                        CREATE_SUSPENDED
+                            | CREATE_UNICODE_ENVIRONMENT
+                            | CREATE_NO_WINDOW
+                            | BELOW_NORMAL_PRIORITY_CLASS
+                            | EXTENDED_STARTUPINFO_PRESENT,
+                        environment.as_mut_ptr() as *const c_void,
+                        current_directory.as_ptr(),
+                        &startup.StartupInfo,
+                        &mut process,
+                    )
+                };
+            }
+        }
         if created == 0 {
             let error_code = unsafe { GetLastError() };
             let error = io::Error::from_raw_os_error(error_code as i32);
@@ -1406,6 +1443,21 @@ fn environment_values(
         insert_environment_value(&mut environment, "HOMEDRIVE", workspace_text[..2].into());
         insert_environment_value(&mut environment, "HOMEPATH", workspace_text[2..].into());
     }
+    let system_root = environment
+        .get("SystemRoot")
+        .cloned()
+        .or_else(|| std::env::var("SystemRoot").ok())
+        .unwrap_or_else(|| r"C:\Windows".to_string());
+    let sys32 = format!(r"{system_root}\System32");
+    if let Some(existing_path) = environment.get("PATH").cloned() {
+        if !existing_path.to_lowercase().contains("system32") {
+            insert_environment_value(
+                &mut environment,
+                "PATH",
+                format!("{existing_path};{sys32};{system_root};{sys32}\\Wbem"),
+            );
+        }
+    }
     environment
 }
 
@@ -1421,8 +1473,17 @@ fn insert_environment_value(environment: &mut BTreeMap<String, String>, key: &st
 }
 
 fn build_command_line(executable: &Path, arguments: &[String]) -> String {
-    std::iter::once(executable.to_string_lossy().into_owned())
-        .chain(arguments.iter().cloned())
+    let clean_exe = process_launch_path(executable);
+    std::iter::once(clean_exe.to_string_lossy().into_owned())
+        .chain(arguments.iter().map(|arg| {
+            if arg.starts_with(r"\\?\") {
+                process_launch_path(Path::new(arg))
+                    .to_string_lossy()
+                    .into_owned()
+            } else {
+                arg.clone()
+            }
+        }))
         .map(|value| quote_windows_argument(&value))
         .collect::<Vec<_>>()
         .join(" ")

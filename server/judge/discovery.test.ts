@@ -186,11 +186,12 @@ test("contestant discovery preserves the requested scoreboard order", (t) => {
   );
 });
 
-test("custom checker discovery exposes portable C++ and Python sources only", (t) => {
+test("custom checker discovery discovers and prioritizes .exe on Windows and source on macOS", (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-checker-discovery-"));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  for (const name of ["checker10.py", "checker2.cpp", "legacy.exe", "notes.txt"]) {
+  for (const name of ["checker10.py", "checker2.cpp", "legacy.exe", "alpha.exe", "notes.txt"]) {
     fs.writeFileSync(path.join(root, name), "", "utf8");
   }
-  assert.deepEqual(discoverCustomCheckers(root), ["checker2.cpp", "checker10.py"]);
+  assert.deepEqual(discoverCustomCheckers(root, "win32"), ["alpha.exe", "legacy.exe", "checker2.cpp", "checker10.py"]);
+  assert.deepEqual(discoverCustomCheckers(root, "darwin"), ["checker2.cpp", "checker10.py"]);
 });

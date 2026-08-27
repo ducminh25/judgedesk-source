@@ -394,15 +394,20 @@ test("custom checker resolution accepts source files and rejects executables", a
     assert.ok(pythonChecker.pythonExecutablePath);
     assert.ok(pythonChecker.pythonToolchain);
   }
-  assert.match(
-    (await resolveChecker({
-      checkerType: "checker.exe",
-      problemName: "sample",
-      problemDirectory: root,
-      tempDirectory: root,
-    })).error || "",
-    /not supported.*\.cpp or \.py/i,
-  );
+  fs.writeFileSync(path.join(root, "checker.exe"), "", "utf8");
+  const exeChecker = await resolveChecker({
+    checkerType: "checker.exe",
+    problemName: "sample",
+    problemDirectory: root,
+    tempDirectory: root,
+  });
+  if (process.platform === "win32") {
+    assert.equal(exeChecker.runtime, "native");
+    assert.equal(exeChecker.path, path.join(root, "checker.exe"));
+    assert.equal(exeChecker.error, undefined);
+  } else {
+    assert.match(exeChecker.error || "", /not executable on this platform/i);
+  }
 
   if (!pythonChecker.error) {
     fs.writeFileSync(path.join(root, "broken.py"), "def broken(:\n", "utf8");
@@ -415,5 +420,41 @@ test("custom checker resolution accepts source files and rejects executables", a
       })).error || "",
       /^PYTHON_CHECKER_COMPILE_ERROR:/,
     );
+  }
+});
+
+test("custom C++ checker compilation automatically stages problem directory headers", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-checker-headers-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.writeFileSync(
+    path.join(root, "my_common.hpp"),
+    "#pragma once\ninline int getTarget() { return 42; }\n",
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(root, "custom_checker.cpp"),
+    [
+      '#include "testlib.h"',
+      '#include "my_common.hpp"',
+      "int main(int argc, char** argv) {",
+      "  registerTestlibCmd(argc, argv);",
+      "  if (getTarget() != 42) quitf(_wa, \"bad\");",
+      "  quitf(_ok, \"OK\");",
+      "}",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  if (process.platform === "win32" || process.platform === "darwin") {
+    const checker = await resolveChecker({
+      checkerType: "custom_checker.cpp",
+      problemName: "sample",
+      problemDirectory: root,
+      tempDirectory: root,
+    });
+    if (!checker.error) {
+      assert.equal(checker.runtime, "native");
+      assert.ok(checker.path && fs.existsSync(checker.path));
+    }
   }
 });

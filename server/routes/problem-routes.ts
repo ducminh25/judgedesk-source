@@ -144,15 +144,39 @@ export function registerProblemRoutes(app: Express): void {
   });
 }
 
-export function discoverCustomCheckers(problemPath: string): string[] {
+export function discoverCustomCheckers(
+  problemPath: string,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
   try {
-    return fs.readdirSync(problemPath)
-      .filter((file) => {
-        const lower = file.toLowerCase();
-        return (lower.endsWith(".cpp") || lower.endsWith(".py"))
-          && fs.statSync(path.join(problemPath, file)).isFile();
-      })
-      .sort(naturalSort);
+    const isWindows = platform === "win32";
+    const files = fs.readdirSync(problemPath).filter((file) => {
+      const lower = file.toLowerCase();
+      const isCandidate = lower.endsWith(".cpp")
+        || lower.endsWith(".py")
+        || (isWindows && lower.endsWith(".exe"));
+      if (!isCandidate) return false;
+      try {
+        return fs.statSync(path.join(problemPath, file)).isFile();
+      } catch {
+        return false;
+      }
+    });
+
+    const getExtensionPriority = (fileName: string): number => {
+      const lower = fileName.toLowerCase();
+      if (lower.endsWith(".exe")) return 0;
+      if (lower.endsWith(".cpp")) return 1;
+      if (lower.endsWith(".py")) return 2;
+      return 3;
+    };
+
+    return files.sort((a, b) => {
+      const prioA = getExtensionPriority(a);
+      const prioB = getExtensionPriority(b);
+      if (prioA !== prioB) return prioA - prioB;
+      return naturalSort(a, b);
+    });
   } catch {
     return [];
   }

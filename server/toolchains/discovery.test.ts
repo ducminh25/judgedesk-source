@@ -171,12 +171,12 @@ test("cached v2 state is returned immediately and refreshed once on every launch
   assert.equal(getDiscoveredCandidates("cpp")[0]?.canonicalPath, secondPath);
 });
 
-test("PATH order wins and a successful PATH probe skips standard locations", async (t) => {
+test("PATH order determines candidate priority and discovers all PATH candidates", async (t) => {
   const { root } = useDiscoveryFixture(t);
   const firstBin = path.join(root, "path-0");
   const secondBin = path.join(root, "path-1");
   const first = createExecutable(path.join(firstBin, executableName("g++")));
-  createExecutable(path.join(secondBin, executableName("g++")));
+  const second = createExecutable(path.join(secondBin, executableName("g++")));
   process.env.PATH = [firstBin, secondBin].join(path.delimiter);
   const probes: ToolchainVersionProbeRequest[] = [];
   const standardKinds: ToolchainKind[] = [];
@@ -191,15 +191,18 @@ test("PATH order wins and a successful PATH probe skips standard locations", asy
 
   startInitialToolchainDiscovery();
   await waitForToolchainDiscovery();
-  const candidate = getDiscoveredCandidates("cpp")[0];
-  assert.equal(candidate?.canonicalPath, first);
-  assert.equal(candidate?.origin, "path");
-  assert.equal(candidate?.pathRank, 0);
+  const candidates = getDiscoveredCandidates("cpp");
+  assert.equal(candidates[0]?.canonicalPath, first);
+  assert.equal(candidates[0]?.origin, "path");
+  assert.equal(candidates[0]?.pathRank, 0);
+  assert.equal(candidates[1]?.canonicalPath, second);
+  assert.equal(candidates[1]?.origin, "path");
+  assert.equal(candidates[1]?.pathRank, 1);
   assert.deepEqual(probes.filter((probe) => probe.kind === "cpp").map(
     (probe) => probe.executablePath,
-  ), [first]);
+  ), [first, second]);
   assert.deepEqual(probes.find((probe) => probe.kind === "cpp")?.args, ["-v"]);
-  assert.deepEqual(standardKinds.filter((kind) => kind === "cpp"), []);
+  assert.deepEqual(standardKinds.filter((kind) => kind === "cpp"), ["cpp"]);
 });
 
 test("an explicit local path is probed before PATH and retained in the cache", async (t) => {
@@ -225,13 +228,14 @@ test("an explicit local path is probed before PATH and retained in the cache", a
   startInitialToolchainDiscovery();
   await waitForToolchainDiscovery();
 
-  const selected = getDiscoveredCandidates("cpp")[0];
+  const candidates = getDiscoveredCandidates("cpp");
+  const selected = candidates[0];
   assert.equal(selected?.canonicalPath, selectedCompiler);
   assert.equal(selected?.origin, "selected-path");
   assert.equal(selected?.pathRank, null);
   assert.deepEqual(
     probes.filter((probe) => probe.kind === "cpp").map((probe) => probe.executablePath),
-    [selectedCompiler],
+    [selectedCompiler, pathCompiler],
   );
   assert.notEqual(selected?.canonicalPath, pathCompiler);
 });

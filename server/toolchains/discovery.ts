@@ -25,7 +25,7 @@ const MAX_CANDIDATES_PER_PROFILE = 64;
 const MAX_PROBE_OUTPUT_BYTES = 64 * 1024;
 const MAX_ERROR_LENGTH = 320;
 const COMMAND_TIMEOUT_MS = 700;
-const DISCOVERY_DEADLINE_MS = 1_450;
+const DISCOVERY_DEADLINE_MS = 2_500;
 
 export interface DiscoveredToolchainCandidate {
   candidateId: string;
@@ -462,7 +462,7 @@ async function discoverKind(
   const seen = new Set<string>();
   const selectedLocation = selectedLocalPathLocation(kind);
   if (selectedLocation) {
-    const selectedResult = await probeLocations(
+    await probeLocations(
       profileId,
       kind,
       [selectedLocation],
@@ -470,38 +470,39 @@ async function discoverKind(
       seen,
       deadlineAt,
     );
-    if (selectedResult || Date.now() >= deadlineAt) return attempts;
   }
-  const pathLocations = collectPathCandidates(kind);
-  const pathResult = await probeLocations(
-    profileId,
-    kind,
-    pathLocations,
-    attempts,
-    seen,
-    deadlineAt,
-  );
-  if (pathResult || Date.now() >= deadlineAt) return attempts;
-
-  const provider = testStandardCandidates || collectStandardCandidates;
-  const standardPaths = await withinDeadline(
-    provider(kind, deadlineAt),
-    deadlineAt,
-    "standard_location_timeout",
-  ).catch(() => [] as readonly string[]);
-  const standardLocations = standardPaths.map((displayPath) => ({
-    displayPath,
-    origin: "standard-location" as const,
-    pathRank: null,
-  }));
-  await probeLocations(
-    profileId,
-    kind,
-    standardLocations,
-    attempts,
-    seen,
-    deadlineAt,
-  );
+  if (Date.now() < deadlineAt && attempts.length < MAX_CANDIDATES_PER_PROFILE) {
+    const pathLocations = collectPathCandidates(kind);
+    await probeLocations(
+      profileId,
+      kind,
+      pathLocations,
+      attempts,
+      seen,
+      deadlineAt,
+    );
+  }
+  if (Date.now() < deadlineAt && attempts.length < MAX_CANDIDATES_PER_PROFILE) {
+    const provider = testStandardCandidates || collectStandardCandidates;
+    const standardPaths = await withinDeadline(
+      provider(kind, deadlineAt),
+      deadlineAt,
+      "standard_location_timeout",
+    ).catch(() => [] as readonly string[]);
+    const standardLocations = standardPaths.map((displayPath) => ({
+      displayPath,
+      origin: "standard-location" as const,
+      pathRank: null,
+    }));
+    await probeLocations(
+      profileId,
+      kind,
+      standardLocations,
+      attempts,
+      seen,
+      deadlineAt,
+    );
+  }
   return attempts;
 }
 
@@ -536,7 +537,7 @@ async function probeLocations(
       attempts.length >= MAX_CANDIDATES_PER_PROFILE
       || Date.now() >= deadlineAt
     ) {
-      return false;
+      continue;
     }
     const canonicalPath = await canonicalExecutablePath(
       location.displayPath,
@@ -558,15 +559,13 @@ async function probeLocations(
       deadlineAt,
     );
     attempts.push(candidate);
-    if (
+  }
+  return attempts.some(
+    (candidate) =>
       candidate.error === null
       && candidate.family !== null
-      && candidate.version !== null
-    ) {
-      return true;
-    }
-  }
-  return false;
+      && candidate.version !== null,
+  );
 }
 
 async function probeCandidate(
@@ -678,7 +677,7 @@ function versionArgsForKind(kind: ToolchainKind): readonly string[] {
   return args[kind];
 }
 
-function parseVersionOutput(
+export function parseVersionOutput(
   kind: ToolchainKind,
   rawOutput: string,
 ): ParsedVersion | null {
@@ -714,7 +713,7 @@ function parseVersionOutput(
     };
   }
   if (kind === "python") {
-    const version = first(/Python\s+([^\s]+)/i);
+    const version = first(/Python\s+([0-9.]+)/i, /Python\s+([^\s]+)/i);
     return version ? { family: "cpython", version, target: null } : null;
   }
   if (kind === "pascal") {
@@ -726,8 +725,13 @@ function parseVersionOutput(
     return match ? { family: "go", version: match[1], target: match[2] } : null;
   }
   if (kind === "java") {
-    const version = first(/(?:javac|openjdk|java)\s+(?:version\s+)?"?([^\s"]+)/i);
-    return version ? { family: "java", version, target: null } : null;
+    const version = first(
+      /(?:javac|openjdk|java)\s+(?:version\s+)?"?([0-9]+(?:\.[0-9]+)*)/i,
+      /(?:javac|openjdk|java)\s+(?:version\s+)?"?([^\s"]+)/i,
+    );
+    return version
+      ? { family: "java", version: version.replace(/-.*$/, ""), target: null }
+      : null;
   }
   if (kind === "rust") {
     const version = first(/^rustc\s+([^\s]+)/im);
@@ -744,8 +748,11 @@ function parseVersionOutput(
 }
 
 function shortProbeError(error: unknown): string {
-  const raw = error instanceof Error ? error.message : String(error);
-  const normalized = raw.replace(/[\r\n\t]+/g, " ").replace(/\s+/g, " ").trim();
+  if (typeof error === "string") return error.slice(0, MAX_ERROR_LENGTH);
+  if (!isRecord(error)) return "probe_failed";
+  const message = typeof error.message === "string" ? error.message : "";
+  const code = typeof error.code === "string" ? error.code : "";
+  const normalized = code ? `${code}: ${message}` : message;
   return (normalized || "probe_failed").slice(0, MAX_ERROR_LENGTH);
 }
 
@@ -777,14 +784,39 @@ function withinDeadline<T>(
   return withTimeout(promise, Math.max(1, deadlineAt - Date.now()), errorMessage);
 }
 
-function runVersionCommand(
+async function runVersionCommand(
   request: ToolchainVersionProbeRequest,
 ): Promise<ToolchainVersionProbeOutput> {
-  return execFileText(
-    request.executablePath,
-    request.args,
-    request.timeoutMs,
-  );
+  const timeoutMs = request.timeoutMs ?? COMMAND_TIMEOUT_MS;
+  return new Promise((resolve, reject) => {
+    let child: ChildProcess;
+    try {
+      child = execFileCallback(
+        request.executablePath,
+        [...request.args],
+        {
+          timeout: timeoutMs,
+          maxBuffer: MAX_PROBE_OUTPUT_BYTES,
+          windowsHide: true,
+          shell: false,
+        },
+        (error, stdout, stderr) => {
+          activeDiscoveryChildren.delete(child);
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve({ stdout: String(stdout || ""), stderr: String(stderr || "") });
+        },
+      );
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    activeDiscoveryChildren.add(child);
+    child.once("exit", () => activeDiscoveryChildren.delete(child));
+    child.once("error", () => activeDiscoveryChildren.delete(child));
+  });
 }
 
 function execFileText(
@@ -854,6 +886,22 @@ async function collectStandardCandidates(
   ]);
 }
 
+function getThemisRoots(): string[] {
+  const programFiles = process.env.ProgramFiles || String.raw`C:\Program Files`;
+  const programFilesX86 = process.env["ProgramFiles(x86)"]
+    || String.raw`C:\Program Files (x86)`;
+  const systemDrive = process.env.SystemDrive || "C:";
+  const roots = [
+    path.join(programFiles, "Themis"),
+    path.join(programFilesX86, "Themis"),
+    path.join(systemDrive, "\\Themis"),
+    String.raw`C:\Themis`,
+    String.raw`D:\Themis`,
+    String.raw`E:\Themis`,
+  ];
+  return [...new Set(roots)];
+}
+
 async function collectWindowsCandidates(
   kind: ToolchainKind,
   deadlineAt: number,
@@ -864,32 +912,59 @@ async function collectWindowsCandidates(
   const localAppData = process.env.LOCALAPPDATA
     || path.join(os.homedir(), "AppData", "Local");
   const userProfile = process.env.USERPROFILE || os.homedir();
+  const themisRoots = getThemisRoots();
+
   if (kind === "cpp" || kind === "c") {
     const executable = kind === "cpp" ? "g++.exe" : "gcc.exe";
-    return [
+    const candidates: string[] = [
       path.join(String.raw`C:\msys64\ucrt64\bin`, executable),
       path.join(String.raw`C:\msys64\mingw64\bin`, executable),
-      path.join(programFiles, "Themis", "GCC", "bin", executable),
-      path.join(programFilesX86, "Themis", "GCC", "bin", executable),
-      path.join(String.raw`C:\Themis\GCC\bin`, executable),
+    ];
+    for (const root of themisRoots) {
+      candidates.push(
+        path.join(root, "GCC", "bin", executable),
+        path.join(root, "gcc", "bin", executable),
+        path.join(root, "MinGW", "bin", executable),
+        path.join(root, "mingw", "bin", executable),
+        path.join(root, "bin", executable),
+      );
+    }
+    candidates.push(
       path.join(programFiles, "CodeBlocks", "MinGW", "bin", executable),
       path.join(programFilesX86, "CodeBlocks", "MinGW", "bin", executable),
       path.join(localAppData, "Programs", "CodeBlocks", "MinGW", "bin", executable),
       path.join(String.raw`C:\MinGW\bin`, executable),
       path.join(userProfile, "scoop", "apps", "gcc", "current", "bin", executable),
-    ];
+    );
+    return candidates;
   }
   if (kind === "python") {
-    const candidates = [
-      path.join(programFiles, "Themis", "Python", "python.exe"),
-      path.join(programFilesX86, "Themis", "Python", "python.exe"),
-      String.raw`C:\Themis\Python\python.exe`,
+    const candidates: string[] = [];
+    for (const root of themisRoots) {
+      candidates.push(
+        path.join(root, "Python", "python.exe"),
+        path.join(root, "PYTHON", "python.exe"),
+        path.join(root, "python", "python.exe"),
+        path.join(root, "Python3", "python.exe"),
+        path.join(root, "Python313", "python.exe"),
+        path.join(root, "Python312", "python.exe"),
+        path.join(root, "Python311", "python.exe"),
+        path.join(root, "Python310", "python.exe"),
+        path.join(root, "Python38", "python.exe"),
+        path.join(root, "Python37", "python.exe"),
+        path.join(root, "python.exe"),
+      );
+    }
+    candidates.push(
       String.raw`C:\Python313\python.exe`,
       String.raw`C:\Python312\python.exe`,
       String.raw`C:\Python311\python.exe`,
       String.raw`C:\Python310\python.exe`,
+      String.raw`C:\Python39\python.exe`,
+      String.raw`C:\Python38\python.exe`,
+      String.raw`C:\Python37\python.exe`,
       path.join(userProfile, "scoop", "apps", "python", "current", "python.exe"),
-    ];
+    );
     const pythonRoot = path.join(localAppData, "Programs", "Python");
     for (const child of await listImmediateDirectories(pythonRoot, deadlineAt)) {
       candidates.push(path.join(child, "python.exe"));
@@ -898,19 +973,37 @@ async function collectWindowsCandidates(
   }
   const configuredHome = configuredToolchainHome(kind);
   if (kind === "java") {
-    const candidates: string[] = [
-      path.join(programFiles, "Themis", "Java", "bin", "javac.exe"),
-      path.join(programFilesX86, "Themis", "Java", "bin", "javac.exe"),
-      String.raw`C:\Themis\Java\bin\javac.exe`,
-    ];
+    const candidates: string[] = [];
+    for (const root of themisRoots) {
+      candidates.push(
+        path.join(root, "JDK", "bin", "javac.exe"),
+        path.join(root, "jdk", "bin", "javac.exe"),
+        path.join(root, "Java", "bin", "javac.exe"),
+        path.join(root, "java", "bin", "javac.exe"),
+      );
+      for (const sub of ["JDK", "jdk", "Java", "java"]) {
+        for (const child of await listImmediateDirectories(path.join(root, sub), deadlineAt)) {
+          candidates.push(path.join(child, "bin", "javac.exe"));
+        }
+      }
+    }
     if (configuredHome) candidates.push(path.join(configuredHome, "bin", "javac.exe"));
     for (const vendorRoot of [
-      path.join(programFiles, "Eclipse Adoptium"),
-      path.join(programFiles, "Java"),
-      path.join(programFiles, "Microsoft"),
+      String.raw`C:\Program Files\Eclipse Adoptium`,
+      String.raw`C:\Program Files (x86)\Eclipse Adoptium`,
+      String.raw`C:\Program Files\Java`,
+      String.raw`C:\Program Files (x86)\Java`,
+      String.raw`C:\Program Files\Microsoft`,
+      String.raw`C:\Program Files\Amazon Corretto`,
+      String.raw`C:\Program Files\Zulu`,
     ]) {
       for (const child of await listImmediateDirectories(vendorRoot, deadlineAt)) {
         candidates.push(path.join(child, "bin", "javac.exe"));
+      }
+    }
+    for (const rootChild of await listImmediateDirectories("C:\\", deadlineAt)) {
+      if (path.basename(rootChild).toLowerCase().startsWith("jdk")) {
+        candidates.push(path.join(rootChild, "bin", "javac.exe"));
       }
     }
     return candidates;
@@ -919,14 +1012,7 @@ async function collectWindowsCandidates(
     Exclude<ToolchainKind, "cpp" | "c" | "python" | "java">,
     string[]
   > = {
-    pascal: [
-      path.join(programFiles, "Themis", "fpc", "bin", "i386-win32", "fpc.exe"),
-      path.join(programFilesX86, "Themis", "fpc", "bin", "i386-win32", "fpc.exe"),
-      String.raw`C:\Themis\fpc\bin\i386-win32\fpc.exe`,
-      String.raw`C:\FPC\3.2.2\bin\x86_64-win64\fpc.exe`,
-      String.raw`C:\FPC\3.2.2\bin\i386-win32\fpc.exe`,
-      String.raw`C:\lazarus\fpc\3.2.2\bin\x86_64-win64\fpc.exe`,
-    ],
+    pascal: [],
     go: [
       path.join(programFiles, "Go", "bin", "go.exe"),
       path.join(userProfile, "scoop", "apps", "go", "current", "bin", "go.exe"),
@@ -945,6 +1031,37 @@ async function collectWindowsCandidates(
       path.join(programFiles, "dotnet", "dotnet.exe"),
     ],
   };
+  if (kind === "pascal") {
+    const pascalCandidates: string[] = [];
+    for (const root of themisRoots) {
+      pascalCandidates.push(
+        path.join(root, "FPC", "bin", "i386-win32", "fpc.exe"),
+        path.join(root, "fpc", "bin", "i386-win32", "fpc.exe"),
+        path.join(root, "FPC", "bin", "x86_64-win64", "fpc.exe"),
+        path.join(root, "fpc", "bin", "x86_64-win64", "fpc.exe"),
+        path.join(root, "FPC", "bin", "fpc.exe"),
+        path.join(root, "fpc", "bin", "fpc.exe"),
+      );
+      for (const sub of ["FPC", "fpc"]) {
+        for (const child of await listImmediateDirectories(path.join(root, sub), deadlineAt)) {
+          pascalCandidates.push(
+            path.join(child, "bin", "i386-win32", "fpc.exe"),
+            path.join(child, "bin", "x86_64-win64", "fpc.exe"),
+            path.join(child, "bin", "fpc.exe"),
+          );
+        }
+      }
+    }
+    pascalCandidates.push(
+      String.raw`C:\FPC\3.2.2\bin\x86_64-win64\fpc.exe`,
+      String.raw`C:\FPC\3.2.2\bin\i386-win32\fpc.exe`,
+      String.raw`C:\FPC\3.2.0\bin\i386-win32\fpc.exe`,
+      String.raw`C:\FPC\3.0.4\bin\i386-win32\fpc.exe`,
+      String.raw`C:\lazarus\fpc\3.2.2\bin\x86_64-win64\fpc.exe`,
+      String.raw`C:\lazarus\fpc\3.2.2\bin\i386-win32\fpc.exe`,
+    );
+    return pascalCandidates;
+  }
   return standard[kind];
 }
 

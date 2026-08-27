@@ -75,6 +75,28 @@ export function buildCustomCheckerCompilerArgs(
   return args;
 }
 
+const HEADER_EXTENSIONS = new Set([".h", ".hpp", ".hxx", ".hh", ".inc", ".inl", ".tpp"]);
+
+export function stageProblemHeaders(
+  problemDirectory: string,
+  targetDirectory: string,
+): void {
+  try {
+    const entries = fs.readdirSync(problemDirectory);
+    for (const entry of entries) {
+      const ext = path.extname(entry).toLowerCase();
+      if (HEADER_EXTENSIONS.has(ext)) {
+        const sourcePath = path.join(problemDirectory, entry);
+        try {
+          if (fs.statSync(sourcePath).isFile()) {
+            fs.copyFileSync(sourcePath, path.join(targetDirectory, entry));
+          }
+        } catch {}
+      }
+    }
+  } catch {}
+}
+
 export async function compileCustomChecker(
   checkerType: string,
   problemName: string,
@@ -91,6 +113,7 @@ export async function compileCustomChecker(
   try {
     fs.mkdirSync(checkerSupportDirectory, { recursive: true });
     fs.writeFileSync(bundledTestlibPath, getBundledTestlibSource(), "utf8");
+    stageProblemHeaders(problemDirectory, checkerSupportDirectory);
     const cpp = pinnedCppToolchain ?? await resolveCompilationToolchain("cpp");
     if (!cpp.ready) return { path: null, error: "TOOLCHAIN_CPP_MISSING" };
     if (process.platform === "win32" && !isWindowsCppExecutionReady(cpp)) {
@@ -175,9 +198,19 @@ export async function resolveChecker(options: ResolveCheckerOptions): Promise<Co
     }
   }
   if (checkerType.toLowerCase().endsWith(".exe")) {
+    const checkerPath = path.join(problemDirectory, checkerType);
+    if (!fs.existsSync(checkerPath)) {
+      return { path: null, error: `Custom checker ${checkerType} not found.` };
+    }
+    if (process.platform === "win32") {
+      return {
+        path: checkerPath,
+        runtime: "native",
+      };
+    }
     return {
       path: null,
-      error: "Precompiled checker executables are not supported. Use a .cpp or .py source checker.",
+      error: "Precompiled Windows .exe checkers are not executable on this platform. Please use a .cpp or .py checker.",
     };
   }
   return { path: null, error: `Unsupported checker type '${checkerType}'.` };

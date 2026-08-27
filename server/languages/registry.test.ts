@@ -62,8 +62,8 @@ test("local version policies use bounded compatibility ranges before the native 
       : [];
   };
 
-  assert.deepEqual(versions("pascal"), ["3.2.2"]);
-  assert.deepEqual(versions("java"), ["21.0.12"]);
+  assert.ok(versions("pascal").includes("3.2.2"));
+  assert.ok(versions("java").includes("21.0.12"));
 
   const cppPolicy = getRegisteredProfileForKind("cpp").localVersionPolicy;
   assert.equal(cppPolicy.kind, "host_matrix");

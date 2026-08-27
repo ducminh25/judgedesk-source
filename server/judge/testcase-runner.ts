@@ -163,6 +163,9 @@ export async function runTestCase(options: TestCaseRunnerOptions): Promise<TestC
         expectedOutputPath: options.expectedOutputPath,
         maxScore: options.score,
         jobId: options.jobId,
+        problemName: options.problemName,
+        inputFileName: options.config.inputFile,
+        outputFileName: options.config.outputFile,
       });
       status = checked.status;
       return createResult(

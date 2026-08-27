@@ -94,6 +94,7 @@ interface CheckerExecutorRunSpecOptions {
   workspaceId: string;
   executableId: string;
   args: string[];
+  stdinFile?: string;
   environment: Record<string, string>;
   runtimeBacked: boolean;
   timeoutMs: number;
@@ -119,6 +120,7 @@ export function buildCheckerExecutorRunSpec(
     workspaceId: options.workspaceId,
     executableId: options.executableId,
     args: options.args,
+    stdinFile: options.stdinFile,
     stdoutFile: options.stdoutFile ?? "checker.stdout",
     stderrFile: options.stderrFile ?? "checker.stderr",
     environment: options.environment,
