@@ -102,6 +102,7 @@ function successfulOutput(kind: ToolchainKind): ToolchainVersionProbeOutput {
     rust: { stdout: "rustc 1.97.1\nhost: x86_64-pc-windows-msvc\n", stderr: "" },
     javascript: { stdout: "v24.18.1\n", stderr: "" },
     csharp: { stdout: "10.0.302\n", stderr: "" },
+    scratch: { stdout: "0.1.7\n", stderr: "" },
   };
   return output[kind];
 }
@@ -117,6 +118,7 @@ function stageEveryLanguage(bin: string): void {
     rust: "rustc",
     javascript: "node",
     csharp: "dotnet",
+    scratch: "scratch-run",
   };
   for (const name of Object.values(names)) {
     createExecutable(path.join(bin, executableName(name)));

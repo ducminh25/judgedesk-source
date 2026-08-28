@@ -23,3 +23,5 @@ CONVERSATION_HISTORY.md
 .env
 .env.*
 !.env.example
+scratch/
+

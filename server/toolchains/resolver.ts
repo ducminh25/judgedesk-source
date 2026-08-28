@@ -894,6 +894,7 @@ export function resolveToolchain(kind: ToolchainKind): ResolvedToolchain {
       rust: "rustc",
       javascript: "node",
       csharp: "dotnet",
+      scratch: "scratch-run",
     };
     return {
       kind,

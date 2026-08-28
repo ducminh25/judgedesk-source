@@ -15,10 +15,10 @@ export type PreparedSubmissionProgram =
     }
   | {
       kind: "script-runtime";
-      language: Extract<SubmissionLanguage, "python" | "javascript">;
+      language: Extract<SubmissionLanguage, "python" | "javascript" | "scratch">;
       sourcePath: string;
       stagedFileName: string;
-      runtimeKind: Extract<ToolchainKind, "python" | "javascript">;
+      runtimeKind: Extract<ToolchainKind, "python" | "javascript" | "scratch">;
       runtimeToolchain: Readonly<ResolvedToolchain>;
       runtimeComponentId?: string;
     }

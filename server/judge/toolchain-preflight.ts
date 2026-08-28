@@ -31,6 +31,7 @@ const LANGUAGE_LABELS: Readonly<Record<ToolchainKind, string>> = {
   rust: "Rust",
   javascript: "JavaScript",
   csharp: "C#",
+  scratch: "Scratch",
 };
 
 function cppReady(

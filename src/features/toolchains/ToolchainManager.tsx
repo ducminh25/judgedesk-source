@@ -789,6 +789,7 @@ function localExecutablePlaceholder(
     rust: "rustc",
     javascript: "node",
     csharp: "dotnet",
+    scratch: "scratch-run",
   };
   return placeholders[kind];
 }

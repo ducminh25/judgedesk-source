@@ -73,6 +73,7 @@ test("judge session preflight rejects a missing C++ capability before emitting r
         rust: pin("rust"),
         javascript: pin("javascript"),
         csharp: pin("csharp"),
+        scratch: pin("scratch"),
       },
     }),
     /TOOLCHAIN_PREFLIGHT_FAILED: C\+\+ submissions: CERTIFICATION_REQUIRED/,

@@ -26,6 +26,7 @@ import ThemisToolchainPromptModal, {
   type DetectedThemisToolchain,
   type ManagedToolchainInfo,
 } from "../features/toolchains/ThemisToolchainPromptModal.js";
+import ScratchToolchainPromptModal from "../features/toolchains/ScratchToolchainPromptModal.js";
 import AppErrorToast from "./AppErrorToast.js";
 import {
   requiresEditionChange,
@@ -66,6 +67,7 @@ export interface AppModalsProps {
   showThemisPromptModal?: boolean;
   themisDetectedToolchains?: DetectedThemisToolchain[];
   managedToolchainsInfo?: ManagedToolchainInfo[];
+  showScratchPromptModal?: boolean;
   isWindowDragging: boolean;
   appError: AppError | null;
 
@@ -132,6 +134,8 @@ export interface AppModalsProps {
   onApplyThemisAll?: () => Promise<void>;
   onApplyManagedAll?: () => Promise<void>;
   onThemisSuccessToast?: (msg: string) => void;
+  onCloseScratchPrompt?: () => void;
+  onEnableScratch?: () => Promise<void>;
   onClearError: () => void;
 }
 
@@ -158,6 +162,7 @@ export default function AppModals({
   showThemisPromptModal,
   themisDetectedToolchains,
   managedToolchainsInfo,
+  showScratchPromptModal,
   isWindowDragging,
   appError,
 
@@ -222,6 +227,8 @@ export default function AppModals({
   onApplyThemisAll,
   onApplyManagedAll,
   onThemisSuccessToast,
+  onCloseScratchPrompt,
+  onEnableScratch,
   onClearError,
 }: AppModalsProps) {
   const { t } = useTranslation();
@@ -382,6 +389,15 @@ export default function AppModals({
           onApplyManaged={onApplyManagedAll ?? (() => Promise.resolve())}
           onApplyThemis={onApplyThemisAll ?? (() => Promise.resolve())}
           onSuccessToast={onThemisSuccessToast}
+        />
+      )}
+
+      {showScratchPromptModal && (
+        <ScratchToolchainPromptModal
+          isOpen={showScratchPromptModal}
+          onClose={onCloseScratchPrompt ?? (() => {})}
+          onEnableScratch={onEnableScratch ?? (() => Promise.resolve())}
+          onSuccessToast={onThemisSuccessToast ?? (() => {})}
         />
       )}
 

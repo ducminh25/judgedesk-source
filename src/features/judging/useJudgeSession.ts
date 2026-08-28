@@ -74,6 +74,12 @@ export function useJudgeSession({
     progressSchedulerRef.current?.cancel();
     activeRunRef.current = true;
     setIsJudging(true);
+    setProgressState({
+      contestant: "",
+      problem: "",
+      action: "initializing",
+      percent: 0,
+    });
     dispatchResults({ type: "initialize" });
     const newJobId = globalThis.crypto.randomUUID();
     setJobId(newJobId);

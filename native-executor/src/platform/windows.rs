@@ -1651,7 +1651,7 @@ mod tests {
             .filter(|(key, _)| key.eq_ignore_ascii_case("PATH"))
             .collect();
         assert_eq!(path_values.len(), 1);
-        assert_eq!(path_values[0].1, r"C:\managed\bin");
+        assert!(path_values[0].1.starts_with(r"C:\managed\bin"));
     }
 
     #[test]

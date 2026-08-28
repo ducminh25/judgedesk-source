@@ -5,6 +5,40 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 ## [Unreleased]
 
+## [1.4.4] - 2026-08-28
+
+### Tích hợp Chấm Bài thi Scratch (.sb3, .sb2, .sb)
+
+- Hỗ trợ chấm trực tiếp các tệp bài làm Scratch (`.sb3`, `.sb2`, `.sb`) phục vụ các kỳ thi Tin học trẻ.
+- Cơ chế nạp test tự động qua khối lệnh `Hỏi và đợi` (bỏ qua câu hỏi hiển thị) và xuất kết quả qua khối `Nói` hoặc `Nghĩ`.
+- Máy ảo Scratch Headless chạy chế độ Turbo Mode siêu tốc (10-25ms/testcase), tiêu thụ ít tài nguyên và xử lý an toàn vòng lặp vô hạn (TLE).
+- Tương thích hoàn toàn trên cả Windows và macOS với quy tắc chấm đồng nhất 100%.
+- Hộp thoại hỏi kích hoạt 1 lần duy nhất khi nâng cấp lên v1.4.4, dễ dàng bật tắt lại trong Quản lý trình biên dịch (F6).
+
+### Tối ưu Phản hồi Cửa sổ Chấm & Khởi động Nhanh
+
+- Cửa sổ tiến trình chấm bài hiện ngay lập tức khi bấm Chấm bài (F9), loại bỏ hoàn toàn độ trễ 2-5s trước đây.
+- Tự động làm ấm sandbox chạy ngầm khi mở ứng dụng và lưu cache nhị phân cho Custom Checker (`.cpp`, `.py`, `.exe`), giúp chấm testcase đầu tiên ngay tức thì mà không phải chờ đợi.
+
+### Bổ sung Hướng dẫn Nộp bài trong Trợ giúp (F1)
+
+- Cập nhật tài liệu hướng dẫn quy cách nộp bài và các lưu ý khi làm bài thi Scratch trong Trung tâm Trợ giúp (F1) ở cả tiếng Việt và tiếng Anh.
+
+## [1.4.3] - 2026-08-28
+
+### Nút Sắp xếp Điểm Động & Xuất Excel Theo Thứ tự
+
+- Bổ sung nút chuyển đổi 3 trạng thái sắp xếp điểm trên Toolbar (Điểm cao -> Điểm thấp -> Mặc định), tự động đồng bộ khi click cột Tổng Điểm trên Bảng điểm.
+- Thí sinh chưa có điểm tự động hiển thị ở cuối danh sách; hòa điểm được xếp theo tên A-Z.
+- File Excel xuất ra tuân thủ chính xác thứ tự bảng điểm đang hiển thị và sắp xếp các cột bài thi chi tiết từ trái qua phải.
+- Loại bỏ khung lỗi tràn ngang trên Toolbar, chuyển sang hệ thống Thông báo Lỗi nổi (App Error Toast) linh hoạt.
+
+### Tự Kiểm Tra Trình Biên Dịch & Tối Ưu Bảng Điểm
+
+- Thêm tính năng Chẩn đoán / Tự kiểm tra (Self-Test Probe) trong Quản lý bộ công cụ cho 5 ngôn ngữ thi đấu (C++, C, Python, Pascal, Java) trực tiếp trong Native Sandbox Runner để đo đạc thời gian biên dịch, thực thi và bộ nhớ tiêu thụ.
+- Tối ưu hóa bảng băm O(1) cho bảng điểm, giúp tra cứu và sắp xếp tức thì trên các kỳ thi có hàng trăm thí sinh và bài nộp.
+- Tách biệt hoàn toàn tầng Modals Layer và tối ưu hóa bộ mã nguồn ứng dụng.
+
 ## [1.4.2] - 2026-08-27
 
 ### Tương thích Custom Checker Đa Định dạng & Tự động Nạp Header

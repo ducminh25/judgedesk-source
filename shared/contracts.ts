@@ -10,7 +10,8 @@ export type SubmissionLanguage =
   | "java"
   | "rust"
   | "javascript"
-  | "csharp";
+  | "csharp"
+  | "scratch";
 
 export interface TestExecutionDiagnostics {
   reason:

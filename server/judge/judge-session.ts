@@ -123,6 +123,12 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
     });
     await ensureCertifiedLocalCppSessionProbe(pinnedToolchains.cpp, tempDir, jobId);
   }
+  sendEvent("progress", {
+    contestant: "",
+    problem: "",
+    action: "Scanning submissions and testcases...",
+    percent: 0,
+  });
   for (const problem of plannedProblems.values()) {
     problem.tests = planProblemTestCases(problem.directory.path, problem.config);
   }
@@ -246,6 +252,12 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
        if (compileStatus === "OK") {
          const cacheKey = `${problemName}_${checkerType}`;
          if (!(cacheKey in compiledCheckers)) {
+           sendEvent("progress", {
+             contestant,
+             problem: problemName,
+             action: `Compiling custom checker (${checkerType})...`,
+             percent: totalProblemsCount ? (completedProblemsCount / totalProblemsCount) * 100 : 0
+           });
            compiledCheckers[cacheKey] = await resolveChecker({
              checkerType,
              problemName,

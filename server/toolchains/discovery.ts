@@ -673,6 +673,7 @@ function versionArgsForKind(kind: ToolchainKind): readonly string[] {
     rust: ["-vV"],
     javascript: ["--version"],
     csharp: ["--version"],
+    scratch: ["--version"],
   };
   return args[kind];
 }
@@ -1030,6 +1031,7 @@ async function collectWindowsCandidates(
       path.join(configuredHome || programFiles, "dotnet.exe"),
       path.join(programFiles, "dotnet", "dotnet.exe"),
     ],
+    scratch: [],
   };
   if (kind === "pascal") {
     const pascalCandidates: string[] = [];
@@ -1154,6 +1156,7 @@ async function collectDarwinCandidates(
       "/opt/homebrew/bin/dotnet",
       "/usr/local/bin/dotnet",
     ],
+    scratch: [],
   };
   return standard[kind];
 }
@@ -1169,6 +1172,7 @@ function executableNamesForKind(kind: ToolchainKind): readonly string[] {
     rust: ["rustc"],
     javascript: ["node"],
     csharp: ["dotnet"],
+    scratch: ["scratch-run"],
   };
   return names[kind];
 }

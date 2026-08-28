@@ -88,7 +88,13 @@
     "target": "Target",
     "action": "Action",
     "progress": "Progress",
-    "terminate": "Terminate"
+    "terminate": "Terminate",
+    "systemSetup": "Judge Engine",
+    "initializing": "Initializing grading session...",
+    "verifyingEnvironment": "Verifying compiler & environment...",
+    "scanning": "Scanning submissions and testcases...",
+    "compilingSubmission": "Compiling submission...",
+    "compilingChecker": "Compiling checker..."
   },
   "scoreboard": {
     "contestants": "Contestants",
@@ -506,7 +512,8 @@
     "javascript": "JavaScript (Node.js)",
     "pascal": "Pascal",
     "python": "Python",
-    "rust": "Rust"
+    "rust": "Rust",
+    "scratch": "Scratch (.sb3, .sb2)"
   },
   "toolchains": {
     "idle": "Pending",
@@ -701,6 +708,20 @@
       "applying": "Applying...",
       "successManaged": "Configured Olympic Standard (64-bit) successfully. You can customize anytime in Settings > Toolchains.",
       "successThemis": "Switched to Themis Toolchain (32-bit) successfully. You can customize anytime in Settings > Toolchains."
+    },
+    "scratchPrompt": {
+      "title": "New Feature: Scratch Judging Support",
+      "subtitle": "Directly judge Scratch (.sb3, .sb2) contest projects for Young Informatics contests",
+      "featuresTitle": "Key Highlights of Scratch Judge Engine",
+      "featureFormats": "Supported Formats:",
+      "featureEngine": "Execution Engine:",
+      "featureIO": "Input/Output Standard:",
+      "featurePlatform": "Cross-Platform:",
+      "note": "You can change settings or enable Scratch anytime in Toolchain Manager (F6).",
+      "dismissAction": "Not Now",
+      "confirmAction": "Enable Now",
+      "applying": "Enabling...",
+      "successEnabled": "Scratch (.sb3, .sb2) judge engine enabled successfully!"
     }
   },
   "osd": {

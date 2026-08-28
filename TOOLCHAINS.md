@@ -15,33 +15,37 @@ Gói **Core** chỉ gồm nhân chấm thi, cho phép tải các gói compiler �
 | **Python** | `.py` | CPython 3.12.13 (Managed) | CPython 3.12.13 (Managed) |
 | **Pascal / FPC** | `.pas`, `.pp` | Free Pascal 3.2.2 (Managed) | Free Pascal 3.2.2 (Managed) |
 | **Java** | `.java` | Eclipse Temurin OpenJDK 21.0.12+8 (Managed) | Eclipse Temurin OpenJDK 21.0.12+8 (Managed) |
+| **Scratch** | `.sb3`, `.sb2`, `.sb` | TurboWarp VM / scratch-run 0.1.7 (Managed) | TurboWarp VM / scratch-run 0.1.7 (Managed) |
 
 Phiên bản hiện tại không hỗ trợ macOS trên chip Intel (x86_64).
 
 ## Thành phần tích hợp trong bản Full
 
-Bản Windows Full gồm 4 gói:
+Bản Windows Full gồm các gói:
 1. `gcc-windows-x64` (dùng chung cho C++ và C)
 2. `python-windows-x64`
 3. `fpc-windows-x64`
 4. `temurin21-windows-x64`
+5. `scratch-windows-x64`
 
-Bản macOS Full gồm 3 gói:
+Bản macOS Full gồm các gói:
 1. `python-macos-arm64`
 2. `fpc-macos-arm64`
 3. `temurin21-macos-arm64`
+4. `scratch-macos-arm64`
 
 Trên macOS, việc biên dịch C và C++ sử dụng Apple Clang từ Xcode Command Line Tools.
 
-## Cờ biên dịch mặc định
+## Cờ biên dịch và quy ước thực thi mặc định
 
-Thiết lập biên dịch mặc định giữ tính tương thích với Themis:
+Thiết lập biên dịch mặc định giữ tính tương thích với Themis và chuẩn Olympic/VNOJ:
 
 - **C++ (C++14):** `-pipe -O2 -s -static -lm -x c++` (Windows đặt stack reserve `66060288` byte).
 - **C (C11):** `-pipe -O2 -s -static -lm -x c` (Windows đặt stack reserve `66060288` byte).
 - **Pascal:** `-O2 -XS -Sg -Cs66060288`.
 - **Java:** Biên dịch qua `javac` vào thư mục đầu ra riêng để thu thập tệp `.class`.
 - **Python:** Chạy trực tiếp qua trình thông dịch Python được chỉ định.
+- **Scratch:** Chạy trực tiếp qua máy ảo Scratch Headless. Dữ liệu vào được cấp qua khối `ask and wait`, dữ liệu ra thu thập từ khối `say` (kèm ký tự xuống dòng) và `think` (không kèm ký tự xuống dòng). Chế độ Turbo Mode được bật mặc định để tối ưu tốc độ.
 
 ## Cơ chế phát hiện trình biên dịch cục bộ (Local)
 

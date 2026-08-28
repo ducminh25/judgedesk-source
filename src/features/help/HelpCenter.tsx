@@ -156,6 +156,7 @@ const HELP_DEFINITIONS: HelpSectionDefinition[] = [
           "layout.tests",
           "layout.contestants",
           "layout.submissions",
+          "layout.scratch",
         ],
       },
       { type: "heading", textKey: "reloadTitle" },

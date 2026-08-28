@@ -7,7 +7,8 @@ export type ToolchainKind =
   | "java"
   | "rust"
   | "javascript"
-  | "csharp";
+  | "csharp"
+  | "scratch";
 export type ToolchainPackageOrigin = "built-in" | "downloaded";
 import type {
   ReadinessReasonCode,
