@@ -84,7 +84,7 @@ try {
   assert.equal(status.build?.gitCommit, await currentCommit());
 
   const initialToolchains = await requestJson("GET", "/api/toolchains");
-  assert.equal(initialToolchains.registryRevision, 5);
+  assert.equal(initialToolchains.registryRevision, 6);
   assert.deepEqual(
     initialToolchains.profiles?.map((profile) => profile.id),
     [
@@ -93,6 +93,7 @@ try {
       "python-cpython312",
       "pascal-fpc322",
       "java-temurin21",
+      "scratch-turbowarp-v1",
     ],
   );
   for (const profile of initialToolchains.profiles || []) {
