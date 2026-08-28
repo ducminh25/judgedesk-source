@@ -10,6 +10,7 @@ import {
   listRegisteredLanguageProfiles,
   PASCAL_LANGUAGE_PROFILE_ID,
   PYTHON_LANGUAGE_PROFILE_ID,
+  SCRATCH_LANGUAGE_PROFILE_ID,
 } from "./registry.js";
 import { isToolchainVersionAllowed } from "./version-policy.js";
 
@@ -27,17 +28,22 @@ test("the live registry exposes approved profiles in deterministic UI order", ()
       { id: PYTHON_LANGUAGE_PROFILE_ID, kind: "python", mode: "local_auto" },
       { id: PASCAL_LANGUAGE_PROFILE_ID, kind: "pascal", mode: "none" },
       { id: JAVA_LANGUAGE_PROFILE_ID, kind: "java", mode: "none" },
+      { id: SCRATCH_LANGUAGE_PROFILE_ID, kind: "scratch", mode: "none" },
     ],
   );
   assert.equal(getRegisteredProfileForKind("cpp"), registry[0]);
   assert.equal(getRegisteredProfileForKind("python"), registry[2]);
+  assert.equal(getRegisteredProfileForKind("scratch"), registry[5]);
   assert.equal(getRegisteredLanguageProfile("unknown-profile"), undefined);
   assert.throws(
     () => getRegisteredProfileForKind("go"),
     /No language profile is registered/,
   );
-  for (const extension of [".go", ".rs", ".js", ".cs", ".sb3", ".sb2", ".sb"]) {
+  for (const extension of [".go", ".rs", ".js", ".cs"]) {
     assert.equal(getRegisteredProfileForExtension(extension), undefined);
+  }
+  for (const extension of [".sb3", ".sb2", ".sb"]) {
+    assert.equal(getRegisteredProfileForExtension(extension)?.profile.ref.id, SCRATCH_LANGUAGE_PROFILE_ID);
   }
   assert.equal(Object.isFrozen(registry), true);
   assert.equal(Object.isFrozen(registry[0]), true);

@@ -46,18 +46,10 @@ export function useScratchPromptModal({
 
   const handleEnableScratch = useCallback(async () => {
     try {
-      const res = await apiFetch("/api/toolchains/config", {
-        method: "POST",
+      const res = await apiFetch("/api/toolchains/profiles/scratch-turbowarp-v1/preference", {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          updates: [
-            {
-              profileId: "scratch-turbowarp-v1",
-              kind: "scratch",
-              source: "managed",
-            },
-          ],
-        }),
+        body: JSON.stringify({ mode: "managed" }),
       });
       if (res.ok) {
         onRefreshHostStatus();

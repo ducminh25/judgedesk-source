@@ -295,6 +295,17 @@ export function clearToolchainDetectionCache(): void {
 }
 
 export function resolveManagedToolchain(kind: ToolchainKind): ResolvedToolchain {
+  if (kind === "scratch") {
+    return {
+      kind: "scratch",
+      source: "managed",
+      executablePath: "built-in",
+      version: "1.0.0",
+      ready: true,
+      provenance: "managed-package",
+      packageOrigin: "built-in",
+    };
+  }
   const descriptor = getDescriptorForHost(os.platform(), os.arch(), kind);
   if (descriptor) {
     const minimumOs = TOOLCHAIN_RELEASE_BLUEPRINTS[descriptor.id]?.minimumOs;

@@ -62,7 +62,8 @@ export default function ProgressWindow({ currentContestant, currentProblem, acti
     ? t(action)
     : t(`progress.${action}`, { defaultValue: action });
 
-  const isIndeterminate = percent <= 0;
+  const isWarmupPhase = !currentContestant && !currentProblem;
+  const isIndeterminate = isWarmupPhase && percent <= 0;
 
   return (
     <div 
