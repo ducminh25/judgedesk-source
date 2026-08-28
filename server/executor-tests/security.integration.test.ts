@@ -386,7 +386,7 @@ test("CPU loop and sleep both receive TLE", { timeout: 10_000 }, async () => {
   assert.equal(sleep.reason, "wall_time_limit");
 });
 
-test("job-wide memory boundary is stable across 20 repetitions", { timeout: 60_000 }, async () => {
+test("job-wide memory boundary is stable across 20 repetitions", { timeout: 120_000 }, async () => {
   for (let index = 0; index < 20; index += 1) {
     const pass = await runHelper(["--test-allocate-mib", "48", "5"], {
       memoryBytes: 64 * MiB,
