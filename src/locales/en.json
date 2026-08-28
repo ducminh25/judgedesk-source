@@ -103,7 +103,14 @@
     "selectProblem": "Select problem for grading",
     "selectAllProblems": "Select all problems",
     "actionsFor": "Actions for {{name}}",
-    "resultStatus": "Status: {{status}}\nCompile: {{compileStatus}}"
+    "resultStatus": "Status: {{status}}\nCompile: {{compileStatus}}",
+    "sortScores": "Sort scores",
+    "sortScoreDesc": "Score: High → Low",
+    "sortScoreAsc": "Score: Low → High",
+    "sortScoreDisabledHint": "Requires at least one score to sort",
+    "sortScoreDefaultHint": "Sort: Highest to lowest score",
+    "sortScoreDescHint": "Sorted: High to low. Click to sort: Low to high",
+    "sortScoreAscHint": "Sorted: Low to high. Click to reset to initial order (A-Z)"
   },
   "directoryPicker": {
     "selectTests": "Select Tests Directory",

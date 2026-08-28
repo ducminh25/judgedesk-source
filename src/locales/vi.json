@@ -103,7 +103,14 @@
     "selectProblem": "Chọn bài để chấm",
     "selectAllProblems": "Chọn tất cả bài",
     "actionsFor": "Thao tác cho {{name}}",
-    "resultStatus": "Trạng thái: {{status}}\nBiên dịch: {{compileStatus}}"
+    "resultStatus": "Trạng thái: {{status}}\nBiên dịch: {{compileStatus}}",
+    "sortScores": "Sắp xếp điểm",
+    "sortScoreDesc": "Điểm: Cao → Thấp",
+    "sortScoreAsc": "Điểm: Thấp → Cao",
+    "sortScoreDisabledHint": "Cần có ít nhất 1 điểm để sắp xếp",
+    "sortScoreDefaultHint": "Sắp xếp: Điểm cao xuống thấp",
+    "sortScoreDescHint": "Đang xếp: Điểm cao → thấp. Bấm để xếp: Điểm thấp → cao",
+    "sortScoreAscHint": "Đang xếp: Điểm thấp → cao. Bấm để về ban đầu (A-Z)"
   },
   "directoryPicker": {
     "selectTests": "Chọn thư mục Test",

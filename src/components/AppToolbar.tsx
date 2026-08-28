@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  ArrowDownWideNarrow,
+  ArrowUpDown,
+  ArrowUpNarrowWide,
   CheckCircle2,
   CircleHelp,
   ClipboardList,
@@ -29,6 +32,7 @@ import { APP_VERSION } from "../version";
 import type { AppUpdateState } from "../features/updates/useAppUpdater";
 import OsdStatusBadge from "../features/osd/OsdStatusBadge";
 import type { OsdStatusState } from "../features/osd/useOsdSession";
+import type { ContestantSortMode } from "../features/scoreboard/scoreboard-model.js";
 
 const PUBLIC_REPOSITORY = "https://github.com/ducminh25/judgedesk";
 
@@ -37,7 +41,9 @@ interface Props {
   canExport: boolean;
   canRun: boolean;
   canSaveContest: boolean;
-  errorMessage: string;
+  canSortScores: boolean;
+  scoreSortMode: ContestantSortMode;
+  onToggleScoreSort: () => void;
   hostStatus: HostStatus | null;
   interactionLocked: boolean;
   isExporting: boolean;
@@ -74,7 +80,9 @@ export default function AppToolbar({
   canExport,
   canRun,
   canSaveContest,
-  errorMessage,
+  canSortScores,
+  scoreSortMode,
+  onToggleScoreSort,
   hostStatus,
   interactionLocked,
   isExporting,
@@ -199,6 +207,12 @@ export default function AppToolbar({
             : <FileSpreadsheet className="h-4 w-4 text-emerald-500" />}
           <span>{isExporting ? t("export.exporting") : t("scoreboard.export")}</span>
         </button>
+        <ScoreSortButton
+          canSort={canSortScores}
+          disabled={interactionLocked || !canSortScores}
+          sortMode={scoreSortMode}
+          onToggle={onToggleScoreSort}
+        />
         <button
           type="button"
           onClick={onDeleteSelected}
@@ -217,11 +231,6 @@ export default function AppToolbar({
         />
 
         <div className="min-w-3 flex-1" />
-        {errorMessage && (
-          <div className="max-w-64 flex-none truncate rounded border border-rose-300 bg-rose-50 px-3 py-1.5 text-[10px] font-medium text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300" title={errorMessage}>
-            {errorMessage}
-          </div>
-        )}
         <HelpButton onOpen={onOpenHelp} />
         <UpdateButton state={updateState} disabled={interactionLocked} onCheck={onCheckUpdates} onChoose={onOpenUpdateChoices} onInstall={onRequestInstall} />
         <DonationButton onOpen={onOpenDonation} disabled={interactionLocked} />
@@ -262,6 +271,61 @@ export default function AppToolbar({
         </div>
       </div>
     </header>
+  );
+}
+
+export function ScoreSortButton({
+  canSort,
+  disabled,
+  sortMode,
+  onToggle,
+}: {
+  canSort: boolean;
+  disabled: boolean;
+  sortMode: ContestantSortMode;
+  onToggle: () => void;
+}) {
+  const { t } = useTranslation();
+  const isDesc = sortMode === "score" || sortMode === "score_desc";
+  const isAsc = sortMode === "score_asc";
+  const isActive = isDesc || isAsc;
+
+  const label = isDesc
+    ? t("scoreboard.sortScoreDesc", "Điểm: Cao → Thấp")
+    : isAsc
+      ? t("scoreboard.sortScoreAsc", "Điểm: Thấp → Cao")
+      : t("scoreboard.sortScores", "Sắp xếp điểm");
+
+  const tooltip = !canSort
+    ? t("scoreboard.sortScoreDisabledHint", "Cần có ít nhất 1 điểm để sắp xếp")
+    : isDesc
+      ? t("scoreboard.sortScoreDescHint", "Đang xếp: Điểm cao → thấp. Bấm để xếp: Điểm thấp → cao")
+      : isAsc
+        ? t("scoreboard.sortScoreAscHint", "Đang xếp: Điểm thấp → cao. Bấm để về ban đầu (A-Z)")
+        : t("scoreboard.sortScoreDefaultHint", "Sắp xếp: Điểm cao xuống thấp");
+
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={disabled}
+      title={tooltip}
+      aria-label={label}
+      className={`flex h-9 flex-none items-center gap-2 rounded border px-3 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+        isActive
+          ? "border-indigo-400 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:border-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-300 dark:hover:bg-indigo-900/50"
+          : "border-surface-border bg-surface-elevated text-text-primary hover:bg-surface-hover"
+      }`}
+    >
+      {isDesc ? (
+        <ArrowDownWideNarrow className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+      ) : isAsc ? (
+        <ArrowUpNarrowWide className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+      ) : (
+        <ArrowUpDown className="h-4 w-4 text-text-muted" />
+      )}
+      <span>{label}</span>
+    </button>
   );
 }
 

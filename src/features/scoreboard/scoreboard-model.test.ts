@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { BatchJudgeResult } from "../../types.js";
 import {
+  hasAnyContestantScore,
   indexProblemResults,
   indexScoreboardResults,
   selectedTotalScore,
@@ -116,5 +117,74 @@ describe("scoreboard-model", () => {
     // Default mode preserves order
     const byDefault = sortContestants(list, "default", sampleResult, ["A_SUM", "B_SORT"], { A_SUM: true, B_SORT: true });
     assert.deepEqual(byDefault, ["Alice", "Bob", "Charlie"]);
+  });
+
+  it("sorts high to low (score_desc) and low to high (score_asc) placing unscored at the bottom", () => {
+    // Dan has a scored problem with 0 points (tested, got 0)
+    // Eve has no score (not in result)
+    const extendedResult: BatchJudgeResult = {
+      success: true,
+      contestants: [
+        ...sampleResult.contestants,
+        {
+          contestantName: "Dan",
+          problems: [
+            {
+              problemName: "A_SUM",
+              language: "cpp",
+              compileStatus: "OK",
+              testCases: [],
+              summary: { total: 10, passed: 0, maxScore: 100, score: 0, status: "WA" },
+            },
+          ],
+        },
+      ],
+    };
+
+    const list = ["Eve", "Charlie", "Dan", "Alice", "Bob"];
+    // Bob (170) > Alice (150) > Dan (0) > Charlie (unscored, A-Z) > Eve (unscored, A-Z)
+    const desc = sortContestants(list, "score_desc", extendedResult, ["A_SUM", "B_SORT"], { A_SUM: true, B_SORT: true });
+    assert.deepEqual(desc, ["Bob", "Alice", "Dan", "Charlie", "Eve"]);
+
+    // In ascending mode: Dan (0) < Alice (150) < Bob (170) > unscored Charlie and Eve still at the bottom A-Z!
+    const asc = sortContestants(list, "score_asc", extendedResult, ["A_SUM", "B_SORT"], { A_SUM: true, B_SORT: true });
+    assert.deepEqual(asc, ["Dan", "Alice", "Bob", "Charlie", "Eve"]);
+
+    // Tie-breaker when scores are equal: alphabetical A-Z
+    const tiedResult: BatchJudgeResult = {
+      success: true,
+      contestants: [
+        {
+          contestantName: "Zara",
+          problems: [{ problemName: "A", language: "cpp", compileStatus: "OK", testCases: [], summary: { total: 1, passed: 1, maxScore: 10, score: 10, status: "AC" } }],
+        },
+        {
+          contestantName: "Adam",
+          problems: [{ problemName: "A", language: "cpp", compileStatus: "OK", testCases: [], summary: { total: 1, passed: 1, maxScore: 10, score: 10, status: "AC" } }],
+        },
+      ],
+    };
+    const tiedDesc = sortContestants(["Zara", "Adam"], "score_desc", tiedResult, ["A"], { A: true });
+    assert.deepEqual(tiedDesc, ["Adam", "Zara"]);
+
+    const tiedAsc = sortContestants(["Zara", "Adam"], "score_asc", tiedResult, ["A"], { A: true });
+    assert.deepEqual(tiedAsc, ["Adam", "Zara"]);
+  });
+
+  it("checks whether any contestant has a score dynamically", () => {
+    assert.equal(hasAnyContestantScore(null, ["Alice"], ["A_SUM"], { A_SUM: true }), false);
+    assert.equal(hasAnyContestantScore({ success: true, contestants: [] }, ["Alice"], ["A_SUM"], { A_SUM: true }), false);
+
+    // Charlie has empty problems
+    assert.equal(hasAnyContestantScore(sampleResult, ["Charlie"], ["A_SUM"], { A_SUM: true }), false);
+
+    // Selected problems don't match scored problems
+    assert.equal(hasAnyContestantScore(sampleResult, ["Alice"], ["C_TREE"], { C_TREE: true }), false);
+
+    // Alice has scored on A_SUM
+    assert.equal(hasAnyContestantScore(sampleResult, ["Alice"], ["A_SUM", "B_SORT"], { A_SUM: true, B_SORT: false }), true);
+
+    // Whole list with Bob/Alice has score
+    assert.equal(hasAnyContestantScore(sampleResult, ["Charlie", "Eve", "Bob"], ["A_SUM"], { A_SUM: true }), true);
   });
 });
