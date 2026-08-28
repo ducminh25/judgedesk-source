@@ -221,10 +221,20 @@ function buildDetailRows(
   labels: ScoreWorkbookLabels,
 ) {
   const rows: Array<Record<string, WorkbookCellValue>> = [];
+  const problemOrder = new Map(
+    problemNames.map((name, index) => [name.trim().toLowerCase(), index]),
+  );
+
   for (const contestant of contestants) {
-    const problems = contestant.problems.filter(problem =>
-      problemNames.some(name => name.trim().toLowerCase() === problem.problemName.trim().toLowerCase())
-    );
+    const problems = contestant.problems
+      .filter((problem) =>
+        problemOrder.has(problem.problemName.trim().toLowerCase()),
+      )
+      .sort((a, b) => {
+        const orderA = problemOrder.get(a.problemName.trim().toLowerCase()) ?? 0;
+        const orderB = problemOrder.get(b.problemName.trim().toLowerCase()) ?? 0;
+        return orderA - orderB;
+      });
     rows.push({
       [labels.candidate]: contestant.contestantName,
       [labels.problem]: "",

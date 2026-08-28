@@ -5,7 +5,8 @@ import { createInstance } from "i18next";
 import { I18nextProvider, initReactI18next } from "react-i18next";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { AppUpdateState } from "../features/updates/useAppUpdater.js";
-import { DonationButton, HelpButton, UpdateButton } from "./AppToolbar.js";
+import type { ContestantSortMode } from "../features/scoreboard/scoreboard-model.js";
+import { DonationButton, HelpButton, ScoreSortButton, UpdateButton } from "./AppToolbar.js";
 
 const resources = {
   en: {
@@ -24,6 +25,15 @@ const resources = {
       },
       helpCenter: { open: "Help" },
       donation: { tooltip: "Buy me a coffee?" },
+      scoreboard: {
+        sortScores: "Sort scores",
+        sortScoreDesc: "Score: High → Low",
+        sortScoreAsc: "Score: Low → High",
+        sortScoreDisabledHint: "Requires at least one score to sort",
+        sortScoreDefaultHint: "Sort: Highest to lowest score",
+        sortScoreDescHint: "Sorted: High to low. Click to sort: Low to high",
+        sortScoreAscHint: "Sorted: Low to high. Click to reset to initial order (A-Z)",
+      },
     },
   },
   vi: {
@@ -42,6 +52,15 @@ const resources = {
       },
       helpCenter: { open: "Hướng dẫn" },
       donation: { tooltip: "Buy me a coffee? (Ủng hộ dự án?)" },
+      scoreboard: {
+        sortScores: "Sắp xếp điểm",
+        sortScoreDesc: "Điểm: Cao → Thấp",
+        sortScoreAsc: "Điểm: Thấp → Cao",
+        sortScoreDisabledHint: "Cần có ít nhất 1 điểm để sắp xếp",
+        sortScoreDefaultHint: "Sắp xếp: Điểm cao xuống thấp",
+        sortScoreDescHint: "Đang xếp: Điểm cao → thấp. Bấm để xếp: Điểm thấp → cao",
+        sortScoreAscHint: "Đang xếp: Điểm thấp → cao. Bấm để về ban đầu (A-Z)",
+      },
     },
   },
 };
@@ -76,6 +95,30 @@ async function renderHelpButton(language: "en" | "vi") {
   return renderToStaticMarkup(
     <I18nextProvider i18n={i18n}>
       <HelpButton onOpen={() => {}} />
+    </I18nextProvider>,
+  );
+}
+
+async function renderScoreSortButton(
+  canSort: boolean,
+  sortMode: ContestantSortMode,
+  language: "en" | "vi",
+  disabled = !canSort,
+) {
+  const i18n = createInstance();
+  await i18n.use(initReactI18next).init({
+    lng: language,
+    resources,
+    interpolation: { escapeValue: false },
+  });
+  return renderToStaticMarkup(
+    <I18nextProvider i18n={i18n}>
+      <ScoreSortButton
+        canSort={canSort}
+        disabled={disabled}
+        sortMode={sortMode}
+        onToggle={() => {}}
+      />
     </I18nextProvider>,
   );
 }
@@ -187,5 +230,60 @@ describe("toolbar help button", () => {
     const source = readFileSync(new URL("./AppToolbar.tsx", import.meta.url), "utf8");
 
     assert.match(source, /<HelpButton onOpen=\{onOpenHelp\} \/>\s*<UpdateButton/);
+  });
+
+  it("does not render an inline error box in the toolbar to prevent horizontal overflow", () => {
+    const source = readFileSync(new URL("./AppToolbar.tsx", import.meta.url), "utf8");
+
+    assert.doesNotMatch(source, /errorMessage/);
+    assert.doesNotMatch(source, /border-rose-300 bg-rose-50/);
+  });
+});
+
+describe("toolbar score sort button", () => {
+  it("is disabled with helpful Vietnamese tooltip when no scores exist", async () => {
+    const markup = await renderScoreSortButton(false, "default", "vi");
+
+    assert.match(markup, /disabled=""/);
+    assert.match(markup, /title="Cần có ít nhất 1 điểm để sắp xếp"/);
+    assert.match(markup, />Sắp xếp điểm</);
+  });
+
+  it("is disabled with helpful English tooltip when no scores exist", async () => {
+    const markup = await renderScoreSortButton(false, "default", "en");
+
+    assert.match(markup, /disabled=""/);
+    assert.match(markup, /title="Requires at least one score to sort"/);
+    assert.match(markup, />Sort scores</);
+  });
+
+  it("is enabled when scores exist and indicates default high-to-low sort on hover", async () => {
+    const markup = await renderScoreSortButton(true, "default", "vi");
+
+    assert.doesNotMatch(markup, /disabled=""/);
+    assert.match(markup, /title="Sắp xếp: Điểm cao xuống thấp"/);
+    assert.match(markup, />Sắp xếp điểm</);
+  });
+
+  it("shows active high-to-low state (click 1) with hint for next click", async () => {
+    const markup = await renderScoreSortButton(true, "score_desc", "vi");
+
+    assert.match(markup, />Điểm: Cao → Thấp</);
+    assert.match(markup, /title="Đang xếp: Điểm cao → thấp\. Bấm để xếp: Điểm thấp → cao"/);
+    assert.match(markup, /border-indigo-400 bg-indigo-50/);
+  });
+
+  it("shows active low-to-high state (click 2) with hint to reset", async () => {
+    const markup = await renderScoreSortButton(true, "score_asc", "vi");
+
+    assert.match(markup, />Điểm: Thấp → Cao</);
+    assert.match(markup, /title="Đang xếp: Điểm thấp → cao\. Bấm để về ban đầu \(A-Z\)"/);
+    assert.match(markup, /border-indigo-400 bg-indigo-50/);
+  });
+
+  it("renders ScoreSortButton in toolbar JSX next to export", () => {
+    const source = readFileSync(new URL("./AppToolbar.tsx", import.meta.url), "utf8");
+
+    assert.match(source, /<ScoreSortButton[\s\S]*?<button\s+type="button"\s+onClick=\{onDeleteSelected\}/);
   });
 });

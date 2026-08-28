@@ -10,10 +10,11 @@ import {
   type MouseEvent as ReactMouseEvent,
   type SetStateAction,
 } from "react";
-import { ArrowUpDown, MoreVertical, Terminal } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpDown, ArrowUpNarrowWide, MoreVertical, Terminal } from "lucide-react";
 import type { BatchJudgeResult, ContestantResult, ProblemResult } from "../../types";
 import { useTranslation } from "react-i18next";
 import {
+  type ContestantSortMode,
   indexProblemResults,
   indexScoreboardResults,
   selectedTotalScore,
@@ -33,7 +34,9 @@ export interface ScoreboardActionTarget {
 interface Props {
   allContestants: string[];
   contestants: string[];
-  contestantSort: "default" | "asc" | "desc" | "score";
+  contestantSort: ContestantSortMode;
+  canSortScores?: boolean;
+  onToggleScoreSort?: () => void;
   problems: string[];
   result: BatchJudgeResult | null;
   selectedContestants: Record<string, boolean>;
@@ -42,7 +45,7 @@ interface Props {
   activeContestant?: string | null;
   activeProblem?: string | null;
   onActiveTargetChange?: (contestant: string | null, problem: string | null) => void;
-  setContestantSort: Dispatch<SetStateAction<"default" | "asc" | "desc" | "score">>;
+  setContestantSort: Dispatch<SetStateAction<ContestantSortMode>>;
   setSelectedContestants: Dispatch<SetStateAction<Record<string, boolean>>>;
   setSelectedProblems: Dispatch<SetStateAction<Record<string, boolean>>>;
   onOpenActions: (target: ScoreboardActionTarget) => void;
@@ -63,6 +66,8 @@ function Scoreboard({
   allContestants,
   contestants,
   contestantSort,
+  canSortScores = false,
+  onToggleScoreSort,
   problems,
   result,
   selectedContestants,
@@ -268,7 +273,7 @@ function Scoreboard({
                       type="button"
                       disabled={interactionLocked}
                       onClick={() => setContestantSort((previous) => previous === "default" ? "asc" : previous === "asc" ? "desc" : "default")}
-                      className={`flex h-6 w-6 flex-none items-center justify-center rounded hover:bg-surface-hover ${contestantSort !== "default" && contestantSort !== "score" ? "text-indigo-500" : "text-text-muted"}`}
+                      className={`flex h-6 w-6 flex-none items-center justify-center rounded hover:bg-surface-hover ${contestantSort === "asc" || contestantSort === "desc" ? "text-indigo-500" : "text-text-muted"}`}
                       title={t("scoreboard.sortAlphabetically")}
                     >
                       <ArrowUpDown className="h-3.5 w-3.5" />
@@ -294,7 +299,7 @@ function Scoreboard({
                       })}
                       className={`border-b border-l border-surface-border bg-surface-elevated px-1.5 text-center font-semibold text-text-primary hover:bg-surface-hover ${isColFocused ? "bg-indigo-50/50 dark:bg-indigo-950/30" : ""}`}
                     >
-                      <div className="flex min-w-0 items-center justify-center gap-1">
+                      <div className="flex items-center justify-center gap-1.5 py-1">
                         <input
                           type="checkbox"
                           disabled={interactionLocked}
@@ -337,6 +342,38 @@ function Scoreboard({
                       title={t("scoreboard.selectAllProblems")}
                     />
                     <span>{t("scoreboard.total")}</span>
+                    {onToggleScoreSort && (
+                      <button
+                        type="button"
+                        disabled={interactionLocked || !canSortScores}
+                        onClick={onToggleScoreSort}
+                        className={`flex h-6 w-6 flex-none items-center justify-center rounded hover:bg-surface-hover ${
+                          contestantSort === "score" ||
+                          contestantSort === "score_desc" ||
+                          contestantSort === "score_asc"
+                            ? "text-indigo-500"
+                            : "text-text-muted"
+                        } disabled:cursor-not-allowed disabled:opacity-40`}
+                        title={
+                          !canSortScores
+                            ? t("scoreboard.sortScoreDisabledHint", "Cần có ít nhất 1 điểm để sắp xếp")
+                            : contestantSort === "score" || contestantSort === "score_desc"
+                              ? t("scoreboard.sortScoreDescHint", "Đang xếp: Điểm cao → thấp. Bấm để xếp: Điểm thấp → cao")
+                              : contestantSort === "score_asc"
+                                ? t("scoreboard.sortScoreAscHint", "Đang xếp: Điểm thấp → cao. Bấm để về ban đầu (A-Z)")
+                                : t("scoreboard.sortScoreDefaultHint", "Sắp xếp: Điểm cao xuống thấp")
+                        }
+                        aria-label={t("scoreboard.sortScores", "Sắp xếp điểm")}
+                      >
+                        {contestantSort === "score" || contestantSort === "score_desc" ? (
+                          <ArrowDownWideNarrow className="h-3.5 w-3.5" />
+                        ) : contestantSort === "score_asc" ? (
+                          <ArrowUpNarrowWide className="h-3.5 w-3.5" />
+                        ) : (
+                          <ArrowUpDown className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    )}
                   </div>
                 </th>
               </tr>

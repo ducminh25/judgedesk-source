@@ -262,3 +262,105 @@ test("score export auto-discovers problem and contestant names when selection is
   assert.equal(summarySheet.getCell("B2").value, 9);
   assert.equal(summarySheet.getCell("C2").value, 9);
 });
+
+test("score export outputs sorted scoreboard and sorts detail sheet problems left-to-right", async () => {
+  // Bob scored higher than Alice.
+  // In judgeResult, Bob's problems are in reverse order [B_SORT, A_SUM]
+  const result: BatchJudgeResult = {
+    success: true,
+    contestants: [
+      {
+        contestantName: "Alice",
+        problems: [
+          {
+            problemName: "A_SUM",
+            language: "cpp",
+            compileStatus: "OK",
+            testCases: [{ name: "01", status: "AC", executionTime: 10, score: 50 }],
+            summary: { total: 1, passed: 1, maxScore: 100, score: 50, status: "PARTIAL" },
+          },
+          {
+            problemName: "B_SORT",
+            language: "cpp",
+            compileStatus: "OK",
+            testCases: [{ name: "01", status: "AC", executionTime: 10, score: 50 }],
+            summary: { total: 1, passed: 1, maxScore: 100, score: 50, status: "PARTIAL" },
+          },
+        ],
+      },
+      {
+        contestantName: "Bob",
+        problems: [
+          {
+            problemName: "B_SORT",
+            language: "cpp",
+            compileStatus: "OK",
+            testCases: [{ name: "01", status: "AC", executionTime: 10, score: 100 }],
+            summary: { total: 1, passed: 1, maxScore: 100, score: 100, status: "AC" },
+          },
+          {
+            problemName: "A_SUM",
+            language: "cpp",
+            compileStatus: "OK",
+            testCases: [{ name: "01", status: "AC", executionTime: 10, score: 100 }],
+            summary: { total: 1, passed: 1, maxScore: 100, score: 100, status: "AC" },
+          },
+        ],
+      },
+    ],
+  };
+
+  const mockT = (key: string) => key;
+  // Passing Bob first (e.g. sorted high-to-low), and problems in order [A_SUM, B_SORT]
+  const workbookBytes = await buildScoreWorkbookBytes(
+    result,
+    ["Bob", "Alice"],
+    ["A_SUM", "B_SORT"],
+    createScoreWorkbookLabels(mockT as any),
+  );
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(Buffer.from(workbookBytes));
+
+  // Summary sheet: Bob is row 2, Alice is row 3
+  const summarySheet = workbook.getWorksheet("export.scoreboardTitle")!;
+  assert.equal(summarySheet.getCell("A2").value, "Bob");
+  assert.equal(summarySheet.getCell("D2").value, 200);
+  assert.equal(summarySheet.getCell("A3").value, "Alice");
+  assert.equal(summarySheet.getCell("D3").value, 100);
+
+  // Detail sheet:
+  // Bob comes first (top to bottom).
+  // Bob's problems must appear in order: A_SUM first, then B_SORT (left to right),
+  // even though Bob had B_SORT first in the judgeResult array!
+  const detailSheet = workbook.getWorksheet("export.detailsTitle")!;
+  const detailRows: Array<{ candidate: any; problem: any; score: any }> = [];
+  detailSheet.eachRow((row, rowNumber) => {
+    if (rowNumber > 1) {
+      detailRows.push({
+        candidate: row.getCell(1).value,
+        problem: row.getCell(2).value,
+        score: row.getCell(4).value,
+      });
+    }
+  });
+
+  // Unique problem order for Bob must be [A_SUM, B_SORT]
+  const bobProblemsInOrder = Array.from(
+    new Set(
+      detailRows
+        .filter((r) => r.candidate === "Bob" && r.problem)
+        .map((r) => r.problem),
+    ),
+  );
+  assert.deepEqual(bobProblemsInOrder, ["A_SUM", "B_SORT"]);
+
+  // Unique problem order for Alice must be [A_SUM, B_SORT]
+  const aliceProblemsInOrder = Array.from(
+    new Set(
+      detailRows
+        .filter((r) => r.candidate === "Alice" && r.problem)
+        .map((r) => r.problem),
+    ),
+  );
+  assert.deepEqual(aliceProblemsInOrder, ["A_SUM", "B_SORT"]);
+});

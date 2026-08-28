@@ -27,7 +27,11 @@ import { useContestWorkspace } from "./features/workspace/useContestWorkspace.js
 import Scoreboard, {
   type ScoreboardActionTarget,
 } from "./features/scoreboard/Scoreboard.js";
-import { sortContestants } from "./features/scoreboard/scoreboard-model.js";
+import {
+  hasAnyContestantScore,
+  sortContestants,
+  type ContestantSortMode,
+} from "./features/scoreboard/scoreboard-model.js";
 import { useScoreDeletion } from "./features/scores/useScoreDeletion.js";
 import { useScoreboardExport } from "./features/export/useScoreboardExport.js";
 import { useContestFileActions } from "./features/contest/useContestFileActions.js";
@@ -59,9 +63,7 @@ export default function App() {
   } = useContestWorkspace();
 
   const [searchTerm, setSearchTerm] = useState<string>("");
-  const [contestantSort, setContestantSort] = useState<
-    "default" | "asc" | "desc" | "score"
-  >("default");
+  const [contestantSort, setContestantSort] = useState<ContestantSortMode>("default");
   const [problemSort, setProblemSort] = useState<"default" | "asc" | "desc">(
     "default",
   );
@@ -96,7 +98,6 @@ export default function App() {
 
   // Host & Error states
   const [hostStatus, setHostStatus] = useState<HostStatus | null>(null);
-  const [backendErrorMessage, setBackendErrorMessage] = useState("");
   const [appError, setAppError] = useState<AppError | null>(null);
   const hostStatusRequestRef = useRef<Promise<void> | null>(null);
 
@@ -106,7 +107,6 @@ export default function App() {
 
   const clearError = useCallback(() => {
     setAppError(null);
-    setBackendErrorMessage("");
   }, []);
 
   // App Updater
@@ -287,6 +287,36 @@ export default function App() {
     return orderedContestants.filter((contestant) => contestant.toLowerCase().includes(lower));
   }, [orderedContestants, searchTerm]);
 
+  const canSortScores = useMemo(
+    () =>
+      hasAnyContestantScore(
+        judgeResult,
+        contestantsList,
+        problemsList,
+        selectedProblems,
+      ),
+    [judgeResult, contestantsList, problemsList, selectedProblems],
+  );
+
+  const handleToggleScoreSort = useCallback(() => {
+    setContestantSort((previous) => {
+      if (previous === "score" || previous === "score_desc") return "score_asc";
+      if (previous === "score_asc") return "default";
+      return "score_desc";
+    });
+  }, []);
+
+  useEffect(() => {
+    if (
+      !canSortScores &&
+      (contestantSort === "score" ||
+        contestantSort === "score_desc" ||
+        contestantSort === "score_asc")
+    ) {
+      setContestantSort("default");
+    }
+  }, [canSortScores, contestantSort]);
+
   // Host status loader
   const requestHostStatus = useCallback(() => {
     if (hostStatusRequestRef.current) return;
@@ -295,17 +325,15 @@ export default function App() {
       try {
         const response = await apiFetch("/api/status");
         setHostStatus(await response.json());
-        setBackendErrorMessage("");
       } catch (error) {
         console.error("Failed to load host status", error);
-        setBackendErrorMessage(t("errors.backendConnection"));
         showError(error, { code: "BACKEND_CONNECTION" });
       } finally {
         hostStatusRequestRef.current = null;
       }
     })();
     hostStatusRequestRef.current = request;
-  }, [showError, t]);
+  }, [showError]);
 
   const loadHelpToolchains = useCallback(async (): Promise<ToolchainState> => {
     const response = await apiFetch("/api/toolchains");
@@ -535,7 +563,9 @@ export default function App() {
           canExport={canExportScoreboard(contestantsList, problemsList)}
           canRun={canRun}
           canSaveContest={isContestDirty && hasContestData}
-          errorMessage={backendErrorMessage || errorMessage}
+          canSortScores={canSortScores}
+          scoreSortMode={contestantSort}
+          onToggleScoreSort={handleToggleScoreSort}
           hostStatus={hostStatus}
           interactionLocked={interactionLocked}
           isJudging={isJudging}
@@ -588,6 +618,8 @@ export default function App() {
           allContestants={contestantsList}
           contestants={displayedContestants}
           contestantSort={contestantSort}
+          canSortScores={canSortScores}
+          onToggleScoreSort={handleToggleScoreSort}
           problems={displayedProblems}
           result={judgeResult}
           selectedContestants={selectedContestants}
