@@ -3995,7 +3995,7 @@ dependencies = [
 
 [[package]]
 name = "themis-v2"
-version = "1.4.41"
+version = "1.4.42"
 dependencies = [
  "dirs",
  "fs4",

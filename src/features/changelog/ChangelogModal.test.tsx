@@ -59,7 +59,7 @@ describe("ChangelogModal", () => {
 
     assert.match(html, /Có gì mới trong JudgeDesk/);
     assert.match(html, /Bản sửa lỗi nhanh \(Hotfix\) cho v1\.4\.4/);
-    assert.match(html, /v1\.4\.41/);
+    assert.match(html, /v1\.4\.42/);
     assert.match(html, /v1\.2\.5/);
     assert.match(html, /Đã hiểu/);
   });
