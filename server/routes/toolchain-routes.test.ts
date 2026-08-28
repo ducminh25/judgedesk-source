@@ -20,6 +20,7 @@ import {
   getRegisteredLanguageProfile,
   LANGUAGE_REGISTRY_REVISION,
   PYTHON_LANGUAGE_PROFILE_ID,
+  SCRATCH_LANGUAGE_PROFILE_ID,
   listRegisteredLanguageProfiles,
 } from "../languages/registry.js";
 import { getStoredProfilePreference } from "../toolchains/preferences-v2.js";
@@ -450,6 +451,21 @@ test("profile preference route updates one stable registry ID and preserves dorm
   assert.deepEqual(
     getStoredProfilePreference(snapshot.preferences, PYTHON_LANGUAGE_PROFILE_ID),
     { mode: "managed", localPath: String.raw`C:\remembered\python.exe` },
+  );
+
+  const scratchResponse = createResponse();
+  await handler(
+    {
+      body: { mode: "managed" },
+      params: { profileId: SCRATCH_LANGUAGE_PROFILE_ID },
+    },
+    scratchResponse,
+  );
+  assert.equal(scratchResponse.statusCode, 200);
+  const updatedSnapshot = loadToolchainPreferenceSnapshot();
+  assert.deepEqual(
+    getStoredProfilePreference(updatedSnapshot.preferences, SCRATCH_LANGUAGE_PROFILE_ID),
+    { mode: "managed" },
   );
 });
 

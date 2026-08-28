@@ -567,6 +567,7 @@ export function registerToolchainRoutes(app: Express): void {
     }
     if (
       mode === "managed"
+      && entry.toolchainKind !== "scratch"
       && !getDescriptorForHost(os.platform(), os.arch(), entry.toolchainKind)
     ) {
       return res.status(400).json({
