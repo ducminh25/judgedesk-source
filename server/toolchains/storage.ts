@@ -240,12 +240,14 @@ function isUsablePackageRoot(
 }
 
 function isBuiltInManagedPackageAvailable(kind: ToolchainKind): boolean {
+  if (kind === "scratch") return getJudgeDeskDistribution() === "full";
   const descriptor = getDescriptorForHost(os.platform(), os.arch(), kind);
   return !!descriptor
     && isUsablePackageRoot(builtInToolchainsRoot(), descriptor, kind, true);
 }
 
 function isAnyManagedPackageAvailable(kind: ToolchainKind): boolean {
+  if (kind === "scratch") return getJudgeDeskDistribution() === "full";
   const descriptor = getDescriptorForHost(os.platform(), os.arch(), kind);
   if (!descriptor) return false;
   return isUsablePackageRoot(

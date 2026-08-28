@@ -11,6 +11,19 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
   {
+    version: "1.4.41",
+    date: "2026-08-29",
+    sections: [
+      {
+        title: "Bản sửa lỗi nhanh (Hotfix) cho v1.4.4",
+        items: [
+          "Sửa lỗi không hiển thị ngôn ngữ Scratch trong Trình quản lý bộ công cụ (F6) và hộp thoại kích hoạt khi mở ứng dụng lần đầu.",
+          "Cải thiện độ chuyển mượt của thanh tiến trình chấm bài khi kết thúc làm ấm và bắt đầu chấm bài thi đầu tiên.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.4.4",
     date: "2026-08-28",
     sections: [
@@ -410,6 +423,19 @@ export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
 ];
 
 export const CHANGELOG_DATA_EN: ChangelogRelease[] = [
+  {
+    version: "1.4.41",
+    date: "2026-08-29",
+    sections: [
+      {
+        title: "Hotfix for v1.4.4",
+        items: [
+          "Fixed an issue where Scratch language was not visible in Toolchain Manager (F6) and first-run activation prompt.",
+          "Improved judging progress bar transition from sandbox warm-up to active test execution.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.4.4",
     date: "2026-08-28",
