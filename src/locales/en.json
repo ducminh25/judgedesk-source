@@ -543,6 +543,13 @@
     "close": "Close Manager",
     "rescan": "Scan again",
     "diagnostics": {
+      "runButton": "Self-Test",
+      "runHint": "Run a test compilation and execution probe in sandbox",
+      "successTitle": "Operating Normally",
+      "failedTitle": "Self-Test Failed ({{phase}})",
+      "compileTime": "Compile time",
+      "runTime": "Sandbox run",
+      "peakMemory": "Memory",
       "systemMissing": "No compatible compiler/runtime was found on the system.",
       "managedMissing": "The managed compiler/runtime is not installed.",
       "customInvalid": "The custom executable path does not exist or is invalid.",

@@ -543,6 +543,13 @@
     "close": "Đóng quản lý",
     "rescan": "Quét lại",
     "diagnostics": {
+      "runButton": "Kiểm tra",
+      "runHint": "Chạy thử nghiệm biên dịch và thực thi mẫu trong sandbox",
+      "successTitle": "Hoạt động hoàn hảo",
+      "failedTitle": "Lỗi kiểm tra ({{phase}})",
+      "compileTime": "Biên dịch",
+      "runTime": "Chạy sandbox",
+      "peakMemory": "Bộ nhớ",
       "systemMissing": "Không tìm thấy trình biên dịch hoặc môi trường chạy tương thích trên hệ thống.",
       "managedMissing": "Trình biên dịch hoặc môi trường chạy do ứng dụng quản lý chưa được cài đặt.",
       "customInvalid": "Đường dẫn file thực thi tùy chỉnh không tồn tại hoặc không hợp lệ.",

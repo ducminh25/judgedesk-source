@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import {
   type LanguageProfileView,
   type ToolchainCertificationPlan,
+  type ToolchainDiagnosticResult,
   type ToolchainSourceMode,
   useToolchains,
 } from "./useToolchains.js";
@@ -45,6 +46,7 @@ export default function ToolchainManager({ onClose, firstRun = false }: Props) {
     rescan,
     planCertification,
     certify,
+    diagnoseProfile,
   } = useToolchains();
 
   useEffect(() => {
@@ -143,6 +145,7 @@ export default function ToolchainManager({ onClose, firstRun = false }: Props) {
                 onUninstall={uninstall}
                 onPlanCertification={planCertification}
                 onCertify={certify}
+                onDiagnose={diagnoseProfile}
               />
               <LocalExecutionPolicyPanel
                 enabled={
@@ -257,6 +260,7 @@ export function ToolchainRegistryTable({
   onUninstall,
   onPlanCertification,
   onCertify,
+  onDiagnose,
 }: {
   profiles: LanguageProfileView[];
   discoveryStatus: "not_started" | "running" | "complete" | "failed";
@@ -271,6 +275,7 @@ export function ToolchainRegistryTable({
   onUninstall: (id: string) => Promise<boolean>;
   onPlanCertification: (profileId: string) => Promise<ToolchainCertificationPlan | null>;
   onCertify: (profileId: string) => Promise<boolean>;
+  onDiagnose?: (profileId: string) => Promise<ToolchainDiagnosticResult | null>;
 }) {
   const { t } = useTranslation();
   return (
@@ -297,6 +302,7 @@ export function ToolchainRegistryTable({
               onUninstall={onUninstall}
               onPlanCertification={onPlanCertification}
               onCertify={onCertify}
+              onDiagnose={onDiagnose}
             />
           ))}
         </tbody>
@@ -349,6 +355,7 @@ function ProfileRow({
   onUninstall,
   onPlanCertification,
   onCertify,
+  onDiagnose,
 }: {
   key?: React.Key;
   profile: LanguageProfileView;
@@ -364,12 +371,27 @@ function ProfileRow({
   onUninstall: (id: string) => Promise<boolean>;
   onPlanCertification: (profileId: string) => Promise<ToolchainCertificationPlan | null>;
   onCertify: (profileId: string) => Promise<boolean>;
+  onDiagnose?: (profileId: string) => Promise<ToolchainDiagnosticResult | null>;
 }) {
   const { t } = useTranslation();
   const [localPath, setLocalPath] = useState(profile.selection.localPath || "");
   const [pathDirty, setPathDirty] = useState(false);
   const [pending, setPending] = useState(false);
   const [freezing, setFreezing] = useState(false);
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [diagnosticResult, setDiagnosticResult] = useState<ToolchainDiagnosticResult | null>(null);
+
+  const runDiagnostic = async () => {
+    if (!onDiagnose) return;
+    setDiagnosing(true);
+    setDiagnosticResult(null);
+    try {
+      const res = await onDiagnose(profile.id);
+      setDiagnosticResult(res);
+    } finally {
+      setDiagnosing(false);
+    }
+  };
 
   useEffect(() => {
     if (!pathDirty) setLocalPath(profile.selection.localPath || "");
@@ -653,6 +675,54 @@ function ProfileRow({
               )}
             </div>
           </details>
+          {onDiagnose && profile.selection.mode !== "none" && (
+            <div className="w-full max-w-56 space-y-1.5 pt-1">
+              <button
+                type="button"
+                disabled={controlsDisabled || diagnosing || installing}
+                onClick={() => void runDiagnostic()}
+                className="flex w-full items-center justify-center gap-1.5 rounded border border-indigo-300 bg-indigo-50/50 px-2.5 py-1.5 text-2xs font-bold text-indigo-700 hover:bg-indigo-100/70 disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-900/60 dark:bg-indigo-950/20 dark:text-indigo-300 dark:hover:bg-indigo-950/40"
+                title={t("toolchains.diagnostics.runHint")}
+              >
+                {diagnosing ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                )}
+                {diagnosing ? t("toolbar.statusMenu.checking") : t("toolchains.diagnostics.runButton")}
+              </button>
+
+              {diagnosticResult && diagnosticResult.success && (
+                <div className="rounded border border-emerald-300 bg-emerald-50/80 p-2 text-2xs text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300">
+                  <div className="flex items-center gap-1 font-bold">
+                    <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                    <span>{t("toolchains.diagnostics.successTitle")}</span>
+                  </div>
+                  <div className="mt-1 space-y-0.5 font-mono text-[10px] text-emerald-700 dark:text-emerald-300">
+                    {diagnosticResult.compileTimeMs !== undefined && (
+                      <div>{t("toolchains.diagnostics.compileTime")}: {diagnosticResult.compileTimeMs}ms</div>
+                    )}
+                    <div>{t("toolchains.diagnostics.runTime")}: {diagnosticResult.executionTimeMs}ms</div>
+                    {diagnosticResult.peakMemoryKb !== undefined && (
+                      <div>{t("toolchains.diagnostics.peakMemory")}: {diagnosticResult.peakMemoryKb} KB</div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {diagnosticResult && !diagnosticResult.success && (
+                <div className="rounded border border-rose-300 bg-rose-50/80 p-2 text-2xs text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300">
+                  <div className="flex items-center gap-1 font-bold">
+                    <XCircle className="h-3.5 w-3.5 shrink-0 text-rose-600 dark:text-rose-400" />
+                    <span>{t("toolchains.diagnostics.failedTitle", { phase: diagnosticResult.phase })}</span>
+                  </div>
+                  <p className="mt-1 break-words font-mono text-[10px] text-rose-700 dark:text-rose-300">
+                    {diagnosticResult.error}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </td>
     </tr>

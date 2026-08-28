@@ -87,6 +87,20 @@ export interface ToolchainCertificationPlan {
   maxSupportedSnapshotBytes: number;
 }
 
+export interface ToolchainDiagnosticResult {
+  success: boolean;
+  profileId: string;
+  language: string;
+  sourceMode?: string;
+  version?: string;
+  phase: "configuration" | "compilation" | "execution";
+  compileTimeMs?: number;
+  executionTimeMs?: number;
+  peakMemoryKb?: number;
+  stdout?: string;
+  error?: string;
+}
+
 export interface DiscoveredToolchainCandidate {
   candidateId: string;
   profileId: string;
@@ -404,6 +418,39 @@ export function useToolchains() {
     }
   };
 
+  const diagnoseProfile = async (
+    profileId: string,
+  ): Promise<ToolchainDiagnosticResult | null> => {
+    try {
+      setError(null);
+      const response = await apiFetch(
+        `/api/toolchains/profiles/${encodeURIComponent(profileId)}/diagnose`,
+        { method: "POST" },
+      );
+      const payload = (await response.json()) as {
+        success: boolean;
+        diagnostic: ToolchainDiagnosticResult;
+        message?: string;
+      };
+      return payload.diagnostic ?? {
+        success: false,
+        profileId,
+        language: "unknown",
+        phase: "configuration",
+        error: payload.message || "Diagnostic probe failed.",
+      };
+    } catch (caught: any) {
+      setError(caught.message);
+      return {
+        success: false,
+        profileId,
+        language: "unknown",
+        phase: "configuration",
+        error: caught.message,
+      };
+    }
+  };
+
   return {
     state,
     error,
@@ -416,5 +463,6 @@ export function useToolchains() {
     rescan,
     planCertification,
     certify,
+    diagnoseProfile,
   };
 }

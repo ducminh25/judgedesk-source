@@ -22,6 +22,10 @@ import {
 } from "../features/updates/UpdateDialogs.js";
 import InstallUpdateDialog from "./InstallUpdateDialog.js";
 import ChangelogModal from "../features/changelog/ChangelogModal.js";
+import ThemisToolchainPromptModal, {
+  type DetectedThemisToolchain,
+  type ManagedToolchainInfo,
+} from "../features/toolchains/ThemisToolchainPromptModal.js";
 import AppErrorToast from "./AppErrorToast.js";
 import {
   requiresEditionChange,
@@ -59,6 +63,9 @@ export interface AppModalsProps {
   showDonationConfirm: boolean;
   showInstallUpdate: boolean;
   showChangelog: boolean;
+  showThemisPromptModal?: boolean;
+  themisDetectedToolchains?: DetectedThemisToolchain[];
+  managedToolchainsInfo?: ManagedToolchainInfo[];
   isWindowDragging: boolean;
   appError: AppError | null;
 
@@ -121,6 +128,10 @@ export interface AppModalsProps {
   onRestartUpdate: () => Promise<void>;
   onInstallUpdate: () => Promise<void>;
   onCloseChangelog: () => void;
+  onCloseThemisPrompt?: () => void;
+  onApplyThemisAll?: () => Promise<void>;
+  onApplyManagedAll?: () => Promise<void>;
+  onThemisSuccessToast?: (msg: string) => void;
   onClearError: () => void;
 }
 
@@ -144,6 +155,9 @@ export default function AppModals({
   showDonationConfirm,
   showInstallUpdate,
   showChangelog,
+  showThemisPromptModal,
+  themisDetectedToolchains,
+  managedToolchainsInfo,
   isWindowDragging,
   appError,
 
@@ -204,6 +218,10 @@ export default function AppModals({
   onRestartUpdate,
   onInstallUpdate,
   onCloseChangelog,
+  onCloseThemisPrompt,
+  onApplyThemisAll,
+  onApplyManagedAll,
+  onThemisSuccessToast,
   onClearError,
 }: AppModalsProps) {
   const { t } = useTranslation();
@@ -352,6 +370,18 @@ export default function AppModals({
       {openToolchains && (
         <ToolchainManager
           onClose={onCloseToolchains}
+        />
+      )}
+
+      {showThemisPromptModal && (
+        <ThemisToolchainPromptModal
+          isOpen={showThemisPromptModal}
+          onClose={onCloseThemisPrompt ?? (() => {})}
+          themisToolchains={themisDetectedToolchains ?? []}
+          managedToolchains={managedToolchainsInfo ?? []}
+          onApplyManaged={onApplyManagedAll ?? (() => Promise.resolve())}
+          onApplyThemis={onApplyThemisAll ?? (() => Promise.resolve())}
+          onSuccessToast={onThemisSuccessToast}
         />
       )}
 
