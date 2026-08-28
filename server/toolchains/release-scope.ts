@@ -14,6 +14,7 @@ export const CURRENT_RELEASE_TOOLCHAIN_KINDS = Object.freeze([
   "python",
   "pascal",
   "java",
+  "scratch",
 ] as const satisfies readonly ToolchainKind[]);
 
 const CURRENT_RELEASE_TOOLCHAIN_KIND_SET: ReadonlySet<ToolchainKind> =

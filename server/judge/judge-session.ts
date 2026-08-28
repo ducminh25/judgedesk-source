@@ -274,11 +274,15 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
              const plannedTestCase = plannedProblem.tests[i];
              const tcDir = plannedTestCase.files.name;
              if (jobId && activeJobs.get(jobId)?.cancel) break;
-             sendEvent("progress", {
-               contestant, problem: problemName,
-               action: `Judging test ${i + 1} of ${tcDirEntries.length}`,
-               percent: totalProblemsCount ? (completedProblemsCount / totalProblemsCount) * 100 : 0
-             });
+             const testFraction = plannedProblem.tests.length > 0 ? (i / plannedProblem.tests.length) : 0;
+              const currentPercent = totalProblemsCount
+                ? ((completedProblemsCount + testFraction) / totalProblemsCount) * 100
+                : 0;
+              sendEvent("progress", {
+                contestant, problem: problemName,
+                action: `Judging test ${i + 1} of ${tcDirEntries.length}`,
+                percent: currentPercent,
+              });
            const testFiles = plannedTestCase.files;
            const inpPath = testFiles.inputPath;
            const outPath = testFiles.outputPath;

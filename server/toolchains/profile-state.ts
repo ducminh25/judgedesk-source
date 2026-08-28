@@ -156,6 +156,17 @@ function managedPackageState(
   manifest: readonly ToolchainDescriptor[],
   inspectInstalledPackage: InstalledToolchainPackageInspector,
 ): ProfileManagedPackage | undefined {
+  if (kind === "scratch") {
+    return {
+      id: "scratch-turbowarp-v1",
+      version: "1.0.0",
+      installed: true,
+      origin: "built-in",
+      uninstallable: false,
+      downloadAvailable: false,
+      progress: defaultProgress("scratch-turbowarp-v1"),
+    };
+  }
   const catalogEntry = getDescriptorForHost(os.platform(), os.arch(), kind);
   if (!catalogEntry) return undefined;
   const manifestEntry = manifest.find((entry) => entry.id === catalogEntry.id);
@@ -276,11 +287,12 @@ export function buildLanguageProfileState(
       checkerReady = false;
     }
     const managedPackage = managedPackageState(kind, manifest, inspectInstalledPackage);
-    const managedSupported = !!getDescriptorForHost(
-      os.platform(),
-      architecture || os.arch(),
-      kind,
-    );
+    const managedSupported = kind === "scratch"
+      || !!getDescriptorForHost(
+        os.platform(),
+        architecture || os.arch(),
+        kind,
+      );
     const managedDescriptor = getDescriptorForHost(
       os.platform(),
       architecture || os.arch(),
@@ -289,12 +301,13 @@ export function buildLanguageProfileState(
     const managedMinimumOs = managedDescriptor
       ? TOOLCHAIN_RELEASE_BLUEPRINTS[managedDescriptor.id]?.minimumOs
       : undefined;
-    const managedHostSupported = managedSupported
-      && (!managedMinimumOs
-        || isMinimumOsSupported(
-          managedMinimumOs,
-          getHostProductVersion(),
-        ));
+    const managedHostSupported = kind === "scratch"
+      || (managedSupported
+        && (!managedMinimumOs
+          || isMinimumOsSupported(
+            managedMinimumOs,
+            getHostProductVersion(),
+          )));
     const sources: LanguageProfileView["sources"] = {
       none: { available: true },
       managed: managedHostSupported
@@ -305,17 +318,21 @@ export function buildLanguageProfileState(
               ? "MINIMUM_OS_UNSUPPORTED"
               : "MANAGED_PACKAGE_UNSUPPORTED",
           },
-      local_path: supportedOnHost
+      local_path: supportedOnHost && localExecution?.mode !== "managed_only"
         ? { available: true }
         : {
             available: false,
-            reasonCode: "PROFILE_UNSUPPORTED_ON_HOST",
+            reasonCode: localExecution?.mode === "managed_only"
+              ? "LOCAL_NOT_SANDBOX_COMPATIBLE"
+              : "PROFILE_UNSUPPORTED_ON_HOST",
           },
-      local_auto: supportedOnHost
+      local_auto: supportedOnHost && localExecution?.mode !== "managed_only"
         ? { available: true }
         : {
             available: false,
-            reasonCode: "PROFILE_UNSUPPORTED_ON_HOST",
+            reasonCode: localExecution?.mode === "managed_only"
+              ? "LOCAL_NOT_SANDBOX_COMPATIBLE"
+              : "PROFILE_UNSUPPORTED_ON_HOST",
           },
     };
     const localSelection = selection.mode === "local_path" || selection.mode === "local_auto";

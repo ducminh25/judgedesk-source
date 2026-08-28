@@ -39,6 +39,7 @@ test("current release scope contains only Themis languages and complete host pac
     "python",
     "pascal",
     "java",
+    "scratch",
   ]);
   for (const [platform, arch] of [
     ["win32", "x64"],

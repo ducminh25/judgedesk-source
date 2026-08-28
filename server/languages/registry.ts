@@ -13,7 +13,7 @@ import {
   validateToolchainVersionPolicy,
 } from "./version-policy.js";
 
-export const LANGUAGE_REGISTRY_REVISION = 5;
+export const LANGUAGE_REGISTRY_REVISION = 6;
 export const CPP_LANGUAGE_PROFILE_ID = "cpp-legacy-v1";
 export const C_LANGUAGE_PROFILE_ID = "c-gcc14";
 export const PYTHON_LANGUAGE_PROFILE_ID = "python-cpython312";
