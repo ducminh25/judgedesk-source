@@ -178,6 +178,33 @@ export async function compileSubmission(options: CompileSubmissionOptions): Prom
       },
     };
   }
+  if (language === "scratch") {
+    const scratch = options.toolchains?.scratch
+      ?? await resolveCompilationToolchain("scratch");
+    if (!isManagedSubmissionToolchainReady(scratch)) {
+      return compilationFailure(
+        "",
+        "TOOLCHAIN_SCRATCH_MISSING",
+        compileStart,
+      );
+    }
+    const ext = path.extname(submissionPath).toLowerCase() || ".sb3";
+    return {
+      executablePath:
+        scratch.executionPath || scratch.executablePath,
+      compileStatus: "OK",
+      compileError: "",
+      compileTime: 0,
+      program: {
+        kind: "script-runtime",
+        language: "scratch",
+        sourcePath: submissionPath,
+        stagedFileName: `submission${ext}`,
+        runtimeKind: "scratch",
+        runtimeToolchain: scratch,
+      },
+    };
+  }
   if (language === "java" || language === "csharp") {
     return compileManagedDirectorySubmission(options, compileStart);
   }

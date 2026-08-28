@@ -6,6 +6,7 @@ import AppToolbar from "./components/AppToolbar.js";
 import AppModals from "./components/AppModals.js";
 import { isHelpShortcut, type HelpSectionId } from "./features/help/HelpCenter.js";
 import { useThemisPromptModal } from "./features/toolchains/useThemisPromptModal.js";
+import { useScratchPromptModal } from "./features/toolchains/useScratchPromptModal.js";
 import type { ToolchainState } from "./features/toolchains/useToolchains.js";
 import { useAppUpdater } from "./features/updates/useAppUpdater.js";
 import { type UpdateEdition } from "./features/updates/catalog.js";
@@ -357,6 +358,15 @@ export default function App() {
     onRefreshHostStatus: requestHostStatus,
   });
 
+  // Scratch Toolchain Enable Prompt on v1.4.4 Launch
+  const {
+    showScratchPromptModal,
+    setShowScratchPromptModal,
+    handleEnableScratch,
+  } = useScratchPromptModal({
+    onRefreshHostStatus: requestHostStatus,
+  });
+
   const handleThemisSuccessToast = useCallback((msg: string) => {
     setAppError({
       title: t("common.success", "Thành công"),
@@ -673,6 +683,7 @@ export default function App() {
           showThemisPromptModal={showThemisPromptModal}
           themisDetectedToolchains={themisDetectedToolchains}
           managedToolchainsInfo={managedToolchainsInfo}
+          showScratchPromptModal={showScratchPromptModal}
           isWindowDragging={isWindowDragging}
           appError={appError}
           hostStatus={hostStatus}
@@ -774,6 +785,8 @@ export default function App() {
           onApplyThemisAll={handleApplyThemisAll}
           onApplyManagedAll={handleApplyManagedAll}
           onThemisSuccessToast={handleThemisSuccessToast}
+          onCloseScratchPrompt={() => setShowScratchPromptModal(false)}
+          onEnableScratch={handleEnableScratch}
           onStartOsd={startOsd}
           onStopOsd={stopOsd}
           onCloseOsd={() => setShowOsdModal(false)}

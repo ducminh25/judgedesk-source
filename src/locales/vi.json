@@ -88,7 +88,13 @@
     "target": "Mục tiêu",
     "action": "Thao tác",
     "progress": "Tiến trình",
-    "terminate": "Dừng"
+    "terminate": "Dừng",
+    "systemSetup": "Hệ thống chấm",
+    "initializing": "Đang khởi tạo phiên chấm...",
+    "verifyingEnvironment": "Đang kiểm tra trình biên dịch & môi trường...",
+    "scanning": "Đang quét bài nộp và bộ test...",
+    "compilingSubmission": "Đang biên dịch bài nộp...",
+    "compilingChecker": "Đang biên dịch bộ chấm (Checker)..."
   },
   "scoreboard": {
     "contestants": "Thí sinh",
@@ -506,7 +512,8 @@
     "javascript": "JavaScript (Node.js)",
     "pascal": "Pascal",
     "python": "Python",
-    "rust": "Rust"
+    "rust": "Rust",
+    "scratch": "Scratch (.sb3, .sb2)"
   },
   "toolchains": {
     "idle": "Đang chờ",
@@ -701,6 +708,20 @@
       "applying": "Đang áp dụng...",
       "successManaged": "Đã thiết lập Chuẩn Olympic (64-bit) thành công. Bạn luôn có thể tùy chỉnh lại trong phần Cài đặt > Bộ công cụ.",
       "successThemis": "Đã chuyển sang Bộ công cụ Themis (32-bit) thành công. Bạn luôn có thể tùy chỉnh lại trong phần Cài đặt > Bộ công cụ."
+    },
+    "scratchPrompt": {
+      "title": "Tính năng mới: Chấm bài thi Scratch",
+      "subtitle": "Hỗ trợ chấm trực tiếp các bài thi Scratch (.sb3, .sb2) cho kỳ thi Tin học trẻ",
+      "featuresTitle": "Các điểm nổi bật của Bộ chấm Scratch",
+      "featureFormats": "Định dạng hỗ trợ:",
+      "featureEngine": "Engine thực thi:",
+      "featureIO": "Cơ chế vào ra:",
+      "featurePlatform": "Đa nền tảng:",
+      "note": "Bạn có thể thay đổi cấu hình hoặc kích hoạt lại ngôn ngữ Scratch bất cứ lúc nào trong Quản lý trình biên dịch (phím tắt F6).",
+      "dismissAction": "Để sau",
+      "confirmAction": "Kích hoạt ngay",
+      "applying": "Đang kích hoạt...",
+      "successEnabled": "Đã kích hoạt bộ chấm Scratch (.sb3, .sb2) thành công!"
     }
   },
   "osd": {

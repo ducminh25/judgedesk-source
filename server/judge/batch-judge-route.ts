@@ -99,6 +99,12 @@ export function registerBatchJudgeRoute(app: Express): void {
     let workspace: ReturnType<typeof createRunWorkspace> | undefined;
     try {
       res.setHeader("X-JudgeDesk-Job-Id", registration.jobId);
+      sendEvent("progress", {
+        contestant: "",
+        problem: "",
+        action: "Initializing grading session...",
+        percent: 0,
+      });
       workspace = createRunWorkspace();
       const pinnedEntries = await Promise.all(
         listRegisteredLanguageProfiles().map(async (entry) => [

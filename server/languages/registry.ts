@@ -23,6 +23,7 @@ export const JAVA_LANGUAGE_PROFILE_ID = "java-temurin21";
 export const RUST_LANGUAGE_PROFILE_ID = "rust-197";
 export const JAVASCRIPT_LANGUAGE_PROFILE_ID = "javascript-node24";
 export const CSHARP_LANGUAGE_PROFILE_ID = "csharp-dotnet10";
+export const SCRATCH_LANGUAGE_PROFILE_ID = "scratch-turbowarp-v1";
 
 export type LocalExecutionMode =
   | "quick_verified_direct"
@@ -206,6 +207,17 @@ const LOCAL_VERSION_POLICIES = {
       version: "10.0.302",
       build: "SDK 10.0.302 / runtime 10.0.10",
       identityPolicyId: "dotnet.sdk-runtime-packs-v1",
+      hosts: BOTH_RELEASE_HOSTS,
+    }],
+  },
+  scratch: {
+    kind: "exact_allowlist",
+    entries: [{
+      family: "scratch-vm",
+      distributor: "Scratch Foundation",
+      version: "0.1.7",
+      build: "scratch-vm-headless",
+      identityPolicyId: "scratch.vm-v1",
       hosts: BOTH_RELEASE_HOSTS,
     }],
   },
@@ -532,6 +544,40 @@ const LANGUAGE_CATALOG = [
     },
     toolchainKind: "csharp",
     localVersionPolicy: LOCAL_VERSION_POLICIES.csharp,
+    localExecution: [
+      { platform: "win32", arch: "x64", mode: "managed_only" },
+      { platform: "darwin", arch: "arm64", mode: "managed_only" },
+    ],
+    freshInstallMode: "none",
+  },
+  {
+    profile: {
+      ref: { id: SCRATCH_LANGUAGE_PROFILE_ID, version: 1 },
+      displayNameKey: "languages.scratch",
+      stability: "stable",
+      extensions: [".sb3", ".sb2", ".sb"],
+      supportedHosts: [
+        { platform: "win32", arch: "x64", minimumOs: "10.0" },
+        { platform: "darwin", arch: "arm64", minimumOs: "11.0" },
+      ],
+      roles: {
+        submission: {
+          launchAdapterId: "managed.scratch.isolated-launch",
+          requiredToolchainCapabilities: ["scratch.runtime"],
+          artifactKind: "script-source",
+          artifactValidatorId: "scratch.single-archive",
+        },
+      },
+      policies: {
+        sourcePolicyId: "legacy.single-file",
+        toolchainPolicyId: "managed.scratch.turbowarp-v1",
+        environmentPolicyId: "managed.scratch.environment",
+        resourcePolicyId: "managed.scratch.resources",
+        probeSuiteId: "managed.scratch.probes",
+      },
+    },
+    toolchainKind: "scratch",
+    localVersionPolicy: LOCAL_VERSION_POLICIES.scratch,
     localExecution: [
       { platform: "win32", arch: "x64", mode: "managed_only" },
       { platform: "darwin", arch: "arm64", mode: "managed_only" },

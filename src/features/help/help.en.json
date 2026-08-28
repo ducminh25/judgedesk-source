@@ -65,7 +65,8 @@
         "problems": "Problems root (Problems): One direct child folder per problem. The folder name serves as the problem code (e.g., BAI1, SUM, PRIME...).",
         "tests": "Individual problem directory: Subdirectories for each test (Test01, Test02... or 1, 2...), containing input/output files (e.g., BAI1.INP/BAI1.OUT), Config.cfg, and optional custom checker source files.",
         "contestants": "Contestants root (Contestants): One direct child folder per contestant. The folder name appears on the scoreboard (e.g., NguyenVanA, TranThiB, HS01...).",
-        "submissions": "Contestant submission files: Named following the pattern <ProblemCode>.<extension> (e.g., BAI1.cpp, BAI1.py, BAI1.pas, BAI1.c, BAI1.java). Filenames are case-insensitive."
+        "submissions": "Contestant submission files: Named following the pattern <ProblemCode>.<extension> (e.g., BAI1.cpp, BAI1.py, BAI1.pas, BAI1.c, BAI1.java, BAI1.sb3, BAI1.sb2). Filenames are case-insensitive.",
+        "scratch": "Scratch submissions (.sb3, .sb2, .sb): Save project using the problem code (e.g., BAI1.sb3). Read input with «ask [prompt] and wait» (the question text is ignored by the judge), output results with «say [result]» or «think [result]». Avoid infinite «forever» loops without a stopping condition."
       },
       "reloadTitle": "What Reload (F5) does",
       "reloadDescription": "When contestants submit new files or test cases are updated, click «Reload» (or press F5) to rescan the directories without losing existing scores or problem configurations.",

@@ -11,6 +11,35 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
   {
+    version: "1.4.4",
+    date: "2026-08-28",
+    sections: [
+      {
+        title: "Tích hợp Chấm Bài thi Scratch (.sb3, .sb2, .sb)",
+        items: [
+          "Hỗ trợ chấm trực tiếp các tệp bài làm Scratch (.sb3, .sb2, .sb) phục vụ các kỳ thi Tin học trẻ.",
+          "Cơ chế nạp test tự động qua khối lệnh «Hỏi và đợi» (bỏ qua câu hỏi hiển thị) và xuất kết quả qua khối «Nói» hoặc «Nghĩ».",
+          "Máy ảo Scratch Headless chạy chế độ Turbo Mode siêu tốc (10-25ms/testcase), tiêu thụ ít tài nguyên và xử lý an toàn vòng lặp vô hạn (TLE).",
+          "Tương thích hoàn toàn trên cả Windows và macOS với quy tắc chấm đồng nhất 100%.",
+          "Hộp thoại hỏi kích hoạt 1 lần duy nhất khi nâng cấp lên v1.4.4, dễ dàng bật tắt lại trong Quản lý trình biên dịch (F6).",
+        ],
+      },
+      {
+        title: "Tối ưu Phản hồi Cửa sổ Chấm & Khởi động Nhanh",
+        items: [
+          "Cửa sổ tiến trình chấm bài hiện ngay lập tức khi bấm Chấm bài (F9), loại bỏ hoàn toàn độ trễ 2-5s trước đây.",
+          "Tự động làm ấm sandbox chạy ngầm khi mở ứng dụng và lưu cache nhị phân cho Custom Checker (.cpp, .py, .exe), giúp chấm testcase đầu tiên ngay tức thì mà không phải chờ đợi.",
+        ],
+      },
+      {
+        title: "Bổ sung Hướng dẫn Nộp bài trong Trợ giúp (F1)",
+        items: [
+          "Cập nhật tài liệu hướng dẫn quy cách nộp bài và các lưu ý khi làm bài thi Scratch trong Trung tâm Trợ giúp (F1) ở cả tiếng Việt và tiếng Anh.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.4.3",
     date: "2026-08-28",
     sections: [
@@ -381,6 +410,35 @@ export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
 ];
 
 export const CHANGELOG_DATA_EN: ChangelogRelease[] = [
+  {
+    version: "1.4.4",
+    date: "2026-08-28",
+    sections: [
+      {
+        title: "Scratch (.sb3, .sb2, .sb) Language Support",
+        items: [
+          "Direct headless judging for Scratch project submissions (.sb3, .sb2, .sb) in Young Informatics contests.",
+          "Standard CP I/O: Automatic input feeding via «ask and wait» blocks and output capture via «say» (with newline) or «think» (without newline).",
+          "High-speed Turbo Mode execution (10-25ms/testcase) with low memory footprint and watchdog TLE handling for infinite loops.",
+          "Full cross-platform compatibility across Windows and macOS with identical grading behavior.",
+          "One-time upgrade prompt on v1.4.4 launch to enable Scratch, configurable anytime in Toolchain Manager (F6).",
+        ],
+      },
+      {
+        title: "Instant Progress Window & Fast Judging Warm-up",
+        items: [
+          "Judging progress modal appears immediately upon clicking Judge (F9), removing previous 2-5s UI launch delay.",
+          "Background sandbox pre-warming at server startup and SHA-256 binary caching for custom checkers (.cpp, .py, .exe) eliminate warm-up latency before the first testcase.",
+        ],
+      },
+      {
+        title: "Help Center (F1) Updates",
+        items: [
+          "Added Scratch submission rules, I/O specifications, and best practices in the offline Help Center (F1) for both Vietnamese and English.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.4.3",
     date: "2026-08-28",

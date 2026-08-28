@@ -65,7 +65,8 @@
         "problems": "Thư mục bài thi (Problems): Mỗi thư mục con trực tiếp là một bài tập; tên thư mục con chính là mã bài (ví dụ: BAI1, SUM, PRIME...).",
         "tests": "Thư mục từng bài: Chứa các thư mục test con (Test01, Test02... hoặc 1, 2...), bên trong có file dữ liệu vào/ra (ví dụ: BAI1.INP/BAI1.OUT hoặc input.txt/output.txt), kèm file Config.cfg và file mã nguồn checker nếu có.",
         "contestants": "Thư mục thí sinh (Contestants): Mỗi thư mục con trực tiếp là một thí sinh; tên thư mục chính là tên hiển thị trên bảng điểm (ví dụ: NguyenVanA, TranThiB, HS01...).",
-        "submissions": "File bài làm của thí sinh: Đặt tên theo cú pháp <MãBài>.<phần_mở_rộng> (ví dụ: BAI1.cpp, BAI1.py, BAI1.pas, BAI1.c, BAI1.java). Tên file không phân biệt chữ hoa hay chữ thường."
+        "submissions": "File bài làm của thí sinh: Đặt tên theo cú pháp <MãBài>.<phần_mở_rộng> (ví dụ: BAI1.cpp, BAI1.py, BAI1.pas, BAI1.c, BAI1.java, BAI1.sb3, BAI1.sb2). Tên file không phân biệt chữ hoa hay chữ thường.",
+        "scratch": "Quy ước nộp bài Scratch (.sb3, .sb2, .sb): Thí sinh lưu file dự án theo mã bài (ví dụ BAI1.sb3). Nhập dữ liệu bằng khối «Hỏi [câu hỏi] và đợi» (nội dung câu hỏi không ảnh hưởng đến dữ liệu chấm), xuất kết quả bằng khối «Nói [kết quả]» hoặc «Nghĩ [kết quả]». Tránh dùng vòng lặp «liên tục» không có điều kiện dừng."
       },
       "reloadTitle": "Cơ chế Tải lại (Reload / Phím F5)",
       "reloadDescription": "Khi thí sinh nộp thêm bài hoặc bạn cập nhật bộ test, bấm nút «Tải lại» (hoặc phím F5) để JudgeDesk tự động quét cập nhật dữ liệu mới mà không làm mất điểm hay cấu hình các bài đã chấm trước đó.",

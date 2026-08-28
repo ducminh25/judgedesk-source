@@ -92,6 +92,18 @@ describe("preferencesStorage", () => {
     assert.strictEqual(preferencesStorage.getThemisPromptChoice(), "dismissed");
   });
 
+  it("should persist the Scratch prompt choice", () => {
+    assert.strictEqual(preferencesStorage.hasScratchPromptChoice(), false);
+    assert.strictEqual(preferencesStorage.getScratchPromptChoice(), null);
+
+    preferencesStorage.setScratchPromptChoice("enabled");
+    assert.strictEqual(preferencesStorage.hasScratchPromptChoice(), true);
+    assert.strictEqual(preferencesStorage.getScratchPromptChoice(), "enabled");
+
+    preferencesStorage.setScratchPromptChoice("dismissed");
+    assert.strictEqual(preferencesStorage.getScratchPromptChoice(), "dismissed");
+  });
+
   it("should handle localStorage throwing errors gracefully", (context) => {
     const originalGet = (global as any).localStorage.getItem;
     const originalConsoleError = console.error;

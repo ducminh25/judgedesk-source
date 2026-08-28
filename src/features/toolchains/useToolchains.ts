@@ -16,7 +16,8 @@ export type ToolchainKind =
   | "java"
   | "rust"
   | "javascript"
-  | "csharp";
+  | "csharp"
+  | "scratch";
 
 export interface ToolchainProgress {
   id: string;

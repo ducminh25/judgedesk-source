@@ -98,3 +98,25 @@ export async function ensureCertifiedLocalCppSessionProbe(
     throw new Error(`TOOLCHAIN_PREFLIGHT_FAILED: certified local C++ session probe failed: ${message}`);
   }
 }
+
+export function startBackgroundCertifiedLocalProbe(): void {
+  void (async () => {
+    try {
+      const { resolveNativeProtectedToolchain } = await import("../toolchains/resolver.js");
+      const cpp = resolveNativeProtectedToolchain("cpp");
+      if (cpp.provenance === "certified-local" && cpp.ready && cpp.certificateId && cpp.snapshotDigest) {
+        const { createRunWorkspace } = await import("./run-workspace.js");
+        const workspace = createRunWorkspace();
+        try {
+          await ensureCertifiedLocalCppSessionProbe(cpp, workspace.path);
+          console.info("[Judge] Background certified local C++ probe ready.");
+        } finally {
+          workspace.dispose();
+        }
+      }
+    } catch (error) {
+      console.warn("[Judge] Background certified local C++ probe idle check deferred:", error);
+    }
+  })();
+}
+

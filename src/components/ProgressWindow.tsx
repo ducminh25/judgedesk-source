@@ -54,6 +54,16 @@ export default function ProgressWindow({ currentContestant, currentProblem, acti
     document.addEventListener("mouseup", handleMouseUp);
   };
 
+  const displayTarget = (currentContestant || currentProblem)
+    ? `${currentContestant ? currentContestant : ""}${currentContestant && currentProblem ? " - " : ""}${currentProblem ? currentProblem : ""}`
+    : t("progress.systemSetup");
+
+  const displayAction = action.startsWith("progress.")
+    ? t(action)
+    : t(`progress.${action}`, { defaultValue: action });
+
+  const isIndeterminate = percent <= 0;
+
   return (
     <div 
       className="fixed z-50 w-80 bg-surface border border-surface-border-strong shadow-2xl rounded-lg overflow-hidden flex flex-col select-none"
@@ -77,11 +87,11 @@ export default function ProgressWindow({ currentContestant, currentProblem, acti
         <div className="space-y-1">
           <div className="flex justify-between text-xs">
             <span className="text-text-muted">{t("progress.target")}</span>
-            <span className="text-text-primary font-bold">{currentContestant} - {currentProblem}</span>
+            <span className="text-text-primary font-bold">{displayTarget}</span>
           </div>
           <div className="flex justify-between text-xs">
             <span className="text-text-muted">{t("progress.action")}</span>
-            <span className="text-indigo-600 dark:text-indigo-400 font-medium">{action}</span>
+            <span className="text-indigo-600 dark:text-indigo-400 font-medium">{displayAction}</span>
           </div>
         </div>
         <div className="space-y-1">
@@ -89,11 +99,15 @@ export default function ProgressWindow({ currentContestant, currentProblem, acti
             <span>{t("progress.progress")}</span>
             <span>{Math.round(percent)}%</span>
           </div>
-          <div className="h-2 w-full bg-input-bg rounded-full overflow-hidden border border-surface-border">
-            <div 
-              className="h-full bg-indigo-500 transition-all duration-300"
-              style={{ width: `${percent}%` }}
-            />
+          <div className="h-2 w-full bg-input-bg rounded-full overflow-hidden border border-surface-border relative">
+            {isIndeterminate ? (
+              <div className="h-full w-full bg-gradient-to-r from-indigo-500/20 via-indigo-500 to-indigo-500/20 animate-pulse" />
+            ) : (
+              <div 
+                className="h-full bg-indigo-500 transition-all duration-300"
+                style={{ width: `${percent}%` }}
+              />
+            )}
           </div>
         </div>
       </div>

@@ -6,11 +6,13 @@ const KEYS = {
   toolchainSetupCompleted: "themisV2.toolchainSetupCompleted",
   lastSeenVersion: "themisV2.lastSeenVersion",
   themisPromptChoice: "themisV2.themisPromptChoice",
+  scratchPromptChoice: "themisV2.scratchPromptChoice",
 } as const;
 
 export type Theme = "light" | "dark";
 export type Language = "en" | "vi";
 export type ThemisPromptChoice = "managed" | "themis" | "dismissed";
+export type ScratchPromptChoice = "enabled" | "dismissed";
 
 function getLocalStorageItem(key: string): string | null {
   try {
@@ -103,5 +105,21 @@ export const preferencesStorage = {
 
   hasThemisPromptChoice(): boolean {
     return getLocalStorageItem(KEYS.themisPromptChoice) !== null;
+  },
+
+  getScratchPromptChoice(): ScratchPromptChoice | null {
+    const val = getLocalStorageItem(KEYS.scratchPromptChoice);
+    if (val === "enabled" || val === "dismissed") {
+      return val;
+    }
+    return null;
+  },
+
+  setScratchPromptChoice(choice: ScratchPromptChoice): void {
+    setLocalStorageItem(KEYS.scratchPromptChoice, choice);
+  },
+
+  hasScratchPromptChoice(): boolean {
+    return getLocalStorageItem(KEYS.scratchPromptChoice) !== null;
   },
 };

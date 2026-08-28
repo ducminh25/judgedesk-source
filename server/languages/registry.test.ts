@@ -36,7 +36,7 @@ test("the live registry exposes approved profiles in deterministic UI order", ()
     () => getRegisteredProfileForKind("go"),
     /No language profile is registered/,
   );
-  for (const extension of [".go", ".rs", ".js", ".cs"]) {
+  for (const extension of [".go", ".rs", ".js", ".cs", ".sb3", ".sb2", ".sb"]) {
     assert.equal(getRegisteredProfileForExtension(extension), undefined);
   }
   assert.equal(Object.isFrozen(registry), true);

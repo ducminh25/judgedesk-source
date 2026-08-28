@@ -28,6 +28,7 @@ import {
 } from "./resource-policy.js";
 import type { PreparedSubmissionProgram } from "./prepared-program.js";
 import { prepareIsolatedNodeScript } from "./node-runtime.js";
+import { prepareIsolatedScratchScript } from "./scratch-runtime.js";
 import { prepareDirectoryRuntimeProgram } from "./managed-runtime.js";
 import { isBuiltInChecker, runStandardChecker } from "./standard-checkers.js";
 
@@ -231,6 +232,17 @@ async function prepareSubmission(
     && options.program.language === "javascript"
   ) {
     return prepareIsolatedNodeScript(
+      workspace,
+      options.program.sourcePath,
+      options.program.stagedFileName,
+      options.program.runtimeToolchain,
+    );
+  }
+  if (
+    options.program?.kind === "script-runtime"
+    && options.program.language === "scratch"
+  ) {
+    return prepareIsolatedScratchScript(
       workspace,
       options.program.sourcePath,
       options.program.stagedFileName,
