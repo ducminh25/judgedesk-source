@@ -270,11 +270,11 @@ describe("toolchain settings UI regressions", () => {
 
   it("does not reload remembered problems when toolchain dialogs close", () => {
     const appSource = readFileSync(
-      new URL("../../App.tsx", import.meta.url),
+      new URL("../../components/AppModals.tsx", import.meta.url),
       "utf8",
     );
     const modalStart = appSource.indexOf("{openToolchains &&");
-    const modalEnd = appSource.indexOf("{showInstallUpdate &&", modalStart);
+    const modalEnd = appSource.indexOf("<InstallUpdateDialog", modalStart);
     assert.notEqual(modalStart, -1);
     assert.notEqual(modalEnd, -1);
     assert.doesNotMatch(

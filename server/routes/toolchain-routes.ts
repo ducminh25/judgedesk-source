@@ -22,6 +22,7 @@ import {
   installToolchain,
   uninstallToolchain,
 } from "../toolchains/installer.js";
+import { diagnoseLanguageProfile } from "../toolchains/diagnostics.js";
 import {
   getDescriptorForHost,
   loadOfficialManifest,
@@ -363,6 +364,27 @@ export function registerToolchainRoutes(app: Express): void {
       const message = error instanceof Error ? error.message : String(error);
       const status = message.startsWith("TOOLCHAIN_MUTATION_BLOCKED") ? 409 : 422;
       return res.status(status).json({ success: false, message });
+    }
+  });
+
+  app.post("/api/toolchains/profiles/:profileId/diagnose", async (req, res) => {
+    const { profileId } = req.params;
+    const entry = getRegisteredLanguageProfile(profileId);
+    if (!entry) {
+      return res.status(404).json({ success: false, message: "Unknown language profile." });
+    }
+    if (serverLifecycle.activeJudgeSessionCount > 0) {
+      return res.status(409).json({
+        success: false,
+        message: "Diagnostics cannot run while judging is in progress.",
+      });
+    }
+    try {
+      const result = await diagnoseLanguageProfile(profileId);
+      return res.json({ success: result.success, diagnostic: result });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return res.status(500).json({ success: false, message });
     }
   });
 

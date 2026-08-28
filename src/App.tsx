@@ -1,47 +1,20 @@
 import React, { useCallback, useEffect, useState, useMemo, useRef, useReducer } from "react";
-import { FolderOpen, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { apiFetch } from "./api.js";
 import { type HostStatus, type ProblemResult } from "./types.js";
-import ProblemConfigModal from "./components/ProblemConfigModal.js";
-import ProgressWindow from "./components/ProgressWindow.js";
-import JudgingDetailsModal from "./components/JudgingDetailsModal.js";
-import ScoringLogModal from "./components/ScoringLogModal.js";
-import DirectoryPickerModal from "./components/DirectoryPickerModal.js";
-import EntityActionMenu from "./components/EntityActionMenu.js";
 import AppToolbar from "./components/AppToolbar.js";
-import HelpCenter, { isHelpShortcut, type HelpSectionId } from "./features/help/HelpCenter.js";
-import ToolchainManager from "./features/toolchains/ToolchainManager.js";
-import ThemisToolchainPromptModal, {
-  type DetectedThemisToolchain,
-  type ManagedToolchainInfo,
-} from "./features/toolchains/ThemisToolchainPromptModal.js";
+import AppModals from "./components/AppModals.js";
+import { isHelpShortcut, type HelpSectionId } from "./features/help/HelpCenter.js";
+import { useThemisPromptModal } from "./features/toolchains/useThemisPromptModal.js";
 import type { ToolchainState } from "./features/toolchains/useToolchains.js";
 import { useAppUpdater } from "./features/updates/useAppUpdater.js";
-import {
-  requiresEditionChange,
-  type UpdateEdition,
-} from "./features/updates/catalog.js";
-import {
-  DonationConfirmDialog,
-  UpdateEditionChangeDialog,
-  UpdateEditionDialog,
-} from "./features/updates/UpdateDialogs.js";
-import UnsavedContestDialog from "./components/UnsavedContestDialog.js";
-import ScoreDeleteConfirmDialog from "./components/ScoreDeleteConfirmDialog.js";
-import ContestSaveProgressDialog from "./components/ContestSaveProgressDialog.js";
-import OsdSettingsModal from "./features/osd/OsdSettingsModal.js";
+import { type UpdateEdition } from "./features/updates/catalog.js";
 import { useOsdSession } from "./features/osd/useOsdSession.js";
-import AppErrorToast from "./components/AppErrorToast.js";
 import { formatAppError, type AppError } from "./features/errors/app-error.js";
-import ChangelogModal from "./features/changelog/ChangelogModal.js";
 import { preferencesStorage } from "./features/preferences/storage.js";
 import { APP_VERSION } from "./version.js";
-import { isMacOS } from "./features/shortcuts/shortcuts.js";
-import { createDefaultProblemConfig } from "../shared/problem-config.js";
 import {
   judgeResultsReducer,
-  problemHasPositiveScore,
   type JudgeResultsAction,
 } from "./features/judging/judge-results.js";
 import {
@@ -54,12 +27,11 @@ import { useContestWorkspace } from "./features/workspace/useContestWorkspace.js
 import Scoreboard, {
   type ScoreboardActionTarget,
 } from "./features/scoreboard/Scoreboard.js";
+import { sortContestants } from "./features/scoreboard/scoreboard-model.js";
 import { useScoreDeletion } from "./features/scores/useScoreDeletion.js";
 import { useScoreboardExport } from "./features/export/useScoreboardExport.js";
 import { useContestFileActions } from "./features/contest/useContestFileActions.js";
 import { useAppShortcuts } from "./features/shortcuts/useAppShortcuts.js";
-
-const DONATION_QR_URL = "https://img.vietqr.io/image/MB-0835385259-compact.png?amount=&addInfo=JudgeDesk%20Donation";
 
 export default function App() {
   const { t } = useTranslation();
@@ -121,9 +93,6 @@ export default function App() {
   const [isInstallingUpdate, setIsInstallingUpdate] = useState(false);
   const [updateRestartError, setUpdateRestartError] = useState("");
   const [showChangelog, setShowChangelog] = useState(false);
-  const [showThemisPromptModal, setShowThemisPromptModal] = useState(false);
-  const [themisDetectedToolchains, setThemisDetectedToolchains] = useState<DetectedThemisToolchain[]>([]);
-  const [managedToolchainsInfo, setManagedToolchainsInfo] = useState<ManagedToolchainInfo[]>([]);
 
   // Host & Error states
   const [hostStatus, setHostStatus] = useState<HostStatus | null>(null);
@@ -294,53 +263,23 @@ export default function App() {
     return list;
   }, [problemsList, problemSort]);
 
-  const orderedContestants = useMemo(() => {
-    const list = contestantsList;
-    if (contestantSort === "score") {
-      const activeProblems = problemsList.filter((p) => selectedProblems[p]);
-      const scoresMap: Record<string, number> = {};
-
-      list.forEach((cont) => {
-        const ctData = judgeResult?.contestants.find(
-          (c) => c.contestantName === cont,
-        );
-        const totalScore =
-          ctData && ctData.problems
-            ? ctData.problems
-                .filter(
-                  (p) =>
-                    p &&
-                    p.problemName &&
-                    activeProblems.some(
-                      (ap) => ap.toLowerCase() === p.problemName.toLowerCase(),
-                    ),
-                )
-                .reduce((acc, p) => acc + (p.summary?.score ?? 0), 0)
-            : 0;
-        scoresMap[cont] = totalScore;
-      });
-
-      return [...list].sort(
-        (a, b) => (scoresMap[b] ?? 0) - (scoresMap[a] ?? 0),
-      );
-    } else if (contestantSort === "asc") {
-      return [...list].sort((a, b) =>
-        a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }),
-      );
-    } else if (contestantSort === "desc") {
-      return [...list].sort((a, b) =>
-        b.localeCompare(a, undefined, { numeric: true, sensitivity: "base" }),
-      );
-    }
-
-    return list;
-  }, [
-    contestantsList,
-    contestantSort,
-    judgeResult,
-    selectedProblems,
-    problemsList,
-  ]);
+  const orderedContestants = useMemo(
+    () =>
+      sortContestants(
+        contestantsList,
+        contestantSort,
+        judgeResult,
+        problemsList,
+        selectedProblems,
+      ),
+    [
+      contestantsList,
+      contestantSort,
+      judgeResult,
+      problemsList,
+      selectedProblems,
+    ],
+  );
 
   const displayedContestants = useMemo(() => {
     if (!searchTerm.trim()) return orderedContestants;
@@ -379,139 +318,16 @@ export default function App() {
   }, [requestHostStatus]);
 
   // Themis Toolchain Detection Prompt on First Launch
-  useEffect(() => {
-    if (preferencesStorage.hasThemisPromptChoice()) return;
-
-    let isMounted = true;
-    const checkThemisDetection = async () => {
-      try {
-        const response = await apiFetch("/api/toolchains");
-        if (!response.ok) return;
-        const data = (await response.json()) as ToolchainState;
-        if (!isMounted) return;
-
-        const detected: DetectedThemisToolchain[] = [];
-        for (const profile of data.profiles || []) {
-          const themisCandidate = profile.candidates?.find(
-            (c) =>
-              c.canonicalPath.toLowerCase().includes("themis") ||
-              c.displayPath.toLowerCase().includes("themis"),
-          );
-          if (themisCandidate) {
-            const langName =
-              profile.kind === "cpp"
-                ? "C++ (g++)"
-                : profile.kind === "c"
-                  ? "C (gcc)"
-                  : profile.kind === "pascal"
-                    ? "Pascal (fpc)"
-                    : profile.kind === "python"
-                      ? "Python"
-                      : profile.kind === "java"
-                        ? "Java (javac)"
-                        : profile.displayNameKey || profile.kind;
-            detected.push({
-              profileId: profile.id,
-              kind: profile.kind,
-              name: langName,
-              path: themisCandidate.canonicalPath,
-              version: themisCandidate.version || profile.active?.version || undefined,
-            });
-          }
-        }
-
-        const managed: ManagedToolchainInfo[] = (data.profiles || [])
-          .filter((p) => ["cpp", "c", "pascal", "python", "java"].includes(p.kind))
-          .map((p) => {
-            const langName =
-              p.kind === "cpp"
-                ? "C++ (g++)"
-                : p.kind === "c"
-                  ? "C (gcc)"
-                  : p.kind === "pascal"
-                    ? "Pascal (fpc)"
-                    : p.kind === "python"
-                      ? "Python"
-                      : p.kind === "java"
-                        ? "Java (javac)"
-                        : p.displayNameKey || p.kind;
-            const ver =
-              p.managedPackage?.version ||
-              (p.kind === "cpp" || p.kind === "c"
-                ? "14.2.0"
-                : p.kind === "pascal"
-                  ? "3.2.2"
-                  : p.kind === "python"
-                    ? "3.12.0"
-                    : "21.0.12");
-            return {
-              profileId: p.id,
-              kind: p.kind,
-              name: langName,
-              version: ver,
-            };
-          });
-
-        if (detected.length > 0 && isMounted) {
-          setThemisDetectedToolchains(detected);
-          setManagedToolchainsInfo(managed);
-          setShowThemisPromptModal(true);
-        }
-      } catch (err) {
-        console.warn("Failed to probe Themis toolchains:", err);
-      }
-    };
-
-    void checkThemisDetection();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  const handleApplyThemisAll = useCallback(async () => {
-    try {
-      await apiFetch("/api/toolchains/execution-policy", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ allowResourceOnlyLocalExecution: true }),
-      });
-    } catch (err) {
-      console.error("Failed to update execution policy for Themis:", err);
-    }
-    for (const item of themisDetectedToolchains) {
-      try {
-        await apiFetch(`/api/toolchains/profiles/${encodeURIComponent(item.profileId)}/preference`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            mode: "local_path",
-            localPath: item.path,
-          }),
-        });
-      } catch (err) {
-        console.error(`Failed to set Themis toolchain for ${item.profileId}:`, err);
-      }
-    }
-    requestHostStatus();
-  }, [themisDetectedToolchains, requestHostStatus]);
-
-  const handleApplyManagedAll = useCallback(async () => {
-    for (const item of managedToolchainsInfo) {
-      try {
-        await apiFetch(`/api/toolchains/profiles/${encodeURIComponent(item.profileId)}/preference`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            mode: "managed",
-          }),
-        });
-      } catch (err) {
-        console.error(`Failed to set managed toolchain for ${item.profileId}:`, err);
-      }
-    }
-    requestHostStatus();
-  }, [managedToolchainsInfo, requestHostStatus]);
+  const {
+    showThemisPromptModal,
+    setShowThemisPromptModal,
+    themisDetectedToolchains,
+    managedToolchainsInfo,
+    handleApplyThemisAll,
+    handleApplyManagedAll,
+  } = useThemisPromptModal({
+    onRefreshHostStatus: requestHostStatus,
+  });
 
   const handleThemisSuccessToast = useCallback((msg: string) => {
     setAppError({
@@ -802,433 +618,178 @@ export default function App() {
           {hostStatus?.sandbox?.mode && <div className="font-mono">{hostStatus.sandbox.mode}</div>}
         </footer>
 
-        {loadModal && (
-          <DirectoryPickerModal
-            kind={loadModal}
-            path={modalPath}
-            onPathChange={setModalPath}
-            onClose={() => setLoadModal(null)}
-            onDropPath={async (path) => {
-              try {
-                if (loadModal === "tests") {
-                  setTestPath(path);
-                  const loaded = await handleFetchProblems(path);
-                  markContestDirty();
-                  if (loaded.length === 0) {
-                    showError(null, { code: "DIRECTORY_EMPTY" });
-                  } else {
-                    setAppError(null);
-                  }
+        <AppModals
+          loadModal={loadModal}
+          modalPath={modalPath}
+          actionMenu={actionMenu}
+          progressState={progressState}
+          activeConfigProblem={activeConfigProblem}
+          activeDetails={activeDetails}
+          activeLog={activeLog}
+          helpSection={helpSection}
+          openToolchains={openToolchains}
+          showOsdModal={showOsdModal}
+          pendingContestAction={pendingContestAction}
+          pendingScoreDeletion={pendingScoreDeletion}
+          pendingScoreDeletionDescription={pendingScoreDeletionDescription}
+          isSavingContest={isSavingContest}
+          showUpdateChoices={showUpdateChoices}
+          pendingUpdateEdition={pendingUpdateEdition}
+          showDonationConfirm={showDonationConfirm}
+          showInstallUpdate={showInstallUpdate}
+          showChangelog={showChangelog}
+          showThemisPromptModal={showThemisPromptModal}
+          themisDetectedToolchains={themisDetectedToolchains}
+          managedToolchainsInfo={managedToolchainsInfo}
+          isWindowDragging={isWindowDragging}
+          appError={appError}
+          hostStatus={hostStatus}
+          judgeResult={judgeResult}
+          testPath={testPath}
+          thisinhPath={thisinhPath}
+          problemConfigs={problemConfigs}
+          customCheckersMap={customCheckersMap}
+          interactionLocked={interactionLocked}
+          updater={updater}
+          osdStatus={osdStatus}
+          updateRequiresRestart={updateRequiresRestart}
+          updateRestartError={updateRestartError}
+          isInstallingUpdate={isInstallingUpdate}
+          isJudging={isJudging}
+          onSetModalPath={setModalPath}
+          onCloseLoadModal={() => setLoadModal(null)}
+          onDropPath={async (path) => {
+            try {
+              if (loadModal === "tests") {
+                setTestPath(path);
+                const loaded = await handleFetchProblems(path);
+                markContestDirty();
+                if (loaded.length === 0) {
+                  showError(null, { code: "DIRECTORY_EMPTY" });
                 } else {
-                  setThisinhPath(path);
-                  const loaded = await handleFetchContestants(path);
-                  markContestDirty();
-                  if (loaded.length === 0) {
-                    showError(null, { code: "DIRECTORY_EMPTY" });
-                  } else {
-                    setAppError(null);
-                  }
+                  setAppError(null);
                 }
-              } catch (error) {
-                showError(error);
-              }
-              setLoadModal(null);
-            }}
-            onLoad={async () => {
-              try {
-                if (loadModal === "tests") {
-                  setTestPath(modalPath);
-                  const loaded = await handleFetchProblems(modalPath);
-                  markContestDirty();
-                  if (loaded.length === 0) {
-                    showError(null, { code: "DIRECTORY_EMPTY" });
-                  } else {
-                    setAppError(null);
-                  }
+              } else {
+                setThisinhPath(path);
+                const loaded = await handleFetchContestants(path);
+                markContestDirty();
+                if (loaded.length === 0) {
+                  showError(null, { code: "DIRECTORY_EMPTY" });
                 } else {
-                  setThisinhPath(modalPath);
-                  const loaded = await handleFetchContestants(modalPath);
-                  markContestDirty();
-                  if (loaded.length === 0) {
-                    showError(null, { code: "DIRECTORY_EMPTY" });
-                  } else {
-                    setAppError(null);
-                  }
+                  setAppError(null);
                 }
-              } catch (error) {
-                showError(error);
               }
-              setLoadModal(null);
-            }}
-          />
-        )}
-
-        {actionMenu && (
-          <EntityActionMenu
-            target={actionMenu}
-            mutationsLocked={interactionLocked}
-            onClose={() => setActionMenu(null)}
-            onConfig={() => {
-              if (actionMenu.problemName) setActiveConfigProblem(actionMenu.problemName);
-              setActionMenu(null);
-            }}
-            onDelete={() => {
-              if (actionMenu.type === "result" && actionMenu.contestantName && actionMenu.problemName) {
-                setPendingScoreDeletion({
-                  type: "result",
-                  contestantName: actionMenu.contestantName,
-                  problemName: actionMenu.problemName,
-                });
-              } else if (actionMenu.type === "problem" && actionMenu.problemName) {
-                setPendingScoreDeletion({ type: "problem", problemName: actionMenu.problemName });
-              } else if (actionMenu.contestantName) {
-                setPendingScoreDeletion({ type: "contestant", contestantName: actionMenu.contestantName });
-              }
-              setActionMenu(null);
-            }}
-            onRegrade={() => {
-              let request: Promise<void> | undefined;
-              if (actionMenu.type === "result" && actionMenu.contestantName && actionMenu.problemName) {
-                request = runJudge([actionMenu.contestantName], [actionMenu.problemName]);
-              } else if (actionMenu.type === "problem" && actionMenu.problemName) {
-                request = runJudge(
-                  displayedContestants.filter((name) => selectedContestants[name]),
-                  [actionMenu.problemName],
-                );
-              } else if (actionMenu.contestantName) {
-                request = runJudge(
-                  [actionMenu.contestantName],
-                  displayedProblems.filter((name) => selectedProblems[name]),
-                );
-              }
-              setActionMenu(null);
-              if (request) void request;
-            }}
-            onDetails={() => {
-              if (actionMenu.type === "result" && actionMenu.contestantName && actionMenu.problemName) {
-                const problem = findProblemResult(actionMenu.contestantName, actionMenu.problemName);
-                if (problem) setActiveDetails({ cont: actionMenu.contestantName, data: problem });
-              } else if (actionMenu.type === "problem" && actionMenu.problemName) {
-                setActiveLog({ type: "problem", name: actionMenu.problemName });
-              } else if (actionMenu.contestantName) {
-                setActiveLog({ type: "contestant", name: actionMenu.contestantName });
-              }
-              setActionMenu(null);
-            }}
-          />
-        )}
-
-        {progressState && (
-          <ProgressWindow
-            currentContestant={progressState.contestant}
-            currentProblem={progressState.problem}
-            action={progressState.action}
-            percent={progressState.percent}
-            onTerminate={handleTerminate}
-          />
-        )}
-
-        {activeConfigProblem && (
-          <ProblemConfigModal
-            problemName={activeConfigProblem}
-            testPath={testPath}
-            initialConfig={
-              problemConfigs[activeConfigProblem] ||
-              createDefaultProblemConfig(activeConfigProblem)
+            } catch (error) {
+              showError(error);
             }
-            hasScoredResults={problemHasPositiveScore(judgeResult, activeConfigProblem)}
-            onSave={(problemName, config) => {
-              saveProblemConfig(problemName, config);
-              dispatchResults({ type: "delete_problem", problemName });
-            }}
-            onClose={() => setActiveConfigProblem(null)}
-            customCheckers={customCheckersMap[activeConfigProblem] || []}
-            saveDisabled={interactionLocked}
-          />
-        )}
-
-        {activeDetails && (
-          <JudgingDetailsModal
-            contestantName={activeDetails.cont}
-            data={activeDetails.data}
-            onClose={() => setActiveDetails(null)}
-          />
-        )}
-
-        {activeLog && (
-          <ScoringLogModal
-            title={t("scoringLog.entityDetails", {
-              type: t(
-                activeLog.type === "problem"
-                  ? "scoringLog.entityProblem"
-                  : "scoringLog.entityContestant",
-              ),
-              name: activeLog.name,
-            })}
-            contestants={judgeResult?.contestants ?? []}
-            problemName={
-              activeLog.type === "problem" ? activeLog.name : undefined
-            }
-            contestantName={
-              activeLog.type === "contestant" ? activeLog.name : undefined
-            }
-            onClose={() => setActiveLog(null)}
-          />
-        )}
-
-        {helpSection && (
-          <HelpCenter
-            initialSection={helpSection}
-            hostStatus={hostStatus}
-            workspacePaths={{
-              problems: testPath,
-              contestants: thisinhPath,
-            }}
-            loadToolchains={loadHelpToolchains}
-            onClose={() => setHelpSection(null)}
-            onOpenToolchains={() => {
-              setHelpSection(null);
-              setOpenToolchains(true);
-            }}
-            onOpenChangelog={() => {
-              setHelpSection(null);
-              setShowChangelog(true);
-            }}
-          />
-        )}
-
-        {openToolchains && (
-          <ToolchainManager
-            onClose={() => setOpenToolchains(false)}
-          />
-        )}
-
-        {showThemisPromptModal && (
-          <ThemisToolchainPromptModal
-            isOpen={showThemisPromptModal}
-            onClose={() => setShowThemisPromptModal(false)}
-            themisToolchains={themisDetectedToolchains}
-            managedToolchains={managedToolchainsInfo}
-            onApplyManaged={handleApplyManagedAll}
-            onApplyThemis={handleApplyThemisAll}
-            onSuccessToast={handleThemisSuccessToast}
-          />
-        )}
-
-        {showOsdModal && (
-          <OsdSettingsModal
-            status={osdStatus}
-            contestantsPath={thisinhPath}
-            testPath={testPath}
-            onStart={startOsd}
-            onStop={stopOsd}
-            onClose={() => setShowOsdModal(false)}
-          />
-        )}
-
-        {pendingContestAction && (
-          <UnsavedContestDialog
-            isSaving={isSavingContest}
-            onCancel={() => setPendingContestAction(null)}
-            onDiscard={() => {
-              void continuePendingAction(false);
-            }}
-            onSave={() => {
-              void continuePendingAction(true);
-            }}
-          />
-        )}
-
-        {pendingScoreDeletion && (
-          <ScoreDeleteConfirmDialog
-            description={pendingScoreDeletionDescription}
-            disabled={interactionLocked}
-            onCancel={() => setPendingScoreDeletion(null)}
-            onConfirm={confirmScoreDeletion}
-          />
-        )}
-
-        {isSavingContest && <ContestSaveProgressDialog />}
-
-        {showUpdateChoices && updater.state.status === "available" && (
-          <UpdateEditionDialog
-            version={updater.state.version}
-            currentEdition={updater.state.currentEdition}
-            candidates={updater.state.candidates}
-            onCancel={() => setShowUpdateChoices(false)}
-            onChoose={(edition) => {
-              if (!requiresEditionChange(updater.state.currentEdition, edition)) {
-                setShowUpdateChoices(false);
-                void updater.downloadUpdate(edition);
-                return;
-              }
-              setShowUpdateChoices(false);
-              setPendingUpdateEdition(edition);
-            }}
-          />
-        )}
-
-        {pendingUpdateEdition && updater.state.status === "available" && (
-          <UpdateEditionChangeDialog
-            currentEdition={updater.state.currentEdition}
-            candidate={updater.state.candidates[pendingUpdateEdition]}
-            onCancel={() => {
-              setPendingUpdateEdition(null);
-              setShowUpdateChoices(true);
-            }}
-            onConfirm={() => {
-              const edition = pendingUpdateEdition;
-              setPendingUpdateEdition(null);
-              if (edition) void updater.downloadUpdate(edition);
-            }}
-          />
-        )}
-
-        {showDonationConfirm && (
-          <DonationConfirmDialog
-            onCancel={() => setShowDonationConfirm(false)}
-            onConfirm={() => {
-              setShowDonationConfirm(false);
-              void (async () => {
-                try {
-                  if ("__TAURI_INTERNALS__" in window) {
-                    const { openUrl } = await import("@tauri-apps/plugin-opener");
-                    await openUrl(DONATION_QR_URL);
-                  } else {
-                    window.open(DONATION_QR_URL, "_blank", "noopener,noreferrer");
-                  }
-                } catch (error) {
-                  setErrorMessage(error instanceof Error ? error.message : String(error));
+            setLoadModal(null);
+          }}
+          onLoadPath={async () => {
+            try {
+              if (loadModal === "tests") {
+                setTestPath(modalPath);
+                const loaded = await handleFetchProblems(modalPath);
+                markContestDirty();
+                if (loaded.length === 0) {
+                  showError(null, { code: "DIRECTORY_EMPTY" });
+                } else {
+                  setAppError(null);
                 }
-              })();
-            }}
-          />
-        )}
-
-        {showInstallUpdate && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <div className="w-full max-w-md overflow-hidden rounded-xl border border-surface-border bg-surface shadow-2xl">
-              <div className="flex items-center justify-between border-b border-surface-border bg-surface-elevated px-5 py-4">
-                <h3 className="text-sm font-bold text-text-primary">
-                  {updateRequiresRestart
-                    ? t("updates.restartNow")
-                    : t("updates.installTitle")}
-                </h3>
-                {!isInstallingUpdate && (
-                  <button
-                    type="button"
-                    onClick={() => setShowInstallUpdate(false)}
-                    className="p-1 text-text-muted hover:text-text-primary"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                )}
-              </div>
-              <div className="p-5 text-xs text-text-muted">
-                {updateRequiresRestart
-                  ? t("updates.restartRequired")
-                  : t("updates.installMessage")}
-                {updateRestartError && (
-                  <p className="mt-2 text-rose-500">
-                    {updateRestartError}
-                    {updateRestartError.includes("failed to spawn")
-                      ? " " +
-                        (isMacOS(hostStatus?.platform)
-                          ? t("updates.relaunchFailedHintMac")
-                          : t("updates.relaunchFailedHintWindows"))
-                      : (isMacOS(hostStatus?.platform)
-                        ? " " + t("updates.relaunchGenericHintMac")
-                        : "")}
-                  </p>
-                )}
-              </div>
-              <div className="flex justify-end gap-3 border-t border-surface-border bg-surface-elevated px-5 py-4">
-                {updateRequiresRestart ? (
-                  <button
-                    type="button"
-                    disabled={isInstallingUpdate}
-                    onClick={async () => {
-                      setIsInstallingUpdate(true);
-                      setUpdateRestartError("");
-                      try {
-                        const { relaunch } = await import("@tauri-apps/plugin-process");
-                        await relaunch();
-                      } catch (error) {
-                        setUpdateRestartError(
-                          error instanceof Error ? error.message : String(error),
-                        );
-                      } finally {
-                        setIsInstallingUpdate(false);
-                      }
-                    }}
-                    className="rounded bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-500 disabled:cursor-wait disabled:opacity-60"
-                  >
-                    {isInstallingUpdate
-                      ? t("updates.restarting")
-                      : t("updates.restartNow")}
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      disabled={isInstallingUpdate}
-                      onClick={() => setShowInstallUpdate(false)}
-                      className="rounded border border-surface-border bg-input-bg px-4 py-2 text-xs font-semibold text-text-primary hover:bg-surface-hover disabled:opacity-50"
-                    >
-                      {t("common.cancel")}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isInstallingUpdate}
-                      onClick={async () => {
-                        setIsInstallingUpdate(true);
-                        setUpdateRestartError("");
-                        try {
-                          if (isJudging) await handleTerminate();
-                          await updater.installUpdate();
-                        } finally {
-                          setIsInstallingUpdate(false);
-                        }
-                      }}
-                      className="rounded bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-500 disabled:cursor-wait disabled:opacity-60"
-                    >
-                      {isInstallingUpdate
-                        ? t("updates.installing")
-                        : t("updates.installNow")}
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {showChangelog && (
-          <ChangelogModal onClose={handleCloseChangelog} />
-        )}
-
-        {isWindowDragging && !loadModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md pointer-events-none transition-all duration-300">
-            <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed border-indigo-500 bg-surface/95 px-12 py-10 shadow-2xl ring-4 ring-indigo-500/20 max-w-lg text-center animate-in fade-in zoom-in-95 duration-200">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-500/15 text-indigo-500 dark:text-indigo-400">
-                <FolderOpen className="h-9 w-9 animate-bounce" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-text-primary">
-                  {t("contest.dropToOpenTitle", "Thả file kỳ thi .judgedesk hoặc thư mục")}
-                </h3>
-                <p className="mt-1 text-xs text-text-muted">
-                  {t(
-                    "contest.dropToOpenSubtitle",
-                    "Mở kỳ thi đã lưu kèm đề bài, thí sinh và kết quả chấm",
-                  )}
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <AppErrorToast error={appError} onClose={clearError} />
+              } else {
+                setThisinhPath(modalPath);
+                const loaded = await handleFetchContestants(modalPath);
+                markContestDirty();
+                if (loaded.length === 0) {
+                  showError(null, { code: "DIRECTORY_EMPTY" });
+                } else {
+                  setAppError(null);
+                }
+              }
+            } catch (error) {
+              showError(error);
+            }
+            setLoadModal(null);
+          }}
+          onCloseActionMenu={() => setActionMenu(null)}
+          onOpenConfigProblem={(prob) => setActiveConfigProblem(prob)}
+          onSetPendingScoreDeletion={setPendingScoreDeletion}
+          onRunJudgeTargets={runJudge}
+          onOpenResultDetails={(cont, data) => setActiveDetails({ cont, data })}
+          onOpenLog={(log) => setActiveLog(log)}
+          findProblemResult={findProblemResult}
+          displayedContestants={displayedContestants}
+          displayedProblems={displayedProblems}
+          selectedContestants={selectedContestants}
+          selectedProblems={selectedProblems}
+          onTerminateJudging={handleTerminate}
+          onSaveProblemConfig={saveProblemConfig}
+          onDeleteProblemResults={(problemName) => dispatchResults({ type: "delete_problem", problemName })}
+          onCloseConfigProblem={() => setActiveConfigProblem(null)}
+          onCloseDetails={() => setActiveDetails(null)}
+          onCloseLog={() => setActiveLog(null)}
+          loadHelpToolchains={loadHelpToolchains}
+          onCloseHelp={() => setHelpSection(null)}
+          onOpenToolchainsFromHelp={() => {
+            setHelpSection(null);
+            setOpenToolchains(true);
+          }}
+          onOpenChangelogFromHelp={() => {
+            setHelpSection(null);
+            setShowChangelog(true);
+          }}
+          onCloseToolchains={() => setOpenToolchains(false)}
+          onCloseThemisPrompt={() => setShowThemisPromptModal(false)}
+          onApplyThemisAll={handleApplyThemisAll}
+          onApplyManagedAll={handleApplyManagedAll}
+          onThemisSuccessToast={handleThemisSuccessToast}
+          onStartOsd={startOsd}
+          onStopOsd={stopOsd}
+          onCloseOsd={() => setShowOsdModal(false)}
+          onCancelPendingContestAction={() => setPendingContestAction(null)}
+          onContinuePendingContestAction={continuePendingAction}
+          onCancelScoreDeletion={() => setPendingScoreDeletion(null)}
+          onConfirmScoreDeletion={confirmScoreDeletion}
+          onCloseUpdateChoices={() => setShowUpdateChoices(false)}
+          onChooseUpdateEdition={(edition) => setPendingUpdateEdition(edition)}
+          onCancelUpdateEditionChange={() => {
+            setPendingUpdateEdition(null);
+            setShowUpdateChoices(true);
+          }}
+          onConfirmUpdateEditionChange={() => {
+            const edition = pendingUpdateEdition;
+            setPendingUpdateEdition(null);
+            if (edition) void updater.downloadUpdate(edition);
+          }}
+          onCloseDonationConfirm={() => setShowDonationConfirm(false)}
+          onSetErrorMessage={(msg) => setErrorMessage(msg)}
+          onCloseInstallUpdate={() => setShowInstallUpdate(false)}
+          onRestartUpdate={async () => {
+            setIsInstallingUpdate(true);
+            setUpdateRestartError("");
+            try {
+              const { relaunch } = await import("@tauri-apps/plugin-process");
+              await relaunch();
+            } catch (error) {
+              setUpdateRestartError(
+                error instanceof Error ? error.message : String(error),
+              );
+            } finally {
+              setIsInstallingUpdate(false);
+            }
+          }}
+          onInstallUpdate={async () => {
+            setIsInstallingUpdate(true);
+            setUpdateRestartError("");
+            try {
+              if (isJudging) await handleTerminate();
+              await updater.installUpdate();
+            } finally {
+              setIsInstallingUpdate(false);
+            }
+          }}
+          onCloseChangelog={handleCloseChangelog}
+          onClearError={clearError}
+        />
       </div>
     </div>
   );

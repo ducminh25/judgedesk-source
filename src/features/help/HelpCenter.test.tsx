@@ -162,9 +162,10 @@ describe("Help Center", () => {
 
   it("wires F1 to the same Help Center state in App", () => {
     const appSource = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
+    const modalsSource = readFileSync(new URL("../../components/AppModals.tsx", import.meta.url), "utf8");
 
     assert.match(appSource, /if \(!isHelpShortcut\(event\)/);
     assert.match(appSource, /setHelpSection\(\(current\) => current \?\? "quick-start"\)/);
-    assert.match(appSource, /<HelpCenter/);
+    assert.match(modalsSource, /<HelpCenter/);
   });
 });
