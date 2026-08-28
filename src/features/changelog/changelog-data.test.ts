@@ -53,6 +53,6 @@ test("every version has sections and non-empty bullet items", () => {
 test("getChangelogForLanguage returns appropriate language release list", () => {
   const vi = getChangelogForLanguage("vi");
   const en = getChangelogForLanguage("en");
-  assert.equal(vi[0].sections[0].title, "Nút Sắp xếp Điểm Động & Xuất Excel Theo Thứ tự");
-  assert.equal(en[0].sections[0].title, "Dynamic Score Sort Button & Sorted Excel Export");
+  assert.equal(vi[0].sections[0].title, "Tích hợp Chấm Bài thi Scratch (.sb3, .sb2, .sb)");
+  assert.equal(en[0].sections[0].title, "Scratch (.sb3, .sb2, .sb) Language Support");
 });
