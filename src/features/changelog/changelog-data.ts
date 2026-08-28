@@ -11,6 +11,29 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
   {
+    version: "1.4.3",
+    date: "2026-08-28",
+    sections: [
+      {
+        title: "Nút Sắp xếp Điểm Động & Xuất Excel Theo Thứ tự",
+        items: [
+          "Bổ sung nút chuyển đổi 3 trạng thái sắp xếp điểm trên Toolbar (Điểm cao -> Điểm thấp -> Mặc định), tự động đồng bộ khi click cột Tổng Điểm trên Bảng điểm.",
+          "Thí sinh chưa có điểm tự động hiển thị ở cuối danh sách; hòa điểm được xếp theo tên A-Z.",
+          "File Excel xuất ra tuân thủ chính xác thứ tự bảng điểm đang hiển thị và sắp xếp các cột bài thi chi tiết từ trái qua phải.",
+          "Loại bỏ khung lỗi tràn ngang trên Toolbar, chuyển sang hệ thống Thông báo Lỗi nổi (App Error Toast) linh hoạt.",
+        ],
+      },
+      {
+        title: "Tự Kiểm Tra Trình Biên Dịch & Tối Ưu Bảng Điểm",
+        items: [
+          "Thêm tính năng Chẩn đoán / Tự kiểm tra (Self-Test Probe) trong Quản lý bộ công cụ cho 5 ngôn ngữ thi đấu (C++, C, Python, Pascal, Java) trực tiếp trong Native Sandbox Runner để đo đạc thời gian biên dịch, thực thi và bộ nhớ tiêu thụ.",
+          "Tối ưu hóa bảng băm O(1) cho bảng điểm, giúp tra cứu và sắp xếp tức thì trên các kỳ thi có hàng trăm thí sinh và bài nộp.",
+          "Tách biệt hoàn toàn tầng Modals Layer và tối ưu hóa bộ mã nguồn ứng dụng.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.4.2",
     date: "2026-08-27",
     sections: [
@@ -358,6 +381,29 @@ export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
 ];
 
 export const CHANGELOG_DATA_EN: ChangelogRelease[] = [
+  {
+    version: "1.4.3",
+    date: "2026-08-28",
+    sections: [
+      {
+        title: "Dynamic Score Sort Button & Sorted Excel Export",
+        items: [
+          "Added dynamic 3-state score sort button in Toolbar (Score High-to-Low -> Low-to-High -> Default), synced with the Total column header on the scoreboard.",
+          "Unscored contestants are automatically placed at the bottom; tied scores are sorted alphabetically by name A-Z.",
+          "Excel export preserves the current active scoreboard order and arranges detailed problem sheets cleanly from left to right.",
+          "Replaced horizontal inline toolbar error container with floating App Error Toasts to prevent toolbar overflow.",
+        ],
+      },
+      {
+        title: "Toolchain Self-Test Probe & Scoreboard Performance",
+        items: [
+          "Added Self-Test Diagnostic Probe in Toolchains Manager for 5 competitive programming languages (C++, C, Python, Pascal, Java) inside the Native Sandbox Runner to measure compile time, sandbox execution time, and peak memory.",
+          "Optimized scoreboard sorting with O(1) indexed lookup for high-contestant sessions.",
+          "Modularized modals layer and streamlined main application layout.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.4.2",
     date: "2026-08-27",

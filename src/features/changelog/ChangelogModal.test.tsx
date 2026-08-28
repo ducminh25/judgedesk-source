@@ -58,8 +58,8 @@ describe("ChangelogModal", () => {
     );
 
     assert.match(html, /Có gì mới trong JudgeDesk/);
-    assert.match(html, /Tương thích Custom Checker Đa Định dạng &amp; Tự động Nạp Header/);
-    assert.match(html, /v1\.4\.2/);
+    assert.match(html, /Nút Sắp xếp Điểm Động &amp; Xuất Excel Theo Thứ tự/);
+    assert.match(html, /v1\.4\.3/);
     assert.match(html, /v1\.2\.5/);
     assert.match(html, /Đã hiểu/);
   });
@@ -85,7 +85,7 @@ describe("ChangelogModal", () => {
     );
 
     assert.match(html, /What&#x27;s New in JudgeDesk/);
-    assert.match(html, /Multi-format Custom Checker/);
+    assert.match(html, /Dynamic Score Sort Button/);
     assert.match(html, /Got it/);
   });
 });

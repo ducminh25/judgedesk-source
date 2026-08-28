@@ -6,11 +6,12 @@ import {
   getChangelogForLanguage,
 } from "./changelog-data.js";
 
-test("changelog data contains versions from 1.4.2 down to 1.2.5 in descending order", () => {
+test("changelog data contains versions from 1.4.3 down to 1.2.5 in descending order", () => {
   const versionsVi = CHANGELOG_DATA_VI.map((r) => r.version);
   const versionsEn = CHANGELOG_DATA_EN.map((r) => r.version);
 
   const expectedVersions = [
+    "1.4.3",
     "1.4.2",
     "1.4.1",
     "1.4.0",
@@ -51,6 +52,6 @@ test("every version has sections and non-empty bullet items", () => {
 test("getChangelogForLanguage returns appropriate language release list", () => {
   const vi = getChangelogForLanguage("vi");
   const en = getChangelogForLanguage("en");
-  assert.equal(vi[0].sections[0].title, "Tương thích Custom Checker Đa Định dạng & Tự động Nạp Header");
-  assert.equal(en[0].sections[0].title, "Multi-format Custom Checker (.exe, .cpp, .py) & Auto Header Staging");
+  assert.equal(vi[0].sections[0].title, "Nút Sắp xếp Điểm Động & Xuất Excel Theo Thứ tự");
+  assert.equal(en[0].sections[0].title, "Dynamic Score Sort Button & Sorted Excel Export");
 });
