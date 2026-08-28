@@ -170,7 +170,7 @@ test("a fresh Full install selects supported Stable managed packs without changi
     const legacyAutoDetect = entry.profile.ref.id === CPP_LANGUAGE_PROFILE_ID
       || entry.profile.ref.id === C_LANGUAGE_PROFILE_ID
       || entry.profile.ref.id === PYTHON_LANGUAGE_PROFILE_ID;
-    const expectedMode = entry.profile.stability === "stable" && descriptor
+    const expectedMode = entry.profile.stability === "stable" && (descriptor || entry.toolchainKind === "scratch")
       ? "managed"
       : legacyAutoDetect
         ? "local_auto"

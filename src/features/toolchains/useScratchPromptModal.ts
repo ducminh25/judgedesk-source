@@ -29,7 +29,7 @@ export function useScratchPromptModal({
         const scratchProfile = data.profiles?.find(
           (p) => p.kind === "scratch" || p.id?.includes("scratch"),
         );
-        if (scratchProfile) {
+        if (scratchProfile && scratchProfile.selection?.mode === "none") {
           setShowScratchPromptModal(true);
         }
       } catch (err) {

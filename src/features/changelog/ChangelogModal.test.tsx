@@ -58,8 +58,8 @@ describe("ChangelogModal", () => {
     );
 
     assert.match(html, /Có gì mới trong JudgeDesk/);
-    assert.match(html, /Tích hợp Chấm Bài thi Scratch/);
-    assert.match(html, /v1\.4\.4/);
+    assert.match(html, /Bản sửa lỗi nhanh \(Hotfix\) cho v1\.4\.4/);
+    assert.match(html, /v1\.4\.41/);
     assert.match(html, /v1\.2\.5/);
     assert.match(html, /Đã hiểu/);
   });
@@ -85,7 +85,7 @@ describe("ChangelogModal", () => {
     );
 
     assert.match(html, /What&#x27;s New in JudgeDesk/);
-    assert.match(html, /Scratch \(\.sb3, \.sb2, \.sb\) Language Support/);
+    assert.match(html, /Hotfix for v1\.4\.4/);
     assert.match(html, /Got it/);
   });
 });
