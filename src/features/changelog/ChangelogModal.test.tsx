@@ -58,8 +58,8 @@ describe("ChangelogModal", () => {
     );
 
     assert.match(html, /Có gì mới trong JudgeDesk/);
-    assert.match(html, /Tích hợp chính thức scratch-run \(VNOI\) &amp; Hoàn thiện giao diện/);
-    assert.match(html, /v1\.4\.43/);
+    assert.match(html, /Hoàn thiện tuyệt đối Chấm thi Scratch trên Windows &amp; macOS/);
+    assert.match(html, /v1\.4\.44/);
     assert.match(html, /v1\.2\.5/);
     assert.match(html, /Đã hiểu/);
   });
@@ -85,7 +85,7 @@ describe("ChangelogModal", () => {
     );
 
     assert.match(html, /What&#x27;s New in JudgeDesk/);
-    assert.match(html, /Official VNOI scratch-run Integration &amp; UI Refinements/);
+    assert.match(html, /Complete Scratch Judging Support on Windows &amp; macOS/);
     assert.match(html, /Got it/);
   });
 });
