@@ -524,6 +524,16 @@ test("compiles Scratch submission to native executable with valid compileStatus"
     problemName: "sample",
     submissionPath: projectJsonPath,
     tempDirectory: root,
+    toolchains: {
+      scratch: {
+        kind: "scratch",
+        source: "managed",
+        executablePath: "/mock/scratch-run",
+        version: "0.1.7",
+        ready: true,
+        provenance: "managed-package",
+      },
+    },
   });
 
   assert.equal(result.compileStatus, "OK");
