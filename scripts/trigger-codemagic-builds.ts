@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
-import os from "node:os";
+import { execFileSync } from "node:child_process";
 
-const APP_ID = "6a59050a8f1abc95b83e8570";
 const TOKEN = process.env.CODEMAGIC_API_TOKEN;
+const APP_ID = "6a59050a8f1abc95b83e8570";
 
 if (!TOKEN) {
   throw new Error("CODEMAGIC_API_TOKEN is missing!");
@@ -65,6 +65,20 @@ async function waitForBuild(name: string, buildId: string): Promise<any> {
   }
 }
 
+async function extractArtifacts(build: any, targetDir: string) {
+  for (const artifact of build.artefacts || []) {
+    const tempFile = path.join(targetDir, `_temp_${artifact.name}`);
+    console.log(`Downloading ${artifact.name}...`);
+    await downloadFile(artifact.url, tempFile);
+
+    if (artifact.name.endsWith(".zip")) {
+      console.log(`Extracting zip bundle ${artifact.name}...`);
+      execFileSync("tar", ["-xf", tempFile, "-C", targetDir], { stdio: "inherit" });
+      fs.unlinkSync(tempFile);
+    }
+  }
+}
+
 async function main() {
   const coreSha256 = "a2861f4f01b33be0e65cd6398faffdd36614afdf216ca618929f60e367e9017d";
   const fullSha256 = "15e83935644c2c0e4402a2a7f406573fb56c770a770baeb58f629356e2710e27";
@@ -100,25 +114,16 @@ async function main() {
 
   console.log("Both CodeMagic builds succeeded!");
 
-  // Download artifacts
   const stagingDir = path.resolve("release-staging");
   fs.mkdirSync(stagingDir, { recursive: true });
 
-  console.log("Downloading Windows artifacts...");
-  for (const artifact of winBuild.artefacts || []) {
-    const dest = path.join(stagingDir, artifact.name);
-    console.log(`Downloading ${artifact.name}...`);
-    await downloadFile(artifact.url, dest);
-  }
+  console.log("Extracting Windows artifacts...");
+  await extractArtifacts(winBuild, stagingDir);
 
-  console.log("Downloading Mac artifacts...");
-  for (const artifact of macBuild.artefacts || []) {
-    const dest = path.join(stagingDir, artifact.name);
-    console.log(`Downloading ${artifact.name}...`);
-    await downloadFile(artifact.url, dest);
-  }
+  console.log("Extracting Mac artifacts...");
+  await extractArtifacts(macBuild, stagingDir);
 
-  console.log("All artifacts downloaded to release-staging:");
+  console.log("Files in release-staging:");
   console.log(fs.readdirSync(stagingDir));
 }
 

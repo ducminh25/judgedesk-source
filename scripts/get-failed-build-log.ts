@@ -1,5 +1,5 @@
 const TOKEN = process.env.CODEMAGIC_API_TOKEN;
-const BUILD_ID = "6a92dfbdb28ed1ef06be9cb7";
+const BUILD_ID = "6a92e07625578348e46b1be0";
 
 async function main() {
   const res = await fetch(`https://api.codemagic.io/builds/${BUILD_ID}`, {

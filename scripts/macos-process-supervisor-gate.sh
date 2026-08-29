@@ -196,6 +196,15 @@ quit_app() {
   if pid_matches "$gui_pid" "$gui_command"; then
     kill -KILL "$gui_pid" >/dev/null 2>&1 || true
   fi
+  for ((index = 0; index < 250; index++)); do
+    [[ "$(process_count)" == "0" ]] && return 0
+    sleep 0.02
+  done
+  for command in "$executor_command" "$server_command" "$helper_command"; do
+    for pid in $(exact_pids "$command"); do
+      kill -KILL "$pid" >/dev/null 2>&1 || true
+    done
+  done
   wait_for_inventory 0 500
 }
 
