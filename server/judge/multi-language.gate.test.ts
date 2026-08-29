@@ -509,7 +509,7 @@ test(
     });
     const input = path.join(root, "input.txt");
     const expected = path.join(root, "expected.txt");
-    fs.writeFileSync(input, "19 23\n", "utf8");
+    fs.writeFileSync(input, "19\n23\n", "utf8");
     fs.writeFileSync(expected, "42\n", "utf8");
 
     for (const name of requestedGateNames) {
