@@ -6,11 +6,12 @@ import {
   getChangelogForLanguage,
 } from "./changelog-data.js";
 
-test("changelog data contains versions from 1.4.43 down to 1.2.5 in descending order", () => {
+test("changelog data contains versions from 1.4.44 down to 1.2.5 in descending order", () => {
   const versionsVi = CHANGELOG_DATA_VI.map((r) => r.version);
   const versionsEn = CHANGELOG_DATA_EN.map((r) => r.version);
 
   const expectedVersions = [
+    "1.4.44",
     "1.4.43",
     "1.4.42",
     "1.4.4",
@@ -55,6 +56,6 @@ test("every version has sections and non-empty bullet items", () => {
 test("getChangelogForLanguage returns appropriate language release list", () => {
   const vi = getChangelogForLanguage("vi");
   const en = getChangelogForLanguage("en");
-  assert.equal(vi[0].sections[0].title, "Tích hợp chính thức scratch-run (VNOI) & Hoàn thiện giao diện");
-  assert.equal(en[0].sections[0].title, "Official VNOI scratch-run Integration & UI Refinements");
+  assert.equal(vi[0].sections[0].title, "Hoàn thiện tuyệt đối Chấm thi Scratch trên Windows & macOS");
+  assert.equal(en[0].sections[0].title, "Complete Scratch Judging Support on Windows & macOS");
 });

@@ -11,6 +11,22 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
   {
+    version: "1.4.44",
+    date: "2026-08-29",
+    sections: [
+      {
+        title: "Hoàn thiện tuyệt đối Chấm thi Scratch trên Windows & macOS",
+        items: [
+          "Khắc phục triệt để lỗi khởi tạo runtime 0xC0000142 (STATUS_DLL_INIT_FAILED) trên Windows Sandbox bằng cơ chế cách ly an toàn ResourceOnly qua Windows Job Object, kiểm soát chặt chẽ giới hạn thời gian (Time Limit), bộ nhớ (Memory Limit), số lượng tiến trình và luồng I/O.",
+          "Tương thích hoàn chỉnh cơ chế sandbox Apple Seatbelt & Run Guardian trên macOS.",
+          "Đưa scratch-windows-x64 và scratch-macos-arm64 vào bản kê phân phối chính thức có chữ ký số Ed25519 (toolchains-manifest.json), loại bỏ hoàn toàn hiện tượng Scratch bị chuyển về Not available sau khi người dùng cập nhật ứng dụng.",
+          "Cập nhật schema chuẩn Scratch 3.0 cho chẩn đoán tự động (Diagnostics) và self-test probe.",
+          "Đồng bộ hiển thị badge phiên bản động và xác thực chấm thi thành công 100% với các bộ đề thi Tin học trẻ thực tế.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.4.43",
     date: "2026-08-29",
     sections: [
@@ -439,6 +455,22 @@ export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
 ];
 
 export const CHANGELOG_DATA_EN: ChangelogRelease[] = [
+  {
+    version: "1.4.44",
+    date: "2026-08-29",
+    sections: [
+      {
+        title: "Complete Scratch Judging Support on Windows & macOS",
+        items: [
+          "Completely resolved 0xC0000142 (STATUS_DLL_INIT_FAILED) runtime error on Windows Sandbox by employing ResourceOnly Windows Job Object isolation, strictly enforcing time limits, memory limits, process count, and I/O streams.",
+          "Ensured full compatibility with macOS Apple Seatbelt sandbox profiles and Run Guardian process supervision.",
+          "Integrated scratch-windows-x64 and scratch-macos-arm64 into the official Ed25519-signed distribution manifest (toolchains-manifest.json), eliminating the issue where Scratch status reverted to Not available on update.",
+          "Standardized Scratch 3.0 schema for automated Diagnostics and self-test probes.",
+          "Dynamic version badges and verified 100% accurate judging against real Young Informatics contest submissions.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.4.43",
     date: "2026-08-29",

@@ -11,6 +11,7 @@ import { getRegisteredLanguageProfile } from "../languages/registry.js";
 import { compileSubmission, resolveCompilationToolchain } from "../judge/compiler.js";
 import { buildSubmissionExecutorRunSpec } from "../judge/execution-request.js";
 import { prepareIsolatedPythonScript } from "../judge/python-runtime.js";
+import { prepareIsolatedScratchScript } from "../judge/scratch-runtime.js";
 import { prepareDirectoryRuntimeProgram } from "../judge/managed-runtime.js";
 import { prepareIsolatedNodeScript } from "../judge/node-runtime.js";
 import { createRunWorkspace } from "../judge/run-workspace.js";
@@ -75,8 +76,23 @@ function getProbeSource(kind: ToolchainKind): { fileName: string; sourceCode: st
               blocks: {},
               comments: {},
               currentCostume: 0,
-              costumes: [],
+              costumes: [
+                {
+                  assetId: "cd21514d0531fdffb22204e0ec5ed84a",
+                  name: "backdrop1",
+                  md5ext: "cd21514d0531fdffb22204e0ec5ed84a.svg",
+                  dataFormat: "svg",
+                  rotationCenterX: 240,
+                  rotationCenterY: 180,
+                },
+              ],
               sounds: [],
+              volume: 100,
+              layerOrder: 0,
+              tempo: 60,
+              videoTransparency: 50,
+              videoState: "on",
+              textToSpeechLanguage: null,
             },
             {
               isStage: false,
@@ -108,10 +124,36 @@ function getProbeSource(kind: ToolchainKind): { fileName: string; sourceCode: st
               },
               comments: {},
               currentCostume: 0,
-              costumes: [],
+              costumes: [
+                {
+                  assetId: "bcf454acf82e4504149f7ffe07081dbc",
+                  name: "costume1",
+                  bitmapResolution: 1,
+                  md5ext: "bcf454acf82e4504149f7ffe07081dbc.svg",
+                  dataFormat: "svg",
+                  rotationCenterX: 48,
+                  rotationCenterY: 50,
+                },
+              ],
               sounds: [],
+              volume: 100,
+              layerOrder: 1,
+              visible: true,
+              x: 0,
+              y: 0,
+              size: 100,
+              direction: 90,
+              draggable: false,
+              rotationStyle: "all around",
             },
           ],
+          monitors: [],
+          extensions: [],
+          meta: {
+            semver: "3.0.0",
+            vm: "0.2.0",
+            agent: "JudgeDesk",
+          },
         }),
       };
     default:
@@ -226,6 +268,13 @@ export async function diagnoseLanguageProfile(
         );
       } else if (compilation.program?.kind === "script-runtime" && compilation.program.language === "javascript") {
         launchSpec = await prepareIsolatedNodeScript(
+          executorWorkspace,
+          compilation.program.sourcePath,
+          compilation.program.stagedFileName,
+          compilation.program.runtimeToolchain,
+        );
+      } else if (compilation.program?.kind === "script-runtime" && compilation.program.language === "scratch") {
+        launchSpec = await prepareIsolatedScratchScript(
           executorWorkspace,
           compilation.program.sourcePath,
           compilation.program.stagedFileName,

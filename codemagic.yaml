@@ -122,7 +122,7 @@ workflows:
           export JUDGEDESK_REAL_TOOLCHAIN_GATES=1
           export JUDGEDESK_REAL_TOOLCHAIN_GATE_ROOT="$resources/toolchains"
           export JUDGEDESK_REAL_TOOLCHAIN_GATE_ORIGIN=built-in
-          export JUDGEDESK_REAL_LANGUAGE_GATES=pascal,java,python
+          export JUDGEDESK_REAL_LANGUAGE_GATES=pascal,java,python,scratch
           npx tsx --test server/judge/c-submission.gate.test.ts
           npx tsx --test server/judge/multi-language.gate.test.ts
           npx tsx --test server/judge/custom-checker.gate.test.ts

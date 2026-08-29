@@ -841,6 +841,110 @@ function smokePackage(
     );
     return;
   }
+  if (blueprint.kind === "scratch") {
+    const projectJson = path.join(workspace, "project.json");
+    fs.writeFileSync(
+      projectJson,
+      JSON.stringify({
+        targets: [
+          {
+            isStage: true,
+            name: "Stage",
+            variables: {},
+            lists: {},
+            broadcasts: {},
+            blocks: {},
+            comments: {},
+            currentCostume: 0,
+            costumes: [
+              {
+                assetId: "cd21514d0531fdffb22204e0ec5ed84a",
+                name: "backdrop1",
+                md5ext: "cd21514d0531fdffb22204e0ec5ed84a.svg",
+                dataFormat: "svg",
+                rotationCenterX: 240,
+                rotationCenterY: 180,
+              },
+            ],
+            sounds: [],
+            volume: 100,
+            layerOrder: 0,
+            tempo: 60,
+            videoTransparency: 50,
+            videoState: "on",
+            textToSpeechLanguage: null,
+          },
+          {
+            isStage: false,
+            name: "Sprite1",
+            variables: {},
+            lists: {},
+            broadcasts: {},
+            blocks: {
+              start: {
+                opcode: "event_whenflagclicked",
+                next: "say",
+                parent: null,
+                inputs: {},
+                fields: {},
+                shadow: false,
+                topLevel: true,
+              },
+              say: {
+                opcode: "looks_say",
+                next: null,
+                parent: "start",
+                inputs: {
+                  MESSAGE: [1, [10, "42"]],
+                },
+                fields: {},
+                shadow: false,
+                topLevel: false,
+              },
+            },
+            comments: {},
+            currentCostume: 0,
+            costumes: [
+              {
+                assetId: "bcf454acf82e4504149f7ffe07081dbc",
+                name: "costume1",
+                bitmapResolution: 1,
+                md5ext: "bcf454acf82e4504149f7ffe07081dbc.svg",
+                dataFormat: "svg",
+                rotationCenterX: 48,
+                rotationCenterY: 50,
+              },
+            ],
+            sounds: [],
+            volume: 100,
+            layerOrder: 1,
+            visible: true,
+            x: 0,
+            y: 0,
+            size: 100,
+            direction: 90,
+            draggable: false,
+            rotationStyle: "all around",
+          },
+        ],
+        monitors: [],
+        extensions: [],
+        meta: {
+          semver: "3.0.0",
+          vm: "0.2.0",
+          agent: "JudgeDesk",
+        },
+      }),
+      "utf8",
+    );
+    smokeOutput(
+      run(executable, [projectJson], {
+        cwd: workspace,
+      }),
+      release.packageId,
+    );
+    return;
+  }
   if (blueprint.kind === "csharp") {
     smokeDotnet(executable, packageRoot, workspace);
     return;

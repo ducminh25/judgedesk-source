@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { preferencesStorage } from "../preferences/storage.js";
+import { APP_VERSION } from "../../version.js";
 
 interface Props {
   isOpen: boolean;
@@ -76,7 +77,7 @@ export default function ScratchToolchainPromptModal({
                   })}
                 </h3>
                 <span className="text-[10px] uppercase font-bold bg-amber-500/20 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full">
-                  v1.4.4
+                  v{APP_VERSION}
                 </span>
               </div>
               <p className="text-xs text-text-muted mt-0.5">
