@@ -85,23 +85,29 @@ sequenceDiagram
     Backend->>UI: SSE event: { type: "job_start", jobId }
 
     loop For each (Contestant, Problem) target
-        Backend->>Backend: Discover source code file (.cpp, .c, .py, .pas)
+        Backend->>Backend: Discover source file (.cpp, .c, .py, .pas, .java, .sb3, .sb2, .sb)
         Backend->>Registry: Resolve active toolchain profile & flags
         
-        alt Source requires compilation (C++, C, Pascal)
-            Backend->>Compiler: Compile source to temporary binary
+        alt Source requires compilation (C++, C, Pascal, Java)
+            Backend->>Compiler: Compile source to temporary binary / class directory
             alt Compilation Error / Timeout (>15s)
                 Compiler-->>Backend: Compilation Failure (CE)
                 Backend->>UI: SSE event: { type: "problem_result", verdict: "CE", score: 0 }
             else Compilation Succeeded
                 Compiler-->>Backend: Binary ready in sandbox directory
             end
+        else Scratch Project (.sb3, .sb2, .sb)
+            Backend->>Backend: Load Scratch TurboWarp headless engine (10-25ms/test)
         end
 
         loop For each Testcase directory (test1, test2, ...)
-            Backend->>Sandbox: Execute binary with testcase input (Binary IPC Header)
-            Sandbox->>Sandbox: Enforce CPU, Wall-clock, 512MB RAM, 0-Network limits
-            Sandbox-->>Backend: Execution Result (Time, Memory, ExitCode, Output)
+            alt Native Binary / Script
+                Backend->>Sandbox: Execute binary with testcase input (Binary IPC Header)
+                Sandbox->>Sandbox: Enforce CPU, Wall-clock, 512MB RAM, 0-Network limits
+                Sandbox-->>Backend: Execution Result (Time, Memory, ExitCode, Output)
+            else Scratch Execution
+                Backend->>Backend: Feed .INP via `ask and wait` & capture `say`/`think`
+            end
             
             alt Sandbox Exception (TLE, MLE, RTE)
                 Backend->>Backend: Record testcase verdict (TLE / MLE / RTE)
@@ -109,8 +115,8 @@ sequenceDiagram
                 Backend->>Checker: Compare Output against Expected Answer (.out/.ans)
                 alt Standard Diff / Float Epsilon
                     Checker-->>Backend: Match (AC) or Mismatch (WA)
-                else Custom Checker (.cpp / .py)
-                    Backend->>Sandbox: Run Checker binary (Input, Output, Answer)
+                else Custom Checker (.exe / .cpp / .py)
+                    Backend->>Sandbox: Run Checker binary/script (Input, Output, Answer)
                     Sandbox-->>Backend: Checker Exit Code & Verdict
                 end
             end
@@ -235,10 +241,10 @@ sequenceDiagram
     end
     Backend->>Backend: Inspect AppData toolchains -> Mark 100% Certified / Ready
 
-    Note over User,Updater: 2. FAST IN-APP UPDATE (~39 MB)
+    Note over User,Updater: 2. FAST IN-APP UPDATE (~20 MB)
     User->>UI: Click "Update" button on toolbar
     UI->>Updater: check({ target: "windows-x86_64-core" })
-    Updater-->>UI: New update candidate available (Core ~39 MB)
+    Updater-->>UI: New update candidate available (Core ~20 MB)
     UI->>UI: Show streamlined update dialog (Recommended Core)
     User->>UI: Click "Install and Restart"
     UI->>Updater: downloadAndInstall() [~3-5 seconds]

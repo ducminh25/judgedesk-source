@@ -18,7 +18,7 @@ Returns host platform capability, active sandbox isolation mode, and server metr
 ```json
 {
   "status": "ready",
-  "appVersion": "1.3.6",
+  "appVersion": "1.4.42",
   "platform": "win32",
   "arch": "x64",
   "sandbox": {
@@ -240,7 +240,7 @@ Returns the status of all supported programming languages and compilers.
 {
   "profiles": [
     {
-      "id": "cpp-gcc",
+      "id": "cpp-legacy-v1",
       "language": "cpp",
       "displayName": "GNU C++ Compiler",
       "version": "14.2.0",
@@ -249,13 +249,22 @@ Returns the status of all supported programming languages and compilers.
       "binaryPath": "C:\\Users\\user\\AppData\\Local\\ThemisV2\\toolchains\\gcc-windows-x64\\bin\\g++.exe"
     },
     {
-      "id": "python",
+      "id": "python-cpython312",
       "language": "python",
       "displayName": "Python 3 Runtime",
-      "version": "3.12.8",
+      "version": "3.12.13",
       "isManaged": true,
       "isCertified": true,
       "binaryPath": "C:\\Users\\user\\AppData\\Local\\ThemisV2\\toolchains\\python-windows-x64\\python.exe"
+    },
+    {
+      "id": "scratch-turbowarp-v1",
+      "language": "scratch",
+      "displayName": "Scratch Headless VM",
+      "version": "0.1.7",
+      "isManaged": true,
+      "isCertified": true,
+      "binaryPath": "managed:scratch"
     }
   ]
 }
@@ -271,9 +280,9 @@ Located in the root of `.judgedesk` ZIP archives:
 {
   "format": "judgedesk-contest",
   "formatVersion": 1,
-  "appVersion": "1.3.6",
+  "appVersion": "1.4.42",
   "createdAt": "2026-08-21T08:30:00.000Z",
-  "savedAt": "2026-08-21T11:00:00.000Z",
+  "savedAt": "2026-08-29T10:00:00.000Z",
   "workspace": {
     "contestants": ["user01", "user02"],
     "problems": ["BAI1", "BAI2"],

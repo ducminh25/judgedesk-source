@@ -22,8 +22,8 @@ Every release supports Windows 10/11 x64 and macOS Apple Silicon only.
 
 | Platform | Core | Full |
 | --- | --- | --- |
-| Windows x64 | Small MSI; WebView2 bootstrap and managed toolchains may be downloaded | Offline WebView2 installer plus all approved managed C/C++, Python, Pascal and Java packages |
-| macOS Apple Silicon | App/DMG with Apple Clang support; managed Python, Pascal and Java may be downloaded | App/DMG with all approved managed Python, Pascal and Java packages; C/C++ uses verified Apple Clang |
+| Windows x64 | Small MSI; WebView2 bootstrap and managed toolchains may be downloaded | Offline WebView2 installer plus all approved managed C/C++, Python, Pascal, Java and Scratch packages |
+| macOS Apple Silicon | App/DMG with Apple Clang support; managed Python, Pascal, Java and Scratch may be downloaded | App/DMG with all approved managed Python, Pascal, Java and Scratch packages; C/C++ uses verified Apple Clang |
 
 Core and Full use the same application identity and cannot be installed side by
 side. Installing one variant upgrades/replaces the other while preserving JudgeDesk
@@ -100,8 +100,8 @@ If any package input or signed manifest content changed:
    runner gates to pass.
 3. Verify the public manifest URL, Ed25519 signature, package SHA-256 values and
    all package download URLs.
-4. Confirm the release contains exactly the approved v1.3.0 language scope:
-   C++, C, Python, Pascal and Java. Go and other languages are future releases.
+4. Confirm the release contains exactly the approved language scope:
+   C++, C, Python, Pascal, Java and Scratch. Go, Rust and other languages are future releases.
 
 The workflow needs `PUBLIC_RELEASE_TOKEN` and
 `TOOLCHAIN_MANIFEST_SIGNING_PRIVATE_KEY_B64` in the private source repository.
@@ -148,7 +148,7 @@ commit. The workflow:
 2. builds and tests the Apple Silicon server and native executor;
 3. builds, mounts and smoke-tests the Core DMG;
 4. builds, mounts and smoke-tests the Full DMG, then compiles/runs C, C++,
-   Python, Pascal and Java with the packaged resources;
+   Python, Pascal, Java and Scratch with the packaged resources;
 5. runs packaged C++ and Python custom-checker/cancellation gates and the
    packaged process-supervisor gate;
 6. returns both DMGs, both signed `.app.tar.gz` payloads, their `.sig`, strict

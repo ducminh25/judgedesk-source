@@ -2,7 +2,7 @@
 
 JudgeDesk là ứng dụng desktop chấm bài lập trình cục bộ phục vụ các kỳ thi và lớp học, chạy trên Windows x64 và macOS Apple Silicon (ARM64). Ứng dụng hoạt động offline, hỗ trợ bảng điểm trực tiếp, cấu hình nhóm test, giao diện sáng/tối cùng hai ngôn ngữ giao diện tiếng Việt và tiếng Anh.
 
-Hệ thống chấm hỗ trợ 5 ngôn ngữ: C++, C, Python, Pascal và Java thông qua trình thực thi an toàn (native runner) của từng hệ điều hành, không tự động chuyển đổi sang compiler khác khi gặp lỗi cấu hình.
+Hệ thống chấm hỗ trợ 6 ngôn ngữ: C++, C, Python, Pascal, Java và Scratch (.sb3, .sb2, .sb) thông qua trình thực thi an toàn (native runner) của từng hệ điều hành, không tự động chuyển đổi sang compiler khác khi gặp lỗi cấu hình.
 
 Mã nguồn chính thức được lưu trữ tại [`ducminh25/judgedesk`](https://github.com/ducminh25/judgedesk).
 
@@ -10,11 +10,11 @@ Mã nguồn chính thức được lưu trữ tại [`ducminh25/judgedesk`](http
 
 JudgeDesk phát hành hai gói cài đặt độc lập:
 
-Bản **Full** tích hợp sẵn toàn bộ trình biên dịch và runtime do ứng dụng quản lý (GCC, CPython, Free Pascal, Eclipse Temurin OpenJDK). Trên Windows, gói cài đặt chứa cả WebView2 runtime offline. Trên macOS, bản Full đi kèm Python, FPC và Java, riêng C/C++ sử dụng Apple Clang từ Xcode Command Line Tools. Đây là bản phù hợp cho phòng thi, máy giáo viên và môi trường không có kết nối mạng.
+Bản **Full** tích hợp sẵn toàn bộ trình biên dịch và runtime do ứng dụng quản lý (GCC, CPython, Free Pascal, Eclipse Temurin OpenJDK, Scratch Headless VM). Trên Windows, gói cài đặt chứa cả WebView2 runtime offline. Trên macOS, bản Full đi kèm Python, FPC, Java và Scratch runtime, riêng C/C++ sử dụng Apple Clang từ Xcode Command Line Tools. Đây là bản phù hợp cho phòng thi, máy giáo viên và môi trường không có kết nối mạng.
 
 Bản **Core** chỉ gồm phần mềm chấm thi. Người dùng có thể tải thêm các gói compiler đã ký từ giao diện hoặc chọn compiler có sẵn trên máy sau khi ứng dụng kiểm tra độ tương thích.
 
-Cả hai bản dùng chung định danh ứng dụng và vị trí lưu trữ dữ liệu. Khi có bản cập nhật mới, ứng dụng hiển thị cả hai tùy chọn Core và Full kèm dung lượng tải về để người dùng quyết định trực tiếp.
+Cả hai bản dùng chung định danh ứng dụng và vị trí lưu trữ dữ liệu. Khi có bản cập nhật mới, ứng dụng hỗ trợ cập nhật 1-click siêu tốc (~20MB) trong nền mà không làm mất dữ liệu hay toolchain hiện có.
 
 ## Tài liệu hướng dẫn
 

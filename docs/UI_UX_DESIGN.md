@@ -60,6 +60,10 @@ The top toolbar serves as the mission control for contest grading:
 
 ### 4.2. Matrix Scoreboard (`src/features/scoreboard/Scoreboard.tsx`)
 * **Sticky Headers & Columns**: Contestant column remains pinned during horizontal scrolling; problem header row remains pinned during vertical scrolling.
+* **3-State Dynamic Sorting**: Toolbar toggle button and Total Score column header click cycle through:
+  1. *Score High to Low* (Điểm cao $\rightarrow$ thấp): Top performers first; tie-breaks resolved alphabetically (A-Z); unscored contestants placed at the bottom.
+  2. *Score Low to High* (Điểm thấp $\rightarrow$ cao): Ascending order; unscored contestants placed at the bottom.
+  3. *Default Order* (Mặc định): Natural alphanumeric sort by contestant directory name.
 * **Cell Verdict Coding**:
   * `100.00` / Full score: Emerald background badge.
   * `> 0.00` / Partial score: Amber background badge.
@@ -79,6 +83,7 @@ All errors in the application follow the 3-Part Error UX standard:
 │           máy tính chưa có phần mềm đọc file .xlsx.                   │
 │      ----------------------------------------------------------------- │
 │      -> Hãy đóng file Excel đang mở và thử xuất lại.   [Thử Lại]       │
+│                                                                        │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -97,12 +102,12 @@ All errors in the application follow the 3-Part Error UX standard:
 ### 4.5. Offline Help Center (`src/features/help/HelpCenter.tsx`)
 * Launched via `F1` or Toolbar button.
 * Full-text search with instant highlight.
-* Dedicated topic anchors: Keyboard Shortcuts, Themis Compatibility, Subtasks & Checkers, Online Judge (OSD), Toolchains & Compilers.
+* Dedicated topic anchors: Keyboard Shortcuts, Themis Compatibility, Subtasks & Checkers, Online Judge (OSD), Toolchains & Compilers, Scratch Submission Guide (`.sb3`, `.sb2`), and Changelog History.
 * **Diagnostics Exporter**: Generates copyable, sanitized system report (OS, CPU, memory, toolchain versions) with zero source code or private path leakage.
 
 ### 4.6. Streamlined Fast In-App Update Experience (`src/features/updates/UpdateDialogs.tsx`)
-* **Toolbar Update Indicator**: High-visibility pill badge on top toolbar displaying *«Update»* with one-click trigger.
-* **Core Update Priority**: Highlights **Core (Fast Update ~39 MB)** with the green `Recommended` badge.
+* **Toolbar Update Indicator**: High-visibility pill badge on top toolbar displaying *«Update»* with 1-click trigger.
+* **Core Update Priority**: Highlights **Core (Fast Update ~20 MB)** with the green `Recommended` badge.
 * **Zero Fear Messaging**: Clear reassurance that all existing compilers, custom paths, and configurations are safely preserved during the fast 3-second update.
 * **Progressive Feedback**: Real-time percentage progress bar during download followed by an instant *[Restart Now]* prompt.
 
@@ -124,5 +129,14 @@ All errors in the application follow the 3-Part Error UX standard:
 | `Ctrl + O` | `Cmd + O` | Open `.judgedesk` Contest Archive | Global |
 | `Ctrl + S` | `Cmd + S` | Save `.judgedesk` Contest Archive | Global |
 | `Ctrl + Shift + S` | `Cmd + Shift + S` | Save Contest As... | Global |
-| `Ctrl + A` | `Cmd + A` | Select / Deselect All Targets | Global |
+| `Ctrl + A` | `Cmd + A` | Select All Contestants | Global |
+| `Ctrl + D` | `Cmd + D` | Deselect All Contestants | Global |
+| `Ctrl + I` | `Cmd + I` | Invert Contestant Selection at Cursor | Global |
+| `Ctrl + Shift + A` | `Cmd + Shift + A` | Select All Problems | Global |
+| `Ctrl + Shift + D` | `Cmd + Shift + D` | Deselect All Problems | Global |
+| `Ctrl + Shift + I` | `Cmd + Shift + I` | Invert Problem Selection at Cursor | Global |
+| `Arrow Keys` | `Arrow Keys` | Move Scoreboard Cursor | Scoreboard |
+| `Space` | `Space` | Toggle Selected Row / Column Checkbox | Scoreboard |
+| `Enter` | `Enter` | Open Testcase Details Modal for Focused Cell | Scoreboard |
 | `Escape` | `Escape` | Close active modal dialog / popup | Modal |
+
