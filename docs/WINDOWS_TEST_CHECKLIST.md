@@ -1,7 +1,7 @@
 # Windows local test checklist (không release)
 
 Tài liệu này dành cho máy Windows hiện tại và bản source trong
-`D:\Minh\Code\local-online-judge (3)`. Không publish release, không chạy updater và không tải
+`D:\Minh\Code\judgedesk`. Không publish release, không chạy updater và không tải
 artifact lên GitHub/CodeMagic trong quy trình này.
 
 ## Trạng thái trước khi test
@@ -24,7 +24,7 @@ Mở **Developer PowerShell for VS 2022** từ Start Menu. Cửa sổ này cần
 `PATH` khi Tauri biên dịch app.
 
 ```powershell
-Set-Location 'D:\Minh\Code\local-online-judge (3)'
+Set-Location 'D:\Minh\Code\judgedesk'
 npm ci --no-audit --no-fund
 npm run lint
 npm run test:server
@@ -35,7 +35,7 @@ npm run test:security
 Kỳ vọng:
 
 - `lint`: exit code 0.
-- `test:server`: 92 test pass, 0 fail.
+- `test:server`: 476 tests (466 pass, 0 fail, 10 skipped).
 - `test:executor`: toàn bộ Rust unit test pass.
 - `test:security`: 8 test pass; có ma trận TLE/MLE lặp 20 lần, OLE, write quota, thread bomb,
   immutable artifact cache và
@@ -55,7 +55,7 @@ thử chạy fixture bằng lệnh khác.
 Vẫn trong **Developer PowerShell for VS 2022**:
 
 ```powershell
-Set-Location 'D:\Minh\Code\local-online-judge (3)'
+Set-Location 'D:\Minh\Code\judgedesk'
 npm run build:executor
 npm run test:desktop
 ```

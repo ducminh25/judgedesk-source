@@ -49,7 +49,7 @@ Trường hợp Gatekeeper hiển thị cảnh báo ứng dụng chưa xác minh
 
 ## Quản lý trình biên dịch và lưu trữ
 
-Hệ thống hỗ trợ C++, C, Python, Pascal và Java:
+Hệ thống hỗ trợ 6 ngôn ngữ: C++, C, Python, Pascal, Java và Scratch (.sb3, .sb2, .sb):
 - **Bản Full (Đóng gói sẵn)**: Chứa sẵn bộ compiler/runtime trong thư mục cài đặt ứng dụng (`resources/toolchains`), dùng trực tiếp (Zero-Copy), khởi động tức thì và dùng chung an toàn cho mọi tài khoản trên máy.
 - **Bản Core (Tải thêm theo nhu cầu)**: Các gói tải về từ kho lưu trữ chính thức được lưu tại `%LOCALAPPDATA%\ThemisV2\toolchains` (Windows) hoặc `~/Library/Application Support/ThemisV2/toolchains` (macOS).
 - **Trình biên dịch trên máy (Local)**: Ứng dụng tự động phát hiện compiler có sẵn trong `PATH` hoặc qua đường dẫn chỉ định thủ công nếu vượt qua kiểm tra an toàn.

@@ -5,6 +5,13 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 ## [Unreleased]
 
+## [1.4.42] - 2026-08-29
+
+### Bản sửa lỗi nhanh (Hotfix) cho v1.4.4
+
+- Sửa lỗi không thể kích hoạt hoặc áp dụng gói Scratch trong Quản lý trình biên dịch (`F6`) và hộp thoại chào mừng.
+- Cải thiện độ chuyển mượt của thanh tiến trình chấm bài khi kết thúc làm ấm và bắt đầu chấm bài thi đầu tiên.
+
 ## [1.4.4] - 2026-08-28
 
 ### Tích hợp Chấm Bài thi Scratch (.sb3, .sb2, .sb)

@@ -237,7 +237,7 @@ npm run test:desktop
 
 ## 5. Judging Engine & Toolchains Subsystem (Toolchains v2)
 
-### 5.1. Supported Languages & Toolchains (v1.3.x Scope)
+### 5.1. Supported Languages & Toolchains (v1.4.x Scope)
 
 | Language | Extensions | Windows x64 | macOS Apple Silicon (ARM64) |
 | :--- | :--- | :--- | :--- |
@@ -246,14 +246,15 @@ npm run test:desktop
 | **Python** | `.py` | CPython 3.12.13 (Managed) | CPython 3.12.13 (Managed) |
 | **Pascal / FPC** | `.pas`, `.pp` | Free Pascal 3.2.2 (Managed) | Free Pascal 3.2.2 (Managed) |
 | **Java** | `.java` | Eclipse Temurin OpenJDK 21.0.12+8 (Managed) | Eclipse Temurin OpenJDK 21.0.12+8 (Managed) |
+| **Scratch** | `.sb3`, `.sb2`, `.sb` | TurboWarp VM / scratch-run 0.1.7 (Managed) | TurboWarp VM / scratch-run 0.1.7 (Managed) |
 
 > [!NOTE]
 > Future languages (Go, Rust, JavaScript/Node.js, C#/.NET) have registered declarative schemas in `server/languages/registry.ts`, but are marked `experimental` and disabled in official production releases.
 
 ### 5.2. Distribution Editions: Core vs Full
 1. **Full Edition**: Pre-bundles all managed compilers and runtimes directly inside the installer.
-   - Windows Full: Includes GCC (C/C++), CPython, FPC, Temurin Java, and the offline WebView2 Runtime.
-   - macOS Full: Includes CPython, FPC, Temurin Java; C/C++ uses the host Apple Clang.
+   - Windows Full: Includes GCC (C/C++), CPython, FPC, Temurin Java, Scratch VM, and the offline WebView2 Runtime.
+   - macOS Full: Includes CPython, FPC, Temurin Java, Scratch VM; C/C++ uses the host Apple Clang.
    - Ideal for: Offline contest labs, classroom computers without internet access.
 2. **Core Edition**: Lightweight distribution containing only the core judging application. Users can download signed toolchains on demand or configure pre-existing local compilers.
 
@@ -344,7 +345,7 @@ cargo fmt --check --manifest-path native-executor/Cargo.toml
 npm run test:server
 npm run test:update-ui
 ```
-*(Executes 220+ automated tests covering submission parsing, scoring logic, custom checkers, toolchain preferences, and multi-language gates).*
+*(Executes 470+ automated tests covering submission parsing, scoring logic, custom checkers, toolchain preferences, Scratch runtime, and multi-language gates).*
 
 #### 3. Native Executor Tests (Rust)
 ```powershell

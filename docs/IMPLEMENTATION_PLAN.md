@@ -1,7 +1,7 @@
 # Master Implementation Plan — JudgeDesk
 
 **Project Name**: JudgeDesk  
-**Current Version**: `v1.3.6+` (Production Stable)  
+**Current Version**: `v1.4.42` (`v1.4.x` Production Stable)  
 **Document Status**: Official / Approved  
 **Classification**: Implementation History & Engineering Standards  
 
@@ -9,16 +9,18 @@
 
 ## 1. Executive Implementation History
 
-JudgeDesk đã trải qua 4 giai đoạn triển khai cốt lõi để hoàn thiện từ một nguyên mẫu ứng dụng chấm bài cơ bản thành hệ thống chấm bài thi lập trình thi đấu ngoại tuyến đa nền tảng hoàn chỉnh:
+JudgeDesk đã trải qua 7 giai đoạn triển khai cốt lõi để hoàn thiện từ một nguyên mẫu ứng dụng chấm bài cơ bản thành hệ thống chấm bài thi lập trình thi đấu ngoại tuyến đa nền tảng hoàn chỉnh:
 
 ```mermaid
 timeline
     title Lịch Sử Các Cột Mốc Triển Khai Của JudgeDesk
     v1.0.0 - v1.1.0 : Nền Tảng Desktop & Workspace : Tauri v2 Shell : Single Instance Mutex : Ma Trận Bảng Điểm : Container .judgedesk : Xuất Excel F12
     v1.2.0 - v1.2.7 : Sandbox Bản Quyền & Bảo Mật : Rust Native Executor : Windows AppContainer & Job Objects : macOS Run Guardian & Seatbelt Sandbox : Ranh Giới 0-Network
-    v1.3.0 - v1.3.4 : Đa Ngôn Ngữ & Subtasks : Hỗ Trợ C++, C, Python 3, Free Pascal : Polygon Subtasks & Khử Chu Trình Phụ Thuộc : Custom Checkers C++/Python : Toolchain Registry v2 & Chứng Thực Compiler
+    v1.3.0 - v1.3.4 : Đa Ngôn Ngữ & Subtasks : Hỗ Trợ C++, C, Python 3, Free Pascal, Java : Polygon Subtasks & Khử Chu Trình Phụ Thuộc : Custom Checkers C++/Python : Toolchain Registry v2 & Chứng Thực Compiler
     v1.3.5 - v1.3.6 : OSD & Trải Nghiệm Lỗi : Chấm Bài Trực Tuyến OSD (F8) : Trung Tâm Trợ Giúp Offline (F1) : Chuẩn Hóa Lỗi 3 Thành Phần : Khử Trùng Path/Stacktrace : Loại Bỏ Triệt Để Silent Errors
-    v1.3.7 : Cập Nhật Siêu Tốc & Di Chuyển Toolchains : In-App Core Updates (~39 MB / 3 Giây) : Early Toolchain Migration (Cut & Paste sang AppData) : Tự Động Chứng Thực 100% Xanh / Ready Trên Bản Core : Giữ Trọn Vẹn 2 Bản Core & Full Trên GitHub Releases
+    v1.3.7 : Cập Nhật Siêu Tốc & Di Chuyển Toolchains : In-App Core Updates (~20 MB) : Early Toolchain Migration : Tự Động Chứng Thực 100% Xanh / Ready Trên Bản Core : Giữ Trọn Vẹn 2 Bản Core & Full Trên GitHub Releases
+    v1.3.8 - v1.3.82 : Hoàn Thiện Xuất Excel & Changelog : Sửa Dứt Điểm Xuất Excel Rỗng : Tự Động Nạp Run Metadata Môi Trường : Tra Cứu Changelog Song Ngữ Trong Trợ Giúp F1
+    v1.4.0 - v1.4.42 : Nhận Diện Themis, Probes & Chấm Scratch : Tự Động Quét & So Sánh Toolchain Themis : Custom Checkers .exe/.cpp/.py Tự Nạp Header : Chẩn Đoán Compiler Self-Test Probes : Nút Sắp Xếp Điểm Động 3 Trạng Thái : Tích Hợp Chấm Bài Thi Scratch (.sb3/.sb2/.sb) TurboWarp VM
 ```
 
 ---
@@ -37,7 +39,7 @@ timeline
 * [x] **Single-Instance Mutex & Process Supervisor**: Ngăn chặn mở trùng lặp ứng dụng (`%TEMP%/judgedesk.lock`) và đảm bảo tắt sạch tiến trình nền (sidecar) khi đóng app.
 
 ### Cột Mốc 3: Đa Ngôn Ngữ & Cấu Hình Subtasks (v1.3.0 - v1.3.4)
-* [x] **Hỗ trợ đa ngôn ngữ lập trình**: Biên dịch và thực thi C++ (C++11/14/17/20), C, Python 3 và Free Pascal.
+* [x] **Hỗ trợ đa ngôn ngữ lập trình**: Biên dịch và thực thi C++ (C++11/14/17/20), C, Python 3, Free Pascal và Java (OpenJDK 21).
 * [x] **Polygon Test Groups & Subtasks**: Hỗ trợ phân nhóm test, tính điểm từng test hoặc tính trọn gói subtask (all-or-nothing), kiểm tra và ngăn chặn đồ thị phụ thuộc vòng lặp (cycle detection).
 * [x] **Bộ chấm tùy biến (Custom Checkers)**: Hỗ trợ checker viết bằng C++ (`testlib.h`) và Python chạy trong sandbox an toàn.
 * [x] **Trình quản lý Toolchain v2 & Chứng thực (`F6`)**: Tự động quét compiler hệ thống, cung cấp gói compiler di động, kiểm tra hash mã hóa SHA256 và chạy test chứng thực tính tương thích với sandbox.
@@ -50,20 +52,33 @@ timeline
 * [x] **Loại bỏ triệt để Silent Errors**: Bắt và phản hồi toàn bộ các ngoại lệ ngầm khi nạp thư mục, duyệt file, lưu cấu hình bài tập và tiến trình chấm bài.
 
 ### Cột Mốc 5: Luồng Cập Nhật Siêu Tốc & Di Chuyển Toolchains An Toàn (v1.3.7)
-* [x] **In-App Fast Core Updates**: Tinh giản luồng cập nhật trong app để ưu tiên tải gói Core nhẹ (~39 MB), hoàn tất trong 3–5 giây mà không cần tải lại các compiler không thay đổi.
-* [x] **Cơ chế Early Cut-and-Paste Migration vĩnh viễn**: Tự động phát hiện và chuyển các toolchain cũ sang `%LOCALAPPDATA%\ThemisV2\toolchains\`, bảo lưu file receipt `.judgedesk-package.json`, và xóa sạch thư mục cũ tại `Program Files` để giải phóng ~800 MB đĩa.
-* [x] **Tự động chứng thực 100% "Xanh / Ready" trên bản Core**: Đảm bảo toàn bộ toolchain đã migrate được nhận diện là Official Managed Package, chạy thẳng trong Native Sandbox mà không hiện cảnh báo bảo mật hay bắt người dùng tick chọn.
+* [x] **In-App Fast Core Updates**: Tinh giản luồng cập nhật trong app để ưu tiên tải gói Core nhẹ (~20 MB), hoàn tất trong 3–5 giây mà không cần tải lại các compiler không thay đổi.
+* [x] **Cơ chế Early Cut-and-Paste Migration & Zero-Copy**: Tự động phát hiện và dọn dẹp các thư mục trùng lặp trong AppData giúp giải phóng ~800 MB đĩa; bản Full chạy trực tiếp từ tài nguyên ứng dụng.
+* [x] **Tự động chứng thực 100% "Xanh / Ready" trên bản Core**: Đảm bảo toàn bộ toolchain đã migrate được nhận diện là Official Managed Package, chạy thẳng trong Native Sandbox mà không hiện cảnh báo bảo mật.
 * [x] **Duy trì ĐỦ 2 bản Core & Full trên GitHub Releases**: Phục vụ người dùng tải lần đầu hoặc cài đặt offline cho phòng thi máy tính qua USB.
+
+### Cột Mốc 6: Hoàn Thiện Xuất Excel & Tích Hợp Changelog (v1.3.8 - v1.3.82)
+* [x] **Khắc phục triệt để lỗi xuất Excel**: Bộ phân giải selection case-insensitive và fallback thông minh đảm bảo xuất đủ 100% cột bài tập, điểm số và chi tiết testcase.
+* [x] **Tự động nạp Run Metadata môi trường**: Ghi nhận đầy đủ thông số môi trường hệ thống trong file Excel kể cả khi mở từ kỳ thi đã lưu.
+* [x] **Cửa sổ "Có gì mới" & Tra cứu Changelog**: Tự động hiển thị tính năng mới sau khi cập nhật; tra cứu lịch sử phát hành song ngữ trực tiếp trong Trợ giúp (`F1`).
+
+### Cột Mốc 7: Nhận Diện Toolchain Themis, Probes, Sắp Xếp Điểm & Chấm Scratch (v1.4.0 - v1.4.42)
+* [x] **Tự động nhận diện & Quét sâu Toolchain Themis**: Quét mọi ổ đĩa chuẩn (`C:\Themis`, `D:\Themis`, `E:\Themis`), mở rộng sandbox cho các binary 32-bit legacy và hiển thị bảng so sánh trực quan với Chuẩn Olympic 64-bit.
+* [x] **Custom Checkers Đa Định dạng**: Hỗ trợ toàn diện `.exe`, `.cpp` và `.py`; tự động nạp toàn bộ header cục bộ trong thư mục bài tập (`testlib.h`, headers Themis) loại bỏ lỗi CE do thiếu header.
+* [x] **Chẩn đoán Compiler Self-Test Probes**: Bổ sung tính năng tự kiểm tra trong Sandbox đo đạc thời gian biên dịch, thực thi và bộ nhớ tiêu thụ cho từng ngôn ngữ.
+* [x] **Nút Sắp xếp Điểm Động 3 Trạng Thái**: Sắp xếp điểm cao $\rightarrow$ điểm thấp $\rightarrow$ mặc định; đồng bộ với click cột Tổng Điểm; file Excel xuất ra tuân thủ chính xác thứ tự hiển thị.
+* [x] **Tích hợp Chấm Bài thi Scratch (`.sb3`, `.sb2`, `.sb`)**: Máy ảo Scratch Headless Turbo Mode siêu tốc (10-25ms/testcase), nạp test tự động qua `ask and wait` và xuất kết quả qua `say`/`think`.
+* [x] **Tối ưu Khởi động Chấm & Làm ấm Sandbox**: Mở ngay cửa sổ tiến trình khi bấm Chấm bài (`F9`); làm ấm ngầm Native Sandbox và cache nhị phân Custom Checker.
 
 ---
 
 ## 3. Hiện Trạng Kiểm Thử & Đo Lường Chất Lượng
 
-| Tiêu Chí Đo Lường | Mục Tiêu | Hiện Trạng Thực Tế (v1.3.7) |
+| Tiêu Chí Đo Lường | Mục Tiêu | Hiện Trạng Thực Tế (v1.4.42) |
 | :--- | :--- | :--- |
-| **Hệ thống Unit & Integration Tests** | Toàn bộ pass 100% | **448 tests (438 Passed, 0 Failed, 10 Skipped)** |
+| **Hệ thống Unit & Integration Tests** | Toàn bộ pass 100% | **476 tests (466 Passed, 0 Failed, 10 Skipped)** |
 | **Kiểm tra TypeScript Lint** | 0 lỗi biên dịch | **Clean (`tsc --noEmit`: Code 0)** |
-| **Tốc độ build Frontend** | < 1 giây | **Vite Production Build: 590 ms** |
+| **Tốc độ build Frontend** | < 1 giây | **Vite Production Build: ~580 ms** |
 | **Độ tương thích nền tảng** | Windows x64 & macOS ARM64 | **Đạt chuẩn trên cả Windows 10/11 và macOS Apple Silicon** |
 
 ---
@@ -71,3 +86,4 @@ timeline
 ## 4. Kế Hoạch Tiếp Theo
 
 Mọi tính năng mới hoặc kế hoạch mở rộng trong tương lai sẽ được thảo luận và thống nhất trực tiếp với tác giả trước khi bổ sung vào tài liệu triển khai.
+

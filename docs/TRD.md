@@ -1,7 +1,7 @@
 # Technical Requirements Document (TRD) — JudgeDesk
 
 **Project Name**: JudgeDesk  
-**Version**: `1.3.6+`  
+**Version**: `1.4.42` (`v1.4.x`)  
 **Document Status**: Official / Approved  
 **Classification**: Internal / Technical Specification  
 
@@ -15,9 +15,9 @@ JudgeDesk is engineered as an offline, multi-tier desktop application designed t
 graph TD
     subgraph Tier1 [Tier 1: Frontend - User Interface]
         UI[React 19 + TypeScript + Vite + Tailwind CSS v4]
-        ScoreboardUI[Scoreboard & Live Evaluation Grid]
-        ProblemModal[Polygon Config & Subtasks Editor]
-        ToastUI[3-Part AppErrorToast & Help Center]
+        ScoreboardUI[Scoreboard with 3-State Dynamic Sorting & O1 Indexing]
+        ProblemModal[Polygon Config, Subtasks & Compile Presets Editor]
+        ToastUI[3-Part Floating AppErrorToast & Offline Help Center]
     end
 
     subgraph Tier2 [Tier 2: Desktop Shell - Tauri v2]
@@ -29,10 +29,11 @@ graph TD
 
     subgraph Tier3 [Tier 3: Backend Sidecar - Node.js SEA]
         ExpressCore[Express HTTP & SSE Server on 127.0.0.1]
-        JudgeEngine[Batch & Session Judge Pipeline]
+        JudgeEngine[Batch & Session Judge Pipeline with Sandbox Pre-warm]
+        ScratchRunner[Headless Scratch TurboWarp VM Engine]
         OSDWatcher[OSD Folder Watcher & Debounce Queue]
-        ToolchainRegistry[Toolchain Registry & Certification Engine]
-        ScoreEngine[Scoring & Checker Runner]
+        ToolchainRegistry[Toolchain Registry v2, Self-Test Probes & Deduplication]
+        ScoreEngine[Scoring, Subtasks & Multi-Format Checker Runner]
     end
 
     subgraph Tier4 [Tier 4: Native Executor - Rust Sandbox]
@@ -62,27 +63,30 @@ graph TD
   * `useContestWorkspace`: Manages directory paths, loaded problems, contestant rosters, and problem configurations.
   * `useJudgeSession`: Controls batch judging lifecycle, SSE consumption, and real-time score reductions.
   * `useOsdSession`: Manages background online submission watcher, real-time event streaming, and queue updates.
-  * `AppErrorToast`: Manages structured 3-part errors with auto-dismiss and user actions.
+  * `AppErrorToast`: Manages structured 3-part errors with auto-dismiss, hover pause, and CTA user actions.
 * **Performance Optimizations**:
   * Offloads heavy Excel workbook compilation to Web Workers (`score-workbook.worker.ts`).
+  * Scoreboard Matrix $O(1)$ lookup hash map for instant rendering and sorting on large rosters.
+  * 3-state Scoreboard sorting (Highest $\rightarrow$ Lowest $\rightarrow$ Default) synced with header clicks.
   * Request animation frame (`requestAnimationFrame`) throttling for live judging progress updates.
-  * Virtualized and memoized matrix rendering for scoreboards with large numbers of contestants/problems.
 
 ### 2.2. Tier 2: Desktop Shell (Tauri v2)
-* **Technology Stack**: Rust 1.97.1, Tauri v2 CLI & Plugins (`tauri-plugin-single-instance`, `tauri-plugin-dialog`, `tauri-plugin-process`).
+* **Technology Stack**: Rust 1.97.1, Tauri v2 CLI & Plugins (`tauri-plugin-single-instance`, `tauri-plugin-dialog`, `tauri-plugin-process`, `tauri-plugin-opener`, `tauri-plugin-updater`).
 * **Core Responsibilities**:
   * **Single Instance Guard**: Ensures only one instance of JudgeDesk runs simultaneously using OS mutex locks (`%TEMP%/judgedesk.lock`).
   * **Process Tree Supervisor**: Tracks spawned sidecar binaries (`server-<target>` and `judgedesk-native-executor`) and guarantees zero orphan processes on application exit or crash.
-  * **Update Handoff**: Coordinates staging, validation, and in-place application restarts during update installation.
+  * **Update Handoff**: Coordinates staging, validation, and in-place application restarts during 1-click update installation.
   * **Archive Engine**: Validates and extracts `.judgedesk` ZIP archives securely into temporary isolated directories.
 
 ### 2.3. Tier 3: Backend Sidecar (Node.js SEA)
 * **Technology Stack**: Node.js 24.19.0 compiled into Single Executable Applications (SEA) via `esbuild` and `postject`.
 * **Subsystems**:
-  1. **Judge Engine**: Coordinates preflight verification, language adapter resolution, compilation, testcase discovery, execution queueing, and standard/custom checker evaluations.
-  2. **OSD Watcher**: Monitors submission directory with `chokidar`/`fs.watch`, debounces rapid file events (500ms), and enqueues jobs into a FIFO judge queue.
-  3. **Toolchain Registry v2**: Auto-probes host compilers, resolves managed toolchains, checks cryptographic SHA256 hashes, and conducts sandbox certification checks.
-  4. **Security & Watchdogs**: Validates parent process heartbeat (`parent-watchdog.ts`). Automatically terminates backend sidecar within 3 seconds if the parent Tauri shell exits unexpectedly.
+  1. **Judge Engine**: Coordinates preflight verification, language adapter resolution, compilation, testcase discovery, execution queueing, background sandbox pre-warming, and standard/custom checker evaluations.
+  2. **Scratch Headless Runner (`scratch-runtime.ts`)**: Evaluates `.sb3`, `.sb2`, `.sb` projects in Turbo Mode (10-25ms/testcase) without web GUI overhead.
+  3. **Multi-Format Custom Checker Runner**: Supports compiled binaries (`.exe`), C++ (`.cpp` with auto-included `testlib.h` and local problem headers), and Python (`.py`).
+  4. **OSD Watcher**: Monitors submission directory with `chokidar`/`fs.watch`, debounces rapid file events (500ms), and enqueues jobs into a FIFO judge queue.
+  5. **Toolchain Registry v2 & Diagnostics**: Auto-probes host compilers, resolves managed toolchains, checks cryptographic SHA256 hashes, runs in-sandbox Self-Test Probes, and executes Zero-Copy deduplication.
+  6. **Security & Watchdogs**: Validates parent process heartbeat (`parent-watchdog.ts`). Automatically terminates backend sidecar within 3 seconds if the parent Tauri shell exits unexpectedly.
 
 ### 2.4. Tier 4: Native Executor (Rust Sandbox)
 * **Technology Stack**: Standalone Rust binary (`judgedesk-native-executor`).
@@ -168,22 +172,18 @@ Every release version bump must match across:
 
 ## 7. Decoupled Toolchain Management & Fast Updater Architecture
 
-### 7.1. Storage Isolation
-* **Application Binary Path (`RESOURCE_ROOT`)**: Contains only core application files (`JudgeDesk.exe`, `server.exe`, `judgedesk-executor.exe`, frontend assets).
+### 7.1. Storage Isolation & Deduplication
+* **Application Binary Path (`RESOURCE_ROOT`)**: Contains core application files and built-in read-only toolchains in Full edition (`resources/toolchains`).
 * **Managed Toolchains Path (`getDownloadedToolchainsDir()`)**:
   * Windows: `%LOCALAPPDATA%\ThemisV2\toolchains\`
   * macOS: `~/Library/Application Support/ThemisV2/toolchains/`
-  * Decoupled from Windows Installer (MSI) component lifecycle so that updating the application executable never deletes or overwrites existing compilers.
+* **Zero-Copy & Deduplication**: If a toolchain exists in `resources/toolchains`, it is used directly (Zero-Copy) without duplicate extraction. Any redundant copies previously saved in `AppData` are automatically cleaned up on startup.
 
 ### 7.2. Early Cut-and-Paste Migration Engine (`server/toolchains/migration.ts`)
 * **Trigger**: Executes automatically at server startup during `loadToolchainPreferenceSnapshot()`.
-* **Mechanism**:
-  1. Inspects `getBuiltInToolchainsDir()` (`RESOURCE_ROOT/toolchains`).
-  2. For each legacy package (`gcc-windows-x64`, `python-windows-x64`, `fpc-windows-x64`), performs atomic move or copy to `%LOCALAPPDATA%\ThemisV2\toolchains\<packageId>`.
-  3. Preserves receipt `.judgedesk-package.json` and all binary components.
-  4. Deletes legacy source directory from `Program Files` to free ~800 MB of disk space.
+* **Mechanism**: Migrates legacy toolchain copies from historical application directories to user storage `%LOCALAPPDATA%\ThemisV2\toolchains\<packageId>` and preserves receipts.
 * **Core Certified Recognition**: Packages with valid receipts in AppData are automatically resolved as `source: "managed"`, `provenance: "managed-package"`, and `isCertified: true`, allowing instant execution in the Native Sandbox without security warnings.
 
 ### 7.3. Dual Distribution Model
-1. **In-App Updater**: Defaults to lightweight Core update packages (~39 MB), downloading and updating in 3–5 seconds.
-2. **GitHub Releases**: Publishes both Full all-in-one installers (~813 MB) for offline USB setup and Core installers (~39 MB).
+1. **In-App Updater**: Defaults to lightweight Core update packages (~20 MB), downloading and updating in 3–5 seconds.
+2. **GitHub Releases**: Publishes both Full all-in-one installers (~813 MB) for offline USB setup and Core installers (~20 MB).
