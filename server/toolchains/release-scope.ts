@@ -30,13 +30,11 @@ const CURRENT_RELEASE_MANAGED_PACKAGES = Object.freeze({
     "python-windows-x64",
     "fpc-windows-x64",
     "temurin21-windows-x64",
-    "scratch-windows-x64",
   ]),
   "darwin:arm64": Object.freeze([
     "python-macos-arm64",
     "fpc-macos-arm64",
     "temurin21-macos-arm64",
-    "scratch-macos-arm64",
   ]),
 } as const);
 

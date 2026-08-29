@@ -39,7 +39,6 @@ test("Full packaging selects only the approved Themis-language package set", () 
       "fpc-windows-x64",
       "gcc-windows-x64",
       "python-windows-x64",
-      "scratch-windows-x64",
       "temurin21-windows-x64",
     ],
   );
@@ -48,7 +47,6 @@ test("Full packaging selects only the approved Themis-language package set", () 
     [
       "fpc-macos-arm64",
       "python-macos-arm64",
-      "scratch-macos-arm64",
       "temurin21-macos-arm64",
     ],
   );
