@@ -10,11 +10,11 @@
  */
 
 import path from "node:path";
-import type { ExecutorToolchainIdentity } from "../executor/protocol.js";
-import {
-  prepareManagedToolchainComponent,
-  type ExecutorWorkspace,
-} from "../executor/workspace.js";
+import type {
+  ExecutorLocalToolchainIdentity,
+  ExecutorToolchainIdentity,
+} from "../executor/protocol.js";
+import type { ExecutorWorkspace } from "../executor/workspace.js";
 import type { ResolvedToolchain } from "../toolchains/types.js";
 
 export interface IsolatedScratchLaunch {
@@ -22,6 +22,7 @@ export interface IsolatedScratchLaunch {
   args: string[];
   environment: Record<string, string>;
   toolchain?: ExecutorToolchainIdentity;
+  localToolchain?: ExecutorLocalToolchainIdentity;
 }
 
 export async function prepareIsolatedScratchScript(
@@ -33,27 +34,29 @@ export async function prepareIsolatedScratchScript(
   if (
     pinnedToolchain.kind !== "scratch"
     || !pinnedToolchain.ready
-    || pinnedToolchain.source !== "managed"
   ) {
     throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
   }
-  const runtime = await prepareManagedToolchainComponent(
-    "scratch",
-    pinnedToolchain,
-    pinnedToolchain.packageComponentId,
-    "submission-runtime",
+  const executablePath = path.resolve(pinnedToolchain.executablePath);
+  const rootPath = path.resolve(
+    pinnedToolchain.packageRoot || path.dirname(executablePath),
   );
+  const relativePath = path.relative(rootPath, executablePath).replaceAll("\\", "/");
   workspace.stage(sourcePath, stagedName);
   return {
-    executableId: runtime.executableId,
+    executableId: `local-toolchain/${relativePath}`,
     args: [
       stagedName,
     ],
     environment: {
       JUDGEDESK_SCRATCH_ISOLATED: "1",
       TURBO_MODE: "1",
-      PATH: path.dirname(runtime.executablePath),
+      PATH: rootPath,
     },
-    ...(runtime.toolchain ? { toolchain: runtime.toolchain } : {}),
+    localToolchain: {
+      rootPath,
+      executableRelativePath: relativePath,
+      isolation: "resource-only",
+    },
   };
 }

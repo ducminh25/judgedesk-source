@@ -744,6 +744,13 @@ export function parseVersionOutput(
     const version = first(/^v?(\d+(?:\.\d+){1,3}(?:[-+][^\s]+)?)\s*$/im);
     return version ? { family: "nodejs", version, target: null } : null;
   }
+  if (kind === "scratch") {
+    const version = first(
+      /^v?(\d+(?:\.\d+){1,3}(?:[-+][^\s]+)?)\s*$/im,
+      /version\s+(\d+(?:\.\d+){1,3})/i,
+    );
+    return version ? { family: "scratch-vm", version, target: null } : null;
+  }
   const version = first(/^(\d+(?:\.\d+){1,3}(?:[-+][^\s]+)?)\s*$/im);
   return version ? { family: "dotnet-sdk", version, target: null } : null;
 }

@@ -156,17 +156,6 @@ function managedPackageState(
   manifest: readonly ToolchainDescriptor[],
   inspectInstalledPackage: InstalledToolchainPackageInspector,
 ): ProfileManagedPackage | undefined {
-  if (kind === "scratch") {
-    return {
-      id: "scratch-turbowarp-v1",
-      version: "1.0.0",
-      installed: true,
-      origin: "built-in",
-      uninstallable: false,
-      downloadAvailable: false,
-      progress: defaultProgress("scratch-turbowarp-v1"),
-    };
-  }
   const catalogEntry = getDescriptorForHost(os.platform(), os.arch(), kind);
   if (!catalogEntry) return undefined;
   const manifestEntry = manifest.find((entry) => entry.id === catalogEntry.id);

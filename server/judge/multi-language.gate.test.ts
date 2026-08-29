@@ -132,6 +132,11 @@ const languageGates: Readonly<Record<string, LanguageGate>> = {
     toolchainKind: "scratch",
     extension: ".json",
     source: JSON.stringify({
+      meta: {
+        semver: "3.0.0",
+        vm: "0.2.0",
+        agent: "JudgeDesk Gate Test",
+      },
       targets: [
         {
           isStage: true,
@@ -145,7 +150,14 @@ const languageGates: Readonly<Record<string, LanguageGate>> = {
           blocks: {},
           comments: {},
           currentCostume: 0,
-          costumes: [],
+          costumes: [
+            {
+              name: "backdrop1",
+              dataFormat: "svg",
+              assetId: "cd21514d0531fd5252b7ea9412c702fe",
+              md5ext: "cd21514d0531fd5252b7ea9412c702fe.svg",
+            },
+          ],
           sounds: [],
         },
         {
@@ -242,7 +254,14 @@ const languageGates: Readonly<Record<string, LanguageGate>> = {
           },
           comments: {},
           currentCostume: 0,
-          costumes: [],
+          costumes: [
+            {
+              name: "costume1",
+              dataFormat: "svg",
+              assetId: "b7853f557e4426412e64bb3da6531a99",
+              md5ext: "b7853f557e4426412e64bb3da6531a99.svg",
+            },
+          ],
           sounds: [],
         },
       ],

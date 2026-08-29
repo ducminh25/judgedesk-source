@@ -451,13 +451,23 @@ export const TOOLCHAIN_RELEASE_SOURCES: Readonly<
       kind: "archive-root",
       rootPath: ".",
     },
-    inputs: [{
-      id: "scratch-run",
-      fileName: "scratch-run_0.1.7_win_amd64.zip",
-      url: "https://github.com/VNOI-Admin/scratch-run/releases/download/0.1.7/scratch-run_0.1.7_win_amd64.zip",
-      sha256: "062d63716f46042d72ef6077f6e3ba7b03a2b5935c6567e253bb7cfd624f9b25",
-      role: "primary",
-    }],
+    inputs: [
+      {
+        id: "scratch-run",
+        fileName: "scratch-run_0.1.7_win_amd64.zip",
+        url: "https://github.com/VNOI-Admin/scratch-run/releases/download/0.1.7/scratch-run_0.1.7_win_amd64.zip",
+        sha256: "062d63716f46042d72ef6077f6e3ba7b03a2b5935c6567e253bb7cfd624f9b25",
+        role: "primary",
+      },
+      {
+        id: "scratch-license",
+        fileName: "LICENSE",
+        url: "https://raw.githubusercontent.com/VNOI-Admin/scratch-run/master/LICENSE",
+        sha256: "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef",
+        role: "license",
+        destinationRelativePath: "LICENSE",
+      },
+    ],
     packagingDescription:
       "Packages the official VNOI scratch-run headless Scratch runner without modification.",
   },
@@ -469,13 +479,23 @@ export const TOOLCHAIN_RELEASE_SOURCES: Readonly<
       kind: "archive-root",
       rootPath: ".",
     },
-    inputs: [{
-      id: "scratch-run",
-      fileName: "scratch-run_0.1.7_macos_arm64.zip",
-      url: "https://github.com/VNOI-Admin/scratch-run/releases/download/0.1.7/scratch-run_0.1.7_macos_arm64.zip",
-      sha256: "f683c101635122abf98291be20d28ccd8ab845e9a36dc94b64bf2ed173946287",
-      role: "primary",
-    }],
+    inputs: [
+      {
+        id: "scratch-run",
+        fileName: "scratch-run_0.1.7_macos_arm64.zip",
+        url: "https://github.com/VNOI-Admin/scratch-run/releases/download/0.1.7/scratch-run_0.1.7_macos_arm64.zip",
+        sha256: "f683c101635122abf98291be20d28ccd8ab845e9a36dc94b64bf2ed173946287",
+        role: "primary",
+      },
+      {
+        id: "scratch-license",
+        fileName: "LICENSE",
+        url: "https://raw.githubusercontent.com/VNOI-Admin/scratch-run/master/LICENSE",
+        sha256: "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef",
+        role: "license",
+        destinationRelativePath: "LICENSE",
+      },
+    ],
     packagingDescription:
       "Packages the official VNOI scratch-run headless Scratch runner without modification.",
   },
@@ -487,13 +507,23 @@ export const TOOLCHAIN_RELEASE_SOURCES: Readonly<
       kind: "archive-root",
       rootPath: ".",
     },
-    inputs: [{
-      id: "scratch-run",
-      fileName: "scratch-run_0.1.7_macos_amd64.zip",
-      url: "https://github.com/VNOI-Admin/scratch-run/releases/download/0.1.7/scratch-run_0.1.7_macos_amd64.zip",
-      sha256: "d03336a1665374565258b363f4df983d5cdc92ee4f6acc62d7843f648b860e6d",
-      role: "primary",
-    }],
+    inputs: [
+      {
+        id: "scratch-run",
+        fileName: "scratch-run_0.1.7_macos_amd64.zip",
+        url: "https://github.com/VNOI-Admin/scratch-run/releases/download/0.1.7/scratch-run_0.1.7_macos_amd64.zip",
+        sha256: "d03336a1665374565258b363f4df983d5cdc92ee4f6acc62d7843f648b860e6d",
+        role: "primary",
+      },
+      {
+        id: "scratch-license",
+        fileName: "LICENSE",
+        url: "https://raw.githubusercontent.com/VNOI-Admin/scratch-run/master/LICENSE",
+        sha256: "8486a10c4393cee1c25392769ddd3b2d6c242d6ec7928e1414efff7dfb2f07ef",
+        role: "license",
+        destinationRelativePath: "LICENSE",
+      },
+    ],
     packagingDescription:
       "Packages the official VNOI scratch-run headless Scratch runner without modification.",
   },

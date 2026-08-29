@@ -1014,7 +1014,7 @@ export const TOOLCHAIN_RELEASE_BLUEPRINTS: Readonly<
     license: {
       spdxExpression: "AGPL-3.0",
       licenseFiles: ["LICENSE"],
-      noticeFiles: [],
+      noticeFiles: ["THIRD-PARTY-NOTICES.txt"],
       sbomPath: "SBOM.spdx.json",
     },
   },
@@ -1047,7 +1047,7 @@ export const TOOLCHAIN_RELEASE_BLUEPRINTS: Readonly<
     license: {
       spdxExpression: "AGPL-3.0",
       licenseFiles: ["LICENSE"],
-      noticeFiles: [],
+      noticeFiles: ["THIRD-PARTY-NOTICES.txt"],
       sbomPath: "SBOM.spdx.json",
     },
   },
@@ -1080,7 +1080,7 @@ export const TOOLCHAIN_RELEASE_BLUEPRINTS: Readonly<
     license: {
       spdxExpression: "AGPL-3.0",
       licenseFiles: ["LICENSE"],
-      noticeFiles: [],
+      noticeFiles: ["THIRD-PARTY-NOTICES.txt"],
       sbomPath: "SBOM.spdx.json",
     },
   },

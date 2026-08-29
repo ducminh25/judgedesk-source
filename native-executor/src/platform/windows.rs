@@ -73,11 +73,12 @@ use windows_sys::Win32::System::IO::{CreateIoCompletionPort, GetQueuedCompletion
 const PROFILE_NAME: &str = "JudgeDesk.NativeSecureExecutor.v1";
 const CANCEL_EXIT_CODE: u32 = 0x4a44_0001;
 const LIMIT_EXIT_CODE: u32 = 0x4a44_0002;
-const MANAGED_RUNTIME_MARKERS: [&str; 4] = [
+const MANAGED_RUNTIME_MARKERS: [&str; 5] = [
     "JUDGEDESK_PYTHON_ISOLATED",
     "JUDGEDESK_NODE_ISOLATED",
     "JUDGEDESK_JAVA_ISOLATED",
     "JUDGEDESK_DOTNET_ISOLATED",
+    "JUDGEDESK_SCRATCH_ISOLATED",
 ];
 
 pub struct WindowsPlatform {
@@ -1691,5 +1692,74 @@ mod tests {
 
         protect_cache_directory(&directory.0, &app_container_sid).unwrap();
         assert!(protected_acl_matches(&directory.0, &expected).unwrap());
+    }
+
+    #[test]
+    fn test_scratch_execution() {
+        let scratch_exe = PathBuf::from(
+            r"C:\Users\mon\AppData\Local\ThemisV2\toolchains\scratch-windows-x64\scratch-run.exe",
+        );
+        let sample_sb3 =
+            Path::new(r"C:\Users\mon\Downloads\DAP AN TIN HOC\bailam\sub 1 - scr\bai2.sb3");
+        let sample_inp =
+            Path::new(r"C:\Users\mon\Downloads\DAP AN TIN HOC\test\bai2\Test01\bai2.inp");
+        if !scratch_exe.exists() || !sample_sb3.exists() || !sample_inp.exists() {
+            return;
+        }
+        let (runner, _) = WindowsPlatform::initialize().unwrap();
+        let workspace = TestDirectory::new("scratch-test-workspace");
+        let stdin_path = workspace.0.join("stdin.txt");
+        let stdout_path = workspace.0.join("stdout.txt");
+        let stderr_path = workspace.0.join("stderr.txt");
+        let sb3_path = workspace.0.join("submission.sb3");
+        fs::copy(sample_sb3, &sb3_path).unwrap();
+        fs::copy(sample_inp, &stdin_path).unwrap();
+
+        let spec = RunSpec {
+            run_id: "scratch_test_1".into(),
+            role: RunRole::Submission,
+            workspace_id: "scratch_test_ws_1".into(),
+            executable_id: scratch_exe.to_string_lossy().into_owned(),
+            args: vec!["submission.sb3".into()],
+            stdin_file: Some("stdin.txt".into()),
+            stdout_file: "stdout.txt".into(),
+            stderr_file: "stderr.txt".into(),
+            environment: BTreeMap::from([
+                ("JUDGEDESK_SCRATCH_ISOLATED".into(), "1".into()),
+                ("TURBO_MODE".into(), "1".into()),
+            ]),
+            toolchain: None,
+            local_toolchain: None,
+            limits: crate::protocol::RunLimits {
+                wall_time_ms: 5000,
+                memory_bytes: 512 * 1024 * 1024,
+                process_count: 1,
+                thread_count: 64,
+                output_bytes: 10 * 1024 * 1024,
+                total_write_bytes: 100 * 1024 * 1024,
+                open_files: 64,
+                created_files: 256,
+            },
+        };
+
+        let paths = ValidatedRun {
+            executable: scratch_exe,
+            workspace: workspace.0.clone(),
+            stdin: Some(stdin_path),
+            stdout: stdout_path.clone(),
+            stderr: stderr_path.clone(),
+            toolchain_package_root: None,
+            isolation: LocalToolchainIsolation::ResourceOnly,
+        };
+
+        let active = ActiveRuns::default();
+        let result = runner.run_inner(&spec, &paths, &active).unwrap();
+        println!("Scratch run result: {:?}", result);
+        let stdout = fs::read_to_string(&stdout_path).unwrap_or_default();
+        let stderr = fs::read_to_string(&stderr_path).unwrap_or_default();
+        println!("Stdout: {stdout}");
+        println!("Stderr: {stderr}");
+        assert_eq!(result.exit_code, Some(0));
+        assert_eq!(stdout.trim(), "5070720");
     }
 }

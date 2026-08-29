@@ -12,11 +12,12 @@ pub(crate) const BUILTIN_TOOLCHAINS_ENV: &str = "JUDGEDESK_BUILTIN_TOOLCHAINS_DI
 const PACKAGE_RECEIPT: &str = ".judgedesk-package.json";
 const CACHE_MARKER: &str = ".judgedesk-import-complete";
 const CACHE_SCHEMA: &str = "4-receipt-digest";
-const MANAGED_RUNTIME_MARKERS: [&str; 4] = [
+const MANAGED_RUNTIME_MARKERS: [&str; 5] = [
     "JUDGEDESK_PYTHON_ISOLATED",
     "JUDGEDESK_NODE_ISOLATED",
     "JUDGEDESK_JAVA_ISOLATED",
     "JUDGEDESK_DOTNET_ISOLATED",
+    "JUDGEDESK_SCRATCH_ISOLATED",
 ];
 const MAX_RECEIPT_BYTES: u64 = 16 * 1024;
 
@@ -96,11 +97,12 @@ fn validate_run_with_builtin_root(
             (Some(grant), None) => {
                 let (executable, package_root) =
                     resolve_granted_toolchain(&canonical_root, spec, grant, built_in_root)?;
-                (
-                    executable,
-                    Some(package_root),
-                    LocalToolchainIsolation::Strict,
-                )
+                let isolation = if grant.package_id.starts_with("scratch-") {
+                    LocalToolchainIsolation::ResourceOnly
+                } else {
+                    LocalToolchainIsolation::Strict
+                };
+                (executable, Some(package_root), isolation)
             }
             (None, Some(grant)) => {
                 let (executable, local_root) = resolve_local_toolchain(spec, grant)?;
