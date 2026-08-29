@@ -39,6 +39,7 @@ test("source catalog retains deferred packages for later release waves", () => {
     "node-windows-x64",
     "python-windows-x64",
     "rust-windows-x64-gnu",
+    "scratch-windows-x64",
     "temurin21-windows-x64",
   ]);
   assert.deepEqual(hostPackages("darwin", "arm64"), [
@@ -48,10 +49,13 @@ test("source catalog retains deferred packages for later release waves", () => {
     "node-macos-arm64",
     "python-macos-arm64",
     "rust-macos-arm64",
+    "scratch-macos-arm64",
     "temurin21-macos-arm64",
   ]);
-  assert.deepEqual(hostPackages("darwin", "x64"), []);
-  assert.equal(hostPackages("win32", "x64").length, 8);
+  assert.deepEqual(hostPackages("darwin", "x64"), [
+    "scratch-macos-x64",
+  ]);
+  assert.equal(hostPackages("win32", "x64").length, 9);
 });
 
 test("all release inputs are immutable checksum-pinned HTTPS resources", () => {

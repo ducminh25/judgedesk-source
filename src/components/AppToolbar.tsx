@@ -207,12 +207,6 @@ export default function AppToolbar({
             : <FileSpreadsheet className="h-4 w-4 text-emerald-500" />}
           <span>{isExporting ? t("export.exporting") : t("scoreboard.export")}</span>
         </button>
-        <ScoreSortButton
-          canSort={canSortScores}
-          disabled={interactionLocked || !canSortScores}
-          sortMode={scoreSortMode}
-          onToggle={onToggleScoreSort}
-        />
         <button
           type="button"
           onClick={onDeleteSelected}
@@ -391,6 +385,7 @@ export function UpdateButton({ state, disabled, onCheck, onChoose, onInstall }: 
   })();
   const visibleLabel = state.status === "error" ? t("updates.retry") : label;
   const accessibleLabel = state.status === "error" ? `${label}. ${visibleLabel}` : label;
+  const isHighlight = state.status === "available" || state.status === "downloaded";
   return (
     <button
       type="button"
@@ -398,24 +393,33 @@ export function UpdateButton({ state, disabled, onCheck, onChoose, onInstall }: 
       disabled={disabled || isBusy}
       title={label}
       aria-label={accessibleLabel}
-      className={`flex h-10 max-w-56 flex-none items-center justify-center gap-2 whitespace-nowrap rounded border px-3 text-xs font-bold transition-colors disabled:cursor-wait ${
-        state.status === "available" || state.status === "downloaded"
-          ? "border-indigo-500 bg-indigo-600 text-white hover:bg-indigo-500"
-          : state.status === "error"
-            ? "border-rose-400 bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
-            : "border-surface-border bg-surface-elevated text-text-primary hover:bg-surface-hover"
+      className={`flex h-10 max-w-56 flex-none items-center justify-center gap-2 whitespace-nowrap rounded border px-3 text-xs font-bold transition-all disabled:cursor-wait ${
+        state.status === "available"
+          ? "border-amber-400/60 bg-gradient-to-r from-indigo-600 via-indigo-500 to-indigo-600 text-white shadow-md shadow-indigo-500/20 ring-2 ring-indigo-400/40 hover:brightness-110"
+          : state.status === "downloaded"
+            ? "border-emerald-400 bg-emerald-600 text-white shadow-md shadow-emerald-500/20 ring-2 ring-emerald-400/40 hover:bg-emerald-500"
+            : state.status === "error"
+              ? "border-rose-400 bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
+              : "border-surface-border bg-surface-elevated text-text-primary hover:bg-surface-hover"
       }`}
     >
       {isBusy ? (
-        <RefreshCw className="h-4 w-4 shrink-0 animate-spin" />
+        <RefreshCw className="h-4 w-4 shrink-0 animate-spin text-indigo-500 dark:text-indigo-400" />
+      ) : state.status === "available" ? (
+        <Download className="h-4 w-4 shrink-0 animate-bounce text-amber-300" />
+      ) : state.status === "downloaded" ? (
+        <Download className="h-4 w-4 shrink-0 text-white" />
       ) : state.status === "current" ? (
         <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
       ) : state.status === "error" ? (
-        <XCircle className="h-4 w-4 shrink-0" />
+        <XCircle className="h-4 w-4 shrink-0 text-rose-500" />
       ) : (
-        <Download className="h-4 w-4 shrink-0" />
+        <Download className="h-4 w-4 shrink-0 text-text-muted" />
       )}
       <span className="min-w-0 truncate">{visibleLabel}</span>
+      {state.status === "available" && (
+        <span className="flex h-2 w-2 rounded-full bg-amber-300" />
+      )}
     </button>
   );
 }

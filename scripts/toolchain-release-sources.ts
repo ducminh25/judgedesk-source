@@ -443,6 +443,60 @@ export const TOOLCHAIN_RELEASE_SOURCES: Readonly<
     packagingDescription:
       "Normalizes the official .NET SDK archive and preserves its offline reference packs.",
   },
+  "scratch-windows-x64": {
+    packageId: "scratch-windows-x64",
+    platform: "win32",
+    arch: "x64",
+    recipe: {
+      kind: "archive-root",
+      rootPath: ".",
+    },
+    inputs: [{
+      id: "scratch-run",
+      fileName: "scratch-run_0.1.7_win_amd64.zip",
+      url: "https://github.com/VNOI-Admin/scratch-run/releases/download/0.1.7/scratch-run_0.1.7_win_amd64.zip",
+      sha256: "062d63716f46042d72ef6077f6e3ba7b03a2b5935c6567e253bb7cfd624f9b25",
+      role: "primary",
+    }],
+    packagingDescription:
+      "Packages the official VNOI scratch-run headless Scratch runner without modification.",
+  },
+  "scratch-macos-arm64": {
+    packageId: "scratch-macos-arm64",
+    platform: "darwin",
+    arch: "arm64",
+    recipe: {
+      kind: "archive-root",
+      rootPath: ".",
+    },
+    inputs: [{
+      id: "scratch-run",
+      fileName: "scratch-run_0.1.7_macos_arm64.zip",
+      url: "https://github.com/VNOI-Admin/scratch-run/releases/download/0.1.7/scratch-run_0.1.7_macos_arm64.zip",
+      sha256: "f683c101635122abf98291be20d28ccd8ab845e9a36dc94b64bf2ed173946287",
+      role: "primary",
+    }],
+    packagingDescription:
+      "Packages the official VNOI scratch-run headless Scratch runner without modification.",
+  },
+  "scratch-macos-x64": {
+    packageId: "scratch-macos-x64",
+    platform: "darwin",
+    arch: "x64",
+    recipe: {
+      kind: "archive-root",
+      rootPath: ".",
+    },
+    inputs: [{
+      id: "scratch-run",
+      fileName: "scratch-run_0.1.7_macos_amd64.zip",
+      url: "https://github.com/VNOI-Admin/scratch-run/releases/download/0.1.7/scratch-run_0.1.7_macos_amd64.zip",
+      sha256: "d03336a1665374565258b363f4df983d5cdc92ee4f6acc62d7843f648b860e6d",
+      role: "primary",
+    }],
+    packagingDescription:
+      "Packages the official VNOI scratch-run headless Scratch runner without modification.",
+  },
 });
 
 function isNormalizedRelativePath(value: string): boolean {

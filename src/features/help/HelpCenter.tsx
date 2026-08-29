@@ -384,6 +384,7 @@ const HELP_DEFINITIONS: HelpSectionDefinition[] = [
     blocks: [
       { type: "paragraph", textKey: "intro" },
       { type: "note", textKey: "themisCredit" },
+      { type: "note", textKey: "scratchRunCredit" },
       { type: "paragraph", textKey: "disclaimer" },
     ],
     related: ["toolchains", "portable"],

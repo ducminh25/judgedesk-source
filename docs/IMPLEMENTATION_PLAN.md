@@ -1,7 +1,7 @@
 # Master Implementation Plan — JudgeDesk
 
 **Project Name**: JudgeDesk  
-**Current Version**: `v1.4.42` (`v1.4.x` Production Stable)  
+**Current Version**: `v1.4.43` (`v1.4.x` Production Stable)  
 **Document Status**: Official / Approved  
 **Classification**: Implementation History & Engineering Standards  
 
@@ -20,7 +20,7 @@ timeline
     v1.3.5 - v1.3.6 : OSD & Trải Nghiệm Lỗi : Chấm Bài Trực Tuyến OSD (F8) : Trung Tâm Trợ Giúp Offline (F1) : Chuẩn Hóa Lỗi 3 Thành Phần : Khử Trùng Path/Stacktrace : Loại Bỏ Triệt Để Silent Errors
     v1.3.7 : Cập Nhật Siêu Tốc & Di Chuyển Toolchains : In-App Core Updates (~20 MB) : Early Toolchain Migration : Tự Động Chứng Thực 100% Xanh / Ready Trên Bản Core : Giữ Trọn Vẹn 2 Bản Core & Full Trên GitHub Releases
     v1.3.8 - v1.3.82 : Hoàn Thiện Xuất Excel & Changelog : Sửa Dứt Điểm Xuất Excel Rỗng : Tự Động Nạp Run Metadata Môi Trường : Tra Cứu Changelog Song Ngữ Trong Trợ Giúp F1
-    v1.4.0 - v1.4.42 : Nhận Diện Themis, Probes & Chấm Scratch : Tự Động Quét & So Sánh Toolchain Themis : Custom Checkers .exe/.cpp/.py Tự Nạp Header : Chẩn Đoán Compiler Self-Test Probes : Nút Sắp Xếp Điểm Động 3 Trạng Thái : Tích Hợp Chấm Bài Thi Scratch (.sb3/.sb2/.sb) TurboWarp VM
+    v1.4.0 - v1.4.43 : Nhận Diện Themis, Probes & Chấm Scratch : Tự Động Quét & So Sánh Toolchain Themis : Custom Checkers .exe/.cpp/.py Tự Nạp Header : Chẩn Đoán Compiler Self-Test Probes : Nút Sắp Xếp Điểm Động 3 Trạng Thái : Tích Hợp Chấm Scratch Chuẩn VNOI scratch-run (TurboWarp VM)
 ```
 
 ---
@@ -62,19 +62,19 @@ timeline
 * [x] **Tự động nạp Run Metadata môi trường**: Ghi nhận đầy đủ thông số môi trường hệ thống trong file Excel kể cả khi mở từ kỳ thi đã lưu.
 * [x] **Cửa sổ "Có gì mới" & Tra cứu Changelog**: Tự động hiển thị tính năng mới sau khi cập nhật; tra cứu lịch sử phát hành song ngữ trực tiếp trong Trợ giúp (`F1`).
 
-### Cột Mốc 7: Nhận Diện Toolchain Themis, Probes, Sắp Xếp Điểm & Chấm Scratch (v1.4.0 - v1.4.42)
+### Cột Mốc 7: Nhận Diện Toolchain Themis, Probes, Sắp Xếp Điểm & Chấm Scratch (v1.4.0 - v1.4.43)
 * [x] **Tự động nhận diện & Quét sâu Toolchain Themis**: Quét mọi ổ đĩa chuẩn (`C:\Themis`, `D:\Themis`, `E:\Themis`), mở rộng sandbox cho các binary 32-bit legacy và hiển thị bảng so sánh trực quan với Chuẩn Olympic 64-bit.
 * [x] **Custom Checkers Đa Định dạng**: Hỗ trợ toàn diện `.exe`, `.cpp` và `.py`; tự động nạp toàn bộ header cục bộ trong thư mục bài tập (`testlib.h`, headers Themis) loại bỏ lỗi CE do thiếu header.
 * [x] **Chẩn đoán Compiler Self-Test Probes**: Bổ sung tính năng tự kiểm tra trong Sandbox đo đạc thời gian biên dịch, thực thi và bộ nhớ tiêu thụ cho từng ngôn ngữ.
-* [x] **Nút Sắp xếp Điểm Động 3 Trạng Thái**: Sắp xếp điểm cao $\rightarrow$ điểm thấp $\rightarrow$ mặc định; đồng bộ với click cột Tổng Điểm; file Excel xuất ra tuân thủ chính xác thứ tự hiển thị.
-* [x] **Tích hợp Chấm Bài thi Scratch (`.sb3`, `.sb2`, `.sb`)**: Máy ảo Scratch Headless Turbo Mode siêu tốc (10-25ms/testcase), nạp test tự động qua `ask and wait` và xuất kết quả qua `say`/`think`.
+* [x] **Tối ưu Giao diện Toolbar & Sắp xếp Điểm**: Tối ưu nút Cập nhật gọn gàng («Đã mới nhất»), loại bỏ nút sort thừa trên Toolbar, giữ nguyên nút sort cạnh tiêu đề Tổng Điểm; file Excel xuất ra tuân thủ chính xác thứ tự hiển thị.
+* [x] **Tích hợp Chấm Scratch Chuẩn VNOI (`scratch-run` / TurboWarp VM)**: Chấm trực tiếp các dự án Scratch (`.sb3`, `.sb2`, `.sb`) qua runner chính thức của VNOI-Admin, nạp test tự động qua `ask and wait` và xuất kết quả qua `say`/`think`, tích hợp sẵn trong bản Full và tải tự động ở bản Core.
 * [x] **Tối ưu Khởi động Chấm & Làm ấm Sandbox**: Mở ngay cửa sổ tiến trình khi bấm Chấm bài (`F9`); làm ấm ngầm Native Sandbox và cache nhị phân Custom Checker.
 
 ---
 
 ## 3. Hiện Trạng Kiểm Thử & Đo Lường Chất Lượng
 
-| Tiêu Chí Đo Lường | Mục Tiêu | Hiện Trạng Thực Tế (v1.4.42) |
+| Tiêu Chí Đo Lường | Mục Tiêu | Hiện Trạng Thực Tế (v1.4.43) |
 | :--- | :--- | :--- |
 | **Hệ thống Unit & Integration Tests** | Toàn bộ pass 100% | **476 tests (466 Passed, 0 Failed, 10 Skipped)** |
 | **Kiểm tra TypeScript Lint** | 0 lỗi biên dịch | **Clean (`tsc --noEmit`: Code 0)** |

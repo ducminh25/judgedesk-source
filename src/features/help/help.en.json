@@ -318,7 +318,8 @@
       "summary": "Version, edition, build identity, paths, and diagnostics",
       "intro": "JudgeDesk is a local Vietnamese programming-contest desktop judge for Windows and Apple Silicon macOS. It keeps contest preparation, grading, detailed results, archives, and exports in one desktop workflow.",
       "themisCredit": "JudgeDesk's offline, teacher-first workflow and contextual help are inspired by Themis. This Help Center is newly written for JudgeDesk and does not copy Themis text, screenshots, or assets.",
-      "disclaimer": "JudgeDesk is an independent product. It is not Themis, is not affiliated with the Themis authors, and does not claim endorsement or sponsorship by Vietnam's Ministry of Education and Training."
+      "scratchRunCredit": "Scratch judging is powered by the open-source scratch-run tool developed by VNOI (VNOI-Admin / Le Bao Hiep) on top of TurboWarp scratch-vm. JudgeDesk gratefully acknowledges the VNOI team for their contributions to the competitive programming community.",
+      "disclaimer": "JudgeDesk is an independent product: it is not Themis, has no affiliation with the authors of Themis, and makes no claim of endorsement or commission by the Ministry of Education and Training."
     }
   }
 }

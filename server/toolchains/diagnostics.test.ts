@@ -16,3 +16,10 @@ test("diagnostics returns configuration error when a toolchain is not ready or n
   assert.equal(result.phase, "configuration");
   assert.ok(result.error);
 });
+
+test("diagnoses scratch language profile successfully", async () => {
+  const result = await diagnoseLanguageProfile("scratch-turbowarp-v1");
+  assert.equal(result.language, "scratch");
+  assert.equal(result.profileId, "scratch-turbowarp-v1");
+});
+
