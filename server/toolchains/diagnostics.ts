@@ -61,6 +61,59 @@ function getProbeSource(kind: ToolchainKind): { fileName: string; sourceCode: st
         fileName: "Main.java",
         sourceCode: `public class Main {\n  public static void main(String[] args) {\n    System.out.println("${PROBE_TOKEN_MARKER}");\n  }\n}\n`,
       };
+    case "scratch":
+      return {
+        fileName: "probe.json",
+        sourceCode: JSON.stringify({
+          targets: [
+            {
+              isStage: true,
+              name: "Stage",
+              variables: {},
+              lists: {},
+              broadcasts: {},
+              blocks: {},
+              comments: {},
+              currentCostume: 0,
+              costumes: [],
+              sounds: [],
+            },
+            {
+              isStage: false,
+              name: "Sprite1",
+              variables: {},
+              lists: {},
+              broadcasts: {},
+              blocks: {
+                start: {
+                  opcode: "event_whenflagclicked",
+                  next: "say",
+                  parent: null,
+                  inputs: {},
+                  fields: {},
+                  shadow: false,
+                  topLevel: true,
+                },
+                say: {
+                  opcode: "looks_say",
+                  next: null,
+                  parent: "start",
+                  inputs: {
+                    MESSAGE: [1, [10, PROBE_TOKEN_MARKER]],
+                  },
+                  fields: {},
+                  shadow: false,
+                  topLevel: false,
+                },
+              },
+              comments: {},
+              currentCostume: 0,
+              costumes: [],
+              sounds: [],
+            },
+          ],
+        }),
+      };
     default:
       return {
         fileName: "probe.txt",
@@ -121,7 +174,7 @@ export async function diagnoseLanguageProfile(
 
   try {
     const compilation = await compileSubmission({
-      language: kind === "pascal" ? "pascal" : kind === "java" ? "java" : kind === "c" ? "c" : kind === "python" ? "python" : "cpp",
+      language: kind === "pascal" ? "pascal" : kind === "java" ? "java" : kind === "c" ? "c" : kind === "python" ? "python" : kind === "scratch" ? "scratch" : "cpp",
       contestantName: `probe_${token}`,
       problemName: "diagnostics",
       submissionPath: sourcePath,

@@ -45,6 +45,7 @@ const [{ executorClient }, {
   buildCustomCheckerCompilerArgs,
   buildCompilerPhases,
   buildSubmissionCompilerArgs,
+  compileSubmission,
   CHECKER_COMPILE_MEMORY_LIMIT_BYTES,
   CHECKER_COMPILE_TIMEOUT_MS,
   COMPILE_TIMEOUT_MS,
@@ -458,3 +459,76 @@ test("custom C++ checker compilation automatically stages problem directory head
     }
   }
 });
+
+test("compiles Scratch submission to native executable with valid compileStatus", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-scratch-compile-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const projectJsonPath = path.join(root, "submission.json");
+  fs.writeFileSync(
+    projectJsonPath,
+    JSON.stringify({
+      targets: [
+        {
+          isStage: true,
+          name: "Stage",
+          variables: {},
+          lists: {},
+          broadcasts: {},
+          blocks: {},
+          comments: {},
+          currentCostume: 0,
+          costumes: [],
+          sounds: [],
+        },
+        {
+          isStage: false,
+          name: "Sprite1",
+          variables: {},
+          lists: {},
+          broadcasts: {},
+          blocks: {
+            flag: {
+              opcode: "event_whenflagclicked",
+              next: "say",
+              parent: null,
+              inputs: {},
+              fields: {},
+              shadow: false,
+              topLevel: true,
+            },
+            say: {
+              opcode: "looks_say",
+              next: null,
+              parent: "flag",
+              inputs: {
+                MESSAGE: [1, [10, "HelloScratch"]],
+              },
+              fields: {},
+              shadow: false,
+              topLevel: false,
+            },
+          },
+          comments: {},
+          currentCostume: 0,
+          costumes: [],
+          sounds: [],
+        },
+      ],
+    }),
+    "utf8",
+  );
+
+  const result = await compileSubmission({
+    language: "scratch",
+    contestantName: "test_contestant",
+    problemName: "sample",
+    submissionPath: projectJsonPath,
+    tempDirectory: root,
+  });
+
+  assert.equal(result.compileStatus, "OK");
+  assert.equal(result.compileError, "");
+  assert.equal(result.program?.kind, "script-runtime");
+  assert.equal(result.program?.language, "scratch");
+});
+

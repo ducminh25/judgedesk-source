@@ -5,6 +5,16 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 ## [Unreleased]
 
+## [1.4.43] - 2026-08-29
+
+### Tích hợp chính thức scratch-run (VNOI) & Hoàn thiện giao diện
+
+- Tích hợp runner chuẩn `scratch-run` của VNOI (VNOI-Admin / Lê Bảo Hiệp) xây dựng trên TurboWarp `scratch-vm`, giải quyết triệt để lỗi `TOOLCHAIN_NOT_SANDBOX_COMPATIBLE` và đảm bảo tương thích 100% với các kỳ thi Tin học trẻ.
+- Bổ sung gói toolchain Scratch vào bản Full Edition tự động kích hoạt theo mặc định và hỗ trợ tải về tự động trong bản Core Edition.
+- Tối ưu thanh công cụ: Loại bỏ nút Sắp xếp điểm trên Toolbar để giao diện gọn gàng (vẫn giữ nút sắp xếp cạnh tiêu đề Tổng điểm trên Scoreboard).
+- Tinh chỉnh nút Updater: Hiển thị trạng thái «Đã mới nhất» ngắn gọn, nổi bật khi có bản cập nhật mới.
+- Thêm Scratch vào chẩn đoán hệ thống (Diagnostics) và ghi nhận credit chính thức cho VNOI-Admin trong Trung tâm hướng dẫn.
+
 ## [1.4.42] - 2026-08-29
 
 ### Bản sửa lỗi nhanh (Hotfix) cho v1.4.4

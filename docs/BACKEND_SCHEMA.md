@@ -18,7 +18,7 @@ Returns host platform capability, active sandbox isolation mode, and server metr
 ```json
 {
   "status": "ready",
-  "appVersion": "1.4.42",
+  "appVersion": "1.4.43",
   "platform": "win32",
   "arch": "x64",
   "sandbox": {
@@ -280,7 +280,7 @@ Located in the root of `.judgedesk` ZIP archives:
 {
   "format": "judgedesk-contest",
   "formatVersion": 1,
-  "appVersion": "1.4.42",
+  "appVersion": "1.4.43",
   "createdAt": "2026-08-21T08:30:00.000Z",
   "savedAt": "2026-08-29T10:00:00.000Z",
   "workspace": {

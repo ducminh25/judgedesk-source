@@ -142,6 +142,14 @@ describe("Help Center", () => {
           version: "14.2.0",
           executablePath: "C:\\gcc\\bin\\g++.exe",
         },
+        {
+          id: "scratch-turbowarp-v1",
+          language: "Scratch",
+          status: "submission_ready",
+          source: "managed",
+          version: "1.0.0",
+          executablePath: "built-in",
+        },
       ],
     };
 
@@ -150,6 +158,7 @@ describe("Help Center", () => {
     assert.match(text, /Edition: full/);
     assert.match(text, /Problems path: D:\\Contest\\Problems/);
     assert.match(text, /Toolchain C\+\+ \(cpp-gnu\)/);
+    assert.match(text, /Toolchain Scratch \(scratch-turbowarp-v1\): status=submission_ready; source=managed; version=1\.0\.0; path=built-in/);
     assert.doesNotMatch(text, /test contents|source contents/);
   });
 

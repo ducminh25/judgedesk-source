@@ -70,17 +70,6 @@ export function resolveCachedManagedToolchain(
   kind: ToolchainKind,
   inspectInstalledPackage: InstalledToolchainPackageInspector = inspectInstalledToolchainPackage,
 ): ResolvedToolchain {
-  if (kind === "scratch") {
-    return {
-      kind: "scratch",
-      source: "managed",
-      executablePath: "built-in",
-      version: "1.0.0",
-      ready: true,
-      provenance: "managed-package",
-      packageOrigin: "built-in",
-    };
-  }
   const descriptor = getDescriptorForHost(os.platform(), os.arch(), kind);
   if (!descriptor) {
     return unavailable(

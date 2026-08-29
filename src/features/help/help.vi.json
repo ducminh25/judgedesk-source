@@ -318,6 +318,7 @@
       "summary": "Phiên bản, bản phân phối, build, đường dẫn và chẩn đoán",
       "intro": "JudgeDesk là phần mềm desktop chấm thi đấu lập trình cục bộ bằng tiếng Việt cho Windows và macOS Apple Silicon. Việc chuẩn bị kỳ thi, chấm, xem chi tiết, lưu và xuất báo cáo nằm trong một quy trình desktop.",
       "themisCredit": "Quy trình offline ưu tiên giáo viên và cách hướng dẫn theo ngữ cảnh của JudgeDesk được lấy cảm hứng từ Themis. Nội dung Help này được viết mới cho JudgeDesk, không sao chép văn bản, ảnh chụp hay tài sản của Themis.",
+      "scratchRunCredit": "Tính năng chấm Scratch được tích hợp và vận hành dựa trên công cụ mã nguồn mở scratch-run do VNOI (VNOI-Admin / Lê Bảo Hiệp) phát triển trên nền tảng TurboWarp scratch-vm. JudgeDesk xin trân trọng ghi nhận và cảm ơn đội ngũ VNOI vì những đóng góp giá trị cho cộng đồng Tin học Việt Nam.",
       "disclaimer": "JudgeDesk là sản phẩm độc lập: không phải Themis, không liên kết với tác giả Themis và không tuyên bố được Bộ Giáo dục và Đào tạo bảo trợ hoặc đặt hàng."
     }
   }

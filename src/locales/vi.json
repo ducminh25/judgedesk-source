@@ -456,7 +456,7 @@
     "download": "Cập nhật",
     "downloading": "Đang tải {{percent}}%",
     "installQuestion": "Cài bản cập nhật",
-    "upToDate": "Đã là bản mới nhất",
+    "upToDate": "Đã mới nhất",
     "checkFailed": "Kiểm tra cập nhật thất bại",
     "downloadFailed": "Tải bản cập nhật thất bại",
     "retry": "Thử lại",

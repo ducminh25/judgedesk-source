@@ -1,7 +1,7 @@
 # Product Requirements Document (PRD) — JudgeDesk
 
 **Project Name**: JudgeDesk (formerly codenamed *ThemisV2*)  
-**Product Version**: `1.4.42` (`v1.4.x`)  
+**Product Version**: `1.4.43` (`v1.4.x`)  
 **Document Status**: Official / Approved  
 **Target Platform**: Windows 10/11 x64, macOS Apple Silicon (ARM64)  
 **License**: Proprietary / Private Source (`ducminh25/judgedesk-source`)  

@@ -281,9 +281,9 @@ describe("toolbar score sort button", () => {
     assert.match(markup, /border-indigo-400 bg-indigo-50/);
   });
 
-  it("renders ScoreSortButton in toolbar JSX next to export", () => {
+  it("omits ScoreSortButton from main toolbar JSX to keep toolbar compact", () => {
     const source = readFileSync(new URL("./AppToolbar.tsx", import.meta.url), "utf8");
 
-    assert.match(source, /<ScoreSortButton[\s\S]*?<button\s+type="button"\s+onClick=\{onDeleteSelected\}/);
+    assert.doesNotMatch(source, /<ScoreSortButton[\s\S]*?<button\s+type="button"\s+onClick=\{onDeleteSelected\}/);
   });
 });

@@ -11,6 +11,22 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
   {
+    version: "1.4.43",
+    date: "2026-08-29",
+    sections: [
+      {
+        title: "Tích hợp chính thức scratch-run (VNOI) & Hoàn thiện giao diện",
+        items: [
+          "Tích hợp runner chuẩn scratch-run của VNOI (VNOI-Admin / Lê Bảo Hiệp) xây dựng trên TurboWarp scratch-vm, giải quyết triệt để lỗi TOOLCHAIN_NOT_SANDBOX_COMPATIBLE và đảm bảo tương thích 100% với các kỳ thi Tin học trẻ.",
+          "Bổ sung gói toolchain Scratch vào bản Full Edition tự động kích hoạt theo mặc định và hỗ trợ tải về tự động trong bản Core Edition.",
+          "Tối ưu thanh công cụ: Loại bỏ nút Sắp xếp điểm trên Toolbar để giao diện gọn gàng (vẫn giữ nút sắp xếp cạnh tiêu đề Tổng điểm trên Scoreboard).",
+          "Tinh chỉnh nút Updater: Hiển thị trạng thái «Đã mới nhất» ngắn gọn, nổi bật khi có bản cập nhật mới.",
+          "Thêm Scratch vào chẩn đoán hệ thống (Diagnostics) và ghi nhận credit chính thức cho VNOI-Admin trong Trung tâm hướng dẫn.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.4.42",
     date: "2026-08-29",
     sections: [
@@ -423,6 +439,22 @@ export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
 ];
 
 export const CHANGELOG_DATA_EN: ChangelogRelease[] = [
+  {
+    version: "1.4.43",
+    date: "2026-08-29",
+    sections: [
+      {
+        title: "Official VNOI scratch-run Integration & UI Refinements",
+        items: [
+          "Integrated VNOI's official scratch-run runner (built on TurboWarp scratch-vm by VNOI-Admin / Le Bao Hiep), completely resolving TOOLCHAIN_NOT_SANDBOX_COMPATIBLE errors and ensuring 100% Scratch CP compatibility.",
+          "Packaged Scratch toolchain in Full Edition with auto-activation by default, and one-click download in Core Edition.",
+          "Streamlined Toolbar: Removed redundant score sort button from Toolbar (retained next to Total Score in Scoreboard).",
+          "Refined Updater button: Compact «Up to date» badge with prominent highlight when updates are available.",
+          "Added Scratch to System Diagnostics and officially credited VNOI-Admin in Help Center documentation.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.4.42",
     date: "2026-08-29",
