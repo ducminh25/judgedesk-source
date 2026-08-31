@@ -913,7 +913,7 @@ export async function runCompilerPipelineWithLimits(
     return;
   }
 
-  const objectPath = `${outputPath}.${crypto.randomUUID()}.o`;
+  const objectPath = `${outputPath}.${crypto.randomUUID().slice(0, 8)}.o`;
   const phases = buildCompilerPhases(args, outputPath, objectPath);
   const started = process.hrtime.bigint();
   try {
@@ -1455,7 +1455,15 @@ function stageCompilerArguments(
     if (existing) return existing;
     const metadata = fs.lstatSync(canonical);
     if (metadata.isSymbolicLink()) throw new Error("Compiler inputs cannot be symlinks.");
-    const destination = path.join(workspacePath, "inputs", `${index}_${safeName(path.basename(canonical))}`);
+    const ext = path.extname(canonical);
+    const rawBase = path.basename(canonical, ext);
+    const safeBase = safeName(rawBase).slice(0, 64).replace(/[. ]+$/, "") || "input";
+    const safeExt = ext ? `.${safeName(ext.slice(1)).replace(/[. ]+$/, "")}` : "";
+    const destination = path.join(
+      workspacePath,
+      "inputs",
+      `${index}_${safeBase}${safeExt}`,
+    );
     fs.mkdirSync(path.dirname(destination), { recursive: true });
     if (metadata.isDirectory()) {
       assertTreeContainsNoLinks(canonical);
@@ -1543,7 +1551,12 @@ export function normalizeCompilerError(error: unknown): string {
 }
 
 export function safeName(value: string | undefined | null): string {
-  return (value || "").replaceAll(/[^A-Za-z0-9_.-]/g, "_").slice(0, 96) || "artifact";
+  return (
+    (value || "")
+      .replaceAll(/[^A-Za-z0-9_.-]/g, "_")
+      .slice(0, 96)
+      .replace(/[. ]+$/, "") || "artifact"
+  );
 }
 
 function elapsedMs(started: bigint): number {

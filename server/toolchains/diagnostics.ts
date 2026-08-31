@@ -209,7 +209,7 @@ export async function diagnoseLanguageProfile(
   }
 
   const runWorkspace = createRunWorkspace();
-  const token = crypto.randomUUID().replaceAll("-", "_");
+  const token = crypto.randomUUID().slice(0, 8);
   const probeInfo = getProbeSource(kind);
   const sourcePath = path.join(runWorkspace.path, probeInfo.fileName);
   fs.writeFileSync(sourcePath, probeInfo.sourceCode, "utf8");

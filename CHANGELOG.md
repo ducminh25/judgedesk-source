@@ -5,6 +5,16 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 ## [Unreleased]
 
+## [1.4.45] - 2026-08-31
+
+### Nâng giới hạn Bộ nhớ 1024 MB & Tối ưu Trình biên dịch
+
+- Hỗ trợ cấu hình giới hạn bộ nhớ (Memory Limit) lên đến 1024 MB (1 GB) trên cả Windows và macOS, mặc định 256 MB theo tiêu chuẩn các kỳ thi Olympic Tin học / HSG / ICPC.
+- Mở rộng chính sách tài nguyên bộ nhớ trên Windows từ 512 MB lên 1024 MB cho các tiến trình chấm và biên dịch.
+- Tối ưu hóa khâu chuẩn bị tệp nguồn và đối tượng biên dịch (Compiler Staging), đảm bảo định danh tệp an toàn và xử lý sạch sẽ các ký tự đặc biệt / phần mở rộng.
+- Rút gọn token UUID trong chẩn đoán hệ thống (Diagnostics) giúp tăng tốc độ kiểm tra tự động và duy trì tính ổn định cao.
+- Cập nhật giao diện Cài đặt bài thi và bảng dịch đa ngôn ngữ (Tiếng Việt & Tiếng Anh).
+
 ## [1.4.44] - 2026-08-29
 
 ### Hoàn thiện tuyệt đối Chấm thi Scratch trên Windows & macOS
