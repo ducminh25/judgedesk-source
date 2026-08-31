@@ -166,3 +166,14 @@ test("Config.cfg writes a normalized compile snapshot and preserves later change
   writeStoredProblemConfig(directory, { useStdIO: false, compile: custom });
   assert.deepEqual(readStoredProblemConfig(directory)?.compile, custom);
 });
+
+test("problem config normalizes memory limit between 8 MB and 1024 MB with default 256 MB", () => {
+  assert.equal(normalizeProblemConfig("SUM", { memoryLimit: 2048 }).memoryLimit, 1024);
+  assert.equal(normalizeProblemConfig("SUM", { memoryLimit: 1024 }).memoryLimit, 1024);
+  assert.equal(normalizeProblemConfig("SUM", { memoryLimit: 512 }).memoryLimit, 512);
+  assert.equal(normalizeProblemConfig("SUM", { memoryLimit: 256 }).memoryLimit, 256);
+  assert.equal(normalizeProblemConfig("SUM", { memoryLimit: 4 }).memoryLimit, 8);
+  assert.equal(normalizeProblemConfig("SUM", { memoryLimit: 0 }).memoryLimit, 256);
+  assert.equal(normalizeProblemConfig("SUM", { memoryLimit: -100 }).memoryLimit, 256);
+  assert.equal(normalizeProblemConfig("SUM", { memoryLimit: undefined }).memoryLimit, 256);
+});

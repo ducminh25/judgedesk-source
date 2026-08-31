@@ -135,7 +135,7 @@
     "outputFile": "File đầu ra",
     "timeLimit": "Giới hạn thời gian (ms)",
     "memoryLimit": "Giới hạn bộ nhớ (MB)",
-    "windowsMemoryPolicy": "Trên Windows, mỗi tiến trình chấm được giới hạn tối đa 512 MB để toàn bộ JudgeDesk giữ peak dưới 1.024 MB.",
+    "windowsMemoryPolicy": "Giới hạn bộ nhớ tối đa 1.024 MB (1 GB), mặc định 256 MB theo tiêu chuẩn các kỳ thi.",
     "checker": "Trình chấm (Checker)",
     "save": "Lưu Cấu Hình",
     "useStandardInput": "Dùng luồng nhập chuẩn",

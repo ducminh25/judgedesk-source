@@ -135,7 +135,7 @@
     "outputFile": "Output file",
     "timeLimit": "Time limit (ms)",
     "memoryLimit": "Memory limit (MB)",
-    "windowsMemoryPolicy": "On Windows, each active judge process is capped at 512 MB so the whole JudgeDesk judging pipeline stays below a 1,024 MB peak.",
+    "windowsMemoryPolicy": "Memory limit up to 1,024 MB (1 GB), default is 256 MB conforming to contest standards.",
     "checker": "Checker",
     "save": "Save Configuration",
     "useStandardInput": "Use standard input",

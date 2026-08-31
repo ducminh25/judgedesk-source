@@ -11,6 +11,22 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
   {
+    version: "1.4.45",
+    date: "2026-08-31",
+    sections: [
+      {
+        title: "Nâng giới hạn Bộ nhớ 1024 MB & Tối ưu Trình biên dịch",
+        items: [
+          "Hỗ trợ cấu hình giới hạn bộ nhớ (Memory Limit) lên đến 1024 MB (1 GB) trên cả Windows và macOS, mặc định 256 MB theo tiêu chuẩn các kỳ thi Olympic Tin học / HSG / ICPC.",
+          "Mở rộng chính sách tài nguyên bộ nhớ trên Windows từ 512 MB lên 1024 MB cho các tiến trình chấm và biên dịch.",
+          "Tối ưu hóa khâu chuẩn bị tệp nguồn và đối tượng biên dịch (Compiler Staging), đảm bảo định danh tệp an toàn và xử lý sạch sẽ các ký tự đặc biệt / phần mở rộng.",
+          "Rút gọn token UUID trong chẩn đoán hệ thống (Diagnostics) giúp tăng tốc độ kiểm tra tự động và duy trì tính ổn định cao.",
+          "Cập nhật giao diện Cài đặt bài thi và bảng dịch đa ngôn ngữ (Tiếng Việt & Tiếng Anh).",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.4.44",
     date: "2026-08-29",
     sections: [
@@ -455,6 +471,22 @@ export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
 ];
 
 export const CHANGELOG_DATA_EN: ChangelogRelease[] = [
+  {
+    version: "1.4.45",
+    date: "2026-08-31",
+    sections: [
+      {
+        title: "1024 MB Memory Limit & Compiler Staging Optimizations",
+        items: [
+          "Supported configuring problem memory limits up to 1,024 MB (1 GB) on both Windows and macOS, with a 256 MB default matching competitive programming contest standards.",
+          "Expanded Windows judging resource policy cap from 512 MB to 1,024 MB for active judge and compiler processes.",
+          "Optimized compiler argument staging and object naming with robust sanitization for clean artifact filenames.",
+          "Shortened probe tokens in toolchain Diagnostics for faster automated health checks and verification.",
+          "Updated Problem Configuration UI and localization files (Vietnamese and English).",
+        ],
+      },
+    ],
+  },
   {
     version: "1.4.44",
     date: "2026-08-29",

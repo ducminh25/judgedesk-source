@@ -77,10 +77,24 @@ export function BasicProblemSettings(props: Props) {
           <input
             type="number"
             min={8}
+            max={1024}
             step={1}
             placeholder="256"
             value={config.memoryLimit ?? ""}
-            onChange={event => setConfig(previous => ({ ...previous, memoryLimit: event.target.value ? Number(event.target.value) : undefined }))}
+            onChange={event => {
+              const val = event.target.value;
+              if (!val) {
+                setConfig(previous => ({ ...previous, memoryLimit: undefined }));
+                return;
+              }
+              const parsed = Number(val);
+              if (Number.isFinite(parsed)) {
+                setConfig(previous => ({
+                  ...previous,
+                  memoryLimit: parsed > 1024 ? 1024 : parsed,
+                }));
+              }
+            }}
             className="flex-1 bg-input-bg border border-surface-border-strong rounded px-2.5 py-1.5 text-text-primary text-xs focus:border-indigo-500 transition outline-none"
           />
           <span

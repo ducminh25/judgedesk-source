@@ -1,6 +1,6 @@
 [package]
 name = "judgedesk-native-executor"
-version = "1.4.44"
+version = "1.4.45"
 edition = "2021"
 license = "MIT"
 

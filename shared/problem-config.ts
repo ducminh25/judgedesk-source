@@ -3,6 +3,23 @@ import { createCompileConfig, normalizeCompileConfig } from "./compile-config.js
 
 export type ProblemConfigInput = Partial<ProblemConfig> & Partial<PolygonConfig>;
 
+export const MIN_PROBLEM_MEMORY_LIMIT_MB = 8;
+export const MAX_PROBLEM_MEMORY_LIMIT_MB = 1024;
+export const DEFAULT_PROBLEM_MEMORY_LIMIT_MB = 256;
+
+export function normalizeProblemMemoryLimit(
+  value: unknown,
+  fallback = DEFAULT_PROBLEM_MEMORY_LIMIT_MB,
+): number {
+  if (value === undefined || value === null || value === "") return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallback;
+  return Math.min(
+    MAX_PROBLEM_MEMORY_LIMIT_MB,
+    Math.max(MIN_PROBLEM_MEMORY_LIMIT_MB, Math.round(parsed)),
+  );
+}
+
 export function createDefaultProblemConfig(problemName: string): NormalizedProblemConfig {
   return {
     useStdIO: false,
@@ -13,7 +30,7 @@ export function createDefaultProblemConfig(problemName: string): NormalizedProbl
     totalScore: null,
     defaultScore: 1,
     testScores: {},
-    memoryLimit: 256,
+    memoryLimit: DEFAULT_PROBLEM_MEMORY_LIMIT_MB,
     checkerType: "C1",
     compile: createCompileConfig(),
     polygonConfig: { enableGroups: false, tests: {}, groups: {} }
@@ -48,7 +65,7 @@ export function normalizeProblemConfig(
     totalScore: toNullableNumber(totalScoreValue),
     defaultScore: toNumber(stored.defaultScore ?? request.defaultScore, defaults.defaultScore),
     testScores: normalizeTestScores(request.testScores, stored.testScores),
-    memoryLimit: toNumber(stored.memoryLimit ?? request.memoryLimit, defaults.memoryLimit),
+    memoryLimit: normalizeProblemMemoryLimit(stored.memoryLimit ?? request.memoryLimit, defaults.memoryLimit),
     checkerType: stored.checkerType || request.checkerType || defaults.checkerType,
     compile: normalizeCompileConfig(stored.compile ?? request.compile),
     polygonConfig: {
