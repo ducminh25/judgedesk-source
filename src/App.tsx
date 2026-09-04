@@ -45,6 +45,7 @@ export default function App() {
     contestantsPath: thisinhPath,
     contestantsPickerPath,
     customCheckers: customCheckersMap,
+    interactors: interactorsMap,
     loadContestants: handleFetchContestants,
     loadProblems: handleFetchProblems,
     problemConfigs,
@@ -692,6 +693,7 @@ export default function App() {
           thisinhPath={thisinhPath}
           problemConfigs={problemConfigs}
           customCheckersMap={customCheckersMap}
+          interactorsMap={interactorsMap}
           interactionLocked={interactionLocked}
           updater={updater}
           osdStatus={osdStatus}

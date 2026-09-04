@@ -19,6 +19,7 @@ import {
   indexScoreboardResults,
   selectedTotalScore,
 } from "./scoreboard-model";
+import { formatScore } from "../../../shared/rational";
 
 export interface ScoreboardActionTarget {
   type: "problem" | "contestant" | "result";
@@ -499,7 +500,7 @@ const ScoreboardRow = memo(function ScoreboardRow({
         let displayText: string | number = "-";
         let colorClass = "text-text-muted";
         if (problem) {
-          displayText = problem.summary.score;
+          displayText = formatScore(problem.summary.score);
           if (problem.compileStatus === "SKIPPED" && problem.compileError === "not_found") {
             displayText = t("scoreboard.notFound");
             colorClass = "text-text-muted bg-surface-hover";

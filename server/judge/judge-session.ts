@@ -1,3 +1,4 @@
+import fs from "fs";
 import path from "path";
 import { isTextFile, readTextPreview } from "../file-utils.js";
 import { activeJobs } from "../jobs.js";
@@ -12,10 +13,21 @@ import { resolveProblemConfig } from "../problems/problem-config-repository.js";
 import {
   compileSubmission,
   resolveChecker,
+  resolveInteractor,
   type CompiledChecker,
+  type CompiledInteractor,
 } from "./compiler.js";
 import type { JudgeEventWriter } from "./judge-event-writer.js";
 import { calculateProblemSummary } from "./scoring.js";
+import {
+  addRational,
+  createRational,
+  divideRational,
+  multiplyRational,
+  parseRational,
+  rationalToNumber,
+  type Rational,
+} from "../../shared/rational.js";
 import {
   createSubmissionResolver,
   listContestants,
@@ -33,7 +45,7 @@ import {
   type PinnedJudgeToolchains,
   type JudgeToolchainRequirements,
 } from "./toolchain-preflight.js";
-import { ensureCertifiedLocalCppSessionProbe } from "./certified-local-session-probe.js";
+import { ensureJudgePrewarmReady } from "./background-prewarm.js";
 
 interface JudgeSessionOptions {
   request: Partial<BatchJudgeRequest>;
@@ -109,6 +121,11 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
     const checker = config.checkerType.toLowerCase();
     if (checker.endsWith(".cpp")) toolchainRequirements.checkers.add("cpp");
     if (checker.endsWith(".py")) toolchainRequirements.checkers.add("python");
+    if (config.isInteractive && config.interactor) {
+      const interactor = config.interactor.toLowerCase();
+      if (interactor.endsWith(".cpp")) toolchainRequirements.checkers.add("cpp");
+      if (interactor.endsWith(".py")) toolchainRequirements.checkers.add("python");
+    }
   }
   assertJudgeToolchainPreflight(toolchainRequirements, pinnedToolchains);
   if (
@@ -118,15 +135,15 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
     sendEvent("progress", {
       contestant: "",
       problem: "",
-      action: "Verifying certified compiler/runtime...",
+      action: "progress.verifyingEnvironment",
       percent: 0,
     });
-    await ensureCertifiedLocalCppSessionProbe(pinnedToolchains.cpp, tempDir, jobId);
+    await ensureJudgePrewarmReady(pinnedToolchains.cpp, tempDir, jobId);
   }
   sendEvent("progress", {
     contestant: "",
     problem: "",
-    action: "Scanning submissions and testcases...",
+    action: "progress.scanning",
     percent: 0,
   });
   for (const problem of plannedProblems.values()) {
@@ -154,6 +171,7 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
 
   // Map compiled checkers to avoid recompiling
   const compiledCheckers: Record<string, CompiledChecker> = {};
+  const compiledInteractors: Record<string, CompiledInteractor> = {};
 
   const totalProblemsCount = contestantDirs.length * (targetProblems ? targetProblems.length : 1);
   let completedProblemsCount = 0;
@@ -165,7 +183,7 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
       if (jobId && activeJobs.get(jobId)?.cancel) break;
       sendEvent("progress", {
         contestant, problem: targetProb,
-        action: "Locating submission...",
+        action: "progress.locating",
         percent: totalProblemsCount ? (completedProblemsCount / totalProblemsCount) * 100 : 0
       });
 
@@ -217,7 +235,7 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
 
       sendEvent("progress", {
         contestant, problem: problemName,
-        action: "Compiling...",
+        action: "progress.compilingSubmission",
         percent: totalProblemsCount ? (completedProblemsCount / totalProblemsCount) * 100 : 0
       });
 
@@ -249,26 +267,49 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
       const tcRuns: TestCaseRun[] = [];
       const tcDirEntries = plannedProblem.tests.map(testCase => testCase.files.name);
 
-       if (compileStatus === "OK") {
-         const cacheKey = `${problemName}_${checkerType}`;
-         if (!(cacheKey in compiledCheckers)) {
-           sendEvent("progress", {
-             contestant,
-             problem: problemName,
-             action: `Compiling custom checker (${checkerType})...`,
-             percent: totalProblemsCount ? (completedProblemsCount / totalProblemsCount) * 100 : 0
-           });
-           compiledCheckers[cacheKey] = await resolveChecker({
-             checkerType,
-             problemName,
-             problemDirectory: plannedProblem.directory.path,
-             tempDirectory: tempDir,
-             jobId,
-             cppToolchain: pinnedToolchains.cpp,
-             pythonToolchain: pinnedToolchains.python,
-           });
-         }
-         const isStdIO = probConf.useStdIO;
+        if (compileStatus === "OK") {
+          const cacheKey = `${problemName}_${checkerType}`;
+          if (!(cacheKey in compiledCheckers)) {
+            sendEvent("progress", {
+              contestant,
+              problem: problemName,
+              action: `Compiling custom checker (${checkerType})...`,
+              percent: totalProblemsCount ? (completedProblemsCount / totalProblemsCount) * 100 : 0
+            });
+            compiledCheckers[cacheKey] = await resolveChecker({
+              checkerType,
+              problemName,
+              problemDirectory: plannedProblem.directory.path,
+              tempDirectory: tempDir,
+              jobId,
+              cppToolchain: pinnedToolchains.cpp,
+              pythonToolchain: pinnedToolchains.python,
+            });
+          }
+
+          let compiledInteractor: CompiledInteractor | undefined;
+          if (probConf.isInteractive) {
+            const interactorKey = `${problemName}_${probConf.interactor || "interactor.cpp"}`;
+            if (!(interactorKey in compiledInteractors)) {
+              sendEvent("progress", {
+                contestant,
+                problem: problemName,
+                action: `Compiling interactor (${probConf.interactor || "interactor.cpp"})...`,
+                percent: totalProblemsCount ? (completedProblemsCount / totalProblemsCount) * 100 : 0
+              });
+              compiledInteractors[interactorKey] = await resolveInteractor({
+                interactorName: probConf.interactor || "interactor.cpp",
+                problemName,
+                problemDirectory: plannedProblem.directory.path,
+                tempDirectory: tempDir,
+                jobId,
+                cppToolchain: pinnedToolchains.cpp,
+                pythonToolchain: pinnedToolchains.python,
+              });
+            }
+            compiledInteractor = compiledInteractors[interactorKey];
+          }
+          const isStdIO = probConf.useStdIO;
 
          for (let i = 0; i < plannedProblem.tests.length; i++) {
              const plannedTestCase = plannedProblem.tests[i];
@@ -311,6 +352,7 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
              score: plannedTestCase.score,
              config: probConf,
              checker: compiledCheckers[`${problemName}_${checkerType}`],
+             interactor: compiledInteractor,
              program: compilation.program,
              jobId
            });
@@ -351,36 +393,45 @@ export function planProblemTestCases(
   problemDirectory: string,
   config: NormalizedProblemConfig,
 ): PlannedTestCase[] {
-  const discovered = discoverTestCases(problemDirectory);
+  const discovered = discoverTestCases(problemDirectory, config.isInteractive);
   const weighted = discovered.map(files => ({
     files,
     inputIsText: isTextFile(files.inputPath),
-    expectedOutputPreview: readTextPreview(files.outputPath),
+    expectedOutputPreview: files.outputPath && fs.existsSync(files.outputPath)
+      ? readTextPreview(files.outputPath)
+      : (config.isInteractive ? "[Interactive]" : ""),
     weight: testCaseWeight(config, files.name),
     timeLimitMs: testCaseTimeLimitMs(config, files.name),
   }));
-  const totalWeight = weighted.reduce((total, testCase) => total + testCase.weight, 0);
+  const totalWeight = weighted.reduce((total, testCase) => addRational(total, testCase.weight), createRational(0));
   return weighted.map(({ weight, ...testCase }) => ({
     ...testCase,
     score: testCaseScore(config, weight, totalWeight),
   }));
 }
 
-function testCaseWeight(config: NormalizedProblemConfig, testName: string): number {
+function testCaseWeight(config: NormalizedProblemConfig, testName: string): Rational {
   const polygonTest = config.polygonConfig?.tests?.[testName];
-  if (polygonTest?.points !== undefined) return Number(polygonTest.points);
-  if (config.testScores[testName] !== undefined) return Number(config.testScores[testName]);
-  return config.defaultScore !== undefined ? Number(config.defaultScore) : 1;
+  if (polygonTest?.points !== undefined) return parseRational(polygonTest.points);
+  if (config.testScores[testName] !== undefined) return parseRational(config.testScores[testName]);
+  return config.defaultScore !== undefined ? parseRational(config.defaultScore) : createRational(1);
 }
 
 function testCaseScore(
   config: NormalizedProblemConfig,
-  weight: number,
-  totalWeight: number,
+  weight: Rational,
+  totalWeight: Rational,
 ): number {
-  if (config.polygonConfig.enableGroups || config.totalScore === null) return weight;
-  const score = totalWeight > 0 ? (weight / totalWeight) * Number(config.totalScore) : 0;
-  return Math.round(score * 10_000) / 10_000;
+  if (config.polygonConfig.enableGroups || config.totalScore === null || config.totalScore === undefined || config.totalScore === "") {
+    return rationalToNumber(weight);
+  }
+  const totalScoreRat = parseRational(config.totalScore);
+  if (totalWeight.n === 0) return 0;
+  const scoreRat = divideRational(
+    multiplyRational(weight, totalScoreRat),
+    totalWeight
+  );
+  return rationalToNumber(scoreRat);
 }
 
 function testCaseTimeLimitMs(config: NormalizedProblemConfig, testName: string): number {

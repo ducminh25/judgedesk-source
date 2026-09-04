@@ -1,4 +1,5 @@
 import type { BatchJudgeResult, ContestantResult, ProblemResult } from "../../types";
+import { addRational, createRational, parseRational, rationalToNumber } from "../../../shared/rational";
 
 export interface ScoreboardResultIndex {
   contestants: ReadonlyMap<string, ContestantResult>;
@@ -32,13 +33,13 @@ export function selectedTotalScore(
   contestant: ContestantResult | undefined,
   selectedProblems: ReadonlySet<string>,
 ): number {
-  let total = 0;
+  let totalRat = createRational(0);
   for (const problem of contestant?.problems ?? []) {
     if (selectedProblems.has(problem.problemName.toLowerCase())) {
-      total += problem.summary.score;
+      totalRat = addRational(totalRat, parseRational(problem.summary.score));
     }
   }
-  return total;
+  return rationalToNumber(totalRat);
 }
 
 export type ContestantSortMode =

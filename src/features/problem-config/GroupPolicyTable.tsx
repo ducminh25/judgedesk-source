@@ -1,6 +1,12 @@
 import { Layout, X } from "lucide-react";
 import { PolygonConfig } from "../../types";
 import { useTranslation } from "react-i18next";
+import {
+  addRational,
+  createRational,
+  formatRational,
+  parseRational,
+} from "../../../shared/rational";
 
 interface Props {
   config: PolygonConfig;
@@ -36,7 +42,8 @@ export function GroupPolicyTable({ config, onConfigChange, onAddDependency, onRe
             ) : groupNames.map(groupName => {
               const group = config.groups[groupName];
               const tests = Object.values(config.tests).filter(test => test.group === groupName);
-              const points = tests.reduce((total, test) => total + (test.points || 0), 0);
+              const pointsRat = tests.reduce((total, test) => addRational(total, parseRational(test.points)), createRational(0));
+              const points = formatRational(pointsRat);
               return (
                 <tr key={groupName} className="border-b border-surface-border">
                   <td className="p-3 font-bold text-indigo-600 dark:text-indigo-400">{groupName}</td>

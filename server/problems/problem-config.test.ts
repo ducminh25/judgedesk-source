@@ -36,7 +36,9 @@ test("problem config defaults use the problem name and safe grading defaults", (
         c: ["-std=c11", "-O2", "-pipe"],
       },
     },
-    polygonConfig: { enableGroups: false, tests: {}, groups: {} }
+    polygonConfig: { enableGroups: false, tests: {}, groups: {} },
+    isInteractive: false,
+    interactor: "interactor.cpp",
   });
 });
 

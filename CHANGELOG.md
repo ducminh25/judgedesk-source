@@ -5,6 +5,21 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 ## [Unreleased]
 
+## [1.4.46] - 2026-09-04
+
+### Bài Tương Tác (Interactive), Chấm Điểm Phân Số & Tối Ưu Tốc Độ Khởi Động
+
+- **Hỗ trợ bài thi tương tác (Interactive Problems & Interactor)**: Tích hợp runner chấm bài thi tương tác trên Windows qua cơ chế Win32 AppContainer dual-job runner với hai đường ống ẩn danh hai chiều (bidirectional anonymous pipes). Hỗ trợ biên dịch và thực thi Interactor viết bằng C++ (hỗ trợ `testlib.h` chuẩn Codeforces/Polygon) hoặc Python. Hỗ trợ nạp bộ testcase bài tương tác chỉ chứa file dữ liệu vào (`.inp`) mà không bắt buộc có file kết quả mẫu (`.out`).
+- **Công cụ chấm điểm phân số chính xác tuyệt đối (Rational Scoring Engine)**: Triệt tiêu hoàn toàn hiện tượng sai số trôi dấu phẩy động IEEE 754 trong tính điểm và tổng điểm (hỗ trợ phân số tối giản như `1/3`, `2/3`, `0.35 * 10 = 3.5`). Tính toán và cộng dồn điểm chính xác dạng số hữu tỉ tối giản qua ước chung lớn nhất (GCD), đồng bộ định dạng điểm trên Scoreboard và xuất file Excel.
+- **Tối ưu tốc độ khởi động & loại bỏ độ trễ warm-up 10–13s**:
+  - Tự động sinh và nạp Precompiled Header (`bits/stdc++.h.gch`) với cờ chuẩn C++14 (`-std=c++14 -O2 -pipe`), tăng tốc độ biên dịch C++ gấp ~16.5 lần (từ ~3.6s xuống ~0.23s).
+  - Cơ chế Background Judge Pre-warm chạy ngầm ngay khi khởi động ứng dụng để nạp sẵn Managed GCC, khởi tạo kênh giao tiếp và làm nóng sandbox trước khi người dùng bấm Chấm bài.
+  - Thiết lập cơ chế bắt tay đồng bộ giữa phiên chấm và tiến trình pre-warm để đảm bảo không xung đột tài nguyên.
+- **Cải tiến giao diện & Sửa lỗi đồng bộ cấu hình**:
+  - Cải tiến cửa sổ tiến trình: giữ thanh tiến trình ở trạng thái chờ mượt mà trong giai đoạn chuẩn bị hệ thống, hiển thị phần trăm chuẩn xác từ bài thi đầu tiên.
+  - Bản địa hóa toàn diện tiếng Việt cho các thông báo trạng thái chấm.
+  - Sửa lỗi không lưu cờ Interactive vào `Config.cfg` và sửa lỗi không tải testcase bài tương tác trong cửa sổ Cài đặt bài tập.
+
 ## [1.4.45] - 2026-08-31
 
 ### Nâng giới hạn Bộ nhớ 1024 MB & Tối ưu Trình biên dịch

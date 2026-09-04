@@ -218,7 +218,7 @@ export function checkerResultFromExit(
   };
 }
 
-async function prepareNativeChecker(
+export async function prepareNativeChecker(
   checkerPath: string,
 ): Promise<{
   executableId: string;

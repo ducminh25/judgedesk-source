@@ -2,6 +2,8 @@ import crypto from "node:crypto";
 import type { Express } from "express";
 import { executorClient } from "./executor/client.js";
 import type {
+  ExecutorInteractiveRunResult,
+  ExecutorInteractiveRunSpec,
   ExecutorRunResult,
   ExecutorRunSpec,
 } from "./executor/protocol.js";
@@ -319,6 +321,18 @@ export function runReservedExecutor(
   spec: ExecutorRunSpec,
 ): Promise<ExecutorRunResult> {
   return executorClient.run(
+    spec,
+    () => judgeJobRegistry.startExecutorRun(jobId, spec.runId),
+  ).finally(() => {
+    judgeJobRegistry.completeExecutorRun(jobId, spec.runId);
+  });
+}
+
+export function runReservedInteractiveExecutor(
+  jobId: string | undefined,
+  spec: ExecutorInteractiveRunSpec,
+): Promise<ExecutorInteractiveRunResult> {
+  return executorClient.runInteractive(
     spec,
     () => judgeJobRegistry.startExecutorRun(jobId, spec.runId),
   ).finally(() => {

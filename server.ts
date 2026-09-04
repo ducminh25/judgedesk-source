@@ -11,7 +11,7 @@ import { registerToolchainRoutes } from "./server/routes/toolchain-routes.js";
 import { registerOsdRoutes } from "./server/routes/osd-routes.js";
 import { startParentWatchdog } from "./server/platform/parent-watchdog.js";
 import { startInitialToolchainDiscovery } from "./server/toolchains/discovery.js";
-import { startBackgroundCertifiedLocalProbe } from "./server/judge/certified-local-session-probe.js";
+import { startBackgroundJudgePrewarm } from "./server/judge/background-prewarm.js";
 
 startParentWatchdog(process.env.JUDGEDESK_PARENT_PID, async () => {
   console.error("[Tauri Shell] Parent process ended; shutting down backend sidecars.");
@@ -70,7 +70,7 @@ async function startServer() {
   // Fast discovery is passive and asynchronous. Cached state remains available
   // immediately while every backend launch refreshes it in the background.
   startInitialToolchainDiscovery();
-  startBackgroundCertifiedLocalProbe();
+  startBackgroundJudgePrewarm();
 
   registerBatchJudgeRoute(app);
   registerOsdRoutes(app);

@@ -102,7 +102,7 @@ export function registerBatchJudgeRoute(app: Express): void {
       sendEvent("progress", {
         contestant: "",
         problem: "",
-        action: "Initializing grading session...",
+        action: "progress.initializing",
         percent: 0,
       });
       workspace = createRunWorkspace();

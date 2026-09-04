@@ -3,6 +3,7 @@ import { FileText, X } from "lucide-react";
 import { ContestantResult } from "../types";
 import { useTranslation } from "react-i18next";
 import { formatCompileError } from "../features/judging/compile-diagnostics";
+import { formatScore } from "../../shared/rational";
 
 interface Props {
   title: string;
@@ -72,7 +73,7 @@ export default function ScoringLogModal({
               test: test.name,
               status: test.status,
               time: `${(test.executionTime / 1000).toFixed(3)} ${t("scoringLog.seconds")}`,
-              score: String(test.score),
+              score: formatScore(test.score),
               result:
                 test.checkerMessage ||
                 test.errorDetail ||

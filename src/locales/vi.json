@@ -94,7 +94,10 @@
     "verifyingEnvironment": "Đang kiểm tra trình biên dịch & môi trường...",
     "scanning": "Đang quét bài nộp và bộ test...",
     "compilingSubmission": "Đang biên dịch bài nộp...",
-    "compilingChecker": "Đang biên dịch bộ chấm (Checker)..."
+    "compilingChecker": "Đang biên dịch bộ chấm (Checker)...",
+    "compilingInteractor": "Đang biên dịch bộ tương tác (Interactor)...",
+    "locating": "Đang tìm bài làm thí sinh...",
+    "judgingTest": "Đang chấm test {{current}} / {{total}}"
   },
   "scoreboard": {
     "contestants": "Thí sinh",
@@ -140,6 +143,12 @@
     "save": "Lưu Cấu Hình",
     "useStandardInput": "Dùng luồng nhập chuẩn",
     "useStandardOutput": "Dùng luồng xuất chuẩn",
+    "isInteractive": "Interactive?",
+    "interactiveTooltip": "Bật chế độ chấm bài tương tác (Interactive Problem) theo chuẩn Codeforces Polygon testlib.h. Giải thuật của thí sinh sẽ giao tiếp trực tiếp 2 chiều với Interactor qua Standard I/O (cin/cout) trong sandbox biệt lập.",
+    "totalScore": "Tổng điểm",
+    "totalScorePlaceholder": "Tùy chọn (vd: 100/3, 10)",
+    "polygonStandard": "Chuẩn Polygon testlib.h",
+    "interactor": "Trình tương tác (Interactor)",
     "enableGroups": "Bật nhóm test?",
     "showContent": "Hiện nội dung?",
     "cancel": "Hủy",
@@ -319,6 +328,8 @@
     "compiledSuccessfully": "Biên dịch thành công trong",
     "expectedOutput": "Kết quả Đúng (Expected)",
     "contestantOutput": "Kết quả Bài làm (Actual)",
+    "interactiveProtocol": "Giao thức tương tác",
+    "interactiveTranscript": "Nhật ký tương tác (Transcript)",
     "noMatch": "Không có test nào khớp với bộ lọc hiện tại.",
     "seconds": "s",
     "compilation": "Biên dịch",

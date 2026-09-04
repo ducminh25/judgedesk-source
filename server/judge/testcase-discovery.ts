@@ -22,14 +22,14 @@ export function createProblemDirectoryResolver(testDirectory: string): (problemN
   };
 }
 
-export function listTestDirectories(problemDirectory: string): string[] {
-  return discoverTestCases(problemDirectory).map(testCase => testCase.name);
+export function listTestDirectories(problemDirectory: string, isInteractive = false): string[] {
+  return discoverTestCases(problemDirectory, isInteractive).map(testCase => testCase.name);
 }
 
-export function discoverTestCases(problemDirectory: string): TestCaseFiles[] {
+export function discoverTestCases(problemDirectory: string, isInteractive = false): TestCaseFiles[] {
   return fs.readdirSync(problemDirectory, { withFileTypes: true })
     .filter(entry => entry.isDirectory())
-    .map(entry => resolveTestCaseFiles(problemDirectory, entry.name))
+    .map(entry => resolveTestCaseFiles(problemDirectory, entry.name, isInteractive))
     .filter((testCase): testCase is TestCaseFiles => testCase !== null)
     .sort((left, right) => left.name.localeCompare(
       right.name,
@@ -38,7 +38,11 @@ export function discoverTestCases(problemDirectory: string): TestCaseFiles[] {
     ));
 }
 
-export function resolveTestCaseFiles(problemDirectory: string, testName: string): TestCaseFiles | null {
+export function resolveTestCaseFiles(
+  problemDirectory: string,
+  testName: string,
+  isInteractive = false,
+): TestCaseFiles | null {
   const directory = path.join(problemDirectory, testName);
   let files: fs.Dirent[];
   try {
@@ -55,12 +59,13 @@ export function resolveTestCaseFiles(problemDirectory: string, testName: string)
     const extension = path.extname(name).toLowerCase();
     return extension === ".out" || extension === ".ans";
   });
-  if (!inputFileName || !outputFileName) return null;
+  if (!inputFileName) return null;
+  if (!isInteractive && !outputFileName) return null;
   return {
     name: testName,
     directory,
     inputPath: path.join(directory, inputFileName),
-    outputPath: path.join(directory, outputFileName),
+    outputPath: outputFileName ? path.join(directory, outputFileName) : "",
     inputFileName
   };
 }

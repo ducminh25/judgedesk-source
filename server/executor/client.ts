@@ -11,6 +11,8 @@ import {
 } from "../runtime.js";
 import type {
   ExecutorHealth,
+  ExecutorInteractiveRunResult,
+  ExecutorInteractiveRunSpec,
   ExecutorRequest,
   ExecutorResponse,
   ExecutorRunResult,
@@ -113,6 +115,38 @@ export class ExecutorClient {
     const response = await this.request({ type: "run", id: crypto.randomUUID(), spec }, spec.limits.wallTimeMs + 30_000);
     if (response.type !== "run_result") {
       throw new SecureRunnerError("SECURE_RUNNER_PROTOCOL_ERROR", `Unexpected ${response.type} response to run request.`);
+    }
+    if (response.result.runId !== spec.runId) {
+      throw new SecureRunnerError(
+        "SECURE_RUNNER_PROTOCOL_ERROR",
+        `Executor result runId mismatch: expected ${spec.runId}, received ${response.result.runId}.`,
+      );
+    }
+    return response.result;
+  }
+
+  async runInteractive(
+    spec: ExecutorInteractiveRunSpec,
+    beforeSubmit?: () => void,
+  ): Promise<ExecutorInteractiveRunResult> {
+    const health = await this.start();
+    if (!health.ready) {
+      throw new SecureRunnerError(
+        "SECURE_RUNNER_UNAVAILABLE",
+        health.diagnostics.join("; ") || "Native secure runner is unavailable.",
+      );
+    }
+    beforeSubmit?.();
+    const timeoutMs = (spec.submission.limits.wallTimeMs * 2) + 30_000;
+    const response = await this.request(
+      { type: "interactive_run", id: crypto.randomUUID(), spec },
+      timeoutMs,
+    );
+    if (response.type !== "interactive_run_result") {
+      throw new SecureRunnerError(
+        "SECURE_RUNNER_PROTOCOL_ERROR",
+        `Unexpected ${response.type} response to interactive_run request.`,
+      );
     }
     if (response.result.runId !== spec.runId) {
       throw new SecureRunnerError(

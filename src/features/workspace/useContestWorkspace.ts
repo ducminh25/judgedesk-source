@@ -19,6 +19,7 @@ interface ProblemsResponse {
   success: boolean;
   data?: string[];
   customCheckers?: Record<string, string[]>;
+  interactors?: Record<string, string[]>;
 }
 
 interface ContestantsResponse {
@@ -45,7 +46,7 @@ async function fetchContestants(path: string): Promise<string[]> {
   return data.data;
 }
 
-async function fetchProblems(path: string): Promise<Required<Pick<ProblemsResponse, "data" | "customCheckers">>> {
+async function fetchProblems(path: string): Promise<Required<Pick<ProblemsResponse, "data" | "customCheckers" | "interactors">>> {
   const response = await apiFetch(`/api/fetch-problems?path=${encodeURIComponent(path)}`);
   const data = (await response.json()) as ProblemsResponse & { code?: string; message?: string };
   if (!response.ok || !data.success || !data.data) {
@@ -56,6 +57,7 @@ async function fetchProblems(path: string): Promise<Required<Pick<ProblemsRespon
   return {
     data: data.data,
     customCheckers: data.customCheckers || {},
+    interactors: data.interactors || {},
   };
 }
 
@@ -72,6 +74,7 @@ export function useContestWorkspace() {
   const [selectedContestants, setSelectedContestants] = useState<Record<string, boolean>>({});
   const [selectedProblems, setSelectedProblems] = useState<Record<string, boolean>>({});
   const [customCheckers, setCustomCheckers] = useState<Record<string, string[]>>({});
+  const [interactors, setInteractors] = useState<Record<string, string[]>>({});
 
   const loadContestants = useCallback(async (
     pathOverride?: string,
@@ -102,6 +105,7 @@ export function useContestWorkspace() {
       const data = await fetchProblems(targetPath);
       setProblems(data.data);
       setCustomCheckers(data.customCheckers);
+      setInteractors(data.interactors);
       setSelectedProblems((previous) => options.preserveSelection
         ? reconcileSelection(data.data, previous)
         : Object.fromEntries(data.data.map((name) => [name, true])));
@@ -122,13 +126,14 @@ export function useContestWorkspace() {
   const restoreWorkspace = useCallback(async (workspace: RestoredContestWorkspace) => {
     const [loadedContestants, loadedProblems] = await Promise.all([
       fetchContestants(workspace.contestantsPath).catch(() => []),
-      fetchProblems(workspace.testsPath).catch(() => ({ data: [], customCheckers: {} })),
+      fetchProblems(workspace.testsPath).catch(() => ({ data: [], customCheckers: {}, interactors: {} })),
     ]);
     setContestantsPathMemory((memory) => activateWorkspacePath(memory, workspace.contestantsPath, false));
     setTestPathMemory((memory) => activateWorkspacePath(memory, workspace.testsPath, false));
     setContestants(loadedContestants);
     setProblems(loadedProblems.data);
     setCustomCheckers(loadedProblems.customCheckers);
+    setInteractors(loadedProblems.interactors);
     setSelectedContestants(Object.fromEntries(loadedContestants.map((name) => [
       name,
       workspace.selectedContestants[name] ?? true,
@@ -178,6 +183,7 @@ export function useContestWorkspace() {
     contestantsPath,
     contestantsPickerPath: workspacePickerPath(contestantsPathMemory),
     customCheckers,
+    interactors,
     loadContestants,
     loadProblems,
     problemConfigs,

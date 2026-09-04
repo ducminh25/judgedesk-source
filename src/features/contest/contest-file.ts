@@ -66,10 +66,10 @@ function isBooleanRecord(value: unknown): value is Record<string, boolean> {
 function isProblemConfigRecord(value: unknown): value is Record<string, ProblemConfig> {
   return isRecord(value) && Object.values(value).every((config) => {
     if (!isRecord(config) || typeof config.useStdIO !== "boolean") return false;
-    if (config.totalScore !== null && typeof config.totalScore !== "number") return false;
-    if (typeof config.defaultScore !== "number" || !Number.isFinite(config.defaultScore)) return false;
+    if (config.totalScore !== null && typeof config.totalScore !== "number" && typeof config.totalScore !== "string") return false;
+    if ((typeof config.defaultScore !== "number" && typeof config.defaultScore !== "string") || (typeof config.defaultScore === "number" && !Number.isFinite(config.defaultScore))) return false;
     return isRecord(config.testScores)
-      && Object.values(config.testScores).every((score) => typeof score === "number" && Number.isFinite(score));
+      && Object.values(config.testScores).every((score) => (typeof score === "number" && Number.isFinite(score)) || typeof score === "string");
   });
 }
 

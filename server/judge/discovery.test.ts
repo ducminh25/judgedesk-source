@@ -11,7 +11,7 @@ import {
   listTestDirectories,
   resolveTestCaseFiles,
 } from "./testcase-discovery";
-import { discoverCustomCheckers } from "../routes/problem-routes";
+import { discoverCustomCheckers, discoverInteractors } from "../routes/problem-routes";
 
 test("discovery matches problem names case-insensitively and sorts tests naturally", t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "themis-discovery-"));
@@ -194,4 +194,32 @@ test("custom checker discovery discovers and prioritizes .exe on Windows and sou
   }
   assert.deepEqual(discoverCustomCheckers(root, "win32"), ["alpha.exe", "legacy.exe", "checker2.cpp", "checker10.py"]);
   assert.deepEqual(discoverCustomCheckers(root, "darwin"), ["checker2.cpp", "checker10.py"]);
+});
+
+test("interactor discovery discovers and sorts interactors across platforms", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-interactor-discovery-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const name of ["interactor.cpp", "interactor2.py", "interactor.exe", "interactor_custom.exe", "notes.txt"]) {
+    fs.writeFileSync(path.join(root, name), "", "utf8");
+  }
+  assert.deepEqual(discoverInteractors(root, "win32"), ["interactor_custom.exe", "interactor.exe", "interactor.cpp", "interactor2.py"]);
+  assert.deepEqual(discoverInteractors(root, "darwin"), ["interactor.cpp", "interactor2.py"]);
+});
+
+test("testcase discovery for interactive problem allows input-only directories", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-interactive-discovery-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const test01 = path.join(root, "test01");
+  fs.mkdirSync(test01, { recursive: true });
+  fs.writeFileSync(path.join(test01, "data.inp"), "42", "utf8");
+
+  // Non-interactive ignores input-only test
+  assert.deepEqual(discoverTestCases(root, false), []);
+
+  // Interactive accepts input-only test
+  const testcases = discoverTestCases(root, true);
+  assert.equal(testcases.length, 1);
+  assert.equal(testcases[0].name, "test01");
+  assert.equal(testcases[0].inputFileName, "data.inp");
+  assert.equal(testcases[0].outputPath, "");
 });
