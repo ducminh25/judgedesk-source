@@ -22,6 +22,26 @@ test("batch point edits update only selected tests without mutating input", () =
   assert.equal(original.tests["01"].points, 1);
 });
 
+test("supports fraction points in test edits", () => {
+  const original = baseConfig();
+  const result = applyTestEdit(
+    original,
+    { type: "points", testName: "01", x: 0, y: 0 },
+    "1/3",
+    new Set()
+  );
+  assert.equal(result.tests["01"].points, "1/3");
+
+  const batchResult = applyTestEdit(
+    original,
+    { type: "batchPoints", x: 0, y: 0 },
+    "5/3",
+    new Set(["01", "02"])
+  );
+  assert.equal(batchResult.tests["01"].points, "5/3");
+  assert.equal(batchResult.tests["02"].points, "5/3");
+});
+
 test("group edits create a default group and can remove the assignment", () => {
   const assigned = applyTestEdit(
     baseConfig(),

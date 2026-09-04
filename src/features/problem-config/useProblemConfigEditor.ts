@@ -3,6 +3,12 @@ import { apiFetch } from "../../api";
 import { PolygonConfig, PolygonTestConfig, ProblemConfig } from "../../types";
 import { normalizeCompileConfig } from "../../../shared/compile-config.js";
 import {
+  addRational,
+  createRational,
+  formatRational,
+  parseRational,
+} from "../../../shared/rational";
+import {
   applyTestEdit,
   createEmptyPolygonConfig,
   createsGroupCycle,
@@ -71,6 +77,8 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
             ...configData.data,
             checkerType: configData.data.checkerType || previous.checkerType || "C1",
             compile: normalizeCompileConfig(configData.data.compile ?? previous.compile),
+            isInteractive: configData.data.isInteractive ?? previous.isInteractive ?? false,
+            interactor: configData.data.interactor || previous.interactor || "interactor.cpp",
           }));
           setUseStdIn(configData.data.useStdIn ?? configData.data.useStdIO ?? false);
           setUseStdOut(configData.data.useStdOut ?? configData.data.useStdIO ?? false);
@@ -88,7 +96,13 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
   }, [problemDirPath, problemName]);
 
   const totalPoints = useMemo(
-    () => (Object.values(polygonConfig.tests) as PolygonTestConfig[]).reduce((total, test) => total + (test.points || 0), 0),
+    () => {
+      const rat = (Object.values(polygonConfig.tests) as PolygonTestConfig[]).reduce(
+        (total, test) => addRational(total, parseRational(test.points)),
+        createRational(0)
+      );
+      return formatRational(rat);
+    },
     [polygonConfig.tests]
   );
 
@@ -142,6 +156,8 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
         inputFile,
         outputFile,
         compile: normalizeCompileConfig(config.compile),
+        isInteractive: config.isInteractive ?? false,
+        interactor: config.interactor || "interactor.cpp",
       };
       await apiFetch("/api/polygon-config", {
         method: "POST",
@@ -156,6 +172,8 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
         inputFile,
         outputFile,
         compile: normalizeCompileConfig(config.compile),
+        isInteractive: config.isInteractive ?? false,
+        interactor: config.interactor || "interactor.cpp",
         polygonConfig: configToSave
       });
       onClose();

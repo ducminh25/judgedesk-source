@@ -122,7 +122,7 @@ export interface BatchJudgeResult {
 }
 
 export interface PolygonTestConfig {
-  points: number;
+  points: number | string;
   group?: string;
   timeLimit?: number;
 }
@@ -163,13 +163,15 @@ export interface ProblemConfig {
   useStdOut?: boolean;
   inputFile?: string;
   outputFile?: string;
-  totalScore: number | null;
-  defaultScore: number;
-  testScores: Record<string, number>;
+  totalScore: number | string | null;
+  defaultScore: number | string;
+  testScores: Record<string, number | string>;
   memoryLimit?: number;
   polygonConfig?: PolygonConfig;
   checkerType?: string;
   compile?: ProblemCompileConfig;
+  isInteractive?: boolean;
+  interactor?: string;
 }
 
 export interface NormalizedProblemConfig extends ProblemConfig {
@@ -181,6 +183,8 @@ export interface NormalizedProblemConfig extends ProblemConfig {
   checkerType: string;
   polygonConfig: PolygonConfig;
   compile: ProblemCompileConfig;
+  isInteractive?: boolean;
+  interactor?: string;
 }
 
 export interface HostStatus {

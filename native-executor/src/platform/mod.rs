@@ -102,11 +102,45 @@ impl Platform {
         }
     }
 
+    pub fn run_interactive(
+        &self,
+        spec: &crate::protocol::InteractiveRunSpec,
+        active: &ActiveRuns,
+    ) -> crate::protocol::InteractiveRunResult {
+        match &self.inner {
+            #[cfg(windows)]
+            PlatformInner::Windows(inner) => inner.run_interactive(&self.root, spec, active),
+            #[cfg(target_os = "macos")]
+            PlatformInner::Macos(_inner) => interactive_failure(
+                spec,
+                "interactive runner is only supported on Windows in this build".into(),
+            ),
+            PlatformInner::Unsupported(error) => interactive_failure(spec, error.clone()),
+        }
+    }
+
     pub fn shutdown(&self, active: &ActiveRuns) {
         let runs: Vec<_> = active.lock().unwrap().values().cloned().collect();
         for run in runs {
             run.cancel();
         }
+    }
+}
+
+pub fn interactive_failure(
+    spec: &crate::protocol::InteractiveRunSpec,
+    message: String,
+) -> crate::protocol::InteractiveRunResult {
+    crate::protocol::InteractiveRunResult {
+        run_id: spec.run_id.clone(),
+        verdict: "JE".into(),
+        score_multiplier: Some(0.0),
+        execution_time_ms: 0,
+        peak_memory_bytes: None,
+        message: Some(message.clone()),
+        transcript: None,
+        submission_result: failure(&spec.submission, RunReason::InternalError, message.clone()),
+        interactor_result: failure(&spec.interactor, RunReason::InternalError, message),
     }
 }
 

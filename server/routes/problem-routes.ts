@@ -44,12 +44,14 @@ export function registerProblemRoutes(app: Express): void {
       dirs.sort(naturalSort);
 
       const customCheckers: Record<string, string[]> = {};
+      const interactors: Record<string, string[]> = {};
       for (const dir of dirs) {
         const problemPath = path.join(resolved, dir);
         customCheckers[dir] = discoverCustomCheckers(problemPath);
+        interactors[dir] = discoverInteractors(problemPath);
       }
 
-      return res.json({ success: true, data: dirs, customCheckers });
+      return res.json({ success: true, data: dirs, customCheckers, interactors });
     } catch (error: any) {
       const code = error?.code || "DIRECTORY_ACCESS_ERROR";
       return res.status(500).json({ success: false, code, message: "Failed to access problems directory" });
@@ -67,7 +69,9 @@ export function registerProblemRoutes(app: Express): void {
       if (!fs.statSync(resolved).isDirectory()) {
         return res.status(400).json({ success: false, code: "NOT_A_DIRECTORY", message: "Path is not a directory" });
       }
-      const dirs = listTestDirectories(resolved);
+      const storedConfig = readStoredProblemConfig(resolved);
+      const isInteractive = Boolean(storedConfig?.isInteractive || req.query.isInteractive === "true");
+      const dirs = listTestDirectories(resolved, isInteractive);
       return res.json({ success: true, data: dirs });
     } catch (error: any) {
       const code = error?.code || "DIRECTORY_ACCESS_ERROR";
@@ -91,10 +95,12 @@ export function registerProblemRoutes(app: Express): void {
         return res.status(400).json({ success: false, code: "NOT_A_DIRECTORY", message: "Path is not a directory" });
       }
 
-      const dirs = listTestDirectories(resolved);
+      const storedConfig = readStoredProblemConfig(resolved);
+      const isInteractive = Boolean(storedConfig?.isInteractive || req.query.isInteractive === "true");
+      const dirs = listTestDirectories(resolved, isInteractive);
 
       const result = dirs.map((dir) => {
-        const testFiles = resolveTestCaseFiles(resolved, dir);
+        const testFiles = resolveTestCaseFiles(resolved, dir, isInteractive);
         if (!testFiles) return { name: dir, preview: "", size: 0 };
         const inputPath = testFiles.inputPath;
 
@@ -155,6 +161,46 @@ export function discoverCustomCheckers(
       const isCandidate = lower.endsWith(".cpp")
         || lower.endsWith(".py")
         || (isWindows && lower.endsWith(".exe"));
+      if (!isCandidate) return false;
+      try {
+        return fs.statSync(path.join(problemPath, file)).isFile();
+      } catch {
+        return false;
+      }
+    });
+
+    const getExtensionPriority = (fileName: string): number => {
+      const lower = fileName.toLowerCase();
+      if (lower.endsWith(".exe")) return 0;
+      if (lower.endsWith(".cpp")) return 1;
+      if (lower.endsWith(".py")) return 2;
+      return 3;
+    };
+
+    return files.sort((a, b) => {
+      const prioA = getExtensionPriority(a);
+      const prioB = getExtensionPriority(b);
+      if (prioA !== prioB) return prioA - prioB;
+      return naturalSort(a, b);
+    });
+  } catch {
+    return [];
+  }
+}
+
+export function discoverInteractors(
+  problemPath: string,
+  platform: NodeJS.Platform = process.platform,
+): string[] {
+  try {
+    const isWindows = platform === "win32";
+    const files = fs.readdirSync(problemPath).filter((file) => {
+      const lower = file.toLowerCase();
+      const isCandidate = lower.startsWith("interactor") && (
+        lower.endsWith(".cpp")
+        || lower.endsWith(".py")
+        || (isWindows && lower.endsWith(".exe"))
+      );
       if (!isCandidate) return false;
       try {
         return fs.statSync(path.join(problemPath, file)).isFile();

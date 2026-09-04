@@ -78,6 +78,7 @@ export interface AppModalsProps {
   thisinhPath: string;
   problemConfigs: Record<string, ProblemConfig>;
   customCheckersMap: Record<string, string[]>;
+  interactorsMap?: Record<string, string[]>;
   interactionLocked: boolean;
   updater: ReturnType<typeof useAppUpdater>;
   osdStatus: OsdStatusState;
@@ -172,6 +173,7 @@ export default function AppModals({
   thisinhPath,
   problemConfigs,
   customCheckersMap,
+  interactorsMap = {},
   interactionLocked,
   updater,
   osdStatus,
@@ -326,6 +328,7 @@ export default function AppModals({
           }}
           onClose={onCloseConfigProblem}
           customCheckers={customCheckersMap[activeConfigProblem] || []}
+          interactors={interactorsMap[activeConfigProblem] || []}
           saveDisabled={interactionLocked}
         />
       )}

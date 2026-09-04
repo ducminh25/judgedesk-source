@@ -1,6 +1,12 @@
 import type ExcelJS from "exceljs";
 import type { BatchJudgeResult, ContestantResult, RunMetadata } from "../../types";
 import { describeTestResult } from "../judging/verdict";
+import {
+  addRational,
+  createRational,
+  parseRational,
+  rationalToNumber,
+} from "../../../shared/rational";
 
 export interface ScoreWorkbookLabels {
   scoreboardTitle: string;
@@ -192,7 +198,7 @@ function buildSummaryRows(
 ) {
   return contestants.map(contestant => {
     const row: Record<string, WorkbookCellValue> = { [labels.candidate]: contestant.contestantName };
-    let totalScore = 0;
+    let totalScoreRat = createRational(0);
     let hasResult = false;
     for (const problemName of problemNames) {
       const problem = findProblem(contestant, problemName);
@@ -206,11 +212,11 @@ function buildSummaryRows(
         row[problemName] = labels.compilationError;
       } else {
         hasResult = true;
-        row[problemName] = problem.summary.score;
-        totalScore += problem.summary.score;
+        row[problemName] = roundScore(problem.summary.score);
+        totalScoreRat = addRational(totalScoreRat, parseRational(problem.summary.score));
       }
     }
-    row[labels.total] = hasResult ? roundScore(totalScore) : null;
+    row[labels.total] = hasResult ? Math.round(rationalToNumber(totalScoreRat) * 100) / 100 : null;
     return row;
   });
 }
@@ -235,12 +241,16 @@ function buildDetailRows(
         const orderB = problemOrder.get(b.problemName.trim().toLowerCase()) ?? 0;
         return orderA - orderB;
       });
+    const contestantTotalRat = problems.reduce(
+      (total, problem) => addRational(total, parseRational(problem.summary.score)),
+      createRational(0)
+    );
     rows.push({
       [labels.candidate]: contestant.contestantName,
       [labels.problem]: "",
       [labels.test]: "",
       [labels.score]: problems.length > 0
-        ? roundScore(problems.reduce((total, problem) => total + problem.summary.score, 0))
+        ? Math.round(rationalToNumber(contestantTotalRat) * 100) / 100
         : null,
       [labels.time]: "",
       [labels.results]: ""
@@ -301,5 +311,6 @@ function emptyContestant(contestantName: string): ContestantResult {
 }
 
 function roundScore(score: number): number {
-  return Math.round(score * 10_000) / 10_000;
+  const r = parseRational(score);
+  return Math.round(rationalToNumber(r) * 100) / 100;
 }

@@ -707,6 +707,67 @@ fn serve_requests(
                     )?;
                 }
             }
+            ExecutorRequest::InteractiveRun { id, spec } => {
+                if !platform.health().ready {
+                    send(
+                        writer,
+                        ExecutorResponse::Error {
+                            id,
+                            code: "SECURE_RUNNER_UNAVAILABLE".into(),
+                            message: platform.health().diagnostics.join("; "),
+                        },
+                    )?;
+                    continue;
+                }
+                if !accepted_runs.lock().unwrap().insert(spec.run_id.clone()) {
+                    send(
+                        writer,
+                        ExecutorResponse::Error {
+                            id,
+                            code: "SECURE_RUNNER_INVALID_REQUEST".into(),
+                            message: "duplicate runId".into(),
+                        },
+                    )?;
+                    continue;
+                }
+                let worker_platform = Arc::clone(platform);
+                let worker_active = Arc::clone(active);
+                let worker_accepted_runs = Arc::clone(accepted_runs);
+                let worker_writer = Arc::clone(writer);
+                let run_id = spec.run_id.clone();
+                let worker_run_id = run_id.clone();
+                let worker_id = id.clone();
+                if let Err(error) = std::thread::Builder::new()
+                    .name(format!("judgedesk-interactive-{worker_run_id}"))
+                    .spawn(move || {
+                        let result = worker_platform.run_interactive(&spec, &worker_active);
+                        let _ = send(
+                            &worker_writer,
+                            ExecutorResponse::InteractiveRunResult {
+                                id: worker_id,
+                                result,
+                            },
+                        );
+                        worker_accepted_runs
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner())
+                            .remove(&worker_run_id);
+                    })
+                {
+                    accepted_runs
+                        .lock()
+                        .unwrap_or_else(|poisoned| poisoned.into_inner())
+                        .remove(&run_id);
+                    send(
+                        writer,
+                        ExecutorResponse::Error {
+                            id,
+                            code: "SECURE_RUNNER_UNAVAILABLE".into(),
+                            message: format!("cannot start interactive worker: {error}"),
+                        },
+                    )?;
+                }
+            }
             ExecutorRequest::Cancel { id, run_id } => {
                 // A successful cancellation response is a drain acknowledgement, not merely
                 // proof that a signal was requested. The worker attempts its terminal RunResult

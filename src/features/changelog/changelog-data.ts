@@ -11,6 +11,28 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
   {
+    version: "1.4.46",
+    date: "2026-09-04",
+    sections: [
+      {
+        title: "Bài Tương Tác (Interactive), Chấm Điểm Phân Số & Tối Ưu Tốc Độ Khởi Động",
+        items: [
+          "Hỗ trợ bài thi tương tác (Interactive Problems & Interactor) qua Win32 AppContainer dual-job runner với hai đường ống ẩn danh hai chiều (bidirectional anonymous pipes).",
+          "Hỗ trợ biên dịch và thực thi Interactor viết bằng C++ (hỗ trợ testlib.h chuẩn Codeforces/Polygon) và Python.",
+          "Hỗ trợ nạp bộ testcase bài tương tác chỉ chứa file dữ liệu vào (.inp) mà không bắt buộc có file kết quả mẫu (.out).",
+          "Công cụ chấm điểm phân số chính xác tuyệt đối (Rational Scoring Engine), triệt tiêu hoàn toàn sai số trôi dấu phẩy động IEEE 754.",
+          "Tính toán và cộng dồn điểm chính xác dạng số hữu tỉ tối giản qua ước chung lớn nhất (GCD), định dạng chuẩn xác trên Scoreboard và file Excel.",
+          "Tự động sinh và nạp Precompiled Header (bits/stdc++.h.gch) giúp tăng tốc độ biên dịch C++ gấp ~16.5 lần (từ ~3.6s xuống ~0.23s).",
+          "Cơ chế Background Judge Pre-warm chạy ngầm ngay khi mở ứng dụng, loại bỏ hoàn toàn độ trễ 10-13s khi bấm Chấm bài lần đầu.",
+          "Bắt tay đồng bộ giữa phiên chấm và tiến trình pre-warm để đảm bảo không xung đột tài nguyên.",
+          "Cải tiến cửa sổ tiến trình với hiệu ứng chờ mượt mà trong giai đoạn chuẩn bị và hiển thị phần trăm chuẩn xác từ bài thi đầu tiên.",
+          "Bản địa hóa toàn diện tiếng Việt cho các thông báo trạng thái chấm bài.",
+          "Sửa lỗi lưu cờ Interactive vào Config.cfg và hiển thị testcase bài tương tác trong cửa sổ Cài đặt bài tập.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.4.45",
     date: "2026-08-31",
     sections: [
@@ -471,6 +493,28 @@ export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
 ];
 
 export const CHANGELOG_DATA_EN: ChangelogRelease[] = [
+  {
+    version: "1.4.46",
+    date: "2026-09-04",
+    sections: [
+      {
+        title: "Interactive Problems, Exact Rational Scoring & Startup Pre-warm Optimizations",
+        items: [
+          "Integrated interactive problem execution on Windows using a dual-job Win32 AppContainer runner with bidirectional anonymous pipes.",
+          "Supported compiling and running custom C++ interactors (bundled with standard Codeforces/Polygon testlib.h) and Python interactors.",
+          "Supported interactive testcase discovery with input-only directories without requiring output files.",
+          "Exact Rational Scoring Engine eliminating IEEE 754 floating-point epsilon drift across test and problem score accumulation.",
+          "Accurate fraction math with greatest common divisor (GCD) simplification, clean formatting, and accurate Excel workbook score exports.",
+          "Automatically generated Precompiled Header (bits/stdc++.h.gch) with -std=c++14 -O2 -pipe, speeding up C++ compilation by ~16.5x (from ~3.6s to ~0.23s).",
+          "Background Judge Pre-warm initiates immediately upon application launch to stage Managed GCC and warm up the sandbox, eliminating the initial 10–13s delay.",
+          "Graceful synchronization between active judge sessions and pre-warm execution to eliminate race conditions.",
+          "Polished judging progress window with indeterminate indicator during system setup and accurate percentage progression from the first submission.",
+          "Full Vietnamese and English localization for all judging stages.",
+          "Fixed interactive configuration persistence in Config.cfg and interactive testcase loading in the Problem Configuration editor.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.4.45",
     date: "2026-08-31",

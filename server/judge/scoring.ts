@@ -1,4 +1,5 @@
 import type { ProblemResult, TestCaseRun } from "../types.js";
+import { addRational, createRational, parseRational, rationalToNumber } from "../../shared/rational.js";
 
 interface PolygonTestConfig {
   group?: string;
@@ -45,49 +46,53 @@ export function calculateProblemSummary({
   applyGroupScoring(testCases, config.polygonConfig);
 
   const passed = testCases.filter((test) => test.status === "AC").length;
-  let score = testCases.reduce((total, test) => total + test.score, 0);
+  const scoreRat = testCases.reduce(
+    (total, test) => addRational(total, parseRational(test.score)),
+    createRational(0)
+  );
+  let score = rationalToNumber(scoreRat);
   const status = calculateProblemStatus(compileStatus, testCases);
   const polygonConfig = config.polygonConfig;
   const hasConfiguredPolygonPoints = testDirectories.some(
     (testDirectory) => polygonConfig?.tests?.[testDirectory]?.points !== undefined
   );
-  let maxScore = 0;
+  let maxScoreRat = createRational(0);
 
   if (polygonConfig?.enableGroups) {
-    maxScore = Object.values(polygonConfig.tests || {}).reduce(
-      (total, test) => total + (Number(test.points) || 0),
-      0
+    maxScoreRat = Object.values(polygonConfig.tests || {}).reduce(
+      (total, test) => addRational(total, parseRational(test.points)),
+      createRational(0)
     );
   } else if (config.totalScore !== undefined && config.totalScore !== null && config.totalScore !== "") {
-    maxScore = Number(config.totalScore);
-    score = roundDisplayScore(score);
+    maxScoreRat = parseRational(config.totalScore);
   } else if (hasConfiguredPolygonPoints) {
-    maxScore = testDirectories.reduce(
-      (total, testDirectory) => total + (Number(polygonConfig?.tests?.[testDirectory]?.points) || 0),
-      0
+    maxScoreRat = testDirectories.reduce(
+      (total, testDirectory) => addRational(total, parseRational(polygonConfig?.tests?.[testDirectory]?.points)),
+      createRational(0)
     );
-    score = roundDisplayScore(score);
   } else {
     if (testCases.length > 0) {
-      maxScore = testDirectories.reduce((total, testDirectory) => {
+      maxScoreRat = testDirectories.reduce((total, testDirectory) => {
         const configuredScore = config.testScores?.[testDirectory];
         const testScore =
           configuredScore !== undefined && configuredScore !== ""
-            ? Number(configuredScore)
+            ? parseRational(configuredScore)
             : config.defaultScore !== undefined
-              ? Number(config.defaultScore)
-              : 1;
-        return total + testScore;
-      }, 0);
+              ? parseRational(config.defaultScore)
+              : createRational(1);
+        return addRational(total, testScore);
+      }, createRational(0));
     }
-    score = roundDisplayScore(score);
   }
+
+  score = roundDisplayScore(score);
+  const maxScore = roundDisplayScore(rationalToNumber(maxScoreRat));
 
   return {
     total: testCases.length,
     passed,
     score,
-    maxScore: roundDisplayScore(maxScore),
+    maxScore,
     status
   };
 }
@@ -131,5 +136,6 @@ function calculateProblemStatus(
 }
 
 function roundDisplayScore(score: number): number {
-  return Math.round(score * 100) / 100;
+  const r = parseRational(score);
+  return rationalToNumber(r);
 }

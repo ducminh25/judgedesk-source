@@ -80,3 +80,49 @@ test("compile errors take precedence when no tests ran", () => {
 
   assert.equal(summary.status, "CE");
 });
+
+test("scoring eliminates IEEE floating point epsilon (0.35*10=3.5 and 0.3*10=3)", () => {
+  const testCases35 = Array.from({ length: 10 }, (_, i) => testCase(`t${i}`, "AC", 0.35));
+  const summary35 = calculateProblemSummary({
+    compileStatus: "OK",
+    testCases: testCases35,
+    testDirectories: testCases35.map(t => t.name),
+    config: {
+      polygonConfig: {
+        tests: Object.fromEntries(testCases35.map(t => [t.name, { points: 0.35 }]))
+      }
+    }
+  });
+  assert.equal(summary35.score, 3.5);
+  assert.equal(summary35.maxScore, 3.5);
+
+  const testCases30 = Array.from({ length: 10 }, (_, i) => testCase(`t${i}`, "AC", 0.3));
+  const summary30 = calculateProblemSummary({
+    compileStatus: "OK",
+    testCases: testCases30,
+    testDirectories: testCases30.map(t => t.name),
+    config: {
+      polygonConfig: {
+        tests: Object.fromEntries(testCases30.map(t => [t.name, { points: 0.3 }]))
+      }
+    }
+  });
+  assert.equal(summary30.score, 3);
+  assert.equal(summary30.maxScore, 3);
+});
+
+test("scoring supports fractional points with exact rational accumulation", () => {
+  const testCases = Array.from({ length: 6 }, (_, i) => testCase(`t${i}`, "AC", 1/3));
+  const summary = calculateProblemSummary({
+    compileStatus: "OK",
+    testCases,
+    testDirectories: testCases.map(t => t.name),
+    config: {
+      polygonConfig: {
+        tests: Object.fromEntries(testCases.map(t => [t.name, { points: "1/3" }]))
+      }
+    }
+  });
+  assert.equal(summary.score, 2);
+  assert.equal(summary.maxScore, 2);
+});

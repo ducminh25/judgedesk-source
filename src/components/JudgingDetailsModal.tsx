@@ -10,6 +10,7 @@ import {
 import { ProblemResult } from "../types";
 import { useTranslation } from "react-i18next";
 import { formatCompileError } from "../features/judging/compile-diagnostics";
+import { formatScore } from "../../shared/rational";
 
 interface Props {
   data: ProblemResult;
@@ -18,10 +19,6 @@ interface Props {
 }
 
 type ResultFilter = "ALL" | "CORRECT" | "INCORRECT" | "PARTIAL";
-
-function formatScore(value: number): string {
-  return Number(value).toFixed(4).replace(/\.?0+$/, "");
-}
 
 export default function JudgingDetailsModal({
   data,
@@ -211,17 +208,21 @@ export default function JudgingDetailsModal({
                       {tc.checkerMessage}
                     </div>
                   )}
-                  {(tc.status === "WA" || tc.status === "PE") && (
+                  {(tc.status === "WA" || tc.status === "PE" || (tc.expectedOutputPreview === "[Interactive Problem]" && Boolean(tc.actualOutputPreview))) && (
                     <div className="grid grid-cols-2 gap-3 mt-2">
                       <div className="bg-surface border border-surface-border p-2 rounded font-mono text-2xs text-text-muted overflow-x-auto max-h-32 whitespace-pre-wrap">
                         <span className="block font-bold text-text-primary mb-1 border-b border-surface-border pb-1">
-                          {t("judgingDetails.expectedOutput")}
+                          {tc.expectedOutputPreview === "[Interactive Problem]"
+                            ? t("judgingDetails.interactiveProtocol")
+                            : t("judgingDetails.expectedOutput")}
                         </span>
                         {tc.expectedOutputPreview || t("common.noOutput")}
                       </div>
                       <div className="bg-surface border border-surface-border p-2 rounded font-mono text-2xs text-rose-600 dark:text-rose-300 overflow-x-auto max-h-32 whitespace-pre-wrap">
                         <span className="block font-bold text-rose-700 dark:text-rose-900/60 mb-1 border-b border-surface-border pb-1">
-                          {t("judgingDetails.contestantOutput")}
+                          {tc.expectedOutputPreview === "[Interactive Problem]"
+                            ? t("judgingDetails.interactiveTranscript")
+                            : t("judgingDetails.contestantOutput")}
                         </span>
                         {tc.actualOutputPreview || t("common.noOutput")}
                       </div>

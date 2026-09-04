@@ -80,6 +80,12 @@ export {
   type ResolveCheckerOptions,
 } from "./checker-compiler.js";
 
+export {
+  resolveInteractor,
+  type CompiledInteractor,
+  type ResolveInteractorOptions,
+} from "./interactor-compiler.js";
+
 export interface CompileLimits {
   timeoutMs: number;
   maxGeneratedFileBytes: number;

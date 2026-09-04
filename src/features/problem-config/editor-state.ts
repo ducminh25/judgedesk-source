@@ -1,4 +1,5 @@
 import { PolygonConfig } from "../../types";
+import { parseRational, toCanonicalPointValue } from "../../../shared/rational";
 
 export interface TestDetail {
   name: string;
@@ -41,7 +42,12 @@ export function applyTestEdit(
     next.tests[testName] = test;
 
     if (edit.type === "points" || edit.type === "batchPoints") {
-      test.points = input ? parseFloat(input) : 1;
+      if (!input || !input.trim()) {
+        test.points = 1;
+      } else {
+        const r = parseRational(input.trim());
+        test.points = toCanonicalPointValue(r);
+      }
     } else if (edit.type === "time" || edit.type === "batchTime") {
       const value = parseFloat(input);
       test.timeLimit = !Number.isNaN(value) && value > 0 ? value : undefined;

@@ -3,6 +3,7 @@ import { CheckSquare, Square } from "lucide-react";
 import { PolygonConfig } from "../../types";
 import { formatTestSize, TestDetail, TestEditPopover, TestEditType } from "./editor-state";
 import { useTranslation } from "react-i18next";
+import { formatScore } from "../../../shared/rational";
 
 interface Props {
   config: PolygonConfig;
@@ -10,7 +11,7 @@ interface Props {
   selectedTests: ReadonlySet<string>;
   showContent: boolean;
   isLoading: boolean;
-  totalPoints: number;
+  totalPoints: number | string;
   onToggleAll: () => void;
   onToggleTest: (name: string) => void;
   onOpenEdit: (popover: TestEditPopover, input: string, batchTotal?: string) => void;
@@ -77,10 +78,10 @@ export function TestConfigurationTable(props: Props) {
                   <td className="p-3 text-text-muted text-2xs">{formatTestSize(test.size)}</td>
                   <td className="p-3 font-mono text-text-primary">{timeLimit.toFixed(3)}s</td>
                   {props.config.enableGroups && <td className="p-3 text-indigo-600 dark:text-indigo-400 font-bold">{testConfig.group || "-"}</td>}
-                  <td className="p-3 text-right text-emerald-600 dark:text-emerald-400 font-mono font-bold">{testConfig.points}</td>
+                  <td className="p-3 text-right text-emerald-600 dark:text-emerald-400 font-mono font-bold">{formatScore(testConfig.points)}</td>
                   <td className="p-3 text-center">
                     <div className="flex items-center justify-center gap-2">
-                      <EditButton label={t("problemConfig.testConfig.points")} onClick={event => openTest(event, "points", test.name, testConfig.points.toString())} />
+                      <EditButton label={t("problemConfig.testConfig.points")} onClick={event => openTest(event, "points", test.name, (testConfig.points ?? 1).toString())} />
                       <EditButton label={t("problemConfig.testConfig.timeLimit")} onClick={event => openTest(event, "time", test.name, testConfig.timeLimit?.toString() ?? "1.0")} />
                       {props.config.enableGroups && <EditButton label={t("problemConfig.testConfig.group")} onClick={event => openTest(event, "group", test.name, testConfig.group || "")} />}
                     </div>

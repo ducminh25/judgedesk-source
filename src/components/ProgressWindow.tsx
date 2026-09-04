@@ -58,12 +58,46 @@ export default function ProgressWindow({ currentContestant, currentProblem, acti
     ? `${currentContestant ? currentContestant : ""}${currentContestant && currentProblem ? " - " : ""}${currentProblem ? currentProblem : ""}`
     : t("progress.systemSetup");
 
-  const displayAction = action.startsWith("progress.")
-    ? t(action)
-    : t(`progress.${action}`, { defaultValue: action });
+  const formatAction = (act: string): string => {
+    if (!act) return "";
+    if (act.startsWith("progress.")) return t(act);
+    if (act.includes("Initializing grading session")) return t("progress.initializing", "Đang khởi tạo phiên chấm...");
+    if (act.includes("Verifying certified compiler") || act.includes("Verifying")) return t("progress.verifyingEnvironment", "Đang kiểm tra trình biên dịch & môi trường...");
+    if (act.includes("Scanning submissions")) return t("progress.scanning", "Đang quét bài nộp và bộ test...");
+    if (act.includes("Locating submission")) return t("progress.locating", "Đang tìm bài làm thí sinh...");
+    if (act.startsWith("Compiling custom checker")) {
+      const match = act.match(/\((.*?)\)/);
+      return match
+        ? `${t("progress.compilingChecker", "Đang biên dịch bộ chấm")} (${match[1]})...`
+        : t("progress.compilingChecker", "Đang biên dịch bộ chấm (Checker)...");
+    }
+    if (act.startsWith("Compiling interactor")) {
+      const match = act.match(/\((.*?)\)/);
+      return match
+        ? `${t("progress.compilingInteractor", "Đang biên dịch bộ tương tác")} (${match[1]})...`
+        : t("progress.compilingInteractor", "Đang biên dịch bộ tương tác (Interactor)...");
+    }
+    if (act === "Compiling..." || act.startsWith("Compiling")) {
+      return t("progress.compilingSubmission", "Đang biên dịch bài nộp...");
+    }
+    if (act.startsWith("Judging test ")) {
+      const match = act.match(/Judging test (\d+) of (\d+)/i);
+      if (match) {
+        return t("progress.judgingTest", {
+          current: match[1],
+          total: match[2],
+          defaultValue: `Đang chấm test ${match[1]} / ${match[2]}`,
+        });
+      }
+    }
+    return t(`progress.${act}`, { defaultValue: act });
+  };
+
+  const displayAction = formatAction(action);
 
   const isWarmupPhase = !currentContestant && !currentProblem;
-  const isIndeterminate = isWarmupPhase && percent <= 0;
+  const isIndeterminate = isWarmupPhase || percent <= 0;
+  const displayPercent = isWarmupPhase ? 0 : Math.max(0, Math.min(100, Math.round(percent)));
 
   return (
     <div 
@@ -98,7 +132,7 @@ export default function ProgressWindow({ currentContestant, currentProblem, acti
         <div className="space-y-1">
           <div className="flex justify-between text-xs text-text-muted font-mono">
             <span>{t("progress.progress")}</span>
-            <span>{Math.round(percent)}%</span>
+            <span>{displayPercent}%</span>
           </div>
           <div className="h-2 w-full bg-input-bg rounded-full overflow-hidden border border-surface-border relative">
             {isIndeterminate ? (
@@ -106,7 +140,7 @@ export default function ProgressWindow({ currentContestant, currentProblem, acti
             ) : (
               <div 
                 className="h-full bg-indigo-500 transition-all duration-300"
-                style={{ width: `${percent}%` }}
+                style={{ width: `${displayPercent}%` }}
               />
             )}
           </div>

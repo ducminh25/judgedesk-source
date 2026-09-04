@@ -1,7 +1,7 @@
 use super::{failure, reported_peak_memory_bytes, root_display, ActiveRuns, Cancellation};
 use crate::protocol::{
-    ExecutorHealth, ExecutorStartupTimings, LocalToolchainIsolation, RunReason, RunResult, RunRole,
-    RunSpec,
+    ExecutorHealth, ExecutorStartupTimings, InteractiveRunResult, InteractiveRunSpec,
+    LocalToolchainIsolation, RunReason, RunResult, RunRole, RunSpec,
 };
 use crate::request_validation::ValidatedRun;
 use crate::workspace::{file_size, initialize_root, inspect_workspace};
@@ -54,6 +54,7 @@ use windows_sys::Win32::System::JobObjects::{
     JOB_OBJECT_LIMIT_AFFINITY, JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION,
     JOB_OBJECT_LIMIT_JOB_MEMORY, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
 };
+use windows_sys::Win32::System::Pipes::CreatePipe;
 use windows_sys::Win32::System::SystemServices::{
     ACCESS_ALLOWED_ACE_TYPE, JOB_OBJECT_MSG_ACTIVE_PROCESS_LIMIT, JOB_OBJECT_MSG_JOB_MEMORY_LIMIT,
     SE_GROUP_ENABLED,
@@ -647,6 +648,458 @@ impl WindowsPlatform {
             diagnostic,
         })
     }
+
+    pub fn run_interactive(
+        &self,
+        root: &Path,
+        spec: &InteractiveRunSpec,
+        active: &ActiveRuns,
+    ) -> InteractiveRunResult {
+        match self.run_interactive_inner(root, spec, active) {
+            Ok(result) => result,
+            Err(diagnostic) => crate::platform::interactive_failure(spec, diagnostic),
+        }
+    }
+
+    fn run_interactive_inner(
+        &self,
+        root: &Path,
+        spec: &InteractiveRunSpec,
+        active: &ActiveRuns,
+    ) -> Result<InteractiveRunResult, String> {
+        let setup_started = Instant::now();
+        let sub_paths = crate::request_validation::validate_run(root, &spec.submission)?;
+        let inter_paths = crate::request_validation::validate_run(root, &spec.interactor)?;
+
+        prepare_workspace_profile_directories(&sub_paths.workspace)?;
+        let sub_workspace_sid = derive_workspace_capability_sid(&spec.submission.workspace_id)?;
+        protect_workspace_tree(&sub_paths.workspace, &sub_workspace_sid)?;
+
+        prepare_workspace_profile_directories(&inter_paths.workspace)?;
+        let inter_workspace_sid = derive_workspace_capability_sid(&spec.interactor.workspace_id)?;
+        protect_workspace_tree(&inter_paths.workspace, &inter_workspace_sid)?;
+
+        let sa = SECURITY_ATTRIBUTES {
+            nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
+            lpSecurityDescriptor: null_mut(),
+            bInheritHandle: 1,
+        };
+
+        // Pipe 1: Interactor STDOUT -> Submission STDIN
+        let mut sub_stdin_read = INVALID_HANDLE_VALUE;
+        let mut inter_stdout_write = INVALID_HANDLE_VALUE;
+        if unsafe {
+            CreatePipe(
+                &mut sub_stdin_read,
+                &mut inter_stdout_write,
+                &sa,
+                1024 * 1024,
+            )
+        } == 0
+        {
+            return Err(format!("create pipe 1: {}", io::Error::last_os_error()));
+        }
+        let sub_stdin_r = OwnedHandle::new(sub_stdin_read)?;
+        let inter_stdout_w = OwnedHandle::new(inter_stdout_write)?;
+
+        // Pipe 2: Submission STDOUT -> Interactor STDIN
+        let mut inter_stdin_read = INVALID_HANDLE_VALUE;
+        let mut sub_stdout_write = INVALID_HANDLE_VALUE;
+        if unsafe {
+            CreatePipe(
+                &mut inter_stdin_read,
+                &mut sub_stdout_write,
+                &sa,
+                1024 * 1024,
+            )
+        } == 0
+        {
+            return Err(format!("create pipe 2: {}", io::Error::last_os_error()));
+        }
+        let inter_stdin_r = OwnedHandle::new(inter_stdin_read)?;
+        let sub_stdout_w = OwnedHandle::new(sub_stdout_write)?;
+
+        let sub_stderr = open_output(&sub_paths.stderr)?;
+        let inter_stderr = open_output(&inter_paths.stderr)?;
+
+        let job_sub = Arc::new(JobHandle::new(&spec.submission)?);
+        let completion_port = OwnedHandle::new(unsafe {
+            CreateIoCompletionPort(INVALID_HANDLE_VALUE, null_mut(), 0, 1)
+        })?;
+        let association = JOBOBJECT_ASSOCIATE_COMPLETION_PORT {
+            CompletionKey: null_mut(),
+            CompletionPort: completion_port.0,
+        };
+        win_bool(
+            unsafe {
+                SetInformationJobObject(
+                    job_sub.handle(),
+                    JobObjectAssociateCompletionPortInformation,
+                    &association as *const _ as *const c_void,
+                    size_of::<JOBOBJECT_ASSOCIATE_COMPLETION_PORT>() as u32,
+                )
+            },
+            "associate submission Job completion port",
+        )?;
+
+        let job_inter = Arc::new(JobHandle::new(&spec.interactor)?);
+
+        let (sub_process, sub_thread) = match spawn_child_process(
+            &spec.submission,
+            &sub_paths,
+            &sub_workspace_sid,
+            &self.sid,
+            job_sub.handle(),
+            sub_stdin_r.0,
+            sub_stdout_w.0,
+            sub_stderr.0,
+        ) {
+            Ok(handles) => handles,
+            Err(SpawnError::ProcessCreationMemory(err)) => {
+                let res = failure(
+                    &spec.submission,
+                    RunReason::MemoryLimit,
+                    format!("submission image exceeded memory limit during creation: {err}"),
+                );
+                return Ok(InteractiveRunResult {
+                    run_id: spec.run_id.clone(),
+                    verdict: "MLE".into(),
+                    score_multiplier: Some(0.0),
+                    execution_time_ms: 0,
+                    peak_memory_bytes: query_metrics(job_sub.handle()).map(|v| {
+                        (v.PeakJobMemoryUsed as u64).min(spec.submission.limits.memory_bytes)
+                    }),
+                    message: Some("Memory limit exceeded during process creation".into()),
+                    transcript: None,
+                    submission_result: res,
+                    interactor_result: failure(
+                        &spec.interactor,
+                        RunReason::Cancelled,
+                        "cancelled".into(),
+                    ),
+                });
+            }
+            Err(SpawnError::Failed(msg)) => return Err(format!("spawn submission: {msg}")),
+        };
+
+        let (inter_process, inter_thread) = match spawn_child_process(
+            &spec.interactor,
+            &inter_paths,
+            &inter_workspace_sid,
+            &self.sid,
+            job_inter.handle(),
+            inter_stdin_r.0,
+            inter_stdout_w.0,
+            inter_stderr.0,
+        ) {
+            Ok(handles) => handles,
+            Err(SpawnError::ProcessCreationMemory(err)) => {
+                return Err(format!("interactor memory error: {err}"))
+            }
+            Err(SpawnError::Failed(msg)) => return Err(format!("spawn interactor: {msg}")),
+        };
+
+        // Crucial: close parent pipe handles immediately so EOF is transmitted when either process closes/exits
+        drop(sub_stdin_r);
+        drop(sub_stdout_w);
+        drop(sub_stderr);
+        drop(inter_stdin_r);
+        drop(inter_stdout_w);
+        drop(inter_stderr);
+
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let cancellation: Arc<dyn Cancellation> = Arc::new(InteractiveCancellation {
+            job_sub: Arc::clone(&job_sub),
+            job_inter: Arc::clone(&job_inter),
+            cancelled: Arc::clone(&cancelled),
+        });
+
+        {
+            let mut runs = active.lock().unwrap();
+            if runs.contains_key(&spec.run_id) {
+                unsafe {
+                    TerminateJobObject(job_sub.handle(), LIMIT_EXIT_CODE);
+                    TerminateJobObject(job_inter.handle(), LIMIT_EXIT_CODE);
+                }
+                return Err("duplicate active runId".into());
+            }
+            runs.insert(spec.run_id.clone(), cancellation);
+        }
+
+        let security_setup_time_us = elapsed_us(setup_started);
+        let started = Instant::now();
+
+        if unsafe { ResumeThread(sub_thread.0) } == u32::MAX {
+            active.lock().unwrap().remove(&spec.run_id);
+            unsafe {
+                TerminateJobObject(job_sub.handle(), LIMIT_EXIT_CODE);
+                TerminateJobObject(job_inter.handle(), LIMIT_EXIT_CODE);
+            }
+            return Err(format!(
+                "resume submission process: {}",
+                io::Error::last_os_error()
+            ));
+        }
+        if unsafe { ResumeThread(inter_thread.0) } == u32::MAX {
+            active.lock().unwrap().remove(&spec.run_id);
+            unsafe {
+                TerminateJobObject(job_sub.handle(), LIMIT_EXIT_CODE);
+                TerminateJobObject(job_inter.handle(), LIMIT_EXIT_CODE);
+            }
+            return Err(format!(
+                "resume interactor process: {}",
+                io::Error::last_os_error()
+            ));
+        }
+        drop(sub_thread);
+        drop(inter_thread);
+
+        let sub_limit_ms = spec.submission.limits.wall_time_ms;
+        let watchdog_deadline =
+            started + Duration::from_millis((sub_limit_ms * 2).max(sub_limit_ms + 2000));
+        let mut sub_reason = RunReason::Exited;
+        let mut inter_exited = false;
+        let mut sub_exited = false;
+
+        loop {
+            let mut completion_code = 0_u32;
+            let mut completion_key = 0_usize;
+            let mut overlapped = null_mut();
+            while unsafe {
+                GetQueuedCompletionStatus(
+                    completion_port.0,
+                    &mut completion_code,
+                    &mut completion_key,
+                    &mut overlapped,
+                    0,
+                )
+            } != 0
+            {
+                match completion_code {
+                    JOB_OBJECT_MSG_JOB_MEMORY_LIMIT => sub_reason = RunReason::MemoryLimit,
+                    JOB_OBJECT_MSG_ACTIVE_PROCESS_LIMIT => sub_reason = RunReason::ProcessLimit,
+                    _ => {}
+                }
+            }
+
+            if cancelled.load(Ordering::Acquire) {
+                sub_reason = RunReason::Cancelled;
+                unsafe {
+                    TerminateJobObject(job_sub.handle(), CANCEL_EXIT_CODE);
+                    TerminateJobObject(job_inter.handle(), CANCEL_EXIT_CODE);
+                }
+                break;
+            }
+
+            if matches!(sub_reason, RunReason::MemoryLimit | RunReason::ProcessLimit) {
+                unsafe {
+                    TerminateJobObject(job_sub.handle(), LIMIT_EXIT_CODE);
+                    TerminateJobObject(job_inter.handle(), LIMIT_EXIT_CODE);
+                }
+                break;
+            }
+
+            if Instant::now() >= watchdog_deadline {
+                sub_reason = RunReason::WallTimeLimit;
+                unsafe {
+                    TerminateJobObject(job_sub.handle(), LIMIT_EXIT_CODE);
+                    TerminateJobObject(job_inter.handle(), LIMIT_EXIT_CODE);
+                }
+                break;
+            }
+
+            if !inter_exited {
+                let wait_inter = unsafe { WaitForSingleObject(inter_process.0, 5) };
+                if wait_inter == WAIT_OBJECT_0 {
+                    inter_exited = true;
+                }
+            }
+
+            if !sub_exited {
+                let wait_sub = unsafe { WaitForSingleObject(sub_process.0, 5) };
+                if wait_sub == WAIT_OBJECT_0 {
+                    sub_exited = true;
+                }
+            }
+
+            if inter_exited {
+                unsafe {
+                    WaitForSingleObject(sub_process.0, 50);
+                    TerminateJobObject(job_sub.handle(), LIMIT_EXIT_CODE);
+                }
+                break;
+            }
+
+            if sub_exited {
+                unsafe {
+                    WaitForSingleObject(inter_process.0, 200);
+                    TerminateJobObject(job_inter.handle(), LIMIT_EXIT_CODE);
+                }
+                break;
+            }
+        }
+
+        let wall_time_us = elapsed_us(started);
+        let collection_started = Instant::now();
+
+        let _ = wait_for_job_empty(job_sub.handle(), Duration::from_secs(2));
+        let _ = wait_for_job_empty(job_inter.handle(), Duration::from_secs(2));
+        active.lock().unwrap().remove(&spec.run_id);
+
+        let mut sub_code = 0_u32;
+        let sub_exit_code = if unsafe { GetExitCodeProcess(sub_process.0, &mut sub_code) } != 0 {
+            Some(sub_code as i32)
+        } else {
+            None
+        };
+
+        let mut inter_code = 0_u32;
+        let inter_exit_code =
+            if unsafe { GetExitCodeProcess(inter_process.0, &mut inter_code) } != 0 {
+                Some(inter_code as i32)
+            } else {
+                None
+            };
+
+        let (sub_user_cpu, sub_kernel_cpu) = process_times(sub_process.0).unwrap_or((None, None));
+        let sub_cpu_us = sub_user_cpu.unwrap_or(0) + sub_kernel_cpu.unwrap_or(0);
+        let execution_time_ms = sub_cpu_us / 1000;
+
+        if execution_time_ms > spec.submission.limits.wall_time_ms {
+            sub_reason = RunReason::WallTimeLimit;
+        }
+
+        let sub_metrics = query_metrics(job_sub.handle());
+        let peak_memory_bytes = reported_peak_memory_bytes(
+            &sub_reason,
+            sub_metrics.map(|v| v.PeakJobMemoryUsed as u64),
+            spec.submission.limits.memory_bytes,
+        );
+
+        let inter_stderr_str = if inter_paths.stderr.exists() {
+            fs::read_to_string(&inter_paths.stderr).unwrap_or_default()
+        } else {
+            String::new()
+        };
+
+        let transcript = if let Some(arg) = spec.interactor.args.get(1) {
+            let p = inter_paths.workspace.join(arg);
+            if p.exists() {
+                fs::read_to_string(&p).ok()
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let result_collection_time_us = elapsed_us(collection_started);
+
+        let (verdict, score_multiplier, message) = if matches!(sub_reason, RunReason::MemoryLimit) {
+            (
+                "MLE".to_string(),
+                Some(0.0),
+                Some("Memory limit exceeded".into()),
+            )
+        } else if matches!(sub_reason, RunReason::WallTimeLimit) {
+            (
+                "TLE".to_string(),
+                Some(0.0),
+                Some("Time limit exceeded".into()),
+            )
+        } else if matches!(sub_reason, RunReason::Cancelled) {
+            ("CANCELLED".to_string(), Some(0.0), Some("Cancelled".into()))
+        } else {
+            match inter_exit_code {
+                Some(0) => ("AC".to_string(), Some(1.0), Some(inter_stderr_str)),
+                Some(1) => ("WA".to_string(), Some(0.0), Some(inter_stderr_str)),
+                Some(2) => ("PE".to_string(), Some(0.0), Some(inter_stderr_str)),
+                Some(7) => ("PARTIAL".to_string(), None, Some(inter_stderr_str)),
+                Some(code) if code >= 16 => {
+                    let mult = ((code - 16) as f64) / 100.0;
+                    (
+                        "PARTIAL".to_string(),
+                        Some(mult.clamp(0.0, 1.0)),
+                        Some(inter_stderr_str),
+                    )
+                }
+                Some(3) => (
+                    "JE".to_string(),
+                    Some(0.0),
+                    Some(format!("Interactor failed: {inter_stderr_str}")),
+                ),
+                _ => {
+                    if let Some(code) = sub_exit_code {
+                        if code != 0 {
+                            (
+                                "RTE".to_string(),
+                                Some(0.0),
+                                Some(format!("Runtime error (exit code {code})")),
+                            )
+                        } else {
+                            ("JE".to_string(), Some(0.0), Some(format!("Unknown interaction outcome. Interactor exit: {inter_exit_code:?}")))
+                        }
+                    } else {
+                        (
+                            "JE".to_string(),
+                            Some(0.0),
+                            Some("Process execution error".into()),
+                        )
+                    }
+                }
+            }
+        };
+
+        let sub_result = RunResult {
+            run_id: spec.submission.run_id.clone(),
+            reason: sub_reason,
+            exit_code: sub_exit_code,
+            signal_or_status: sub_exit_code
+                .filter(|code| *code != 0)
+                .map(|code| format!("0x{:08X}", code as u32)),
+            security_setup_time_us,
+            wall_time_us,
+            result_collection_time_us,
+            user_cpu_time_us: sub_user_cpu,
+            kernel_cpu_time_us: sub_kernel_cpu,
+            peak_memory_bytes,
+            stdout_bytes: file_size(&sub_paths.stdout),
+            stderr_bytes: file_size(&sub_paths.stderr),
+            created_files: None,
+            diagnostic: message.clone(),
+        };
+
+        let inter_result = RunResult {
+            run_id: spec.interactor.run_id.clone(),
+            reason: RunReason::Exited,
+            exit_code: inter_exit_code,
+            signal_or_status: inter_exit_code
+                .filter(|code| *code != 0)
+                .map(|code| format!("0x{:08X}", code as u32)),
+            security_setup_time_us: 0,
+            wall_time_us,
+            result_collection_time_us,
+            user_cpu_time_us: None,
+            kernel_cpu_time_us: None,
+            peak_memory_bytes: None,
+            stdout_bytes: file_size(&inter_paths.stdout),
+            stderr_bytes: file_size(&inter_paths.stderr),
+            created_files: None,
+            diagnostic: None,
+        };
+
+        Ok(InteractiveRunResult {
+            run_id: spec.run_id.clone(),
+            verdict,
+            score_multiplier,
+            execution_time_ms,
+            peak_memory_bytes,
+            message,
+            transcript,
+            submission_result: sub_result,
+            interactor_result: inter_result,
+        })
+    }
 }
 
 fn elapsed_us(started: Instant) -> u64 {
@@ -1097,6 +1550,186 @@ impl Cancellation for RunCancellation {
             TerminateJobObject(self.job.handle(), CANCEL_EXIT_CODE);
         }
     }
+}
+
+struct InteractiveCancellation {
+    job_sub: Arc<JobHandle>,
+    job_inter: Arc<JobHandle>,
+    cancelled: Arc<AtomicBool>,
+}
+
+impl Cancellation for InteractiveCancellation {
+    fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Release);
+        unsafe {
+            TerminateJobObject(self.job_sub.handle(), CANCEL_EXIT_CODE);
+            TerminateJobObject(self.job_inter.handle(), CANCEL_EXIT_CODE);
+        }
+    }
+}
+
+enum SpawnError {
+    ProcessCreationMemory(io::Error),
+    Failed(String),
+}
+
+fn spawn_child_process(
+    spec: &RunSpec,
+    paths: &ValidatedRun,
+    workspace_capability_sid: &[u8],
+    app_container_sid: &[u8],
+    job: HANDLE,
+    stdin: HANDLE,
+    stdout: HANDLE,
+    stderr: HANDLE,
+) -> Result<(OwnedHandle, OwnedHandle), SpawnError> {
+    let mut workspace_capability = SID_AND_ATTRIBUTES {
+        Sid: workspace_capability_sid.as_ptr() as PSID,
+        Attributes: SE_GROUP_ENABLED as u32,
+    };
+    let mut security = SECURITY_CAPABILITIES {
+        AppContainerSid: app_container_sid.as_ptr() as PSID,
+        Capabilities: &mut workspace_capability,
+        CapabilityCount: 1,
+        Reserved: 0,
+    };
+    let mut lpac_policy = PROCESS_CREATION_ALL_APPLICATION_PACKAGES_OPT_OUT;
+    let mut handles = [stdin, stdout, stderr];
+    let compiler_may_spawn = matches!(spec.role, RunRole::Compiler);
+    let isolated_submission_runtime = matches!(spec.role, RunRole::Submission)
+        && (spec.toolchain.is_some() || spec.local_toolchain.is_some())
+        && MANAGED_RUNTIME_MARKERS
+            .iter()
+            .any(|marker| spec.environment.get(*marker).map(String::as_str) == Some("1"));
+    let is_checker = matches!(spec.role, RunRole::Checker | RunRole::CheckerRuntime);
+    let resource_only = matches!(paths.isolation, LocalToolchainIsolation::ResourceOnly);
+    let use_lpac =
+        !resource_only && !compiler_may_spawn && !isolated_submission_runtime && !is_checker;
+    let attribute_count = if resource_only {
+        2
+    } else if use_lpac {
+        4
+    } else {
+        3
+    };
+    let mut attributes = AttributeList::new(attribute_count).map_err(SpawnError::Failed)?;
+    if !resource_only {
+        attributes
+            .update(
+                PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES as usize,
+                &mut security as *mut _ as *mut c_void,
+                size_of::<SECURITY_CAPABILITIES>(),
+            )
+            .map_err(SpawnError::Failed)?;
+    }
+    if use_lpac {
+        attributes
+            .update(
+                PROC_THREAD_ATTRIBUTE_ALL_APPLICATION_PACKAGES_POLICY as usize,
+                &mut lpac_policy as *mut _ as *mut c_void,
+                size_of::<u32>(),
+            )
+            .map_err(SpawnError::Failed)?;
+    }
+    attributes
+        .update(
+            PROC_THREAD_ATTRIBUTE_HANDLE_LIST as usize,
+            handles.as_mut_ptr() as *mut c_void,
+            size_of_val(&handles),
+        )
+        .map_err(SpawnError::Failed)?;
+    let mut job_handles = [job];
+    attributes
+        .update(
+            PROC_THREAD_ATTRIBUTE_JOB_LIST as usize,
+            job_handles.as_mut_ptr().cast(),
+            size_of_val(&job_handles),
+        )
+        .map_err(SpawnError::Failed)?;
+
+    let mut startup: STARTUPINFOEXW = unsafe { zeroed() };
+    startup.StartupInfo.cb = size_of::<STARTUPINFOEXW>() as u32;
+    startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+    startup.StartupInfo.hStdInput = stdin;
+    startup.StartupInfo.hStdOutput = stdout;
+    startup.StartupInfo.hStdError = stderr;
+    startup.lpAttributeList = attributes.as_ptr();
+    let mut process: PROCESS_INFORMATION = unsafe { zeroed() };
+
+    let launch_executable = process_launch_path(&paths.executable);
+    let launch_workspace = process_launch_path(&paths.workspace);
+    let application = wide(launch_executable.as_os_str());
+    let mut command_line = wide_string(&build_command_line(&launch_executable, &spec.args));
+    let current_directory = wide(launch_workspace.as_os_str());
+    let mut environment = environment_block(&spec.environment, &launch_workspace);
+    let mut created = unsafe {
+        CreateProcessW(
+            application.as_ptr(),
+            command_line.as_mut_ptr(),
+            null(),
+            null(),
+            1,
+            CREATE_SUSPENDED
+                | CREATE_UNICODE_ENVIRONMENT
+                | CREATE_NO_WINDOW
+                | BELOW_NORMAL_PRIORITY_CLASS
+                | EXTENDED_STARTUPINFO_PRESENT,
+            environment.as_mut_ptr() as *const c_void,
+            current_directory.as_ptr(),
+            &startup.StartupInfo,
+            &mut process,
+        )
+    };
+    if created == 0 {
+        let error_code = unsafe { GetLastError() };
+        if error_code == 623 {
+            let mut fallback_attributes = AttributeList::new(2).map_err(SpawnError::Failed)?;
+            fallback_attributes
+                .update(
+                    PROC_THREAD_ATTRIBUTE_HANDLE_LIST as usize,
+                    handles.as_mut_ptr() as *mut c_void,
+                    size_of_val(&handles),
+                )
+                .map_err(SpawnError::Failed)?;
+            fallback_attributes
+                .update(
+                    PROC_THREAD_ATTRIBUTE_JOB_LIST as usize,
+                    job_handles.as_mut_ptr().cast(),
+                    size_of_val(&job_handles),
+                )
+                .map_err(SpawnError::Failed)?;
+            startup.lpAttributeList = fallback_attributes.as_ptr();
+            created = unsafe {
+                CreateProcessW(
+                    application.as_ptr(),
+                    command_line.as_mut_ptr(),
+                    null(),
+                    null(),
+                    1,
+                    CREATE_SUSPENDED
+                        | CREATE_UNICODE_ENVIRONMENT
+                        | CREATE_NO_WINDOW
+                        | BELOW_NORMAL_PRIORITY_CLASS
+                        | EXTENDED_STARTUPINFO_PRESENT,
+                    environment.as_mut_ptr() as *const c_void,
+                    current_directory.as_ptr(),
+                    &startup.StartupInfo,
+                    &mut process,
+                )
+            };
+        }
+    }
+    if created == 0 {
+        let error_code = unsafe { GetLastError() };
+        let error = io::Error::from_raw_os_error(error_code as i32);
+        if is_process_creation_memory_error(error_code) {
+            return Err(SpawnError::ProcessCreationMemory(error));
+        }
+        return Err(SpawnError::Failed(format!(
+            "launch AppContainer process: {error}"
+        )));
+    }
+    Ok((OwnedHandle(process.hProcess), OwnedHandle(process.hThread)))
 }
 
 struct OwnedHandle(HANDLE);

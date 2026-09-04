@@ -16,12 +16,16 @@ import {
   attachExecutorRun,
   detachExecutorRun,
   runReservedExecutor,
+  runReservedInteractiveExecutor,
 } from "../jobs.js";
 import type { NormalizedProblemConfig, SubmissionLanguage, TestCaseRun } from "../types.js";
-import type { CompiledChecker } from "./compiler.js";
-import { runCustomChecker } from "./custom-checker-runner.js";
+import type { CompiledChecker, CompiledInteractor } from "./compiler.js";
+import { parsePartialScore, prepareNativeChecker, runCustomChecker } from "./custom-checker-runner.js";
 import { prepareIsolatedPythonScript } from "./python-runtime.js";
-import { buildSubmissionExecutorRunSpec } from "./execution-request.js";
+import {
+  buildCheckerExecutorRunSpec,
+  buildSubmissionExecutorRunSpec,
+} from "./execution-request.js";
 import {
   resolveConfiguredSubmissionMemoryLimitBytes,
   resolveSubmissionMemoryLimitBytes,
@@ -50,6 +54,7 @@ interface TestCaseRunnerOptions {
   score: number;
   config: NormalizedProblemConfig;
   checker: CompiledChecker | undefined;
+  interactor?: CompiledInteractor;
   program?: PreparedSubmissionProgram;
   jobId?: string;
 }
@@ -58,6 +63,9 @@ const MAX_OUTPUT_SIZE = 16 * 1024 * 1024;
 const MAX_STDERR_PREVIEW = 256 * 1024;
 
 export async function runTestCase(options: TestCaseRunnerOptions): Promise<TestCaseRun> {
+  if (options.config.isInteractive) {
+    return executeInteractiveTestCase(options);
+  }
   const workspace = await createExecutorWorkspace();
   const runId = `submission_${crypto.randomUUID().replaceAll("-", "_")}`;
   try {
@@ -332,4 +340,137 @@ function safeWorkspacePath(value: string): string {
 
 function preview(output: string): string {
   return output.substring(0, 500) + (output.length > 500 ? "..." : "");
+}
+
+async function executeInteractiveTestCase(
+  options: TestCaseRunnerOptions,
+): Promise<TestCaseRun> {
+  if (!options.interactor || !options.interactor.path) {
+    return createResult(
+      options,
+      "JE",
+      0,
+      undefined,
+      0,
+      options.interactor?.error || "Interactor executable not found or compilation failed.",
+      "",
+      options.interactor?.error || "Interactor missing",
+    );
+  }
+
+  const workspace = await createExecutorWorkspace();
+  const interactorWorkspace = await createExecutorWorkspace();
+  const runId = `interactive_${crypto.randomUUID().replaceAll("-", "_")}`;
+
+  try {
+    attachExecutorRun(options.jobId, runId);
+    const memoryBytes = resolveSubmissionMemoryLimitBytes(options.config.memoryLimit);
+    const launch = await prepareSubmission(workspace, options, memoryBytes);
+
+    const interactorLaunch = options.interactor.runtime === "python"
+      ? await prepareIsolatedPythonScript(
+          interactorWorkspace,
+          options.interactor.path,
+          "interactor.py",
+          options.interactor.pythonExecutablePath,
+          options.interactor.pythonToolchain,
+        )
+      : await prepareNativeChecker(options.interactor.path);
+
+    interactorWorkspace.stage(options.inputPath, "input.txt");
+    const interactorArgs = [...interactorLaunch.args, "input.txt", "output.txt"];
+    if (options.expectedOutputPath && fs.existsSync(options.expectedOutputPath)) {
+      interactorWorkspace.stage(options.expectedOutputPath, "answer.txt");
+      interactorArgs.push("answer.txt");
+    }
+
+    const submissionSpec = buildSubmissionExecutorRunSpec({
+      runId: `sub_${crypto.randomUUID().replaceAll("-", "_")}`,
+      workspaceId: workspace.id,
+      executableId: launch.executableId,
+      args: launch.args,
+      environment: launch.environment,
+      toolchain: launch.toolchain,
+      localToolchain: launch.localToolchain,
+      timeLimitMs: options.timeLimitMs,
+      memoryBytes,
+    });
+
+    const interactorSpec = buildCheckerExecutorRunSpec({
+      runId: `inter_${crypto.randomUUID().replaceAll("-", "_")}`,
+      workspaceId: interactorWorkspace.id,
+      executableId: interactorLaunch.executableId,
+      args: interactorArgs,
+      stdoutFile: "stdout.txt",
+      stderrFile: "stderr.txt",
+      environment: interactorLaunch.environment,
+      toolchain: interactorLaunch.toolchain,
+      localToolchain: interactorLaunch.localToolchain,
+      runtimeBacked: options.interactor.runtime === "python",
+      timeoutMs: Math.max(options.timeLimitMs * 2, options.timeLimitMs + 2000),
+      memoryBytes: 512 * 1024 * 1024,
+    });
+
+    const result = await runReservedInteractiveExecutor(options.jobId, {
+      runId,
+      submission: submissionSpec,
+      interactor: interactorSpec,
+    });
+
+    const transcript = readBounded(path.join(interactorWorkspace.path, "output.txt"), MAX_OUTPUT_SIZE).toString("utf8");
+    const interactorStderr = readBounded(path.join(interactorWorkspace.path, "stderr.txt"), MAX_STDERR_PREVIEW).toString("utf8");
+
+    let status: TestCaseRun["status"] = "JE";
+    let score = 0;
+    const executionTime = result.executionTimeMs;
+    const peakMemoryKb = result.peakMemoryBytes ? Math.ceil(result.peakMemoryBytes / 1024) : undefined;
+    const checkerMessage = interactorStderr || result.message;
+
+    if (result.verdict === "AC") {
+      status = "AC";
+      score = options.score;
+    } else if (result.verdict === "WA") {
+      status = "WA";
+      score = 0;
+    } else if (result.verdict === "PE") {
+      status = "PE";
+      score = 0;
+    } else if (result.verdict === "TLE") {
+      status = "TLE";
+      score = 0;
+    } else if (result.verdict === "MLE") {
+      status = "MLE";
+      score = 0;
+    } else if (result.verdict === "RTE" || result.verdict === "RE") {
+      status = "RE";
+      score = 0;
+    } else if (result.verdict === "PARTIAL") {
+      status = "PARTIAL";
+      if (result.scoreMultiplier !== undefined) {
+        score = Math.round(options.score * result.scoreMultiplier * 100) / 100;
+      } else {
+        const parsed = parsePartialScore(interactorStderr, transcript, options.score);
+        score = parsed !== null ? Math.round(options.score * parsed * 100) / 100 : 0;
+      }
+    } else {
+      status = "JE";
+      score = 0;
+    }
+
+    return createResult(
+      options,
+      status,
+      executionTime,
+      peakMemoryKb,
+      score,
+      result.message || "",
+      transcript || interactorStderr || "",
+      checkerMessage,
+      result.submissionResult,
+    );
+  } finally {
+    detachExecutorRun(options.jobId, runId);
+    workspace.dispose();
+    interactorWorkspace.dispose();
+  }
 }

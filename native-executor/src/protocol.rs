@@ -14,6 +14,10 @@ pub enum ExecutorRequest {
         id: String,
         spec: Box<RunSpec>,
     },
+    InteractiveRun {
+        id: String,
+        spec: Box<InteractiveRunSpec>,
+    },
     Cancel {
         id: String,
         #[serde(rename = "runId")]
@@ -29,6 +33,7 @@ impl ExecutorRequest {
         match self {
             Self::Health { id }
             | Self::Run { id, .. }
+            | Self::InteractiveRun { id, .. }
             | Self::Cancel { id, .. }
             | Self::Shutdown { id } => id,
         }
@@ -176,6 +181,32 @@ pub struct ExecutorHealth {
     pub startup_timings: Option<ExecutorStartupTimings>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InteractiveRunSpec {
+    pub run_id: String,
+    pub submission: RunSpec,
+    pub interactor: RunSpec,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InteractiveRunResult {
+    pub run_id: String,
+    pub verdict: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub score_multiplier: Option<f64>,
+    pub execution_time_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub peak_memory_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transcript: Option<String>,
+    pub submission_result: RunResult,
+    pub interactor_result: RunResult,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ExecutorResponse {
@@ -186,6 +217,10 @@ pub enum ExecutorResponse {
     RunResult {
         id: String,
         result: RunResult,
+    },
+    InteractiveRunResult {
+        id: String,
+        result: InteractiveRunResult,
     },
     CancelResult {
         id: String,

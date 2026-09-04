@@ -58,8 +58,8 @@ describe("ChangelogModal", () => {
     );
 
     assert.match(html, /Có gì mới trong JudgeDesk/);
-    assert.match(html, /Nâng giới hạn Bộ nhớ 1024 MB &amp; Tối ưu Trình biên dịch/);
-    assert.match(html, /v1\.4\.45/);
+    assert.match(html, /Bài Tương Tác \(Interactive\), Chấm Điểm Phân Số &amp; Tối Ưu Tốc Độ Khởi Động/);
+    assert.match(html, /v1\.4\.46/);
     assert.match(html, /v1\.2\.5/);
     assert.match(html, /Đã hiểu/);
   });
@@ -85,7 +85,7 @@ describe("ChangelogModal", () => {
     );
 
     assert.match(html, /What&#x27;s New in JudgeDesk/);
-    assert.match(html, /1024 MB Memory Limit &amp; Compiler Staging Optimizations/);
+    assert.match(html, /Interactive Problems, Exact Rational Scoring &amp; Startup Pre-warm Optimizations/);
     assert.match(html, /Got it/);
   });
 });

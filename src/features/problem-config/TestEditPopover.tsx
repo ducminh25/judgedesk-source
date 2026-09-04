@@ -2,6 +2,13 @@ import { useEffect, type FormEvent } from "react";
 import { Clock, Coins, FolderTree, X } from "lucide-react";
 import { TestEditPopover as PopoverState } from "./editor-state";
 import { useTranslation } from "react-i18next";
+import {
+  parseRational,
+  formatRational,
+  divideRational,
+  multiplyRational,
+  createRational,
+} from "../../../shared/rational";
 
 interface Props {
   popover: PopoverState;
@@ -126,11 +133,11 @@ export function TestEditPopover(props: Props) {
         {/* Content Form */}
         <form onSubmit={handleSubmit} className="p-4 space-y-3">
           {popover.type === "points" && (
-            <NumberEditor
+            <TextEditor
               label={t("problemConfig.testConfig.points")}
               value={props.input}
               onChange={props.onInputChange}
-              hint={t("problemConfig.testEdit.pointHint")}
+              hint={t("problemConfig.testEdit.pointHint", "Nhập số hoặc phân số (vd: 1/3, 0.5, 2)")}
               onEnter={handleSubmit}
             />
           )}
@@ -188,14 +195,18 @@ export function TestEditPopover(props: Props) {
                   })}
                 </label>
                 <input
-                  type="number"
+                  type="text"
                   autoFocus
+                  placeholder="vd: 2 hoặc 100/3"
                   value={props.batchPointsTotal}
                   onChange={(event) => {
-                    props.onBatchPointsTotalChange(event.target.value);
-                    const total = parseFloat(event.target.value);
-                    if (!Number.isNaN(total) && props.selectedCount > 0) {
-                      props.onInputChange((total / props.selectedCount).toString());
+                    const text = event.target.value;
+                    props.onBatchPointsTotalChange(text);
+                    const val = text.trim();
+                    if (val && props.selectedCount > 0) {
+                      const totalRat = parseRational(val);
+                      const eachRat = divideRational(totalRat, createRational(props.selectedCount));
+                      props.onInputChange(formatRational(eachRat));
                     }
                   }}
                   onKeyDown={(event) => {
@@ -203,7 +214,7 @@ export function TestEditPopover(props: Props) {
                       handleSubmit();
                     }
                   }}
-                  className="w-full bg-input-bg border border-surface-border-strong rounded-lg px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400 font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  className="w-full bg-input-bg border border-surface-border-strong rounded-lg px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400 font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
                 />
               </div>
 
@@ -212,15 +223,17 @@ export function TestEditPopover(props: Props) {
                   {t("problemConfig.testEdit.eachPoint")}
                 </label>
                 <input
-                  type="number"
+                  type="text"
+                  placeholder="vd: 1/3 hoặc 0.5"
                   value={props.input}
                   onChange={(event) => {
-                    props.onInputChange(event.target.value);
-                    const points = parseFloat(event.target.value);
-                    if (!Number.isNaN(points) && props.selectedCount > 0) {
-                      props.onBatchPointsTotalChange(
-                        (points * props.selectedCount).toString(),
-                      );
+                    const text = event.target.value;
+                    props.onInputChange(text);
+                    const val = text.trim();
+                    if (val && props.selectedCount > 0) {
+                      const eachRat = parseRational(val);
+                      const totalRat = multiplyRational(eachRat, createRational(props.selectedCount));
+                      props.onBatchPointsTotalChange(formatRational(totalRat));
                     }
                   }}
                   onKeyDown={(event) => {
@@ -228,7 +241,7 @@ export function TestEditPopover(props: Props) {
                       handleSubmit();
                     }
                   }}
-                  className="w-full bg-input-bg border border-surface-border-strong rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full bg-input-bg border border-surface-border-strong rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
                 />
               </div>
             </div>

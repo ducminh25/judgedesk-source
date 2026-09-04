@@ -22,6 +22,7 @@ interface Props {
   onSave: (problemName: string, config: ProblemConfig) => void;
   onClose: () => void;
   customCheckers?: string[];
+  interactors?: string[];
   saveDisabled?: boolean;
 }
 
@@ -33,6 +34,7 @@ export default function ProblemConfigModal({
   onSave,
   onClose,
   customCheckers = [],
+  interactors = [],
   saveDisabled = false,
 }: Props) {
   const { t } = useTranslation();
@@ -124,6 +126,7 @@ export default function ProblemConfigModal({
             config={editor.config}
             setConfig={editor.setConfig}
             customCheckers={customCheckers}
+            interactors={interactors}
             useStdIn={editor.useStdIn}
             setUseStdIn={editor.setUseStdIn}
             useStdOut={editor.useStdOut}
@@ -135,63 +138,69 @@ export default function ProblemConfigModal({
           />
         </div>
 
-        <div className="p-5 flex-1 overflow-y-auto font-sans text-xs space-y-6 bg-surface">
-          <CompileProblemSettings
-            value={editor.config.compile}
-            onChange={(compile) => {
-              editor.setConfig((previous) => withProblemCompileConfig(previous, compile));
-            }}
-            onValidityChange={setCompileConfigValid}
-          />
-
-          <div className="flex items-center gap-6">
-            <label className="flex items-center gap-2 text-text-primary font-medium cursor-pointer">
-              <input
-                type="checkbox"
-                checked={editor.polygonConfig.enableGroups}
-                onChange={(event) =>
-                  editor.setPolygonConfig((previous) => ({
-                    ...previous,
-                    enableGroups: event.target.checked,
-                  }))
-                }
-                className="w-4 h-4 bg-input-bg border-surface-border-strong rounded"
-              />
-              {t("problemConfig.enableGroups")}
-            </label>
-            <label className="flex items-center gap-2 text-text-primary font-medium cursor-pointer">
-              <input
-                type="checkbox"
-                checked={showContent}
-                onChange={(event) => setShowContent(event.target.checked)}
-                className="w-4 h-4 bg-input-bg border-surface-border-strong rounded"
-              />
-              {t("problemConfig.showContent")}
-            </label>
+        <div className="p-5 flex-1 overflow-y-auto font-sans text-xs space-y-5 bg-surface">
+          <div className="rounded-lg border border-surface-border bg-surface-elevated/50 p-4 shadow-xs">
+            <CompileProblemSettings
+              value={editor.config.compile}
+              onChange={(compile) => {
+                editor.setConfig((previous) => withProblemCompileConfig(previous, compile));
+              }}
+              onValidityChange={setCompileConfigValid}
+            />
           </div>
 
-          <TestConfigurationTable
-            config={editor.polygonConfig}
-            tests={editor.testDetails}
-            selectedTests={editor.selectedTests}
-            showContent={showContent}
-            isLoading={editor.isLoading}
-            totalPoints={editor.totalPoints}
-            onToggleAll={editor.toggleAllTests}
-            onToggleTest={editor.toggleTest}
-            onOpenEdit={(nextPopover, input, batchTotal) => {
-              setPopover(nextPopover);
-              setPopoverInput(input);
-              if (batchTotal !== undefined) setBatchPointsTotal(batchTotal);
-            }}
-          />
+          <div className="rounded-lg border border-surface-border bg-surface-elevated/50 p-4 shadow-xs space-y-4">
+            <div className="flex items-center gap-6">
+              <label className="flex items-center gap-2 text-text-primary font-medium cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={editor.polygonConfig.enableGroups}
+                  onChange={(event) =>
+                    editor.setPolygonConfig((previous) => ({
+                      ...previous,
+                      enableGroups: event.target.checked,
+                    }))
+                  }
+                  className="w-4 h-4 bg-input-bg border-surface-border-strong rounded text-indigo-500 focus:ring-indigo-500"
+                />
+                {t("problemConfig.enableGroups")}
+              </label>
+              <label className="flex items-center gap-2 text-text-primary font-medium cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showContent}
+                  onChange={(event) => setShowContent(event.target.checked)}
+                  className="w-4 h-4 bg-input-bg border-surface-border-strong rounded text-indigo-500 focus:ring-indigo-500"
+                />
+                {t("problemConfig.showContent")}
+              </label>
+            </div>
 
-          <GroupPolicyTable
-            config={editor.polygonConfig}
-            onConfigChange={editor.setPolygonConfig}
-            onAddDependency={editor.addDependency}
-            onRemoveDependency={editor.removeDependency}
-          />
+            <TestConfigurationTable
+              config={editor.polygonConfig}
+              tests={editor.testDetails}
+              selectedTests={editor.selectedTests}
+              showContent={showContent}
+              isLoading={editor.isLoading}
+              totalPoints={editor.totalPoints}
+              onToggleAll={editor.toggleAllTests}
+              onToggleTest={editor.toggleTest}
+              onOpenEdit={(nextPopover, input, batchTotal) => {
+                setPopover(nextPopover);
+                setPopoverInput(input);
+                if (batchTotal !== undefined) setBatchPointsTotal(batchTotal);
+              }}
+            />
+          </div>
+
+          <div className="rounded-lg border border-surface-border bg-surface-elevated/50 p-4 shadow-xs">
+            <GroupPolicyTable
+              config={editor.polygonConfig}
+              onConfigChange={editor.setPolygonConfig}
+              onAddDependency={editor.addDependency}
+              onRemoveDependency={editor.removeDependency}
+            />
+          </div>
         </div>
 
         <div className="p-4 border-t border-surface-border bg-surface-elevated flex justify-end gap-3 z-10">

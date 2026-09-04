@@ -94,7 +94,10 @@
     "verifyingEnvironment": "Verifying compiler & environment...",
     "scanning": "Scanning submissions and testcases...",
     "compilingSubmission": "Compiling submission...",
-    "compilingChecker": "Compiling checker..."
+    "compilingChecker": "Compiling checker...",
+    "compilingInteractor": "Compiling interactor...",
+    "locating": "Locating submission...",
+    "judgingTest": "Judging test {{current}} of {{total}}"
   },
   "scoreboard": {
     "contestants": "Contestants",
@@ -140,6 +143,12 @@
     "save": "Save Configuration",
     "useStandardInput": "Use standard input",
     "useStandardOutput": "Use standard output",
+    "isInteractive": "Interactive?",
+    "interactiveTooltip": "Enable interactive problem grading per Codeforces Polygon testlib.h standard. Solution and interactor communicate via bidirectional standard I/O (cin/cout) in sandbox.",
+    "totalScore": "Total Score",
+    "totalScorePlaceholder": "Optional (e.g. 100/3, 10)",
+    "polygonStandard": "Polygon testlib.h standard",
+    "interactor": "Interactor",
     "enableGroups": "Enable groups?",
     "showContent": "Show content?",
     "cancel": "Cancel",
@@ -319,6 +328,8 @@
     "compiledSuccessfully": "Compiled successfully in",
     "expectedOutput": "Expected Output",
     "contestantOutput": "Contestant Output",
+    "interactiveProtocol": "Interaction Protocol",
+    "interactiveTranscript": "Interaction Transcript",
     "noMatch": "No testcases match the current filter.",
     "seconds": "s",
     "compilation": "Compilation",

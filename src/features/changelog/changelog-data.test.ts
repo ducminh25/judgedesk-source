@@ -6,11 +6,12 @@ import {
   getChangelogForLanguage,
 } from "./changelog-data.js";
 
-test("changelog data contains versions from 1.4.45 down to 1.2.5 in descending order", () => {
+test("changelog data contains versions from 1.4.46 down to 1.2.5 in descending order", () => {
   const versionsVi = CHANGELOG_DATA_VI.map((r) => r.version);
   const versionsEn = CHANGELOG_DATA_EN.map((r) => r.version);
 
   const expectedVersions = [
+    "1.4.46",
     "1.4.45",
     "1.4.44",
     "1.4.43",
@@ -57,6 +58,6 @@ test("every version has sections and non-empty bullet items", () => {
 test("getChangelogForLanguage returns appropriate language release list", () => {
   const vi = getChangelogForLanguage("vi");
   const en = getChangelogForLanguage("en");
-  assert.equal(vi[0].sections[0].title, "Nâng giới hạn Bộ nhớ 1024 MB & Tối ưu Trình biên dịch");
-  assert.equal(en[0].sections[0].title, "1024 MB Memory Limit & Compiler Staging Optimizations");
+  assert.equal(vi[0].sections[0].title, "Bài Tương Tác (Interactive), Chấm Điểm Phân Số & Tối Ưu Tốc Độ Khởi Động");
+  assert.equal(en[0].sections[0].title, "Interactive Problems, Exact Rational Scoring & Startup Pre-warm Optimizations");
 });
