@@ -1,7 +1,7 @@
 # Product Requirements Document (PRD) — JudgeDesk
 
 **Project Name**: JudgeDesk (formerly codenamed *ThemisV2*)
-**Product Version**: `1.4.43` (`v1.4.x`)
+**Product Version**: `1.5.0` (`v1.5.x`)
 **Document Status**: Official / Approved
 **Target Platform**: Windows 10/11 x64, macOS Apple Silicon (ARM64)
 **License**: Proprietary / Private Source (`ducminh25/judgedesk-source`)
@@ -21,10 +21,10 @@ JudgeDesk was conceived as the modern, cross-platform successor to legacy gradin
 1. **100% Offline & Independent**: Runs entirely locally without requiring internet connectivity, cloud servers, or external databases during grading.
 2. **Native OS Sandboxing**: Utilizes modern OS kernel isolation (Windows AppContainer + Job Objects, macOS Run Guardian + Seatbelt Sandbox) to securely execute untrusted student submissions without risking host system corruption or infinite resource consumption.
 3. **Themis Folder-Structure Compatibility**: Full backward compatibility with traditional Themis contest folder layouts, testcase hierarchies, and scoring conventions.
-4. **Modern Competitive Programming Features**: Out-of-the-box support for Subtasks (Polygon Test Groups with cycle-safe dependencies), Custom Checkers (C++ with `testlib.h`, Python, and native Windows `.exe` binaries), and flexible point distributions.
+4. **Modern Competitive Programming Features**: Out-of-the-box support for Subtasks (Polygon Test Groups with cycle-safe dependencies), Custom Checkers (C++ with `testlib.h`, Python, and native Windows `.exe` binaries), Interactive Problems, and flexible point distributions.
 5. **Multi-Language Support (6 Languages)**: Native support for C++, C, Python 3, Free Pascal, Java (OpenJDK 21), and Scratch (`.sb3`, `.sb2`, `.sb`) via headless TurboWarp VM.
 6. **Real-Time Online Submission Grading (OSD)**: Background folder-watcher mode (`F8`) allowing live submission drops via shared network folders or contest management scripts with automatic evaluation and live scoreboard updates.
-7. **Polished, Bilingual Desktop UX**: Bilingual interface (Tiếng Việt & English), dark/light themes, keyboard shortcuts (`F1`-`F12`), dynamic score sorting, Excel workbook export (`F12`), and human-friendly 3-part error messaging.
+7. **Polished, Bilingual Desktop UX**: Bilingual interface (Tiếng Việt & English), dark/light themes, keyboard shortcuts (`F1`-`F12`), dynamic score sorting, Excel workbook export (`F12`), in-app update chip, and human-friendly 3-part error messaging.
 
 ---
 
@@ -35,7 +35,7 @@ JudgeDesk was conceived as the modern, cross-platform successor to legacy gradin
 * **Persona 1: High School / Middle School CS Teacher & Contest Organizer (Thầy/Cô phụ trách đội tuyển HSG, Tin học trẻ)**
   * *Needs*: Easy contest setup, compatibility with existing test banks, fast batch grading of 30-100 students, instant Excel export with color-coded results for ranking and reporting, support for Scratch in youth divisions.
 * **Persona 2: Competitive Programming Coach / Problem Setter (Huấn luyện viên Olympic)**
-  * *Needs*: Subtask scoring (group-based points), custom checkers for multiple correct outputs (`.cpp`, `.py`, `.exe`), multi-language support (C++, C, Python 3, Pascal, Java), precise memory and time limit enforcement.
+  * *Needs*: Subtask scoring (group-based points), custom checkers for multiple correct outputs (`.cpp`, `.py`, `.exe`), interactive problem evaluation, multi-language support (C++, C, Python 3, Pascal, Java), precise memory and time limit enforcement up to 1024 MB.
 * **Persona 3: Student / Contestant in Mock Contests**
   * *Needs*: Live submission feedback via OSD folder watch, transparent error diagnostics without cryptic crashes, accurate time/memory profiling.
 
@@ -59,7 +59,7 @@ JudgeDesk was conceived as the modern, cross-platform successor to legacy gradin
 
 ### FR-2: Problem Configuration & Subtasks
 
-* **FR-2.1**: Configuration of Time Limit (ms) and Memory Limit (MB, up to 512 MB).
+* **FR-2.1**: Configuration of Time Limit (ms) and Memory Limit (MB, configurable from 8 MB to 1024 MB, default 256 MB).
 * **FR-2.2**: I/O Mode selection: Standard I/O (stdin/stdout) vs. File I/O (`problem.inp` / `problem.out`).
 * **FR-2.3**: Checker Type selection: Standard diff (ignoring trailing whitespace/newlines), float comparison with epsilon tolerance, or Custom Checker (C++/Python/Binary).
 * **FR-2.4**: Polygon Subtask & Test Group Management:
@@ -137,6 +137,31 @@ JudgeDesk was conceived as the modern, cross-platform successor to legacy gradin
 * **FR-11.3**: Automatic 100% Certified / Ready recognition: managed toolchains with official receipts are certified by default in Core edition without security warnings or extra user prompts.
 * **FR-11.4**: Dual GitHub Release packaging: continue publishing full all-in-one installers (Full MSI ~813 MB / Full DMG ~347 MB) for fresh offline computer lab setup alongside lightweight Core installers (~20 MB).
 
+### FR-12: Interactive Problem Evaluation & Interactors
+
+* **FR-12.1**: Support for interactive competitive programming tasks via Win32 AppContainer dual-job isolation with bidirectional anonymous pipe streaming.
+* **FR-12.2**: Interactor support written in C++ (`testlib.h`) or Python (`.py`).
+* **FR-12.3**: Independent evaluation of input-only test suites (`.inp`) without requiring pre-computed `.out` answer files.
+* **FR-12.4**: Reliable deadline and termination management ensuring neither submission nor interactor can hang indefinitely.
+
+### FR-13: Rational Scoring Engine
+
+* **FR-13.1**: Calculation of testcase, subtask, and total points using exact rational fraction arithmetic via greatest common divisor (`gcd(num, den)`).
+* **FR-13.2**: Total elimination of IEEE-754 floating-point drift (e.g., `0.35 * 10 = 3.5`, `1/3 + 2/3 = 1`).
+* **FR-13.3**: Exact decimal and fractional representation consistently maintained across Scoreboard view and exported Excel spreadsheets (`F12`).
+
+### FR-14: Universal Precompiled Header (PCH) & Background Pre-warming
+
+* **FR-14.1**: Automatic detection, compilation, and caching of `<bits/stdc++.h>` for all C++ compilers (Managed GCC, MinGW-w64, MSYS2 UCRT64, Apple Clang).
+* **FR-14.2**: 16-hex fingerprint verification based on canonical path, file size, mtime, and compiler version string to guarantee safe cache invalidation.
+* **FR-14.3**: Accelerates C++ compilation by up to ~16.5x (from ~3.6s down to ~0.23s).
+* **FR-14.4**: Background pre-warming initializes compiler caches and sandbox environments at application startup, eliminating first-judge warmup latency.
+
+### FR-15: Toolchain Execution Policy Auto-Migration
+
+* **FR-15.1**: Automatic migration of legacy toolchain configuration snapshots to the secure certified execution model upon startup (`migrateLegacyExecutionPolicy`).
+* **FR-15.2**: Streamlined Toolchain Manager (`F6`) eliminating redundant manual menus and experimental toggles.
+
 ---
 
 ## 4. Non-Functional Requirements (NFR)
@@ -144,14 +169,14 @@ JudgeDesk was conceived as the modern, cross-platform successor to legacy gradin
 
 | Category           | Requirement              | Metric / Target                                                                                              |
 | :------------------- | :------------------------- | :------------------------------------------------------------------------------------------------------------- |
-| **Performance**    | Batch Judging Throughput | < 50ms overhead per testcase evaluation beyond the contestant runtime.                                       |
+| **Performance**    | Batch Judging Throughput | < 50ms overhead per testcase evaluation beyond the contestant runtime; C++ compilation < 300ms with PCH.     |
 | **Memory Limit**   | Host Memory Footprint    | < 150 MB RAM for the entire frontend and backend process combined when idle.                                 |
-| **Sandbox Memory** | Submission Memory Cap    | Maximum 512 MB per contestant process; hard-killed on violation.                                             |
+| **Sandbox Memory** | Submission Memory Cap    | Configurable from 8 MB to 1024 MB per contestant process (default 256 MB); hard-killed on violation.          |
 | **Compilation**    | Compiler Timeout         | Maximum 15 seconds per source code file.                                                                     |
 | **Update Speed**   | In-App Update Latency    | < 5 seconds download time for Core updates (~20 MB) on broadband connections; < 3 seconds installation time. |
 | **Security**       | Zero-Network Invariant   | 100% network packets blocked for contestant processes in Native Sandbox.                                     |
 | **Portability**    | Standalone Distribution  | Single installer (MSI on Windows, DMG on macOS) with embedded Node SEA runtime.                              |
-| **Compatibility**  | Backward Compatibility   | 100% compatible with Themis contest folders,`Config.cfg`, and legacy `.judgedesk` archives.                  |
+| **Compatibility**  | Backward Compatibility   | 100% compatible with Themis contest folders, `Config.cfg`, and legacy `.judgedesk` archives.                 |
 | **Reliability**    | Zero Silent Errors       | Every failure must be captured, logged, and clearly communicated to the user.                                |
 | **Localization**   | Multi-language UI        | 100% complete Vietnamese (`vi.json`) and English (`en.json`) localization.                                   |
 
@@ -159,6 +184,7 @@ JudgeDesk was conceived as the modern, cross-platform successor to legacy gradin
 
 ## 5. Success Metrics & Quality Gates
 
-* **Automated Test Coverage**: 100% pass rate across the full test suite (476 tests: 466 passed, 0 failed, 10 skipped).
+* **Automated Test Coverage**: 100% pass rate across the full test suite (492 tests: 482 passed, 0 failed, 10 skipped).
 * **Zero Compilation Regressions**: Typecheck (`tsc --noEmit`) clean with zero errors.
 * **Seamless Cross-Platform Parity**: Identical scoring outcomes on Windows x64 and macOS Apple Silicon.
+

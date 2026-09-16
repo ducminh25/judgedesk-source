@@ -27,10 +27,11 @@ cargo check --manifest-path src-tauri/Cargo.toml
 
 ## Windows resource envelope
 
-JudgeDesk permits only one active judge batch. On Windows, compiler and
-submission jobs are each capped at 512 MiB so the packaged app, WebView,
-backend, executor and active child can stay below the 1,024 MiB combined peak
-release gate. Each active compiler/submission/checker job is also assigned to
+JudgeDesk permits only one active judge batch. On Windows, compiler jobs and
+default submission jobs are capped to ensure the packaged app, WebView,
+backend, executor and active child stay comfortably below the 1,024 MiB combined
+peak release gate. Submissions support configurable memory limits up to 1,024 MiB
+(default 256 MiB). Each active compiler/submission/checker job is also assigned to
 one logical processor and started below normal priority so judging cannot take
 over an older teacher PC. The macOS per-problem memory behavior is unchanged.
 

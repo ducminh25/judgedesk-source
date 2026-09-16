@@ -103,7 +103,7 @@ sequenceDiagram
         loop For each Testcase directory (test1, test2, ...)
             alt Native Binary / Script
                 Backend->>Sandbox: Execute binary with testcase input (Binary IPC Header)
-                Sandbox->>Sandbox: Enforce CPU, Wall-clock, 512MB RAM, 0-Network limits
+                Sandbox->>Sandbox: Enforce CPU, Wall-clock, 8-1024MB RAM, 0-Network limits
                 Sandbox-->>Backend: Execution Result (Time, Memory, ExitCode, Output)
             else Scratch Execution
                 Backend->>Backend: Feed .INP via `ask and wait` & capture `say`/`think`
@@ -123,7 +123,7 @@ sequenceDiagram
             Backend->>UI: SSE event: { type: "test_progress", testName, verdict, time, memory }
         end
 
-        Backend->>Backend: Compute Subtask / Group Scores & Check Dependencies
+        Backend->>Backend: Compute Subtask / Group Scores via Rational Engine (GCD) & Check Dependencies
         Backend->>UI: SSE event: { type: "problem_complete", totalScore, verdicts }
     end
 
@@ -251,4 +251,75 @@ sequenceDiagram
     Updater->>Updater: Execute lightweight MSI upgrade
     Updater->>UI: Relaunch JudgeDesk with updated binaries
     Note over UI,AppData: Compilers in AppData remain 100% intact and ready to judge
+```
+
+---
+
+## 8. Interactive Problem Evaluation Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant JudgeEngine as Batch Judge Engine
+    participant InteractorRunner as Interactor Runner (server/judge/interactor-runner.ts)
+    participant Pipe1 as Pipe: Interactor Out -> Contestant In
+    participant Pipe2 as Pipe: Contestant Out -> Interactor In
+    participant ContestantAppContainer as Contestant AppContainer Job
+    participant InteractorAppContainer as Interactor AppContainer Job
+
+    JudgeEngine->>InteractorRunner: runInteractiveTestcase({ contestantBin, interactorBin, inputFile })
+    InteractorRunner->>InteractorRunner: Create bidirectional anonymous Win32 pipes
+    InteractorRunner->>ContestantAppContainer: Spawn Contestant with Pipe1(read), Pipe2(write)
+    InteractorRunner->>InteractorAppContainer: Spawn Interactor with Pipe2(read), Pipe1(write), inputFile
+    
+    par Concurrent Exchange
+        InteractorAppContainer->>Pipe1: Send query / challenge
+        Pipe1-->>ContestantAppContainer: Receive query via stdin
+        ContestantAppContainer->>Pipe2: Respond with answer via stdout
+        Pipe2-->>InteractorAppContainer: Receive response via stdin
+    end
+
+    alt Contestant violates limits (TLE / MLE / RTE)
+        InteractorRunner->>ContestantAppContainer: Terminate AppContainer
+        InteractorRunner->>InteractorAppContainer: Terminate Interactor
+        InteractorRunner-->>JudgeEngine: Verdict: TLE / MLE / RTE
+    else Interactor exits successfully (Code 0)
+        InteractorRunner-->>JudgeEngine: Verdict: AC (Passed)
+    else Interactor exits with Code 1..n / testlib verdict
+        InteractorRunner-->>JudgeEngine: Verdict: WA / Presentation Error
+    end
+```
+
+---
+
+## 9. Universal Precompiled Header (PCH) & Background Pre-warming Flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant App as JudgeDesk App Launch
+    participant Prewarm as Background Pre-warm (background-prewarm.ts)
+    participant PchEngine as Universal PCH (universal-pch.ts)
+    participant Cache as PCH Cache Dir (%LOCALAPPDATA%/ThemisV2/pch)
+    participant Compiler as Compiler (GCC/Clang)
+    participant JudgeBatch as Active Judging Batch
+
+    App->>Prewarm: startBackgroundJudgePrewarm()
+    Prewarm->>PchEngine: ensureUniversalCppPch(effectiveToolchain)
+    PchEngine->>PchEngine: Compute 16-hex fingerprint (path + size + mtime + compiler -v)
+    PchEngine->>Cache: Check for existing bits/stdc++.h.gch
+    alt Cached .gch exists and intact
+        Cache-->>PchEngine: Cache hit (Valid .gch found)
+    else Cache miss / Not yet generated
+        PchEngine->>Compiler: Compile <bits/stdc++.h> -> <cache_dir>/bits/stdc++.h.gch (-std=c++14 -O2 -pipe)
+        Compiler-->>PchEngine: Generation complete
+    end
+    PchEngine-->>Prewarm: Precompiled Header Ready
+    Prewarm->>Prewarm: Handshake complete (Ready state)
+
+    Note over JudgeBatch,PchEngine: RUNTIME JUDGING SESSION
+    JudgeBatch->>PchEngine: getPchDirectoryForToolchain(cppToolchain)
+    PchEngine-->>JudgeBatch: Return <cache_dir>
+    JudgeBatch->>Compiler: Prepend "-isystem <cache_dir>" to compilation args
+    Compiler-->>JudgeBatch: C++ Compilation finishes in ~0.23s (16.5x faster)
 ```

@@ -1,7 +1,7 @@
 # Master Implementation Plan — JudgeDesk
 
 **Project Name**: JudgeDesk  
-**Current Version**: `v1.4.43` (`v1.4.x` Production Stable)  
+**Current Version**: `v1.5.0` (`v1.5.x` Production Stable)  
 **Document Status**: Official / Approved  
 **Classification**: Implementation History & Engineering Standards  
 
@@ -9,7 +9,7 @@
 
 ## 1. Executive Implementation History
 
-JudgeDesk đã trải qua 7 giai đoạn triển khai cốt lõi để hoàn thiện từ một nguyên mẫu ứng dụng chấm bài cơ bản thành hệ thống chấm bài thi lập trình thi đấu ngoại tuyến đa nền tảng hoàn chỉnh:
+JudgeDesk đã trải qua 11 giai đoạn triển khai cốt lõi để hoàn thiện từ một nguyên mẫu ứng dụng chấm bài cơ bản thành hệ thống chấm bài thi lập trình thi đấu ngoại tuyến đa nền tảng hoàn chỉnh:
 
 ```mermaid
 timeline
@@ -21,6 +21,10 @@ timeline
     v1.3.7 : Cập Nhật Siêu Tốc & Di Chuyển Toolchains : In-App Core Updates (~20 MB) : Early Toolchain Migration : Tự Động Chứng Thực 100% Xanh / Ready Trên Bản Core : Giữ Trọn Vẹn 2 Bản Core & Full Trên GitHub Releases
     v1.3.8 - v1.3.82 : Hoàn Thiện Xuất Excel & Changelog : Sửa Dứt Điểm Xuất Excel Rỗng : Tự Động Nạp Run Metadata Môi Trường : Tra Cứu Changelog Song Ngữ Trong Trợ Giúp F1
     v1.4.0 - v1.4.43 : Nhận Diện Themis, Probes & Chấm Scratch : Tự Động Quét & So Sánh Toolchain Themis : Custom Checkers .exe/.cpp/.py Tự Nạp Header : Chẩn Đoán Compiler Self-Test Probes : Nút Sắp Xếp Điểm Động 3 Trạng Thái : Tích Hợp Chấm Scratch Chuẩn VNOI scratch-run (TurboWarp VM)
+    v1.4.44 : Chấm Thi Scratch Tuyệt Đối : Khắc phục lỗi STATUS_DLL_INIT_FAILED bằng ResourceOnly Job Objects : Chứng thực ký Ed25519 cho gói Scratch
+    v1.4.45 : Nâng Giới Hạn RAM 1024 MB : Mở rộng trần Memory Limit lên 1024 MB trên Windows/macOS : Tối ưu Compiler Staging
+    v1.4.46 : Bài Tương Tác & Chấm Điểm Phân Số : Dual-Job Runner cho Bài Interactive : Rational Scoring Engine triệt tiêu sai số float : Precompiled Header C++14
+    v1.5.0 : Universal PCH C++, Di Trú Chính Sách & Brand Refresh : Universal PCH cho mọi compiler C++ : Tự động di trú Execution Policy : In-App Core Updater & Nút Ủng hộ : Bộ nhận diện thương hiệu mới
 ```
 
 ---
@@ -34,7 +38,7 @@ timeline
 * [x] **Xuất bảng điểm Excel (`F12`)**: Sử dụng Web Worker sinh workbook song song, định dạng màu sắc theo verdict và tự động mở trình đọc bảng tính của hệ điều hành.
 
 ### Cột Mốc 2: Sandbox Bản Địa & Bảo Mật Hệ Thống (v1.2.0 - v1.2.7)
-* [x] **Windows AppContainer & Job Objects**: Cô lập triệt để quyền đọc/ghi ổ đĩa, chặn 100% kết nối mạng (0-network invariant), giới hạn RAM tối đa 512 MB và chống tạo tiến trình con vô hạn.
+* [x] **Windows AppContainer & Job Objects**: Cô lập triệt để quyền đọc/ghi ổ đĩa, chặn 100% kết nối mạng (0-network invariant), giới hạn RAM và chống tạo tiến trình con vô hạn.
 * [x] **macOS Run Guardian & Seatbelt Sandbox**: Sử dụng nhóm tiến trình POSIX (`setpgid`) để dọn dẹp sạch tiến trình con, thực thi chính sách `sandbox_init` an toàn.
 * [x] **Single-Instance Mutex & Process Supervisor**: Ngăn chặn mở trùng lặp ứng dụng (`%TEMP%/judgedesk.lock`) và đảm bảo tắt sạch tiến trình nền (sidecar) khi đóng app.
 
@@ -70,15 +74,35 @@ timeline
 * [x] **Tích hợp Chấm Scratch Chuẩn VNOI (`scratch-run` / TurboWarp VM)**: Chấm trực tiếp các dự án Scratch (`.sb3`, `.sb2`, `.sb`) qua runner chính thức của VNOI-Admin, nạp test tự động qua `ask and wait` và xuất kết quả qua `say`/`think`, tích hợp sẵn trong bản Full và tải tự động ở bản Core.
 * [x] **Tối ưu Khởi động Chấm & Làm ấm Sandbox**: Mở ngay cửa sổ tiến trình khi bấm Chấm bài (`F9`); làm ấm ngầm Native Sandbox và cache nhị phân Custom Checker.
 
+### Cột Mốc 8: Hoàn Thiện Tuyệt Đối Chấm Thi Scratch (v1.4.44)
+* [x] **Khắc phục lỗi STATUS_DLL_INIT_FAILED (0xC0000142)**: Áp dụng cơ chế cô lập an toàn `ResourceOnly` qua Windows Job Object, kiểm soát chặt chẽ Time Limit, Memory Limit và I/O stream.
+* [x] **Đưa Scratch vào Phân phối Chính thức Ký số**: Đưa `scratch-windows-x64` và `scratch-macos-arm64` vào manifest ký số Ed25519, chấm dứt hiện tượng mất Scratch sau cập nhật.
+
+### Cột Mốc 9: Nâng Giới Hạn Bộ Nhớ 1024 MB & Tối Ưu Trình Biên Dịch (v1.4.45)
+* [x] **Mở rộng Memory Limit lên 1024 MB**: Cho phép cấu hình từ 8 MB đến 1024 MB trên cả Windows và macOS, mặc định 256 MB chuẩn Olympic / HSG / ICPC.
+* [x] **Tối ưu hóa Compiler Staging & Diagnostics**: Xử lý an toàn các ký tự đặc biệt, rút gọn token UUID trong chẩn đoán giúp duy trì độ ổn định tuyệt đối.
+
+### Cột Mốc 10: Bài Tương Tác, Điểm Phân Số & Tối Ưu Khởi Động (v1.4.46)
+* [x] **Hỗ trợ bài thi tương tác (Interactive Problems)**: Tích hợp runner chấm tương tác qua AppContainer dual-job runner với hai đường ống ẩn danh hai chiều (bidirectional anonymous pipes), hỗ trợ interactor C++ (`testlib.h`) và Python, hỗ trợ bộ test chỉ có `.inp`.
+* [x] **Công cụ chấm điểm phân số chính xác tuyệt đối (Rational Scoring Engine)**: Triệt tiêu hoàn toàn hiện tượng sai số trôi dấu phẩy động IEEE 754 trong tính điểm và tổng điểm bằng số hữu tỉ tối giản (GCD).
+* [x] **Khởi tạo Precompiled Header C++14 & Background Judge Pre-warm**: Tăng tốc biên dịch C++ gấp ~16.5 lần; pre-warm ngầm khởi tạo sẵn sandbox trước khi người dùng bấm chấm bài.
+
+### Cột Mốc 11: Universal Precompiled Header C++, Di Trú Chính Sách & Brand Refresh (v1.5.0)
+* [x] **Universal Precompiled Header C++**: Tự động phát hiện và sinh PCH đa năng cho mọi trình biên dịch C++ (Managed GCC, MinGW, MSYS2, Apple Clang) với bộ băm canonical path, mtime, size và version digest.
+* [x] **Tự động chuyển đổi Chính sách Thực thi (Toolchain Execution Policy Migration)**: Tự động di trú chính sách cũ sang cấu hình bảo mật chuẩn một cách minh bạch.
+* [x] **Tinh gọn Giao diện Quản lý Trình biên dịch (F6)**: Loại bỏ các menu nâng cao rườm rà, tập trung vào trải nghiệm cấu hình trực quan.
+* [x] **Cải tiến Trình Cập nhật & Nút Ủng hộ Toolbar**: Nút cập nhật nổi bật trên toolbar với tiến trình tải Core ngầm và khởi động lại 1-chạm; bổ sung nút mời cà phê / donate.
+* [x] **Bộ Nhận diện Thương hiệu & Biểu tượng Mới**: Logo và bộ icon ứng dụng mới hiện đại, sắc nét trên cả Windows và macOS.
+
 ---
 
 ## 3. Hiện Trạng Kiểm Thử & Đo Lường Chất Lượng
 
-| Tiêu Chí Đo Lường | Mục Tiêu | Hiện Trạng Thực Tế (v1.4.43) |
+| Tiêu Chí Đo Lường | Mục Tiêu | Hiện Trạng Thực Tế (v1.5.0) |
 | :--- | :--- | :--- |
-| **Hệ thống Unit & Integration Tests** | Toàn bộ pass 100% | **476 tests (466 Passed, 0 Failed, 10 Skipped)** |
+| **Hệ thống Unit & Integration Tests** | Toàn bộ pass 100% | **492 tests (482 Passed, 0 Failed, 10 Skipped)** |
 | **Kiểm tra TypeScript Lint** | 0 lỗi biên dịch | **Clean (`tsc --noEmit`: Code 0)** |
-| **Tốc độ build Frontend** | < 1 giây | **Vite Production Build: ~580 ms** |
+| **Tốc độ biên dịch C++ với PCH** | < 300 ms | **~230 ms (tăng tốc gấp ~16.5x so với không có PCH)** |
 | **Độ tương thích nền tảng** | Windows x64 & macOS ARM64 | **Đạt chuẩn trên cả Windows 10/11 và macOS Apple Silicon** |
 
 ---
@@ -86,4 +110,5 @@ timeline
 ## 4. Kế Hoạch Tiếp Theo
 
 Mọi tính năng mới hoặc kế hoạch mở rộng trong tương lai sẽ được thảo luận và thống nhất trực tiếp với tác giả trước khi bổ sung vào tài liệu triển khai.
+
 
