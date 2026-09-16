@@ -38,13 +38,23 @@ Tài liệu này mô tả chi tiết quy chuẩn nộp bài, cơ chế xử lý 
 
 ---
 
-## 2. Quy trình Thực thi của Máy chấm (Judge Engine)
+## 2. Quy trình Thực thi của Máy chấm (Judge Engine & Sandbox Architecture)
 
 1. **Khởi tạo môi trường Headless**:
-   - Khi nhận tệp `.sb3` hoặc `.sb2`, JudgeDesk nạp cấu trúc khối lệnh vào máy ảo Scratch chạy ngầm không đồ họa.
-2. **Kích hoạt Turbo Mode**:
-   - Tự động chạy với tốc độ CPU tối đa (bỏ qua giới hạn 30 khung hình/giây của trình duyệt). Thời gian chạy mỗi testcase trung bình từ 10ms đến 25ms.
-3. **Giám sát giới hạn thời gian (Watchdog Timer)**:
-   - Áp dụng đúng Time Limit của bài toán (mặc định 1.0s hoặc theo cấu hình trong Config.cfg). Nếu hết thời gian mà chương trình chưa kết thúc, hệ thống sẽ ngắt luồng và gán kết quả TLE.
-4. **Tương thích đa nền tảng**:
-   - Hoạt động ổn định và cho kết quả giống hệt nhau trên cả Windows và macOS.
+   - Khi nhận tệp `.sb3`, `.sb2` hoặc `.sb`, JudgeDesk nạp mã nguồn JSON và assets vào máy ảo Headless VM `scratch-run` (nhân TurboWarp / VNOI execution engine đóng gói sẵn).
+   - Máy ảo chạy thuần CPU không cần GPU/màn hình ảo, nạp sẵn kịch bản và ánh xạ các khối `ask and wait` vào `stdin` và `say`/`think` vào `stdout`.
+
+2. **Kích hoạt Turbo Mode & Siêu Tối Ưu**:
+   - Tự động chạy với tốc độ xung nhịp CPU tối đa (bỏ qua giới hạn 30/60 FPS thông thường của trình duyệt).
+   - Thời gian thực thi mỗi testcase thông thường chỉ từ 10ms đến 25ms.
+
+3. **Cách ly Sandbox Đa Nền Tảng**:
+   - **Windows x64**: Thực thi trong tiến trình bảo vệ bởi Windows Job Object ở chế độ `ResourceOnly` (áp dụng hạn ngạch CPU, trần RAM, và tự động thu hồi toàn bộ cây tiến trình con). Việc sử dụng `ResourceOnly` cho runtime Scratch đảm bảo runtime Node/V8 không bị xung đột cấp phát bộ nhớ ảo với Win32 AppContainer (`STATUS_DLL_INIT_FAILED`).
+   - **macOS Apple Silicon**: Thực thi dưới sandbox **Seatbelt** (`sandbox-exec -f seatbelt.sb`), chặn hoàn toàn truy cập mạng, chặn ghi đè hệ thống, chỉ cấp quyền đọc tệp `.sb3` và ghi tệp output tạm thời.
+
+4. **Quản lý Tài nguyên & Giới hạn Bộ nhớ (Resource Limits)**:
+   - **Time Limit**: Giám sát bởi phần cứng và Native Watchdog Timer (mặc định 1.0s hoặc theo `Config.cfg`). Khi chạm ngưỡng thời gian, cây tiến trình bị tiêu diệt ngay lập tức (Tree Kill) và gán kết quả `TLE`.
+   - **Memory Limit**: Hỗ trợ dải cấu hình từ **8 MB đến 1024 MB** (mặc định 256 MB), ngắt ngay lập tức khi vượt quá dung lượng và gán kết quả `MLE`.
+
+5. **Thu dọn tài nguyên an toàn (Process Teardown)**:
+   - Toàn bộ các luồng worker và file bộ nhớ đệm tạm thời trong `%TEMP%` đều được gắn UUID và dọn sạch ngay sau khi mỗi testcase hoàn tất, ngăn chặn hoàn toàn hiện tượng rò rỉ bộ nhớ hoặc zombie process.
