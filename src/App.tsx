@@ -114,6 +114,23 @@ export default function App() {
   // App Updater
   const updater = useAppUpdater();
 
+  const handleCheckUpdates = useCallback(async () => {
+    const outcome = await updater.checkForUpdates({ manual: true });
+    if (outcome.status === "current") {
+      setAppError({
+        title: t("updates.upToDate"),
+        reason: t("updates.upToDateDetails", { version: APP_VERSION }),
+        severity: "info",
+      });
+    } else if (outcome.status === "error") {
+      setAppError({
+        title: t("updates.checkFailed"),
+        reason: t("updates.checkFailedNetwork"),
+        severity: "warning",
+      });
+    }
+  }, [updater, t]);
+
   useEffect(() => {
     const lastSeen = preferencesStorage.getLastSeenVersion();
     if (lastSeen !== APP_VERSION) {
@@ -616,7 +633,7 @@ export default function App() {
           onOpenToolchains={() => setOpenToolchains(true)}
           onRequestHostStatus={requestHostStatus}
           updateState={updater.state}
-          onCheckUpdates={() => void updater.checkForUpdates()}
+          onCheckUpdates={handleCheckUpdates}
           onOpenUpdateChoices={() => {
             if (updater.state.status === "available") {
               void updater.downloadUpdate("core");

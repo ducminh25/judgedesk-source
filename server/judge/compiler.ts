@@ -58,6 +58,7 @@ import {
   resolveJavaSubmissionStaging,
 } from "./language-adapters.js";
 import type { PreparedSubmissionProgram } from "./prepared-program.js";
+import { getPchDirectoryForToolchain } from "./universal-pch.js";
 
 declare const __JUDGEDESK_TESTLIB__: string;
 
@@ -867,6 +868,13 @@ export async function runCompilerWithLimits(
       );
       environment.COMPILER_PATH = [programDirectory, path.dirname(compiler.executablePath)].join(path.delimiter);
       environment.LIBRARY_PATH = findGccLibraryDirectories(compiler.root).join(path.delimiter);
+    }
+    if (kind === "cpp") {
+      const effectiveToolchain = pinnedToolchain ?? resolveToolchain("cpp");
+      const universalPchDir = getPchDirectoryForToolchain(effectiveToolchain);
+      if (universalPchDir) {
+        stagedArgs.unshift("-isystem", universalPchDir);
+      }
     }
     const result = await runReservedExecutor(jobId, buildCompilerExecutorRunSpec({
       runId,

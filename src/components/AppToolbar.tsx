@@ -33,6 +33,7 @@ import type { AppUpdateState } from "../features/updates/useAppUpdater";
 import OsdStatusBadge from "../features/osd/OsdStatusBadge";
 import type { OsdStatusState } from "../features/osd/useOsdSession";
 import type { ContestantSortMode } from "../features/scoreboard/scoreboard-model.js";
+import logoImg from "../assets/logo.js";
 
 const PUBLIC_REPOSITORY = "https://github.com/ducminh25/judgedesk";
 
@@ -111,10 +112,17 @@ export default function AppToolbar({
   const [utilityMenuOpen, setUtilityMenuOpen] = useState(false);
   const utilityMenuRef = useRef<HTMLDivElement>(null);
   const utilityMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const [brandMenuOpen, setBrandMenuOpen] = useState(false);
+  const [brandMenuPosition, setBrandMenuPosition] = useState({ top: 52, left: 12 });
+  const brandMenuRef = useRef<HTMLDivElement>(null);
+  const brandMenuButtonRef = useRef<HTMLButtonElement>(null);
   const { t, i18n } = useTranslation();
   const { theme, toggleTheme } = useTheme();
   useEffect(() => {
-    if (interactionLocked) setUtilityMenuOpen(false);
+    if (interactionLocked) {
+      setUtilityMenuOpen(false);
+      setBrandMenuOpen(false);
+    }
   }, [interactionLocked]);
 
   useEffect(() => {
@@ -142,6 +150,34 @@ export default function AppToolbar({
     };
   }, [utilityMenuOpen]);
 
+  useEffect(() => {
+    if (!brandMenuOpen) return;
+    const closeWhenOutside = (event: Event) => {
+      if (!brandMenuRef.current?.contains(event.target as Node)) {
+        setBrandMenuOpen(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setBrandMenuOpen(false);
+      brandMenuButtonRef.current?.focus();
+    };
+    const closeOnWindowBlur = () => setBrandMenuOpen(false);
+    const closeOnScroll = () => setBrandMenuOpen(false);
+    document.addEventListener("pointerdown", closeWhenOutside);
+    document.addEventListener("focusin", closeWhenOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("blur", closeOnWindowBlur);
+    window.addEventListener("scroll", closeOnScroll, true);
+    return () => {
+      document.removeEventListener("pointerdown", closeWhenOutside);
+      document.removeEventListener("focusin", closeWhenOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("blur", closeOnWindowBlur);
+      window.removeEventListener("scroll", closeOnScroll, true);
+    };
+  }, [brandMenuOpen]);
+
   const openRepository = async () => {
     try {
       if ("__TAURI_INTERNALS__" in window) {
@@ -158,15 +194,57 @@ export default function AppToolbar({
   return (
     <header className="command-bar-scroll flex h-14 flex-none items-center overflow-x-auto border-b border-surface-border bg-surface px-3">
       <div className="flex min-w-max flex-1 items-center gap-2">
-        <div className="mr-2 flex h-9 flex-none items-center gap-2 border-r border-surface-border pr-4">
-          <div className="flex h-7 w-7 items-center justify-center rounded bg-indigo-600 text-[11px] font-bold text-white">
-            JD
-          </div>
-          <div className="leading-tight">
-            <div className="text-sm font-semibold text-text-primary">JudgeDesk</div>
-            <div className="text-[9px] text-text-muted">v{APP_VERSION}</div>
-          </div>
+        <div ref={brandMenuRef} className="relative mr-2 flex-none">
+          <button
+            ref={brandMenuButtonRef}
+            type="button"
+            onClick={() => {
+              if (!interactionLocked) {
+                if (!brandMenuOpen && brandMenuButtonRef.current) {
+                  const rect = brandMenuButtonRef.current.getBoundingClientRect();
+                  setBrandMenuPosition({ top: rect.bottom + 6, left: Math.max(8, rect.left) });
+                }
+                setBrandMenuOpen((open) => !open);
+              }
+            }}
+            disabled={interactionLocked}
+            aria-haspopup="menu"
+            aria-expanded={brandMenuOpen}
+            className="flex h-9 items-center gap-2 rounded px-2 transition-colors hover:bg-surface-elevated focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-indigo-500 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <img src={logoImg} alt="JudgeDesk" className="h-7 w-7 rounded-md object-contain shadow-sm" />
+            <span className="text-sm font-semibold text-text-primary">JudgeDesk</span>
+          </button>
+          {brandMenuOpen && (
+            <div
+              role="menu"
+              style={{ top: `${brandMenuPosition.top}px`, left: `${brandMenuPosition.left}px` }}
+              className="fixed z-[90] min-w-[200px] overflow-hidden rounded-md border border-surface-border bg-surface-elevated p-1.5 shadow-2xl"
+            >
+              <div className="border-b border-surface-border/60 px-3 py-2 text-xs font-semibold text-text-muted select-none">
+                JudgeDesk v{APP_VERSION}
+              </div>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={updateState.status === "checking" || updateState.status === "downloading"}
+                onClick={() => {
+                  setBrandMenuOpen(false);
+                  onCheckUpdates();
+                }}
+                className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-xs font-medium text-text-primary transition-colors hover:bg-indigo-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <RefreshCw
+                  className={`h-3.5 w-3.5 shrink-0 ${
+                    updateState.status === "checking" ? "animate-spin text-indigo-400" : ""
+                  }`}
+                />
+                <span>{updateState.status === "checking" ? t("updates.checking") : t("updates.check")}</span>
+              </button>
+            </div>
+          )}
         </div>
+        <div className="mr-2 h-7 w-px flex-none bg-surface-border" />
 
         <button type="button" onClick={onOpenTests} disabled={interactionLocked} className={iconCommandButton} title={`${t("toolbar.loadTests")} (F2)`} aria-label={`${t("toolbar.loadTests")} (F2)`}>
           <ClipboardList className="h-4 w-4 text-amber-500" />
@@ -225,8 +303,12 @@ export default function AppToolbar({
         />
 
         <div className="min-w-3 flex-1" />
+        <UpdateActionButton
+          state={updateState}
+          disabled={interactionLocked}
+          onInstall={onRequestInstall}
+        />
         <HelpButton onOpen={onOpenHelp} />
-        <UpdateButton state={updateState} disabled={interactionLocked} onCheck={onCheckUpdates} onChoose={onOpenUpdateChoices} onInstall={onRequestInstall} />
         <DonationButton onOpen={onOpenDonation} disabled={interactionLocked} />
 
         <div ref={utilityMenuRef} className="relative flex-none">
@@ -357,6 +439,46 @@ export function DonationButton({ onOpen, disabled }: {
       <Coffee className="h-4 w-4" />
     </button>
   );
+}
+
+export function UpdateActionButton({
+  state,
+  disabled,
+  onInstall,
+}: {
+  state: AppUpdateState;
+  disabled: boolean;
+  onInstall: () => void;
+}) {
+  const { t } = useTranslation();
+
+  if (state.status === "downloading") {
+    return (
+      <button
+        type="button"
+        disabled
+        className="flex h-10 flex-none items-center gap-2 whitespace-nowrap rounded bg-blue-600 px-3 text-xs font-bold text-white shadow-sm cursor-wait opacity-90"
+      >
+        <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin" />
+        <span>{t("updates.downloading", { percent: state.percent })}</span>
+      </button>
+    );
+  }
+
+  if (state.status === "downloaded") {
+    return (
+      <button
+        type="button"
+        onClick={onInstall}
+        disabled={disabled}
+        className="flex h-10 flex-none items-center gap-1.5 whitespace-nowrap rounded bg-blue-600 px-3 text-xs font-bold text-white shadow-sm transition-colors hover:bg-blue-500 active:bg-blue-700 disabled:cursor-wait disabled:opacity-50"
+      >
+        <span>&rarr; {t("updates.restartToUpdate")}</span>
+      </button>
+    );
+  }
+
+  return null;
 }
 
 export function UpdateButton({ state, disabled, onCheck, onChoose, onInstall }: {

@@ -6,7 +6,7 @@ import { I18nextProvider, initReactI18next } from "react-i18next";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { AppUpdateState } from "../features/updates/useAppUpdater.js";
 import type { ContestantSortMode } from "../features/scoreboard/scoreboard-model.js";
-import { DonationButton, HelpButton, ScoreSortButton, UpdateButton } from "./AppToolbar.js";
+import { DonationButton, HelpButton, ScoreSortButton, UpdateActionButton, UpdateButton } from "./AppToolbar.js";
 
 const resources = {
   en: {
@@ -17,6 +17,7 @@ const resources = {
         available: "Version {{version}} available",
         downloading: "Downloading {{percent}}%",
         installQuestion: "Install update",
+        restartToUpdate: "Restart to update",
         upToDate: "Up to date",
         checkFailed: "Update check failed",
         downloadFailed: "Update download failed",
@@ -44,6 +45,7 @@ const resources = {
         available: "Có bản {{version}}",
         downloading: "Đang tải {{percent}}%",
         installQuestion: "Cài bản cập nhật",
+        restartToUpdate: "Khởi động lại để cập nhật",
         upToDate: "Đã là bản mới nhất",
         checkFailed: "Kiểm tra cập nhật thất bại",
         downloadFailed: "Tải bản cập nhật thất bại",
@@ -64,6 +66,24 @@ const resources = {
     },
   },
 };
+
+async function renderUpdateActionButton(state: AppUpdateState, language: "en" | "vi") {
+  const i18n = createInstance();
+  await i18n.use(initReactI18next).init({
+    lng: language,
+    resources,
+    interpolation: { escapeValue: false },
+  });
+  return renderToStaticMarkup(
+    <I18nextProvider i18n={i18n}>
+      <UpdateActionButton
+        state={state}
+        disabled={false}
+        onInstall={() => {}}
+      />
+    </I18nextProvider>,
+  );
+}
 
 async function renderUpdateButton(state: AppUpdateState, language: "en" | "vi") {
   const i18n = createInstance();
@@ -123,66 +143,62 @@ async function renderScoreSortButton(
   );
 }
 
-describe("toolbar update button", () => {
-  it("shows a bounded English action instead of an icon-only control", async () => {
-    const markup = await renderUpdateButton({ status: "idle" }, "en");
-
-    assert.match(markup, />Check for updates</);
-    assert.match(markup, /aria-label="Check for updates"/);
-    assert.match(markup, /h-10/);
-    assert.match(markup, /max-w-56/);
+describe("toolbar update action button", () => {
+  it("renders nothing when idle, checking, current, or on error", async () => {
+    assert.equal(await renderUpdateActionButton({ status: "idle" }, "en"), "");
+    assert.equal(await renderUpdateActionButton({ status: "checking" }, "en"), "");
+    assert.equal(await renderUpdateActionButton({ status: "current" }, "en"), "");
+    assert.equal(
+      await renderUpdateActionButton(
+        { status: "error", phase: "check", message: "network" },
+        "en",
+      ),
+      "",
+    );
   });
 
-  it("makes the Vietnamese download action explicit", async () => {
-    const markup = await renderUpdateButton(
-      {
-        status: "available",
-        version: "1.3.4",
-        currentEdition: "core",
-        candidates: {
-          core: {
-            edition: "core",
-            version: "1.3.4",
-            target: "windows-x86_64-core",
-            downloadSizeBytes: 10,
-            installedSizeBytes: 20,
-          },
-          full: {
-            edition: "full",
-            version: "1.3.4",
-            target: "windows-x86_64-full",
-            downloadSizeBytes: 30,
-            installedSizeBytes: 40,
-          },
-        },
-      },
+  it("shows a blue button with progress while downloading", async () => {
+    const markup = await renderUpdateActionButton(
+      { status: "downloading", version: "1.4.47", edition: "core", percent: 68 },
       "vi",
     );
 
-    assert.match(markup, />Có bản 1\.3\.4</);
+    assert.match(markup, /bg-blue-600/);
+    assert.match(markup, /disabled=""/);
+    assert.match(markup, /animate-spin/);
+    assert.match(markup, />Đang tải 68%</);
   });
 
-  it("keeps progress visible and disables the button while downloading", async () => {
-    const markup = await renderUpdateButton(
-      { status: "downloading", version: "1.3.4", edition: "full", percent: 42 },
+  it("shows a blue button to restart to update when downloaded", async () => {
+    const markup = await renderUpdateActionButton(
+      { status: "downloaded", version: "1.4.47", edition: "core" },
       "en",
     );
 
-    assert.match(markup, /disabled=""/);
-    assert.match(markup, /animate-spin/);
-    assert.match(markup, />Downloading 42%</);
+    assert.match(markup, /bg-blue-600/);
+    assert.match(markup, />→ Restart to update</);
+  });
+});
+
+describe("toolbar brand logo button", () => {
+  it("renders logo image without browser tooltip title attribute", () => {
+    const source = readFileSync(new URL("./AppToolbar.tsx", import.meta.url), "utf8");
+    assert.match(source, /<img src=\{logoImg\} alt="JudgeDesk"/);
+    assert.match(source, />JudgeDesk<\/span>/);
+    assert.match(source, /brandMenuOpen &&/);
+    assert.match(source, />\s*JudgeDesk v\{APP_VERSION\}\s*</);
+    assert.match(source, /t\("updates\.check"\)/);
   });
 
-  it("exposes both the failure and retry action to assistive technology", async () => {
-    const markup = await renderUpdateButton(
-      { status: "error", phase: "download", message: "network" },
-      "vi",
-    );
-
-    assert.match(markup, />Thử lại</);
+  it("disables manual check button and displays checking label when checking or downloading", () => {
+    const source = readFileSync(new URL("./AppToolbar.tsx", import.meta.url), "utf8");
     assert.match(
-      markup,
-      /aria-label="Tải bản cập nhật thất bại\. Thử lại"/,
+      source,
+      /disabled=\{updateState\.status === "checking" \|\| updateState\.status === "downloading"\}/,
+    );
+    assert.match(
+      source,
+      /updateState\.status === "checking" \? t\("updates\.checking"\) : t\("updates\.check"\)/,
     );
   });
 });
@@ -203,9 +219,9 @@ describe("toolbar donation button", () => {
     assert.match(markup, /title="Buy me a coffee\? \(Ủng hộ dự án\?\)"/);
   });
 
-  it("keeps Coffee between Update and Tools", () => {
+  it("keeps Coffee between Help and Tools", () => {
     const source = readFileSync(new URL("./AppToolbar.tsx", import.meta.url), "utf8");
-    assert.match(source, /<UpdateButton[\s\S]*?<DonationButton[\s\S]*?<div ref=\{utilityMenuRef\}/);
+    assert.match(source, /<HelpButton[\s\S]*?<DonationButton[\s\S]*?<div ref=\{utilityMenuRef\}/);
   });
 });
 
@@ -226,10 +242,10 @@ describe("toolbar help button", () => {
     assert.match(markup, /aria-label="Hướng dẫn \(F1\)"/);
   });
 
-  it("keeps Help immediately before Update in the toolbar", () => {
+  it("keeps Update action indicator immediately before Help in the toolbar", () => {
     const source = readFileSync(new URL("./AppToolbar.tsx", import.meta.url), "utf8");
 
-    assert.match(source, /<HelpButton onOpen=\{onOpenHelp\} \/>\s*<UpdateButton/);
+    assert.match(source, /<UpdateActionButton[\s\S]*?<HelpButton onOpen=\{onOpenHelp\} \/>/);
   });
 
   it("does not render an inline error box in the toolbar to prevent horizontal overflow", () => {

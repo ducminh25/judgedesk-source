@@ -4,7 +4,6 @@ import { apiFetch } from "../../api.js";
 import {
   closeUpdateResources,
   parseUpdateCandidate,
-  requireMatchingUpdateVersions,
   updaterTargetForHost,
   type AppUpdateCandidate,
   type UpdateEdition,
@@ -16,6 +15,16 @@ import {
 } from "./install-flow.js";
 
 export type AppUpdateCandidates = Record<UpdateEdition, AppUpdateCandidate>;
+
+export type CheckUpdateOutcome =
+  | { status: "available"; version: string }
+  | { status: "current" }
+  | { status: "error"; message?: string }
+  | { status: "noop" };
+
+export interface CheckUpdateOptions {
+  manual?: boolean;
+}
 
 export type AppUpdateState =
   | { status: "idle" }
@@ -65,83 +74,7 @@ export function useAppUpdater() {
     await closeUpdateResources(Object.values(updates));
   }, []);
 
-  const checkForUpdates = useCallback(async () => {
-    if (!isTauriRuntime()) return;
-    const generation = generationRef.current + 1;
-    generationRef.current = generation;
-    const previous = updatesRef.current;
-    updatesRef.current = emptyUpdates();
-    candidatesRef.current = null;
-    setState({ status: "checking" });
-    await closeUpdateResources(Object.values(previous));
-
-    let checkedUpdates: Record<UpdateEdition, Update | null> = emptyUpdates();
-    try {
-      const response = await apiFetch("/api/distribution");
-      const host = await response.json() as UpdateHostIdentity;
-      if (host.distribution !== "core" && host.distribution !== "full") {
-        throw new Error("Packaged JudgeDesk edition could not be identified");
-      }
-      const { check } = await import("@tauri-apps/plugin-updater");
-      const settled = await Promise.allSettled(UPDATE_EDITIONS.map(async (edition) => {
-        const target = updaterTargetForHost(host, edition);
-        return {
-          edition,
-          target,
-          update: await check({ timeout: 10_000, target }),
-        };
-      }));
-      const successful = settled
-        .filter((result): result is PromiseFulfilledResult<{
-          edition: UpdateEdition;
-          target: string;
-          update: Update | null;
-        }> => result.status === "fulfilled")
-        .map((result) => result.value);
-      for (const result of successful) checkedUpdates[result.edition] = result.update;
-      const failure = settled.find(
-        (result): result is PromiseRejectedResult => result.status === "rejected",
-      );
-      if (failure) throw failure.reason;
-      if (generationRef.current !== generation) {
-        await closeUpdateResources(Object.values(checkedUpdates));
-        return;
-      }
-      if (successful.every(({ update }) => update === null)) {
-        setState({ status: "current" });
-        return;
-      }
-      if (successful.some(({ update }) => update === null)) {
-        throw new Error("The latest release does not provide both Core and Full updates");
-      }
-
-      const candidateEntries = successful.map(({ edition, target, update }) => [
-        edition,
-        parseUpdateCandidate(update!, target, edition),
-      ] as const);
-      const candidates = Object.fromEntries(candidateEntries) as AppUpdateCandidates;
-      const version = requireMatchingUpdateVersions(Object.values(candidates));
-      updatesRef.current = checkedUpdates;
-      checkedUpdates = emptyUpdates();
-      candidatesRef.current = candidates;
-      setState({
-        status: "available",
-        version,
-        currentEdition: host.distribution,
-        candidates,
-      });
-    } catch (error) {
-      await closeUpdateResources(Object.values(checkedUpdates));
-      if (generationRef.current !== generation) return;
-      setState({
-        status: "error",
-        phase: "check",
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }, []);
-
-  const downloadUpdate = useCallback(async (edition: UpdateEdition) => {
+  const downloadUpdate = useCallback(async (edition: UpdateEdition = "core") => {
     const update = updatesRef.current[edition];
     const candidate = candidatesRef.current?.[edition];
     if (!update || !candidate) return;
@@ -182,18 +115,66 @@ export function useAppUpdater() {
         return;
       }
       setState({ status: "downloaded", version: candidate.version, edition });
-    } catch (error) {
+    } catch (_error) {
       if (generationRef.current !== generation) {
         await update.close();
         return;
       }
-      setState({
-        status: "error",
-        phase: "download",
-        message: error instanceof Error ? error.message : String(error),
-      });
+      setState({ status: "idle" });
     }
   }, []);
+
+  const checkForUpdates = useCallback(async (options: CheckUpdateOptions = {}): Promise<CheckUpdateOutcome> => {
+    if (!isTauriRuntime()) {
+      if (options.manual) {
+        return { status: "current" };
+      }
+      return { status: "noop" };
+    }
+    const generation = generationRef.current + 1;
+    generationRef.current = generation;
+    const previous = updatesRef.current;
+    updatesRef.current = emptyUpdates();
+    candidatesRef.current = null;
+    setState({ status: "checking" });
+    await closeUpdateResources(Object.values(previous));
+
+    let checkedUpdates: Record<UpdateEdition, Update | null> = emptyUpdates();
+    try {
+      const response = await apiFetch("/api/distribution");
+      const host = await response.json() as UpdateHostIdentity;
+      const { check } = await import("@tauri-apps/plugin-updater");
+      const target = updaterTargetForHost(host, "core");
+      const update = await check({ timeout: 10_000, target });
+      checkedUpdates.core = update;
+
+      if (generationRef.current !== generation) {
+        await closeUpdateResources(Object.values(checkedUpdates));
+        return { status: "noop" };
+      }
+      if (!update) {
+        setState({ status: "current" });
+        return { status: "current" };
+      }
+
+      const candidate = parseUpdateCandidate(update, target, "core");
+      const candidates: AppUpdateCandidates = { core: candidate, full: candidate };
+      updatesRef.current = checkedUpdates;
+      checkedUpdates = emptyUpdates();
+      candidatesRef.current = candidates;
+
+      void downloadUpdate("core");
+      return { status: "available", version: candidate.version };
+    } catch (error) {
+      await closeUpdateResources(Object.values(checkedUpdates));
+      if (generationRef.current !== generation) return { status: "noop" };
+      setState({ status: "idle" });
+      return {
+        status: "error",
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }, [downloadUpdate]);
 
   const installUpdate = useCallback(async () => {
     const update = updatesRef.current.core ?? updatesRef.current.full;
