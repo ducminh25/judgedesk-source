@@ -99,6 +99,34 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
+            #[cfg(windows)]
+            if let Some(window) = app.get_webview_window("main") {
+                if let Ok(handle) = window.hwnd() {
+                    use windows_sys::Win32::UI::WindowsAndMessaging::{
+                        GetWindowLongPtrW, SendMessageW, SetWindowLongPtrW, SetWindowPos,
+                        GWL_EXSTYLE, ICON_SMALL, SWP_FRAMECHANGED, SWP_NOMOVE, SWP_NOSIZE,
+                        SWP_NOZORDER, WM_SETICON, WS_EX_DLGMODALFRAME,
+                    };
+                    unsafe {
+                        let ex_style = GetWindowLongPtrW(handle.0 as _, GWL_EXSTYLE);
+                        SetWindowLongPtrW(
+                            handle.0 as _,
+                            GWL_EXSTYLE,
+                            ex_style | WS_EX_DLGMODALFRAME as isize,
+                        );
+                        SetWindowPos(
+                            handle.0 as _,
+                            std::ptr::null_mut(),
+                            0,
+                            0,
+                            0,
+                            0,
+                            SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED,
+                        );
+                        SendMessageW(handle.0 as _, WM_SETICON, ICON_SMALL as usize, 0);
+                    }
+                }
+            }
             app.state::<startup_guard::InstanceCoordinator>()
                 .attach(app.handle().clone())?;
             checker_sources::cleanup_checker_previews();

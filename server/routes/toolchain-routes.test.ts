@@ -176,9 +176,21 @@ test("GET exposes registry state without waiting for the remote package catalog"
   assert.equal(payload.mutationsBlocked, false);
   assert.equal(
     payload.executionPolicy?.allowResourceOnlyLocalExecution,
-    false,
+    true,
   );
   assert.equal(payload.executionPolicy?.status, "default");
+});
+
+test("POST /api/toolchains/prewarm triggers background pre-warm without blocking", async (t) => {
+  useTemporaryAppData(t);
+  const handler = captureToolchainHandlers().get("POST /api/toolchains/prewarm");
+  assert.ok(handler);
+  const response = createResponse();
+  const returned = handler({ body: undefined, params: {} }, response);
+  assert.equal(returned instanceof Promise, false);
+  assert.equal(response.statusCode, 200);
+  const payload = response.payload as { success?: boolean };
+  assert.equal(payload.success, true);
 });
 
 test("resource-only local execution requires an exact explicit policy mutation", async (t) => {

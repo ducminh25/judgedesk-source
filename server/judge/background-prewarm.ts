@@ -9,6 +9,7 @@ import { ensureCertifiedLocalCppSessionProbe } from "./certified-local-session-p
 import { compileSubmission } from "./compiler.js";
 import { createRunWorkspace } from "./run-workspace.js";
 import { executorClient } from "../executor/client.js";
+import { ensureUniversalCppPch } from "./universal-pch.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -81,6 +82,9 @@ async function executeJudgePrewarm(): Promise<void> {
       return;
     }
 
+    // Universal Step: Ensure bits/stdc++.h PCH is generated and cached for any ready C++ toolchain
+    await ensureUniversalCppPch(cpp);
+
     // Case A: Managed GCC package (Standard on Windows)
     if (cpp.source === "managed") {
       const prepared = await prepareManagedToolchainComponent(
@@ -111,24 +115,6 @@ async function executeJudgePrewarm(): Promise<void> {
           }
         }
       }
-
-      // Run a tiny no-op compile probe in sandbox to warm up AppContainer, Defender, DLLs
-      const workspace = createRunWorkspace();
-      try {
-        const sourcePath = path.join(workspace.path, ".prewarm_noop.cpp");
-        fs.writeFileSync(sourcePath, "int main(){return 0;}\n", "utf8");
-        const compilation = await compileSubmission({
-          language: "cpp",
-          contestantName: "system_prewarm",
-          problemName: "prewarm",
-          submissionPath: sourcePath,
-          tempDirectory: workspace.path,
-          cppToolchain: cpp,
-        });
-        console.info(`[Judge Pre-warm] Managed C++ warm-up completed in ${compilation.compileTime} ms (Status: ${compilation.compileStatus})`);
-      } finally {
-        workspace.dispose();
-      }
     }
 
     // Case B: Certified Local C++ (MinGW/Clang local path)
@@ -141,13 +127,33 @@ async function executeJudgePrewarm(): Promise<void> {
         workspace.dispose();
       }
     }
+
+    // Warm-up no-op compilation probe for all ready C++ toolchains (managed, local, or certified)
+    const workspace = createRunWorkspace();
+    try {
+      const sourcePath = path.join(workspace.path, ".prewarm_noop.cpp");
+      fs.writeFileSync(sourcePath, "int main(){return 0;}\n", "utf8");
+      const compilation = await compileSubmission({
+        language: "cpp",
+        contestantName: "system_prewarm",
+        problemName: "prewarm",
+        submissionPath: sourcePath,
+        tempDirectory: workspace.path,
+        cppToolchain: cpp,
+      });
+      console.info(
+        `[Judge Pre-warm] C++ warm-up probe completed in ${compilation.compileTime} ms (Status: ${compilation.compileStatus})`,
+      );
+    } finally {
+      workspace.dispose();
+    }
   } catch (error) {
     console.warn("[Judge Pre-warm] Background pre-warm error:", error instanceof Error ? error.message : String(error));
   }
 }
 
-export function startBackgroundJudgePrewarm(): Promise<void> {
-  if (!prewarmPromise) {
+export function startBackgroundJudgePrewarm(force = false): Promise<void> {
+  if (!prewarmPromise || force) {
     prewarmPromise = executeJudgePrewarm();
   }
   return prewarmPromise;

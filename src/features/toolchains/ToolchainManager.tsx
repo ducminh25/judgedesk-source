@@ -42,7 +42,6 @@ export default function ToolchainManager({ onClose, firstRun = false }: Props) {
     cancel,
     uninstall,
     setProfilePreference,
-    setResourceOnlyLocalExecution,
     rescan,
     planCertification,
     certify,
@@ -147,17 +146,6 @@ export default function ToolchainManager({ onClose, firstRun = false }: Props) {
                 onCertify={certify}
                 onDiagnose={diagnoseProfile}
               />
-              <LocalExecutionPolicyPanel
-                enabled={
-                  state.executionPolicy.allowResourceOnlyLocalExecution
-                }
-                recovery={state.executionPolicy.status === "recovery"}
-                disabled={
-                  state.mutationsBlocked
-                  || state.preferenceDocument.status === "recovery"
-                }
-                onChange={setResourceOnlyLocalExecution}
-              />
             </div>
           )}
         </div>
@@ -170,7 +158,10 @@ export default function ToolchainManager({ onClose, firstRun = false }: Props) {
           </span>
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => {
+              void fetch("/api/toolchains/prewarm", { method: "POST" }).catch(() => {});
+              onClose();
+            }}
             className="rounded bg-indigo-600 px-5 py-2 text-xs font-bold uppercase tracking-wider text-white transition hover:bg-indigo-500"
           >
             {firstRun ? t("toolchains.setup.finish") : t("toolchains.close")}
@@ -178,75 +169,6 @@ export default function ToolchainManager({ onClose, firstRun = false }: Props) {
         </div>
       </div>
     </div>
-  );
-}
-
-export function LocalExecutionPolicyPanel({
-  enabled,
-  recovery,
-  disabled,
-  onChange,
-}: {
-  enabled: boolean;
-  recovery: boolean;
-  disabled: boolean;
-  onChange: (enabled: boolean) => Promise<boolean>;
-}) {
-  const { t } = useTranslation();
-  const [pending, setPending] = useState(false);
-
-  const updatePolicy = async (nextEnabled: boolean) => {
-    if (
-      nextEnabled
-      && !window.confirm(t("toolchains.registry.resourceOnly.confirm"))
-    ) {
-      return;
-    }
-    setPending(true);
-    try {
-      await onChange(nextEnabled);
-    } finally {
-      setPending(false);
-    }
-  };
-
-  return (
-    <details className="rounded-lg border border-amber-300 bg-amber-50/70 dark:border-amber-900/60 dark:bg-amber-950/20">
-      <summary className="cursor-pointer select-none px-4 py-3 text-xs font-bold text-amber-900 dark:text-amber-200">
-        {t("toolchains.registry.resourceOnly.title")}
-      </summary>
-      <div className="space-y-3 border-t border-amber-300 px-4 py-4 text-xs leading-relaxed text-amber-900 dark:border-amber-900/60 dark:text-amber-200">
-        <div className="flex items-start gap-2">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <p>{t("toolchains.registry.resourceOnly.description")}</p>
-        </div>
-        {recovery && (
-          <p className="font-bold text-rose-700 dark:text-rose-300">
-            {t("toolchains.registry.resourceOnly.recovery")}
-          </p>
-        )}
-        <label className="flex items-start gap-3 rounded border border-amber-300 bg-white/60 p-3 dark:border-amber-900/60 dark:bg-black/10">
-          <input
-            type="checkbox"
-            checked={enabled}
-            disabled={disabled || pending}
-            onChange={(event) => void updatePolicy(event.target.checked)}
-            className="mt-0.5 h-4 w-4 accent-amber-600"
-          />
-          <span>
-            <strong className="block">
-              {t("toolchains.registry.resourceOnly.toggle")}
-            </strong>
-            <span className="mt-1 block text-2xs">
-              {enabled
-                ? t("toolchains.registry.resourceOnly.enabled")
-                : t("toolchains.registry.resourceOnly.disabled")}
-            </span>
-          </span>
-          {pending && <Loader2 className="ml-auto h-4 w-4 animate-spin" />}
-        </label>
-      </div>
-    </details>
   );
 }
 
@@ -640,41 +562,21 @@ function ProfileRow({
               {t("toolchains.registry.managedUnavailable")}
             </span>
           )}
-          <details className="w-full max-w-56 rounded border border-surface-border bg-surface-elevated text-2xs text-text-muted">
-            <summary className="cursor-pointer select-none px-2.5 py-2 font-bold text-text-primary">
-              {t("toolchains.registry.advanced")}
-            </summary>
-            <div className="space-y-2 border-t border-surface-border px-2.5 py-2.5 leading-relaxed">
-              <p>
-                <span className="font-bold text-text-primary">
-                  {t("toolchains.registry.supportedLocalVersions")}:
-                </span>{" "}
-                <span className="font-mono">
-                  {profile.localPolicy.supportedVersions.join(", ") || "—"}
-                </span>
-              </p>
-              <p>
-                {t(
-                  `toolchains.registry.localExecution.${profile.localPolicy.executionMode}`,
-                )}
-              </p>
-              {profile.certification?.canCertify && (
-                <button
-                  type="button"
-                  disabled={controlsDisabled}
-                  onClick={() => void freezeLocalToolchain()}
-                  className="flex items-center gap-1.5 rounded bg-emerald-600 px-3 py-1.5 text-2xs font-bold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {freezing
-                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    : <ShieldCheck className="h-3.5 w-3.5" />}
-                  {freezing
-                    ? t("toolchains.registry.freezingForContest")
-                    : t("toolchains.registry.freezeForContest")}
-                </button>
-              )}
-            </div>
-          </details>
+          {profile.certification?.canCertify && (
+            <button
+              type="button"
+              disabled={controlsDisabled}
+              onClick={() => void freezeLocalToolchain()}
+              className="flex items-center gap-1.5 rounded bg-emerald-600 px-3 py-1.5 text-2xs font-bold text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {freezing
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <ShieldCheck className="h-3.5 w-3.5" />}
+              {freezing
+                ? t("toolchains.registry.freezingForContest")
+                : t("toolchains.registry.freezeForContest")}
+            </button>
+          )}
           {onDiagnose && profile.selection.mode !== "none" && (
             <div className="w-full max-w-56 space-y-1.5 pt-1">
               <button

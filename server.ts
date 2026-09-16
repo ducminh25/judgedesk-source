@@ -12,6 +12,7 @@ import { registerOsdRoutes } from "./server/routes/osd-routes.js";
 import { startParentWatchdog } from "./server/platform/parent-watchdog.js";
 import { startInitialToolchainDiscovery } from "./server/toolchains/discovery.js";
 import { startBackgroundJudgePrewarm } from "./server/judge/background-prewarm.js";
+import { migrateLegacyExecutionPolicy } from "./server/toolchains/migration.js";
 
 startParentWatchdog(process.env.JUDGEDESK_PARENT_PID, async () => {
   console.error("[Tauri Shell] Parent process ended; shutting down backend sidecars.");
@@ -23,6 +24,13 @@ startParentWatchdog(process.env.JUDGEDESK_PARENT_PID, async () => {
 });
 
 async function startServer() {
+  try {
+    migrateLegacyExecutionPolicy();
+  } catch (error) {
+    console.error(
+      `[Toolchain Migration] Policy migration warning: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
   const serverStartupStarted = performance.now();
   const secureRunner = await executorClient.start();
   if (!secureRunner.ready) {

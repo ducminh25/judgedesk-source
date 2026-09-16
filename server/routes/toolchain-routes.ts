@@ -59,6 +59,7 @@ import {
   loadLocalExecutionPolicy,
   saveLocalExecutionPolicy,
 } from "../toolchains/execution-policy.js";
+import { startBackgroundJudgePrewarm } from "../judge/background-prewarm.js";
 
 const SOURCE_MODES = new Set<ToolchainSourceMode>([
   "none",
@@ -305,6 +306,11 @@ export function registerToolchainRoutes(app: Express): void {
         message: error instanceof Error ? error.message : String(error),
       });
     }
+  });
+
+  app.post("/api/toolchains/prewarm", (_req, res) => {
+    void startBackgroundJudgePrewarm(true);
+    return res.json({ success: true, message: "Background pre-warm initiated." });
   });
 
   app.post("/api/toolchains/profiles/:profileId/certification-plan", async (req, res) => {

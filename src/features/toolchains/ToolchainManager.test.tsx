@@ -243,9 +243,9 @@ describe("toolchain settings UI regressions", () => {
     assert.match(markup, /Not available/);
     assert.match(markup, /Submission ready/);
     assert.match(markup, /Download and apply for JudgeDesk/);
-    assert.match(markup, /Advanced/);
+    assert.doesNotMatch(markup, /toolchains\.registry\.advanced/);
+    assert.doesNotMatch(markup, /Tested local versions/);
     assert.match(markup, /Freeze for contest/);
-    assert.match(markup, /14\.2\.0/);
     assert.match(markup, /Uninstall/);
 
     const lockedMarkup = await renderWithTranslations(
@@ -283,28 +283,14 @@ describe("toolchain settings UI regressions", () => {
     );
   });
 
-  it("shows resource-only local execution as an explicit fail-closed advanced option", async () => {
-    const { LocalExecutionPolicyPanel } = await import("./ToolchainManager.js");
-    const markup = await renderWithTranslations(
-      <LocalExecutionPolicyPanel
-        enabled={false}
-        recovery
-        disabled={false}
-        onChange={async () => true}
-      />,
-    );
-    assert.match(markup, /Allow less-secure local execution/);
-    assert.match(markup, /Off \(recommended\)/);
-    assert.match(markup, /Filesystem and network are not isolated/);
-    assert.match(markup, /Invalid saved policy was disabled/);
-    assert.match(markup, /type="checkbox"/);
-    assert.doesNotMatch(markup, /checked=""/);
-
+  it("removes LocalExecutionPolicyPanel and streamlines F6 manager modal", () => {
     const source = readFileSync(
       new URL("./ToolchainManager.tsx", import.meta.url),
       "utf8",
     );
-    assert.match(source, /window\.confirm/);
+    assert.doesNotMatch(source, /LocalExecutionPolicyPanel/);
+    assert.doesNotMatch(source, /supportedLocalVersions/);
+    assert.match(source, /\/api\/toolchains\/prewarm/);
   });
 
   it("does not force a toolchain wizard on first launch", () => {

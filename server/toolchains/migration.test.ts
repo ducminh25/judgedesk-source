@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import {
   migrateLegacyBundledToolchains,
+  migrateLegacyExecutionPolicy,
 } from "./migration.js";
 import { TOOLCHAIN_PACKAGE_RECEIPT } from "./package-store.js";
 
@@ -108,4 +109,59 @@ test("migrateLegacyBundledToolchains handles missing or empty roots gracefully",
     assert.deepEqual(result.migratedPackages, []);
     assert.equal(result.errors.length, 0);
   });
+});
+
+test("migrateLegacyExecutionPolicy migrates false to true automatically", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "policy-migration-test-"));
+  try {
+    const policyFile = path.join(tempDir, "toolchain-execution-policy-v1.json");
+    fs.writeFileSync(
+      policyFile,
+      JSON.stringify({ schemaVersion: 1, allowResourceOnlyLocalExecution: false }, null, 2),
+      "utf8",
+    );
+
+    const migrated = migrateLegacyExecutionPolicy({ policyFilePath: policyFile });
+    assert.equal(migrated, true);
+
+    const after = JSON.parse(fs.readFileSync(policyFile, "utf8"));
+    assert.equal(after.allowResourceOnlyLocalExecution, true);
+    assert.equal(after.schemaVersion, 1);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("migrateLegacyExecutionPolicy does not modify already true policy", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "policy-migration-test-"));
+  try {
+    const policyFile = path.join(tempDir, "toolchain-execution-policy-v1.json");
+    fs.writeFileSync(
+      policyFile,
+      JSON.stringify({ schemaVersion: 1, allowResourceOnlyLocalExecution: true }, null, 2),
+      "utf8",
+    );
+
+    const migrated = migrateLegacyExecutionPolicy({ policyFilePath: policyFile });
+    assert.equal(migrated, false);
+
+    const after = JSON.parse(fs.readFileSync(policyFile, "utf8"));
+    assert.equal(after.allowResourceOnlyLocalExecution, true);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("migrateLegacyExecutionPolicy creates default true policy when file does not exist", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "policy-migration-test-"));
+  try {
+    const policyFile = path.join(tempDir, "sub", "toolchain-execution-policy-v1.json");
+    const migrated = migrateLegacyExecutionPolicy({ policyFilePath: policyFile });
+    assert.equal(migrated, true);
+
+    const after = JSON.parse(fs.readFileSync(policyFile, "utf8"));
+    assert.equal(after.allowResourceOnlyLocalExecution, true);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
 });

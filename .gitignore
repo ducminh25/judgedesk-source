@@ -24,4 +24,5 @@ CONVERSATION_HISTORY.md
 .env.*
 !.env.example
 scratch/
-
+*.docx
+*.pdf

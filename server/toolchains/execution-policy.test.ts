@@ -24,11 +24,11 @@ function withTemporaryAppData(run: (directory: string) => void): void {
   }
 }
 
-test("local resource-only execution is fail-closed when no policy exists", () => {
+test("local resource-only execution defaults to true when no policy exists", () => {
   withTemporaryAppData(() => {
     assert.deepEqual(loadLocalExecutionPolicy(), {
       schemaVersion: 1,
-      allowResourceOnlyLocalExecution: false,
+      allowResourceOnlyLocalExecution: true,
       status: "default",
     });
   });
@@ -58,13 +58,13 @@ test("policy round-trip persists only the explicit boolean", () => {
   });
 });
 
-test("invalid, oversized, and future policy documents fail closed", () => {
+test("invalid, oversized, and future policy documents fail safe to default", () => {
   withTemporaryAppData(() => {
     const filePath = getLocalExecutionPolicyFilePath();
     fs.writeFileSync(filePath, "{not-json", "utf8");
     assert.deepEqual(loadLocalExecutionPolicy(), {
       schemaVersion: 1,
-      allowResourceOnlyLocalExecution: false,
+      allowResourceOnlyLocalExecution: true,
       status: "recovery",
       diagnostic: "INVALID_POLICY_DOCUMENT",
     });
@@ -79,7 +79,7 @@ test("invalid, oversized, and future policy documents fail closed", () => {
     );
     assert.equal(
       loadLocalExecutionPolicy().allowResourceOnlyLocalExecution,
-      false,
+      true,
     );
 
     fs.writeFileSync(filePath, "x".repeat(4 * 1024 + 1), "utf8");
@@ -87,7 +87,7 @@ test("invalid, oversized, and future policy documents fail closed", () => {
   });
 });
 
-test("unknown keys cannot smuggle a relaxed policy", () => {
+test("unknown keys recover to safe default", () => {
   withTemporaryAppData(() => {
     fs.writeFileSync(
       getLocalExecutionPolicyFilePath(),
@@ -100,6 +100,6 @@ test("unknown keys cannot smuggle a relaxed policy", () => {
     );
     const policy = loadLocalExecutionPolicy();
     assert.equal(policy.status, "recovery");
-    assert.equal(policy.allowResourceOnlyLocalExecution, false);
+    assert.equal(policy.allowResourceOnlyLocalExecution, true);
   });
 });

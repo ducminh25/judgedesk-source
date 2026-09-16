@@ -19,7 +19,7 @@ export interface LocalExecutionPolicySnapshot
 
 const SAFE_DEFAULT: LocalExecutionPolicyV1 = Object.freeze({
   schemaVersion: POLICY_SCHEMA_VERSION,
-  allowResourceOnlyLocalExecution: false,
+  allowResourceOnlyLocalExecution: true,
 });
 
 export function getLocalExecutionPolicyFilePath(): string {

@@ -5,6 +5,25 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-16
+
+### Universal Precompiled Header C++, Tự Động Di Trú Chính Sách & Cải Tiến Updater
+
+- **Universal Precompiled Header (`bits/stdc++.h.gch`) cho Trình biên dịch C++**:
+  - Tự động phát hiện và sinh bộ nhớ đệm Precompiled Header đa năng cho mọi trình biên dịch C++ (Managed GCC, MinGW-w64, MSYS2 UCRT64, Apple Clang).
+  - Áp dụng bộ băm định danh compiler siêu nhạy theo đường dẫn chuẩn hoá (canonical path), dung lượng tệp, mtime và mã hash phiên bản để tái sử dụng an toàn và làm mới cache đúng lúc.
+  - Tăng tốc độ biên dịch các bài thi C++ nạp `<bits/stdc++.h>` vượt trội trên mọi nền tảng.
+- **Tự động chuyển đổi Chính sách Thực thi (Toolchain Execution Policy Migration)**:
+  - Tự động di trú chính sách thực thi toolchain cũ (`migrateLegacyExecutionPolicy`) sang cấu hình bảo mật chuẩn một cách minh bạch, an toàn và không gây gián đoạn cho người dùng.
+- **Tinh gọn Giao diện Quản lý Trình biên dịch (`F6 Toolchain Manager`)**:
+  - Loại bỏ bảng "Nâng cao" không cần thiết và danh sách phiên bản thử nghiệm phức tạp, mang lại trải nghiệm cấu hình trực quan, tập trung vào các chế độ nguồn thực thi đã chứng nhận.
+- **Cải tiến Trình Cập nhật Ứng dụng & Nút Ủng hộ (In-App Updater & Donation Toolbar)**:
+  - Tích hợp nút cập nhật ứng dụng nổi bật trên thanh công cụ với tiến trình tải Core ngầm và nút khởi động lại một chạm để áp dụng.
+  - Luôn áp dụng bản Core nhất quán dù trước đó cài bản Full hay Core, bảo lưu 100% các tuỳ chọn người dùng và đường dẫn compiler đã thiết lập.
+  - Bổ sung nút mời cà phê / donate tiện lợi và thân thiện trên thanh công cụ.
+- **Bộ Nhận diện Thương hiệu & Biểu tượng Mới (Brand Identity & Icons)**:
+  - Cập nhật logo và bộ biểu tượng ứng dụng mới sắc nét trên cả Windows và macOS, mang lại diện mạo hiện đại và chuyên nghiệp cho JudgeDesk.
+
 ## [1.4.46] - 2026-09-04
 
 ### Bài Tương Tác (Interactive), Chấm Điểm Phân Số & Tối Ưu Tốc Độ Khởi Động

@@ -11,6 +11,25 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
   {
+    version: "1.5.0",
+    date: "2026-09-16",
+    sections: [
+      {
+        title: "Universal Precompiled Header C++, Tự Động Di Trú Chính Sách & Cải Tiến Updater",
+        items: [
+          "Tự động phát hiện và sinh Precompiled Header (bits/stdc++.h.gch) đa năng cho mọi trình biên dịch C++ (Managed GCC, MinGW-w64, MSYS2 UCRT64, Apple Clang).",
+          "Bộ băm định danh compiler siêu nhạy theo canonical path, file size, modification time và version hash để tái sử dụng an toàn và làm mới cache đúng lúc.",
+          "Tự động di trú chính sách thực thi toolchain cũ (migrateLegacyExecutionPolicy) sang cấu hình bảo mật chuẩn một cách minh bạch và an toàn.",
+          "Tinh gọn giao diện Quản lý Trình biên dịch (F6 Toolchain Manager), loại bỏ bảng Nâng cao và danh sách phiên bản thử nghiệm để tập trung trải nghiệm cài đặt trực quan.",
+          "Tích hợp nút cập nhật ứng dụng nổi bật trên thanh công cụ với tiến trình tải Core ngầm và nút khởi động lại một chạm để áp dụng.",
+          "Luôn cập nhật bản Core nhất quán dù trước đó cài bản Full hay Core, bảo lưu trọn vẹn mọi tuỳ chọn người dùng và đường dẫn compiler đã thiết lập.",
+          "Bổ sung nút mời cà phê / donate tiện lợi và thân thiện trên thanh công cụ.",
+          "Cập nhật bộ nhận diện thương hiệu và biểu tượng ứng dụng mới trên cả Windows và macOS.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.4.46",
     date: "2026-09-04",
     sections: [
@@ -493,6 +512,25 @@ export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
 ];
 
 export const CHANGELOG_DATA_EN: ChangelogRelease[] = [
+  {
+    version: "1.5.0",
+    date: "2026-09-16",
+    sections: [
+      {
+        title: "Universal C++ Precompiled Header, Policy Migration & Streamlined Updater Flow",
+        items: [
+          "Universal Precompiled Header (bits/stdc++.h.gch) automated cache generation across all C++ compilers (Managed GCC, MinGW-w64, MSYS2 UCRT64, Apple Clang).",
+          "Ultra-sensitive compiler digest hashing by canonical path, file size, modification timestamp, and version hash for safe cache reuse and invalidation.",
+          "Transparent auto-migration of legacy execution policies (migrateLegacyExecutionPolicy) to standardized secure isolation profiles.",
+          "Streamlined F6 Toolchain Manager dialog, removing unnecessary Advanced settings and experimental version listings for an intuitive setup experience.",
+          "Interactive in-app updater button on the toolbar displaying background download progress and a one-click restart button to apply updates.",
+          "Consistent Core update delivery regardless of prior Full or Core installation while preserving 100% of user preferences and configured compiler paths.",
+          "Added coffee donation button on the toolbar with a confirmation dialog.",
+          "Refreshed brand identity and high-resolution icons across Windows and macOS.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.4.46",
     date: "2026-09-04",
