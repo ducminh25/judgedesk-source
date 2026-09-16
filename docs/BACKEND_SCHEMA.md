@@ -18,7 +18,7 @@ Returns host platform capability, active sandbox isolation mode, and server metr
 ```json
 {
   "status": "ready",
-  "appVersion": "1.4.43",
+  "appVersion": "1.5.0",
   "platform": "win32",
   "arch": "x64",
   "sandbox": {
@@ -94,6 +94,9 @@ Reads `Config.cfg` or Polygon subtask configuration for the problem.
     "useStdOut": true,
     "inputFile": "",
     "outputFile": "",
+    "isInteractive": false,
+    "interactorType": "cpp",
+    "interactorFile": "",
     "totalScore": 100,
     "defaultScore": 1,
     "groups": {
@@ -118,6 +121,7 @@ Reads `Config.cfg` or Polygon subtask configuration for the problem.
   }
 }
 ```
+*(Note: `memoryLimit` accepts values from 8 MB to 1024 MB with 256 MB as default).*
 
 #### `POST /api/polygon-config`
 Writes updated problem configuration back to `Config.cfg`.

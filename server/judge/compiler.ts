@@ -869,7 +869,7 @@ export async function runCompilerWithLimits(
       environment.COMPILER_PATH = [programDirectory, path.dirname(compiler.executablePath)].join(path.delimiter);
       environment.LIBRARY_PATH = findGccLibraryDirectories(compiler.root).join(path.delimiter);
     }
-    if (kind === "cpp") {
+    if (kind === "cpp" && !stagedArgs.some((arg) => arg.startsWith("--test-"))) {
       const effectiveToolchain = pinnedToolchain ?? resolveToolchain("cpp");
       const universalPchDir = getPchDirectoryForToolchain(effectiveToolchain);
       if (universalPchDir) {

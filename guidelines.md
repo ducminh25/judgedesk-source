@@ -237,7 +237,7 @@ npm run test:desktop
 
 ## 5. Judging Engine & Toolchains Subsystem (Toolchains v2)
 
-### 5.1. Supported Languages & Toolchains (v1.4.x Scope)
+### 5.1. Supported Languages & Toolchains (v1.5.x Scope)
 
 | Language | Extensions | Windows x64 | macOS Apple Silicon (ARM64) |
 | :--- | :--- | :--- | :--- |
@@ -265,23 +265,38 @@ Users configure the toolchain source independently for each language:
 3. `Local (auto-detect)`: Automatically detects host compilers from standard installation locations and `PATH`.
 4. `Local (path)`: Uses a manually specified executable path verified against security compatibility tests.
 
-### 5.4. Toolchains v2 Security Policies
+### 5.4. Toolchains v2 Security Policies & Migration
 - **Ed25519 Signature Verification**: The `toolchains-manifest.json` manifest is digitally signed using an Ed25519 private key. The backend validates the signature before downloading or extracting any package.
 - **Fail-Closed Verification**: If an archive's SHA-256 hash or byte size deviates from the signed manifest, the installation aborts immediately.
 - **Active Judging Mutex**: When a judging session is running, any API request attempting to modify preferences, initiate toolchain discovery, download, or uninstall returns `HTTP 409 Conflict`.
+- **Automatic Execution Policy Migration (`server/toolchains/migration.ts`)**: Migrates legacy configuration schemas transparently upon startup (`migrateLegacyExecutionPolicy`), eliminating complex manual configuration menus while upholding strict sandbox certification.
 
-### 5.5. Standard Compilation Flags
+### 5.5. Standard Compilation Flags & Universal Precompiled Header (PCH)
 - **C++ (C++14)**: `-pipe -O2 -s -static -lm -x c++` (on Windows, stack reserve is set to `66060288` bytes $\approx 63\text{ MiB}$).
 - **C (C11)**: `-pipe -O2 -s -static -lm -x c` (stack reserve `66060288` bytes on Windows).
 - **Pascal**: `-O2 -XS -Sg -Cs66060288`.
 - **Java**: Compiled via `javac` into an isolated output folder; executed via main class.
 - **Python**: Syntax pre-checked (`py_compile`) before direct execution under the isolated interpreter.
+- **Universal C++ PCH (`server/judge/universal-pch.ts`)**:
+  - Automatically identifies and generates a precompiled header for `<bits/stdc++.h>` across any C++ compiler (Managed GCC, MinGW-w64, MSYS2 UCRT64, Apple Clang).
+  - Employs a robust 16-hex fingerprint based on canonical executable path, file size, mtime, and compiler version string.
+  - Automatically injects `-isystem <cached_pch_dir>` to accelerate C++ compilation times by up to ~16.5x (from ~3.6s down to ~0.23s).
+- **Background Judge Pre-warming (`server/judge/background-prewarm.ts`)**:
+  - Automatically initializes compiler caches and native sandbox runners in the background upon application startup.
+  - Ensures seamless, zero-latency judging as soon as the user triggers the first grading job.
 
-### 5.6. Checkers & Scoring Models
+### 5.6. Checkers, Interactors & Scoring Models
 - **Standard Checkers**: Built-in implementations for `wcmp` (word-by-word), `lcmp` (line-by-line), `fcmp` (exact file), `yesno` (case-insensitive YES/NO), `floats` (floating-point with $\epsilon$ precision), `token`, `huge_int`, and `ncmp`.
 - **Custom Checkers**:
-  - C++ Checkers: Built using `testlib.h` (bundled directly in the distribution).
+  - C++ Checkers: Built using `testlib.h` (bundled directly in the distribution) and problem-local header files.
   - Python Checkers: Executed as isolated Python scripts.
+- **Interactive Problems & Interactor Runner (`server/judge/interactor-runner.ts`)**:
+  - Executes contestant code and interactor concurrently within isolated Windows AppContainers using bidirectional anonymous pipes (`contestant stdout -> interactor stdin`, `interactor stdout -> contestant stdin`).
+  - Supports Interactors written in C++ (`testlib.h`) or Python.
+  - Supports interactive problem suites providing only `.inp` files without requiring `.out` reference files.
+- **Rational Scoring Engine (`server/judge/scoring.ts`)**:
+  - Uses exact rational fraction arithmetic via greatest common divisor (`gcd(numerator, denominator)`).
+  - Eliminates IEEE-754 floating-point drift (e.g. `0.35 * 10 = 3.5`, `1/3 + 2/3 = 1`), guaranteeing exact score preservation on the Scoreboard and in exported Excel workbooks.
 - **Contest Packaging (`.judgedesk`)**: ZIP-based format containing `manifest.json`, `contestants/`, and `problems/`. Preserves scores, subtask configurations, test weights, and execution results.
 
 ---
@@ -296,7 +311,7 @@ JudgeDesk enforces strict defense-in-depth isolation against hostile contestant 
    - Network access is completely blocked (`networkBlocked = true`).
    - File system access is restricted exclusively to the allocated temporary run workspace.
 2. **Windows Job Objects**:
-   - **Memory Cap**: Each child job is capped at **512 MiB**. This guarantees that the combined peak working set of the entire process tree (App + WebView2 + Backend + Executor + Child) stays comfortably under the **1,024 MiB** release gate.
+   - **Memory Cap**: Configurable up to **1,024 MiB** (default 256 MiB). The submission process is strictly constrained by the Windows Job Object memory limit, keeping the combined peak working set of the process tree (App + WebView2 + Backend + Executor + Child) comfortably within the **1,024 MiB** release gate.
    - **CPU Affinity & Priority**: Each test is pinned to **1 logical processor** and runs at `BELOW_NORMAL_PRIORITY_CLASS` to prevent system freezes on low-spec teacher PCs.
    - **Kill on Job Close**: Closing the Job Object handle automatically terminates all descendant processes.
 
@@ -345,7 +360,7 @@ cargo fmt --check --manifest-path native-executor/Cargo.toml
 npm run test:server
 npm run test:update-ui
 ```
-*(Executes 470+ automated tests covering submission parsing, scoring logic, custom checkers, toolchain preferences, Scratch runtime, and multi-language gates).*
+*(Executes 490+ automated tests covering submission parsing, rational scoring logic, custom checkers & interactors, Universal PCH, toolchain preferences, Scratch runtime, and multi-language gates).*
 
 #### 3. Native Executor Tests (Rust)
 ```powershell
@@ -468,6 +483,11 @@ node scripts/verify-public-release-assets.js public-release-assets v<version>
 #### Step 5: Publish Public Release
 Create a draft release on `ducminh25/judgedesk`, attach the 8 allowed assets, perform anonymous download verification, and publish.
 
+### 8.4. In-App Updater Mechanics (v1.5.0+)
+- **One-Click Background Updates**: Regardless of whether the user originally installed Full or Core, the in-app updater downloads the lightweight Core update payload (~20 MB) directly in the background.
+- **Settings & Toolchain Preservation**: 100% of user configurations, problem settings, and installed/bundled toolchains in `%LOCALAPPDATA%\ThemisV2\toolchains` are preserved intact across updates.
+- **Restart Handoff**: A single click on the toolbar "Cập nhật ngay" / "Update Now" chip triggers atomic preparation (`prepare_for_update`) and in-place relaunch.
+
 ---
 
 ## 9. Coding Conventions & AI Agent Guidelines
@@ -498,6 +518,14 @@ All engineers and AI Agents contributing code must strictly adhere to the follow
 ### 9.4. Internationalization (i18n) & UI Styling
 - **No Hardcoded Strings**: All user-facing UI text must be defined in both `src/locales/en.json` and `src/locales/vi.json`.
 - **Tailwind CSS**: Use Tailwind CSS v4 design tokens and CSS variables in `src/index.css` to ensure seamless Dark/Light theme switching.
+
+### 9.5. Critical Invariants & Troubleshooting for AI Agents & New Developers
+1. **8-File Version Lockstep**: Never bump a version number manually in one file. All 8 files listed in Section 1.3 must match, verified via `npm run release:check-version`.
+2. **Compiler Command Staging vs Test Harness**: When calling `runCompilerWithLimits`, the compiler runner recognizes `--test-*` flags as test-harness directives. The Universal PCH injection (`-isystem`) must never be prepended when test flags are present.
+3. **Fail-Closed Sandbox Policy**: Untrusted code runs in a zero-network AppContainer (Windows) or Seatbelt sandbox (macOS). Any attempt to establish a network socket, read outside the designated directory, or spawn unauthorized subprocesses must trigger an immediate fatal violation.
+4. **Rational Points vs Floating Points**: Never use native JavaScript floating-point division for problem scoring or summary totals. Always use the rational scoring methods from `server/judge/scoring.ts` to preserve exact fractions and avoid `0.30000000000000004` rounding artifacts.
+5. **Atomic File Writes**: Any persistent state changes (e.g. `Config.cfg`, toolchain preferences, `.judgedesk` contest archives) must write to a temporary file (`.tmp`) first, followed by an atomic rename to prevent file corruption during sudden system shutdowns.
+6. **No Background Processes Left Running**: The sidecar monitor (`parent-watchdog.ts`) terminates the backend within 3s of Tauri window destruction. Always ensure child process cleanup via RAII / Job Object / PGID kill mechanisms.
 
 ---
 

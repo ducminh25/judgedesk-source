@@ -27,9 +27,11 @@ Every release supports Windows 10/11 x64 and macOS Apple Silicon only.
 
 Core and Full use the same application identity and cannot be installed side by
 side. Installing one variant upgrades/replaces the other while preserving JudgeDesk
-data. From v1.3.4, the updater checks separate signed Core and Full targets, shows
-both choices, and requires confirmation before switching edition. Updating within
-the same edition must preserve explicit compiler/runtime preferences.
+data. From v1.5.0, the in-app updater streamlines upgrades by downloading the
+lightweight Core payload in the background for both editions, preserving all existing
+configurations and toolchain files in AppData/Resources. Both Core and Full remain
+fully published as complete installer assets on GitHub Releases for fresh offline
+installations. Updating preserves 100% of explicit compiler/runtime preferences.
 
 For version `<version>`, upload exactly these eight public release assets:
 

@@ -1,7 +1,7 @@
 # Technical Requirements Document (TRD) — JudgeDesk
 
 **Project Name**: JudgeDesk  
-**Version**: `1.4.43` (`v1.4.x`)  
+**Version**: `1.5.0` (`v1.5.x`)  
 **Document Status**: Official / Approved  
 **Classification**: Internal / Technical Specification  
 
@@ -18,6 +18,7 @@ graph TD
         ScoreboardUI[Scoreboard with 3-State Dynamic Sorting & O1 Indexing]
         ProblemModal[Polygon Config, Subtasks & Compile Presets Editor]
         ToastUI[3-Part Floating AppErrorToast & Offline Help Center]
+        ToolbarCtrl[Toolbar: 1-Click Core Update Chip & Donation Action]
     end
 
     subgraph Tier2 [Tier 2: Desktop Shell - Tauri v2]
@@ -30,17 +31,19 @@ graph TD
     subgraph Tier3 [Tier 3: Backend Sidecar - Node.js SEA]
         ExpressCore[Express HTTP & SSE Server on 127.0.0.1]
         JudgeEngine[Batch & Session Judge Pipeline with Sandbox Pre-warm]
+        UniversalPch[Universal C++ PCH Engine & Fingerprint Cache]
+        InteractiveRunner[Interactive Dual-Job Anonymous Pipe Runner]
         ScratchRunner[Headless Scratch TurboWarp VM Engine]
         OSDWatcher[OSD Folder Watcher & Debounce Queue]
-        ToolchainRegistry[Toolchain Registry v2, Self-Test Probes & Deduplication]
-        ScoreEngine[Scoring, Subtasks & Multi-Format Checker Runner]
+        ToolchainRegistry[Toolchain Registry v2, Self-Test Probes & Policy Migration]
+        ScoreEngine[Rational Scoring GCD Engine & Multi-Format Checker Runner]
     end
 
     subgraph Tier4 [Tier 4: Native Executor - Rust Sandbox]
         IPCServer[Binary IPC Protocol via Stdin/Stdout]
         WinSandbox[Windows: AppContainer + Job Object + Low Integrity]
         MacSandbox[macOS: Seatbelt Policy + Run Guardian PGID]
-        ResourceLimits[Limits Enforcer: CPU, Wall, 512MB RAM, I/O]
+        ResourceLimits[Limits Enforcer: CPU, Wall, 8-1024MB RAM, I/O]
     end
 
     UI -->|HTTP REST & SSE / JSON| ExpressCore
@@ -81,19 +84,22 @@ graph TD
 ### 2.3. Tier 3: Backend Sidecar (Node.js SEA)
 * **Technology Stack**: Node.js 24.19.0 compiled into Single Executable Applications (SEA) via `esbuild` and `postject`.
 * **Subsystems**:
-  1. **Judge Engine**: Coordinates preflight verification, language adapter resolution, compilation, testcase discovery, execution queueing, background sandbox pre-warming, and standard/custom checker evaluations.
-  2. **Scratch Headless Runner (`scratch-runtime.ts`)**: Evaluates `.sb3`, `.sb2`, `.sb` projects in Turbo Mode (10-25ms/testcase) without web GUI overhead.
-  3. **Multi-Format Custom Checker Runner**: Supports compiled binaries (`.exe`), C++ (`.cpp` with auto-included `testlib.h` and local problem headers), and Python (`.py`).
-  4. **OSD Watcher**: Monitors submission directory with `chokidar`/`fs.watch`, debounces rapid file events (500ms), and enqueues jobs into a FIFO judge queue.
-  5. **Toolchain Registry v2 & Diagnostics**: Auto-probes host compilers, resolves managed toolchains, checks cryptographic SHA256 hashes, runs in-sandbox Self-Test Probes, and executes Zero-Copy deduplication.
-  6. **Security & Watchdogs**: Validates parent process heartbeat (`parent-watchdog.ts`). Automatically terminates backend sidecar within 3 seconds if the parent Tauri shell exits unexpectedly.
+  1. **Judge Engine**: Coordinates preflight verification, language adapter resolution, compilation, testcase discovery, execution queueing, background sandbox pre-warming (`background-prewarm.ts`), and standard/custom checker evaluations.
+  2. **Universal C++ PCH Engine (`universal-pch.ts`)**: Generates and manages 16-hex fingerprinted precompiled headers for `<bits/stdc++.h>` across all C++ compilers, accelerating C++ build performance by up to ~16.5x.
+  3. **Interactive Problem Runner (`interactor-runner.ts`)**: Runs submission binary and Interactor (C++ `testlib.h` / Python) concurrently inside isolated AppContainer jobs connected via bidirectional anonymous pipe pairs.
+  4. **Rational Scoring Engine (`scoring.ts`)**: Computes exact test, subtask, and total points using fractional mathematics (`gcd(num, den)`), eliminating floating-point rounding errors.
+  5. **Scratch Headless Runner (`scratch-runtime.ts`)**: Evaluates `.sb3`, `.sb2`, `.sb` projects in Turbo Mode (10-25ms/testcase) without web GUI overhead.
+  6. **Multi-Format Custom Checker Runner**: Supports compiled binaries (`.exe`), C++ (`.cpp` with auto-included `testlib.h` and local problem headers), and Python (`.py`).
+  7. **OSD Watcher**: Monitors submission directory with `chokidar`/`fs.watch`, debounces rapid file events (500ms), and enqueues jobs into a FIFO judge queue.
+  8. **Toolchain Registry v2 & Policy Migration (`migration.ts`)**: Auto-probes host compilers, resolves managed toolchains, checks cryptographic SHA256 hashes, migrates legacy execution policies, and executes Zero-Copy deduplication.
+  9. **Security & Watchdogs**: Validates parent process heartbeat (`parent-watchdog.ts`). Automatically terminates backend sidecar within 3 seconds if the parent Tauri shell exits unexpectedly.
 
 ### 2.4. Tier 4: Native Executor (Rust Sandbox)
 * **Technology Stack**: Standalone Rust binary (`judgedesk-native-executor`).
 * **Platform Security Implementations**:
   * **Windows (x64)**:
     * **AppContainer Profile Isolation**: Restricts filesystem access exclusively to the temporary test execution directory.
-    * **Job Object Restrictions**: Enforces hard memory limit (up to 512 MB), process count limit (prevents fork bombs), and active CPU time limits.
+    * **Job Object Restrictions**: Enforces memory limit (configurable up to 1024 MB, default 256 MB), process count limit (prevents fork bombs), and active CPU time limits.
     * **Restricted Token**: Drops administrative privileges, network capabilities, and clipboard access.
   * **macOS (Apple Silicon ARM64)**:
     * **Seatbelt Sandbox (`sandbox_init`)**: Restricts syscalls, disallows all network sockets, and restricts file writes to sandbox output paths.
@@ -125,7 +131,7 @@ Communication across standard input/output (`stdin`/`stdout`) uses a 16-byte Lit
 
 | Parameter | Limit | Enforcement Mechanism |
 | :--- | :--- | :--- |
-| **Max Memory per Submission** | 512 MB | Job Object `JOBOBJECT_EXTENDED_LIMIT_INFORMATION` (Win) / `setrlimit(RLIMIT_AS)` (Mac). |
+| **Memory Limit per Submission** | 8 MB to 1024 MB (Default: 256 MB) | Job Object `JOBOBJECT_EXTENDED_LIMIT_INFORMATION` (Win) / `setrlimit(RLIMIT_AS)` (Mac). |
 | **Default Time Limit** | 1000 ms (Configurable 100ms - 15000ms) | Microsecond-accurate CPU timer in native executor. |
 | **Compilation Timeout** | 15 seconds | Node.js process timer with `SIGKILL` termination. |
 | **Max Compiler Binary Output** | 32 MiB | File size watcher on compiled executable artifact. |
@@ -185,5 +191,18 @@ Every release version bump must match across:
 * **Core Certified Recognition**: Packages with valid receipts in AppData are automatically resolved as `source: "managed"`, `provenance: "managed-package"`, and `isCertified: true`, allowing instant execution in the Native Sandbox without security warnings.
 
 ### 7.3. Dual Distribution Model
-1. **In-App Updater**: Defaults to lightweight Core update packages (~20 MB), downloading and updating in 3–5 seconds.
+1. **In-App Updater**: Defaults to lightweight Core update packages (~20 MB), downloading and updating in 3–5 seconds. Regardless of original edition, updating applies the Core payload while retaining existing compilers and configurations.
 2. **GitHub Releases**: Publishes both Full all-in-one installers (~813 MB) for offline USB setup and Core installers (~20 MB).
+
+### 7.4. Universal Precompiled Header Subsystem (`server/judge/universal-pch.ts`)
+* **Objective**: Eliminate repetitive compilation overhead of `<bits/stdc++.h>` (which contains over 50,000 lines of standard C++ templates).
+* **Fingerprint Digest**: 16-hex SHA-256 hash computed over:
+  1. Resolved canonical compiler binary path.
+  2. Executable byte size and modification timestamp (`mtimeMs`).
+  3. Compiler identity stdout/stderr output (`compiler -v` or `--version`).
+* **Cache Management**: Precompiled headers are written to `%LOCALAPPDATA%\ThemisV2\pch\<hash>\bits\stdc++.h.gch` (Windows) or `~/Library/Application Support/ThemisV2/pch/<hash>/bits/stdc++.h.gch` (macOS). Recompilation is bypassed whenever an intact, matching `.gch` binary already exists.
+* **Injection Rule**: `-isystem <cached_dir>` is automatically inserted into compilation arguments for C++ submissions and checkers, while strictly excluded when executing test-harness routines.
+
+### 7.5. Toolchain Execution Policy Auto-Migration (`server/toolchains/migration.ts`)
+* **Objective**: Remove historical multi-tier security checkboxes ("Advanced execution policy", "Experimental versions") and replace them with a unified, transparent, secure-by-default execution policy.
+* **Mechanism**: On startup, `migrateLegacyExecutionPolicy` inspects existing toolchain preference snapshots, cleans deprecated configuration keys, and aligns all recognized compilers with certified sandbox execution policies.
