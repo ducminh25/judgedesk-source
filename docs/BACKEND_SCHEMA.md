@@ -191,6 +191,19 @@ Initiates a batch judging session. Yields a real-time Server-Sent Events (`text/
      { "jobId": "e1f70519-89b3-4b61-9f93-c90684fbb7a1", "success": true }
      ```
 
+* **Interactive Evaluation Architecture (`isInteractive: true`)**:
+  - When `isInteractive` is enabled in `ProblemConfig`, the judge engine invokes `runInteractiveTest` (`server/judge/interactor-runner.ts`) instead of the standard pipeline.
+  - Spawns contestant executable and interactor (`cpp` compiled binary or `python` script) under independent sandbox containers (Win32 AppContainer dual-job runner / macOS Seatbelt).
+  - Establishes two bidirectional anonymous pipes:
+    - Pipe A: Interactor Standard Output $\rightarrow$ Contestant Standard Input
+    - Pipe B: Contestant Standard Output $\rightarrow$ Interactor Standard Input
+  - Interactor reads test input `<test>.INP` and writes verdict / testlib diagnostics to its stderr.
+
+* **Rational Scoring Engine (`server/judge/scoring.ts`)**:
+  - All testcase weights and subtask scores are represented internally as irreducible fractions $\frac{N}{D}$ using Euclidean GCD reduction.
+  - Eliminates IEEE 754 floating-point drift (e.g., preventing $0.3333333333333333 \times 3 \neq 1.0$).
+  - Results in exact integer or exact decimal points displayed on the UI and exported to Excel.
+
 #### `POST /api/terminate-judge`
 Cancels the actively running judging session.
 * **Request Body**: `{ "jobId": "e1f70519-89b3-4b61-9f93-c90684fbb7a1" }`
@@ -235,13 +248,17 @@ SSE Stream emitting real-time events when new submissions arrive and finish grad
 
 ---
 
-### 1.5. Toolchains & Certification Engine
+### 1.5. Toolchains, Execution Policy & Certification Engine
 
 #### `GET /api/toolchains`
-Returns the status of all supported programming languages and compilers.
+Returns the status of all supported programming languages, managed toolchains, and discovery states.
 * **Response (200 OK)**:
 ```json
 {
+  "distribution": { "edition": "core", "version": "1.5.0" },
+  "platform": "win32",
+  "arch": "x64",
+  "preferences": { /* Stored toolchain preferences */ },
   "profiles": [
     {
       "id": "cpp-legacy-v1",
@@ -274,6 +291,31 @@ Returns the status of all supported programming languages and compilers.
 }
 ```
 
+#### `POST /api/toolchains/rescan`
+Requests an asynchronous re-detection scan of system PATH and local candidate compilers.
+* **Response (202 Accepted)**:
+```json
+{
+  "success": true,
+  "discovery": { "status": "scanning", "lastScanned": "2026-09-16T15:00:00.000Z" }
+}
+```
+
+#### `GET /api/toolchains/execution-policy`
+Returns the active local toolchain execution policy.
+* **Response (200 OK)**:
+```json
+{
+  "policy": "allow_any_local",
+  "migrated": true
+}
+```
+
+#### `POST /api/toolchains/execution-policy`
+Updates the local toolchain execution policy (`allow_any_local` vs. `certified_only`).
+* **Request Body**: `{ "policy": "allow_any_local" }`
+* **Response (200 OK)**: `{ "success": true, "policy": "allow_any_local" }`
+
 ---
 
 ## 2. File & Wire Format Specifications
@@ -284,9 +326,9 @@ Located in the root of `.judgedesk` ZIP archives:
 {
   "format": "judgedesk-contest",
   "formatVersion": 1,
-  "appVersion": "1.4.43",
+  "appVersion": "1.5.0",
   "createdAt": "2026-08-21T08:30:00.000Z",
-  "savedAt": "2026-08-29T10:00:00.000Z",
+  "savedAt": "2026-09-16T15:30:00.000Z",
   "workspace": {
     "contestants": ["user01", "user02"],
     "problems": ["BAI1", "BAI2"],

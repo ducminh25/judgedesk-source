@@ -53,10 +53,15 @@ The top toolbar serves as the mission control for contest grading:
    * *Reload Folders* (`F5`) to refresh filesystem changes.
    * *Toolchain Manager* (`F6`) with real-time health indicator.
    * *Start / Stop Judging* (`F9`) with prominent accent styling.
-   * *Export Excel* (`F12`) with sheet preview icon.
+   * *Export Excel* (`F12`) with sheet preview icon (exports in exact active scoreboard order).
    * *OSD Online Judge* (`F8`) with live pulsing indicator and active queue count.
 2. **Contest Context & File State**: Displays active archive filename with dirty indicator `*` when uncommitted score changes exist.
-3. **Utility Controls**: Help (`F1`), In-app Update status chip, Donation button, Theme selector, Language toggle (VI/EN).
+3. **Utility & Branding Controls**:
+   * **Brand Logo Action**: Clickable logo button initiating a manual check or reflecting check state, rendered cleanly without intrusive browser title attributes.
+   * **In-App Update Action Chip**: Dynamic high-visibility pill indicator immediately to the left of Help. Automatically indicates update availability, shows real-time download progress bar for fast Core updates (~20 MB), and transitions into a 1-click *[Restart Now]* button.
+   * **Donation / Coffee Action**: Friendly coffee cup button with explicit Vietnamese tooltip (`Ủng hộ tác giả một ly cà phê`); presents a confirmation modal before launching external QR donation link.
+   * **Scoreboard Sort Toggle Button**: 3-state sort button (Điểm cao $\rightarrow$ thấp, Điểm thấp $\rightarrow$ cao, Mặc định) with instant hover hints and automatic tie-breaking.
+   * **Help & System**: Help Center (`F1`), Theme selector (Dark/Light), Language toggle (Tiếng Việt / English).
 
 ### 4.2. Matrix Scoreboard (`src/features/scoreboard/Scoreboard.tsx`)
 * **Sticky Headers & Columns**: Contestant column remains pinned during horizontal scrolling; problem header row remains pinned during vertical scrolling.
@@ -66,7 +71,7 @@ The top toolbar serves as the mission control for contest grading:
   3. *Default Order* (Mặc định): Natural alphanumeric sort by contestant directory name.
 * **Cell Verdict Coding**:
   * `100.00` / Full score: Emerald background badge.
-  * `> 0.00` / Partial score: Amber background badge.
+  * `> 0.00` / Partial score: Amber background badge (computed via rational scoring GCD to eliminate IEEE 754 float drift).
   * `0.00` / Zero score: Rose background badge.
   * `...` / In progress: Indigo pulsing badge.
   * `-` / Unjudged: Neutral text.
@@ -92,17 +97,25 @@ All errors in the application follow the 3-Part Error UX standard:
 * **Direct CTA Button**: Provides one-click action to resolve the issue (e.g. *[Load Contestants]*, *[Open Toolchains]*, *[Retry]*).
 
 ### 4.4. Problem Configuration Modal (`src/components/ProblemConfigModal.tsx`)
-* **Basic Tab**: Time limit (ms), Memory limit (MB), I/O redirection, standard/custom checker selection.
+* **Basic Tab**:
+  * Time limit (ms, 100 - 30000 ms).
+  * Memory limit (MB): Configurable from **8 MB to 1024 MB (1 GB)** with 256 MB as default. Validates within host platform limits.
+  * I/O Redirection: Standard I/O vs. File I/O (`<problem>.INP` / `<problem>.OUT`).
+  * Standard/Custom checker selection (C1 - token compare, C2 - line compare, C3 - float epsilon compare, or custom checker binary/source).
+* **Interactive Evaluation Tab** (Chấm tương tác):
+  * Toggle checkbox: `isInteractive` (Chấm tương tác với Interactor).
+  * Interactor Type: C++ (`testlib.h` compliant) or Python 3.
+  * Interactor Source File: File picker or selector for `interactor.cpp` / `interactor.py` located in the problem directory.
 * **Polygon Subtasks Tab**:
   * Group creation, testcase assignment checkboxes.
   * Dependency graph builder with real-time cycle detection and visual alerts.
-  * Group scoring mode (Sum of test points vs. All-or-nothing group score).
+  * Group scoring mode: Sum of test points vs. All-or-nothing group score.
 * **Compile Settings Tab**: Preset selector (Themis compatibility, C++17, C++20, Custom flags) with sanitized flag validation.
 
 ### 4.5. Offline Help Center (`src/features/help/HelpCenter.tsx`)
 * Launched via `F1` or Toolbar button.
 * Full-text search with instant highlight.
-* Dedicated topic anchors: Keyboard Shortcuts, Themis Compatibility, Subtasks & Checkers, Online Judge (OSD), Toolchains & Compilers, Scratch Submission Guide (`.sb3`, `.sb2`), and Changelog History.
+* Dedicated topic anchors: Keyboard Shortcuts, Themis Compatibility, Subtasks & Checkers, Interactive Problems & Interactor, Online Judge (OSD), Toolchains & Compilers, Universal C++ PCH, Scratch Submission Guide (`.sb3`, `.sb2`), and Changelog History.
 * **Diagnostics Exporter**: Generates copyable, sanitized system report (OS, CPU, memory, toolchain versions) with zero source code or private path leakage.
 
 ### 4.6. Streamlined Fast In-App Update Experience (`src/features/updates/UpdateDialogs.tsx`)
