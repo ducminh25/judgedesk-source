@@ -1197,5 +1197,3 @@ mod tests {
         assert!(!path.as_os_str().is_empty(), "path must not be empty");
     }
 }
-
-

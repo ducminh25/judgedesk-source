@@ -256,7 +256,10 @@ pub fn spawn(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
             tauri::async_runtime::spawn(async move {
                 match judgedesk_core::server::start_embedded_server(port).await {
                     Ok((addr, _task)) => {
-                        println!("[Tauri Shell] Pure Rust Native Core running directly on port {}", addr.port());
+                        println!(
+                            "[Tauri Shell] Pure Rust Native Core running directly on port {}",
+                            addr.port()
+                        );
                     }
                     Err(err) => {
                         eprintln!("[Tauri Shell] Failed to start native embedded server: {err}");
@@ -301,7 +304,10 @@ pub fn spawn(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
             tauri::async_runtime::spawn(async move {
                 match judgedesk_core::server::start_embedded_server(port).await {
                     Ok((addr, _task)) => {
-                        println!("[Tauri Shell] Pure Rust Native Core running directly on port {}", addr.port());
+                        println!(
+                            "[Tauri Shell] Pure Rust Native Core running directly on port {}",
+                            addr.port()
+                        );
                     }
                     Err(err) => {
                         eprintln!("[Tauri Shell] Failed to start native embedded server: {err}");
