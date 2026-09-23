@@ -187,17 +187,23 @@ try {
     if (!blueprint) {
       throw new Error(`No trusted archive filename for '${descriptor.id}'.`);
     }
-    const existingCandidate = path.join(outputRoot, blueprint.archiveFilename);
     const targetFile = path.join(stagingRoot, blueprint.archiveFilename);
+    const cacheCandidates = [
+      path.join(outputRoot, blueprint.archiveFilename),
+      path.resolve("build", "gh-toolchains", blueprint.archiveFilename),
+    ];
     let reused = false;
-    if (fs.existsSync(existingCandidate)) {
-      const stat = fs.statSync(existingCandidate);
-      if (stat.size === descriptor.sizeBytes) {
-        const hash = crypto.createHash("sha256").update(fs.readFileSync(existingCandidate)).digest("hex");
-        if (hash === descriptor.sha256) {
-          console.log(`Reusing verified cached archive for ${descriptor.id}.`);
-          fs.copyFileSync(existingCandidate, targetFile);
-          reused = true;
+    for (const existingCandidate of cacheCandidates) {
+      if (fs.existsSync(existingCandidate)) {
+        const stat = fs.statSync(existingCandidate);
+        if (stat.size === descriptor.sizeBytes) {
+          const hash = crypto.createHash("sha256").update(fs.readFileSync(existingCandidate)).digest("hex");
+          if (hash === descriptor.sha256) {
+            console.log(`Reusing verified cached archive for ${descriptor.id}.`);
+            fs.copyFileSync(existingCandidate, targetFile);
+            reused = true;
+            break;
+          }
         }
       }
     }
