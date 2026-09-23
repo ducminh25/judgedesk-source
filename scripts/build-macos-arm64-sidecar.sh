@@ -16,7 +16,7 @@ fi
 grep -Fq 'set_limit(libc::RLIMIT_NPROC' native-executor/src/macos_launcher.rs
 grep -Fq 'SYS_setpgid SYS_setsid SYS_posix_spawn' native-executor/src/platform/macos.rs
 grep -Fq 'posixSpawnGroupBlockedWithEperm' native-executor/src/platform/macos.rs
-grep -Fq 'libc::POSIX_SPAWN_SETPGROUP' native-executor/src/main.rs
+grep -Fq 'libc::POSIX_SPAWN_SETPGROUP' native-executor/src/security_probe.rs
 grep -Fq 'forbiddenExecBlockedWithEperm' native-executor/src/platform/macos.rs
 grep -Fq 'POSIX_SPAWN_CLOEXEC_DEFAULT' native-executor/src/macos_run_guardian.rs
 grep -Fq 'stop_kill_anchor_group_and_reap' native-executor/src/macos_process.rs

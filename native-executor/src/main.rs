@@ -19,6 +19,7 @@ enum CancelOutcome {
 }
 
 fn main() {
+    // Internal security probe modes (including libc::POSIX_SPAWN_SETPGROUP verification in security_probe.rs)
     if let Some(exit_code) = judgedesk_native_executor::try_run_internal_mode() {
         std::process::exit(exit_code);
     }
