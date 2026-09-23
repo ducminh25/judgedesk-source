@@ -1,0 +1,24 @@
+{
+  "data": {
+    "compile": {
+      "flags": {
+        "c": [
+          "-std=c11",
+          "-O2",
+          "-pipe"
+        ],
+        "cpp": [
+          "-std=c++14",
+          "-O2",
+          "-pipe"
+        ]
+      },
+      "profile": "themis",
+      "schemaVersion": 1
+    },
+    "enableGroups": false,
+    "groups": {},
+    "tests": {}
+  },
+  "success": true
+}

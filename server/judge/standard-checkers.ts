@@ -30,14 +30,17 @@ export function runStandardChecker(
   expectedOutput: string | Buffer,
   actualOutput: string | Buffer,
 ): StandardCheckerResult {
-  if (checkerType === "C5") return compareBinary(expectedOutput, actualOutput);
+  const expBuf = toBuffer(expectedOutput);
+  const actBuf = toBuffer(actualOutput);
+
+  if (checkerType === "C1") return compareThemisByLine(expBuf, actBuf, true);
+  if (checkerType === "C2") return compareThemisByLine(expBuf, actBuf, false);
+  if (checkerType === "C3") return compareThemisWords(expBuf, actBuf, true);
+  if (checkerType === "C4") return compareThemisWords(expBuf, actBuf, false);
+  if (checkerType === "C5") return compareBinary(expBuf, actBuf);
 
   const expected = toText(expectedOutput);
   const actual = toText(actualOutput);
-  if (checkerType === "C1") return compareByLine(expected, actual, true);
-  if (checkerType === "C2") return compareByLine(expected, actual, false);
-  if (checkerType === "C3") return compareWords(expected, actual, true);
-  if (checkerType === "C4") return compareWords(expected, actual, false);
   return runPolygonChecker(checkerType, expected, actual);
 }
 
@@ -70,36 +73,144 @@ function runPolygonChecker(
   }
 }
 
-function compareByLine(
-  expectedOutput: string,
-  actualOutput: string,
-  ignoreCase: boolean,
-): StandardCheckerResult {
-  const expectedLines = trimTrailingBlankLines(expectedOutput.split(/\r?\n/));
-  const actualLines = trimTrailingBlankLines(actualOutput.split(/\r?\n/));
-  const lineCount = Math.max(expectedLines.length, actualLines.length);
+function foldAsciiByte(b: number): number {
+  return b >= 0x41 && b <= 0x5a ? b + 0x20 : b;
+}
 
-  for (let lineIndex = 0; lineIndex < lineCount; lineIndex += 1) {
-    const expectedWords = splitLineWords(expectedLines[lineIndex] || "", ignoreCase);
-    const actualWords = splitLineWords(actualLines[lineIndex] || "", ignoreCase);
-    if (
-      expectedWords.length !== actualWords.length ||
-      !expectedWords.every((word, wordIndex) => word === actualWords[wordIndex])
-    ) {
-      return { status: "WA", message: `Wrong answer at line ${lineIndex + 1}` };
+function wordsEqual(a: Buffer, b: Buffer, ignoreCase: boolean): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const ba = ignoreCase ? foldAsciiByte(a[i]) : a[i];
+    const bb = ignoreCase ? foldAsciiByte(b[i]) : b[i];
+    if (ba !== bb) return false;
+  }
+  return true;
+}
+
+function parseThemisLines(buf: Buffer): Buffer[][] {
+  if (buf.length === 0) return [];
+
+  const lines: Buffer[][] = [];
+  let currentWords: Buffer[] = [];
+  let wordStart = -1;
+  let i = 0;
+  let hadEolAtEnd = false;
+
+  while (i < buf.length) {
+    const b = buf[i];
+    if (b === 0x0d || b === 0x0a) {
+      if (wordStart !== -1) {
+        currentWords.push(buf.subarray(wordStart, i));
+        wordStart = -1;
+      }
+      lines.push(currentWords);
+      currentWords = [];
+      hadEolAtEnd = true;
+      if (b === 0x0d && i + 1 < buf.length && buf[i + 1] === 0x0a) {
+        i += 2;
+      } else {
+        i += 1;
+      }
+    } else if (b === 0x20 || b === 0x09) {
+      if (wordStart !== -1) {
+        currentWords.push(buf.subarray(wordStart, i));
+        wordStart = -1;
+      }
+      hadEolAtEnd = false;
+      i += 1;
+    } else {
+      if (wordStart === -1) {
+        wordStart = i;
+      }
+      hadEolAtEnd = false;
+      i += 1;
     }
   }
 
-  return { status: "AC", message: expectedLines.length === 1 ? "single line" : `${expectedLines.length} lines` };
+  if (wordStart !== -1) {
+    currentWords.push(buf.subarray(wordStart, buf.length));
+  }
+  if (!hadEolAtEnd || currentWords.length > 0) {
+    lines.push(currentWords);
+  }
+
+  return lines;
 }
 
-function compareWords(
-  expectedOutput: string,
-  actualOutput: string,
+function trimThemisTrailingBlankLines(lines: Buffer[][]): Buffer[][] {
+  while (lines.length > 0 && lines[lines.length - 1].length === 0) {
+    lines.pop();
+  }
+  return lines;
+}
+
+function compareThemisByLine(
+  expectedOutput: Buffer,
+  actualOutput: Buffer,
   ignoreCase: boolean,
 ): StandardCheckerResult {
-  const expectedWords = splitAllWords(expectedOutput, ignoreCase);
-  const actualWords = splitAllWords(actualOutput, ignoreCase);
+  const expectedLines = trimThemisTrailingBlankLines(parseThemisLines(expectedOutput));
+  const actualLines = trimThemisTrailingBlankLines(parseThemisLines(actualOutput));
+  const lineCount = Math.max(expectedLines.length, actualLines.length);
+
+  for (let lineIndex = 0; lineIndex < lineCount; lineIndex++) {
+    const expWords = expectedLines[lineIndex] || [];
+    const actWords = actualLines[lineIndex] || [];
+
+    if (expWords.length !== actWords.length) {
+      return { status: "WA", message: `Wrong answer at line ${lineIndex + 1}` };
+    }
+
+    for (let wordIndex = 0; wordIndex < expWords.length; wordIndex++) {
+      if (!wordsEqual(expWords[wordIndex], actWords[wordIndex], ignoreCase)) {
+        return { status: "WA", message: `Wrong answer at line ${lineIndex + 1}` };
+      }
+    }
+  }
+
+  return {
+    status: "AC",
+    message: expectedLines.length === 1 ? "single line" : `${expectedLines.length} lines`,
+  };
+}
+
+function parseThemisWords(buf: Buffer): Buffer[] {
+  const words: Buffer[] = [];
+  let wordStart = -1;
+  for (let i = 0; i < buf.length; i++) {
+    const b = buf[i];
+    if (b === 0x20 || b === 0x09 || b === 0x0d || b === 0x0a) {
+      if (wordStart !== -1) {
+        words.push(buf.subarray(wordStart, i));
+        wordStart = -1;
+      }
+    } else {
+      if (wordStart === -1) {
+        wordStart = i;
+      }
+    }
+  }
+  if (wordStart !== -1) {
+    words.push(buf.subarray(wordStart, buf.length));
+  }
+  return words;
+}
+
+function compareThemisWords(
+  expectedOutput: Buffer,
+  actualOutput: Buffer,
+  ignoreCase: boolean,
+): StandardCheckerResult {
+  const expectedWords = parseThemisWords(expectedOutput);
+  const actualWords = parseThemisWords(actualOutput);
+  const minLen = Math.min(expectedWords.length, actualWords.length);
+
+  for (let wordIndex = 0; wordIndex < minLen; wordIndex++) {
+    if (!wordsEqual(expectedWords[wordIndex], actualWords[wordIndex], ignoreCase)) {
+      return { status: "WA", message: `Wrong answer at word ${wordIndex + 1}` };
+    }
+  }
+
   if (expectedWords.length !== actualWords.length) {
     return {
       status: "WA",
@@ -107,11 +218,6 @@ function compareWords(
     };
   }
 
-  for (let wordIndex = 0; wordIndex < expectedWords.length; wordIndex += 1) {
-    if (expectedWords[wordIndex] !== actualWords[wordIndex]) {
-      return { status: "WA", message: `Wrong answer at word ${wordIndex + 1}` };
-    }
-  }
   return {
     status: "AC",
     message: expectedWords.length === 1 ? "single word" : `${expectedWords.length} words`,

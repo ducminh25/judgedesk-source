@@ -14,6 +14,7 @@ export interface ServerShutdownDependencies {
   waitForJudgeSessionsToFinish(timeoutMs: number): Promise<boolean>;
   activeJudgeSessionCount(): number;
   shutdownExecutor(): Promise<void>;
+  drainLifecycle?: (timeoutMs: number) => Promise<void>;
   scheduleProcessExit(): void;
   drainTimeoutMs: number;
 }
@@ -34,6 +35,7 @@ function defaultShutdownDependencies(): ServerShutdownDependencies {
       serverLifecycle.waitForJudgeSessionsToFinish(timeoutMs),
     activeJudgeSessionCount: () => serverLifecycle.activeJudgeSessionCount,
     shutdownExecutor: () => executorClient.shutdown(),
+    drainLifecycle: (timeoutMs) => serverLifecycle.drain(timeoutMs),
     scheduleProcessExit: () => {
       setTimeout(() => process.exit(0), 50);
     },
@@ -47,6 +49,10 @@ export async function prepareServerShutdown(
   try {
     dependencies.beginDrain();
     dependencies.cancelActiveJudgeJobs();
+    if (dependencies.drainLifecycle) {
+      await dependencies.drainLifecycle(dependencies.drainTimeoutMs);
+      return { ok: true };
+    }
     const drained = await dependencies.waitForJudgeSessionsToFinish(
       dependencies.drainTimeoutMs,
     );
@@ -69,10 +75,13 @@ export async function prepareServerShutdown(
   }
 }
 
+export type DirectoryPickerFn = (defaultPath?: string) => string | null;
+
 export function registerSystemRoutes(
   app: Express,
   shutdownDependencies: ServerShutdownDependencies =
     defaultShutdownDependencies(),
+  directoryPicker: DirectoryPickerFn = selectDirectory,
 ): void {
   app.get("/api/status", (_req, res) => {
     res.json(getHostStatus());
@@ -102,7 +111,7 @@ export function registerSystemRoutes(
   app.post("/api/select-directory", (req, res) => {
     try {
       const { defaultPath } = req.body;
-      const selectedPath = selectDirectory(defaultPath);
+      const selectedPath = directoryPicker(defaultPath);
       console.log("[SelectDirectory] Path selected:", selectedPath);
       if (selectedPath === null) {
         res.json({ success: false, error: "Canceled" });

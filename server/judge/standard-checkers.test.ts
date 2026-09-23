@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import test from "node:test";
 import { runStandardChecker } from "./standard-checkers.js";
 
@@ -82,4 +83,35 @@ test("Polygon real checkers use absolute or relative epsilon", () => {
 test("Polygon token checker compares an exact ordered token sequence", () => {
   assert.equal(runStandardChecker("polygon:wcmp", "a\nb c", "a b\n c").status, "AC");
   assert.equal(runStandardChecker("polygon:wcmp", "a b", "a b c").message, "Participant output contains extra tokens");
+});
+
+test("Themis C1-C5 corpus fixtures match exact status and message", () => {
+  const corpusPath = new URL("../../judgers/fixtures/themis-c1-c5-corpus.json", import.meta.url);
+  const corpus = JSON.parse(fs.readFileSync(corpusPath, "utf8")) as {
+    fixtures: Array<{
+      id: string;
+      checker: "C1" | "C2" | "C3" | "C4" | "C5";
+      description: string;
+      expectedBase64: string;
+      actualBase64: string;
+      expectedVerdict: string;
+      expectedMessage: string;
+    }>;
+  };
+
+  for (const fixture of corpus.fixtures) {
+    const expected = Buffer.from(fixture.expectedBase64, "base64");
+    const actual = Buffer.from(fixture.actualBase64, "base64");
+    const result = runStandardChecker(fixture.checker, expected, actual);
+    assert.equal(
+      result.status,
+      fixture.expectedVerdict,
+      `[${fixture.id}] Status mismatch: expected ${fixture.expectedVerdict}, got ${result.status} (msg: ${result.message})`,
+    );
+    assert.equal(
+      result.message,
+      fixture.expectedMessage,
+      `[${fixture.id}] Message mismatch: expected "${fixture.expectedMessage}", got "${result.message}"`,
+    );
+  }
 });

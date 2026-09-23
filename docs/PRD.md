@@ -1,7 +1,8 @@
 # Product Requirements Document (PRD) — JudgeDesk
 
 **Project Name**: JudgeDesk (formerly codenamed *ThemisV2*)
-**Product Version**: `1.5.0` (`v1.5.x`)
+**Released Baseline**: `v1.5.0`
+**Development Target**: `v1.6.0` (Pure Rust Core migration; the eight authoritative version files remain `1.5.0` until the final coordinated release bump)
 **Document Status**: Official / Approved
 **Target Platform**: Windows 10/11 x64, macOS Apple Silicon (ARM64)
 **License**: Proprietary / Private Source (`ducminh25/judgedesk-source`)
@@ -187,4 +188,3 @@ JudgeDesk was conceived as the modern, cross-platform successor to legacy gradin
 * **Automated Test Coverage**: 100% pass rate across the full test suite (492 tests: 482 passed, 0 failed, 10 skipped).
 * **Zero Compilation Regressions**: Typecheck (`tsc --noEmit`) clean with zero errors.
 * **Seamless Cross-Platform Parity**: Identical scoring outcomes on Windows x64 and macOS Apple Silicon.
-

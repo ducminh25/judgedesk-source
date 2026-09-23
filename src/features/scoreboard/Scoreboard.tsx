@@ -53,10 +53,7 @@ interface Props {
   onOpenDetails: (contestant: string, problem: ProblemResult) => void;
 }
 
-interface ViewportSize {
-  width: number;
-  height: number;
-}
+const ROW_HEIGHT = 34;
 
 type OpenContextMenu = (
   event: ReactMouseEvent,
@@ -84,9 +81,10 @@ function Scoreboard({
   onOpenDetails,
 }: Props) {
   const { t } = useTranslation();
+  const containerRef = useRef<HTMLElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const tableRef = useRef<HTMLTableElement>(null);
-  const [viewport, setViewport] = useState<ViewportSize>({ width: 1280, height: 700 });
+  const [containerWidth, setContainerWidth] = useState<number>(1280);
 
   // Keyboard navigation focus state:
   // focusedRow: -1 (header row) or 0..contestants.length-1
@@ -95,9 +93,14 @@ function Scoreboard({
   const [focusedCol, setFocusedCol] = useState<number>(-1);
 
   useEffect(() => {
-    const element = viewportRef.current;
+    const element = containerRef.current;
     if (!element) return;
-    const updateSize = () => setViewport({ width: element.clientWidth, height: element.clientHeight });
+    const updateSize = () => {
+      const width = Math.round(element.clientWidth);
+      if (width > 0) {
+        setContainerWidth((prev) => (Math.abs(prev - width) >= 2 ? width : prev));
+      }
+    };
     updateSize();
     const observer = new ResizeObserver(updateSize);
     observer.observe(element);
@@ -132,22 +135,17 @@ function Scoreboard({
     }
   }, [activeProblem, problems]);
 
-  const contestantColumnWidth = Math.max(170, Math.min(260, Math.round(viewport.width * 0.2)));
-  const totalColumnWidth = Math.max(86, Math.min(110, Math.round(viewport.width * 0.075)));
+  const contestantColumnWidth = Math.max(170, Math.min(260, Math.round(containerWidth * 0.2)));
+  const totalColumnWidth = Math.max(86, Math.min(110, Math.round(containerWidth * 0.075)));
   const minimumProblemColumnWidth = 72;
-  const fittedProblemColumnWidth = problems.length > 0
-    ? (viewport.width - contestantColumnWidth - totalColumnWidth) / problems.length
-    : 0;
-  const problemColumnWidth = Math.max(minimumProblemColumnWidth, fittedProblemColumnWidth);
-  const tableWidth = Math.max(
-    viewport.width,
-    contestantColumnWidth + totalColumnWidth + problemColumnWidth * problems.length,
-  );
-  const fontSize = problemColumnWidth < 88 ? 9 : problemColumnWidth < 112 ? 10 : problemColumnWidth < 145 ? 11 : 12;
-  const headerHeight = problemColumnWidth < 120 ? 46 : 38;
-  const rowHeight = contestants.length > 0
-    ? Math.max(24, Math.min(38, Math.floor((viewport.height - headerHeight) / contestants.length)))
-    : 32;
+  const availableForProblems = Math.max(0, containerWidth - contestantColumnWidth - totalColumnWidth);
+  const estimatedProblemColumnWidth = problems.length > 0 ? availableForProblems / problems.length : 120;
+  const problemsFit = problems.length > 0 && estimatedProblemColumnWidth >= minimumProblemColumnWidth;
+  const effectiveProblemColumnWidth = Math.max(minimumProblemColumnWidth, estimatedProblemColumnWidth);
+  const minTableWidth = contestantColumnWidth + totalColumnWidth + minimumProblemColumnWidth * problems.length;
+  const fontSize = effectiveProblemColumnWidth < 88 ? 9 : effectiveProblemColumnWidth < 112 ? 10 : effectiveProblemColumnWidth < 145 ? 11 : 12;
+  const headerHeight = effectiveProblemColumnWidth < 120 ? 46 : 38;
+  const rowHeight = ROW_HEIGHT;
 
   const openContextMenu = useCallback((
     event: ReactMouseEvent,
@@ -226,6 +224,7 @@ function Scoreboard({
 
   return (
     <main
+      ref={containerRef}
       className="relative flex min-h-0 w-full flex-1 flex-col overflow-hidden bg-surface"
       onContextMenu={(event) => event.preventDefault()}
     >
@@ -244,12 +243,17 @@ function Scoreboard({
         ) : (
           <table
             ref={tableRef}
-            className="relative border-collapse text-left"
-            style={{ width: tableWidth, tableLayout: "fixed", fontSize }}
+            className="relative border-collapse text-left w-full"
+            style={{ minWidth: minTableWidth, tableLayout: "fixed", fontSize }}
           >
             <colgroup>
               <col style={{ width: contestantColumnWidth }} />
-              {problems.map((problemName) => <col key={problemName} style={{ width: problemColumnWidth }} />)}
+              {problems.map((problemName) => (
+                <col
+                  key={problemName}
+                  style={problemsFit ? undefined : { width: minimumProblemColumnWidth }}
+                />
+              ))}
               <col style={{ width: totalColumnWidth }} />
             </colgroup>
             <thead className="sticky top-0 z-20 bg-surface-elevated shadow-sm">
@@ -464,7 +468,10 @@ const ScoreboardRow = memo(function ScoreboardRow({
   const isRowFocused = focusedRow === rowIndex;
 
   return (
-    <tr className={`${selected ? "hover:bg-surface-hover/40" : "opacity-50"} ${isRowFocused ? "bg-indigo-50/30 dark:bg-indigo-950/20" : ""}`}>
+    <tr
+      style={{ height: rowHeight }}
+      className={`${selected ? "hover:bg-surface-hover/40" : "opacity-50"} ${isRowFocused ? "bg-indigo-50/30 dark:bg-indigo-950/20" : ""}`}
+    >
       <td
         onClick={() => onSelectCell(rowIndex, -1)}
         onContextMenu={(event) => openContextMenu(event, contestantTarget)}
@@ -482,7 +489,7 @@ const ScoreboardRow = memo(function ScoreboardRow({
             }))}
             className="h-4 w-4 flex-none cursor-pointer rounded border-surface-border-strong bg-input-bg text-indigo-500"
           />
-          <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere] leading-tight">{contestantName}</span>
+          <span className="min-w-0 flex-1 truncate font-mono text-xs" title={contestantName}>{contestantName}</span>
           <button
             type="button"
             onClick={(event) => openContextMenu(event, contestantTarget)}
@@ -539,17 +546,17 @@ const ScoreboardRow = memo(function ScoreboardRow({
               compileStatus: problem.compileStatus,
             }) : undefined}
           >
-            <span className="block whitespace-nowrap">{displayText}</span>
+            <span className="block whitespace-nowrap font-mono tabular-nums">{displayText}</span>
           </td>
         );
       })}
       <td
         onClick={() => onSelectCell(rowIndex, problems.length)}
         onContextMenu={(event) => openContextMenu(event, contestantTarget)}
-        className={`sticky right-0 z-10 cursor-default border-b border-l border-surface-border bg-total-column px-2 text-center font-bold text-indigo-700 dark:text-indigo-300 ${isRowFocused && focusedCol === problems.length ? "ring-2 ring-indigo-500 ring-inset" : ""}`}
+        className={`sticky right-0 z-10 cursor-default border-b border-l border-surface-border bg-total-column px-2 text-center font-mono font-bold tabular-nums text-indigo-700 dark:text-indigo-300 ${isRowFocused && focusedCol === problems.length ? "ring-2 ring-indigo-500 ring-inset" : ""}`}
         style={{ height: rowHeight }}
       >
-        {contestantResult ? totalScore.toFixed(2) : "-"}
+        <span className="block whitespace-nowrap font-mono tabular-nums">{contestantResult ? totalScore.toFixed(2) : "-"}</span>
       </td>
     </tr>
   );

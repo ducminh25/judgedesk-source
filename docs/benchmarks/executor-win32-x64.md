@@ -1,28 +1,28 @@
 # Native executor benchmark (win32/x64)
 
-- Generated: 2026-07-24T14:16:10.592Z
+- Generated: 2026-09-19T07:02:22.856Z
 - CPU: 13th Gen Intel(R) Core(TM) i5-13420H (12 logical CPUs)
 - OS: Windows 11 Pro
-- Runner: windows-lpac-job 1.2.5
+- Runner: windows-lpac-job 1.5.0
 - Workload: 5 × 1000 C++ no-op tests after 20 warmups
 
 | Stage | p50 (ms) | p95 (ms) |
 |---|---:|---:|
-| Staging | 0.225 | 0.349 |
-| Executor dispatch/IPC | 1.066 | 1.350 |
-| OS sandbox setup | 5.472 | 7.113 |
-| Dispatch + security setup | 6.562 | 8.324 |
-| Execution | 43.948 | 63.226 |
-| Result collection | 0.244 | 0.445 |
-| Cleanup | 1.016 | 1.622 |
-| End-to-end | 51.883 | 72.892 |
+| Staging | 0.260 | 0.417 |
+| Executor dispatch/IPC | 0.932 | 1.238 |
+| OS sandbox setup | 8.495 | 10.758 |
+| Dispatch + security setup | 9.460 | 11.818 |
+| Execution | 35.873 | 40.226 |
+| Result collection | 0.344 | 0.469 |
+| Cleanup | 0.940 | 1.370 |
+| End-to-end | 47.029 | 51.600 |
 
 | Gate | Actual | Limit | Result |
 |---|---:|---:|---|
-| dispatchP50Ms | 1.066 | 5 | PASS |
-| dispatchP95Ms | 1.350 | 10 | PASS |
-| securitySetupP50Ms | 5.472 | 15 | PASS |
-| securitySetupP95Ms | 7.113 | 25 | PASS |
+| dispatchP50Ms | 0.932 | 5 | PASS |
+| dispatchP95Ms | 1.238 | 10 | PASS |
+| securitySetupP50Ms | 8.495 | 15 | PASS |
+| securitySetupP95Ms | 10.758 | 25 | PASS |
 | backendMemoryGrowthMiB | 0.000 | 100 | PASS |
 
 Backend RSS growth: 0.00 MiB.

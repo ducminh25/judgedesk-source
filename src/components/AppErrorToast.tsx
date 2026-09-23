@@ -49,10 +49,10 @@ export default function AppErrorToast({
       : AlertCircle;
 
   const containerClasses = isWarning
-    ? "border-amber-500/40 bg-amber-50 dark:bg-amber-950/80 text-amber-900 dark:text-amber-100 shadow-amber-500/10"
+    ? "border-amber-500/40 bg-amber-50 dark:bg-amber-950 text-amber-900 dark:text-amber-100"
     : isInfo
-      ? "border-sky-500/40 bg-sky-50 dark:bg-sky-950/80 text-sky-900 dark:text-sky-100 shadow-sky-500/10"
-      : "border-rose-500/40 bg-rose-50 dark:bg-rose-950/90 text-rose-900 dark:text-rose-100 shadow-rose-500/10";
+      ? "border-sky-500/40 bg-sky-50 dark:bg-sky-950 text-sky-900 dark:text-sky-100"
+      : "border-rose-500/40 bg-rose-50 dark:bg-rose-950 text-rose-900 dark:text-rose-100";
 
   const iconClasses = isWarning
     ? "text-amber-600 dark:text-amber-400"
@@ -76,7 +76,7 @@ export default function AppErrorToast({
       onMouseLeave={() => setIsPaused(false)}
     >
       <div
-        className={`flex flex-col gap-2 rounded-xl border p-4 shadow-xl backdrop-blur-md transition-all ${containerClasses}`}
+        className={`flex flex-col gap-2 rounded-lg border p-4 shadow-lg transition-all ${containerClasses}`}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2.5">
@@ -88,7 +88,7 @@ export default function AppErrorToast({
           <button
             type="button"
             onClick={onClose}
-            className="flex-none -mr-1 -mt-1 rounded-lg p-1 opacity-70 transition-opacity hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/10"
+            className="flex-none -mr-1 -mt-1 rounded p-1 opacity-70 transition-opacity hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/10"
             title={t("common.close", "Đóng")}
             aria-label={t("common.close", "Đóng")}
           >
@@ -103,7 +103,7 @@ export default function AppErrorToast({
         )}
 
         {error.action && (
-          <div className={`mt-1 flex items-start gap-2 rounded-lg border px-3 py-2 text-xs font-medium ${actionBoxClasses}`}>
+          <div className={`mt-1 flex items-start gap-2 rounded border px-3 py-2 text-xs font-medium ${actionBoxClasses}`}>
             <ArrowRight className="h-3.5 w-3.5 flex-none mt-0.5" />
             <span className="flex-1">{error.action}</span>
           </div>
@@ -117,7 +117,7 @@ export default function AppErrorToast({
                 error.onAction?.();
                 onClose();
               }}
-              className="rounded-lg bg-text-primary px-3 py-1 text-xs font-semibold text-surface hover:opacity-90 transition-opacity"
+              className="rounded bg-text-primary px-3 py-1 text-xs font-semibold text-surface hover:opacity-90 transition-opacity"
             >
               {error.actionLabel}
             </button>

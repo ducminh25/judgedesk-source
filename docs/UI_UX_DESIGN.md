@@ -153,3 +153,28 @@ All errors in the application follow the 3-Part Error UX standard:
 | `Enter` | `Enter` | Open Testcase Details Modal for Focused Cell | Scoreboard |
 | `Escape` | `Escape` | Close active modal dialog / popup | Modal |
 
+---
+
+## 6. Anti-AI-Slop & Utilitarian Desktop Engineering Standard
+
+To maintain JudgeDesk's identity as a high-performance, distraction-free desktop grading tool and prevent generic "AI-generated SaaS" aesthetic degradation, all frontend changes must comply with the following negative constraints and styling rules (enforced via `.agents/skills/redesign-existing-projects` and `.agents/skills/minimalist-ui`):
+
+1. **Zero Gradients & Diffuse Glows**:
+   - **Banned**: Multi-stop gradients (e.g., `bg-gradient-to-r from-indigo-600 via-indigo-500...`), glowing drop-shadows (`shadow-indigo-500/20`), and text clipping gradients (`bg-clip-text`).
+   - **Required**: Flat, solid semantic backgrounds with distinct 1px borders (`border border-surface-border`). Focus rings must be sharp and functional, not hazy glows.
+
+2. **No Frosted Glassmorphism (`backdrop-blur`)**:
+   - **Banned**: Heavy backdrop blurs (`backdrop-blur-md`, `backdrop-blur-sm`) on dialog overlays and toolbars.
+   - **Required**: Clean, high-contrast modal backdrops (`bg-black/60` or `bg-black/50`). Desktop dialogs must appear instantaneous, crisp, and legible without GPU-heavy compositing filters.
+
+3. **Crisp Desktop Geometry (Max 6px Radius)**:
+   - **Banned**: Pill-shaped containers (`rounded-full`), floating bubbles, and oversized mobile curves (`rounded-xl`, `rounded-2xl`).
+   - **Required**: Tight, engineered corners: `rounded` (4px) or `rounded-md` (6px) for buttons, inputs, table cells, and dialog containers to project mechanical precision.
+
+4. **Tabular Numerics for Realtime Stability**:
+   - **Required**: All score cells, execution times (e.g., `0.015s`), memory consumption badges (`128 MB`), and test counts must enforce `tabular-nums` (`font-variant-numeric: tabular-nums` or `font-mono`) to prevent visual jitter when cells update live during judging.
+
+5. **High Visual Density (Cockpit / Data-First Layout)**:
+   - Maximize screen real estate. The primary viewport must prioritize the dense matrix scoreboard and log readouts over excessive whitespace or decorative padding.
+
+

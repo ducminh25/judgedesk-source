@@ -53,7 +53,7 @@ import type { ToolchainDescriptor } from "../toolchains/types.js";
 import {
   isCurrentReleaseToolchainKind,
 } from "../toolchains/release-scope.js";
-import { serverLifecycle } from "../platform/server-lifecycle.js";
+import { serverLifecycle, type ServerLifecycle } from "../platform/server-lifecycle.js";
 import { toolchainMaintenanceGate } from "../toolchains/maintenance-gate.js";
 import {
   loadLocalExecutionPolicy,
@@ -174,7 +174,17 @@ function selectedLocalExecutablePath(profileId: string): string {
   throw new Error("Select one local compiler path before certification.");
 }
 
-export function registerToolchainRoutes(app: Express): void {
+export type ToolchainInstallerFn = (
+  descriptor: ToolchainDescriptor,
+  options?: { beforeCommit?: () => void },
+) => Promise<void>;
+
+export function registerToolchainRoutes(
+  app: Express,
+  installer: ToolchainInstallerFn = installToolchain,
+  onBackgroundOperation?: (op: Promise<unknown>) => void,
+  lifecycle: ServerLifecycle = serverLifecycle,
+): void {
   app.post("/api/toolchains/rescan", (_req, res) => {
     if (toolchainMutationsBlocked()) {
       return res.status(409).json({
@@ -182,9 +192,21 @@ export function registerToolchainRoutes(app: Express): void {
         message: TOOLCHAIN_MUTATION_BLOCKED_MESSAGE,
       });
     }
-    clearToolchainDetectionCache();
-    requestToolchainRescan();
-    res.status(202).json({
+    try {
+      lifecycle.assertAdmissible();
+      clearToolchainDetectionCache();
+      const rescanOp = requestToolchainRescan();
+      lifecycle.trackBackgroundOperation(rescanOp);
+      if (onBackgroundOperation) {
+        onBackgroundOperation(rescanOp);
+      }
+    } catch (err) {
+      return res.status(503).json({
+        success: false,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+    return res.status(202).json({
       success: true,
       discovery: getToolchainDiscoverySnapshot(),
     });
@@ -279,6 +301,14 @@ export function registerToolchainRoutes(app: Express): void {
   });
 
   app.put("/api/toolchains/execution-policy", (req, res) => {
+    try {
+      lifecycle.assertAdmissible();
+    } catch (err) {
+      return res.status(503).json({
+        success: false,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
     if (toolchainMutationsBlocked()) {
       return res.status(409).json({
         success: false,
@@ -309,11 +339,31 @@ export function registerToolchainRoutes(app: Express): void {
   });
 
   app.post("/api/toolchains/prewarm", (_req, res) => {
-    void startBackgroundJudgePrewarm(true);
-    return res.json({ success: true, message: "Background pre-warm initiated." });
+    try {
+      lifecycle.assertAdmissible();
+      const prewarmOp = startBackgroundJudgePrewarm(true);
+      lifecycle.trackBackgroundOperation(prewarmOp);
+      if (onBackgroundOperation) {
+        onBackgroundOperation(prewarmOp);
+      }
+      return res.json({ success: true, message: "Background pre-warm initiated." });
+    } catch (err) {
+      return res.status(503).json({
+        success: false,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
   });
 
   app.post("/api/toolchains/profiles/:profileId/certification-plan", async (req, res) => {
+    try {
+      lifecycle.assertAdmissible();
+    } catch (err) {
+      return res.status(503).json({
+        success: false,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
     const { profileId } = req.params;
     const entry = getRegisteredLanguageProfile(profileId);
     if (!entry) {
@@ -344,6 +394,14 @@ export function registerToolchainRoutes(app: Express): void {
   });
 
   app.post("/api/toolchains/profiles/:profileId/certify", async (req, res) => {
+    try {
+      lifecycle.assertAdmissible();
+    } catch (err) {
+      return res.status(503).json({
+        success: false,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
     const { profileId } = req.params;
     const entry = getRegisteredLanguageProfile(profileId);
     if (!entry) {
@@ -363,7 +421,12 @@ export function registerToolchainRoutes(app: Express): void {
     }
     try {
       const executablePath = selectedLocalExecutablePath(profileId);
-      const result = await certifyLocalCppToolchain(executablePath);
+      const certifyOp = certifyLocalCppToolchain(executablePath);
+      lifecycle.trackBackgroundOperation(certifyOp);
+      if (onBackgroundOperation) {
+        onBackgroundOperation(certifyOp);
+      }
+      const result = await certifyOp;
       clearToolchainDetectionCache();
       return res.json({ success: true, result });
     } catch (error) {
@@ -374,6 +437,14 @@ export function registerToolchainRoutes(app: Express): void {
   });
 
   app.post("/api/toolchains/profiles/:profileId/diagnose", async (req, res) => {
+    try {
+      lifecycle.assertAdmissible();
+    } catch (err) {
+      return res.status(503).json({
+        success: false,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
     const { profileId } = req.params;
     const entry = getRegisteredLanguageProfile(profileId);
     if (!entry) {
@@ -386,7 +457,12 @@ export function registerToolchainRoutes(app: Express): void {
       });
     }
     try {
-      const result = await diagnoseLanguageProfile(profileId);
+      const diagOp = diagnoseLanguageProfile(profileId);
+      lifecycle.trackBackgroundOperation(diagOp);
+      if (onBackgroundOperation) {
+        onBackgroundOperation(diagOp);
+      }
+      const result = await diagOp;
       return res.json({ success: result.success, diagnostic: result });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -395,6 +471,14 @@ export function registerToolchainRoutes(app: Express): void {
   });
 
   app.post("/api/toolchains/:id/install", async (req, res) => {
+    try {
+      lifecycle.assertAdmissible();
+    } catch (err) {
+      return res.status(503).json({
+        success: false,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
     const { id } = req.params;
     const catalogEntry = TOOLCHAIN_CATALOG.find((entry) => entry.id === id);
     if (!catalogEntry) {
@@ -438,11 +522,12 @@ export function registerToolchainRoutes(app: Express): void {
 
     let manifest: readonly ToolchainDescriptor[];
     try {
-      manifest = await requestManifest(true);
-    } catch (error: any) {
+      manifest = await requestManifest();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
       return res.status(503).json({
         success: false,
-        message: error.message || "Toolchain manifest is unavailable.",
+        message: message || "Toolchain manifest is unavailable.",
       });
     }
     const descriptor = manifest.find((candidate) => candidate.id === id);
@@ -471,37 +556,53 @@ export function registerToolchainRoutes(app: Express): void {
       });
     }
     console.log(`[Toolchains API] Starting async installation of ${id}`);
-    installToolchain(descriptor, {
-      // Runs immediately before the synchronous atomic replacement. A batch
-      // that starts during download therefore keeps the package it began with.
-      beforeCommit: assertToolchainMutationAllowed,
-    })
-      .then(() => {
-        if (toolchainMutationsBlocked()) {
-          clearToolchainDetectionCache();
-          console.warn(
-            `[Toolchains API] ${id} installed but was not applied because judging started.`,
-          );
-          return;
-        }
-        const applied = tryUpdateProfileToolchainPreferenceAtRevision(
-          profileId,
-          { mode: "managed" },
-          expectedRevision,
-        );
-        clearToolchainDetectionCache();
-        if (!applied) {
-          console.warn(
-            `[Toolchains API] ${id} installed but was not applied because the preference changed.`,
-          );
-        }
-      })
-      .catch((error: Error) => {
-        console.error(
-          `[Toolchains API] Async installation of ${id} failed:`,
-          error.message,
-        );
+    const executeInstall = async () => {
+      await installer(descriptor, {
+        // Runs immediately before the synchronous atomic replacement. A batch
+        // that starts during download therefore keeps the package it began with.
+        beforeCommit: assertToolchainMutationAllowed,
       });
+      if (toolchainMutationsBlocked()) {
+        clearToolchainDetectionCache();
+        console.warn(
+          `[Toolchains API] ${id} installed but was not applied because judging started.`,
+        );
+        return;
+      }
+      const applied = tryUpdateProfileToolchainPreferenceAtRevision(
+        profileId,
+        { mode: "managed" },
+        expectedRevision,
+      );
+      clearToolchainDetectionCache();
+      if (!applied) {
+        console.warn(
+          `[Toolchains API] ${id} installed but was not applied because the preference changed.`,
+        );
+      }
+    };
+
+    let installOp: Promise<void>;
+    try {
+      lifecycle.assertAdmissible();
+      installOp = executeInstall();
+      lifecycle.trackBackgroundOperation(installOp);
+      if (onBackgroundOperation) {
+        onBackgroundOperation(installOp);
+      }
+    } catch (err) {
+      return res.status(503).json({
+        success: false,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+    installOp.catch((error: unknown) => {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error(
+        `[Toolchains API] Async installation of ${id} failed:`,
+        msg,
+      );
+    });
 
     return res.status(202).json({
       success: true,
@@ -516,6 +617,14 @@ export function registerToolchainRoutes(app: Express): void {
   });
 
   app.delete("/api/toolchains/:id", async (req, res) => {
+    try {
+      lifecycle.assertAdmissible();
+    } catch (err) {
+      return res.status(503).json({
+        success: false,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
     const { id } = req.params;
     if (!TOOLCHAIN_CATALOG.some((entry) => entry.id === id)) {
       return res.status(404).json({
@@ -530,20 +639,33 @@ export function registerToolchainRoutes(app: Express): void {
       });
     }
     try {
-      await uninstallToolchain(id);
+      const uninstallOp = uninstallToolchain(id);
+      lifecycle.trackBackgroundOperation(uninstallOp);
+      if (onBackgroundOperation) {
+        onBackgroundOperation(uninstallOp);
+      }
+      await uninstallOp;
       clearToolchainDetectionCache();
       return res.json({
         success: true,
         message: `Toolchain '${id}' uninstalled successfully.`,
       });
-    } catch (error: any) {
-      const message = error.message || String(error);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
       const status = message.includes("included with JudgeDesk") ? 409 : 500;
       return res.status(status).json({ success: false, message });
     }
   });
 
   app.put("/api/toolchains/profiles/:profileId/preference", (req, res) => {
+    try {
+      lifecycle.assertAdmissible();
+    } catch (err) {
+      return res.status(503).json({
+        success: false,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
     const { profileId } = req.params;
     const entry = getRegisteredLanguageProfile(profileId);
     if (!entry) {
@@ -602,6 +724,7 @@ export function registerToolchainRoutes(app: Express): void {
       }
     }
     try {
+      lifecycle.assertAdmissible();
       const before = loadToolchainPreferenceSnapshot();
       if (before.status === "recovery") {
         return res.status(409).json({
@@ -616,19 +739,38 @@ export function registerToolchainRoutes(app: Express): void {
       const preference = localPath ? { mode, localPath } : { mode };
       const updated = updateProfileToolchainPreference(profileId, preference);
       if (!hasLocalPath) clearToolchainDetectionCache();
-      requestToolchainRescan();
+      const rescanOp = requestToolchainRescan();
+      lifecycle.trackBackgroundOperation(rescanOp);
+      if (onBackgroundOperation) {
+        onBackgroundOperation(rescanOp);
+      }
       return res.json({
         success: true,
         preference: getStoredProfilePreference(updated.preferences, profileId),
         revision: updated.revision,
       });
-    } catch (error: any) {
-      return res.status(409).json({ success: false, message: error.message });
+    } catch (error: unknown) {
+      if (lifecycle.isClosing) {
+        return res.status(503).json({
+          success: false,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      return res.status(409).json({ success: false, message });
     }
   });
 
   // Compatibility endpoint for older frontends during the schema-v2 rollout.
   app.post("/api/toolchains/custom-path", (req, res) => {
+    try {
+      lifecycle.assertAdmissible();
+    } catch (err) {
+      return res.status(503).json({
+        success: false,
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
     if (toolchainMutationsBlocked()) {
       return res.status(409).json({
         success: false,
@@ -694,8 +836,9 @@ export function registerToolchainRoutes(app: Express): void {
         message: "Preferences updated.",
         preferences: loadPreferences(),
       });
-    } catch (error: any) {
-      return res.status(409).json({ success: false, message: error.message });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      return res.status(409).json({ success: false, message });
     }
   });
 }

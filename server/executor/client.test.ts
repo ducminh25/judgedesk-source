@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
 import test from "node:test";
 import path from "node:path";
 import { EventEmitter } from "node:events";
@@ -27,6 +29,7 @@ interface ExecutorClientInternals {
   stopChildForStartupRetry(): Promise<void>;
   executorExited(child: ChildProcessWithoutNullStreams, error: Error): void;
   receive(child: ChildProcessWithoutNullStreams, chunk: Buffer): void;
+  getEnvironment(): NodeJS.ProcessEnv;
 }
 
 type FakeChild = ChildProcessWithoutNullStreams & {
@@ -71,6 +74,46 @@ test("startup retry is limited to the transient empty security-probe result", ()
     diagnostics: ["LPAC security probe failed: network was reachable"],
   }), false);
   assert.equal(isTransientExecutorStartupFailure({ ...health, ready: true }), false);
+});
+
+test("production executor environment ignores test-only root overrides", (t) => {
+  const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), "jd_test_executor_env_boundary_"));
+  const original = {
+    nodeEnv: process.env.NODE_ENV,
+    executorTestRoot: process.env.JUDGEDESK_EXECUTOR_TEST_ROOT,
+    themisAppDataDir: process.env.THEMIS_APP_DATA_DIR,
+    localAppData: process.env.LOCALAPPDATA,
+    appData: process.env.APPDATA,
+  };
+  t.after(() => {
+    for (const [key, value] of Object.entries({
+      NODE_ENV: original.nodeEnv,
+      JUDGEDESK_EXECUTOR_TEST_ROOT: original.executorTestRoot,
+      THEMIS_APP_DATA_DIR: original.themisAppDataDir,
+      LOCALAPPDATA: original.localAppData,
+      APPDATA: original.appData,
+    })) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    fs.rmSync(testRoot, { recursive: true, force: true });
+  });
+
+  const hostLocalAppData = path.join(testRoot, "host-local");
+  const hostAppData = path.join(testRoot, "host-roaming");
+  process.env.NODE_ENV = "production";
+  process.env.LOCALAPPDATA = hostLocalAppData;
+  process.env.APPDATA = hostAppData;
+  process.env.JUDGEDESK_EXECUTOR_TEST_ROOT = path.join(testRoot, "executor-test-root");
+  process.env.THEMIS_APP_DATA_DIR = path.join(testRoot, "themis-test-root");
+
+  const client = new ExecutorClient();
+  const environment = (client as unknown as ExecutorClientInternals).getEnvironment();
+
+  assert.equal(environment.LOCALAPPDATA, hostLocalAppData);
+  assert.equal(environment.APPDATA, hostAppData);
+  assert.equal(fs.existsSync(path.join(testRoot, "executor-test-root", "localappdata")), false);
+  assert.equal(fs.existsSync(path.join(testRoot, "executor-test-root", "roamingappdata")), false);
 });
 
 test("the pre-submit barrier can stop a run after executor startup but before IPC submission", async () => {

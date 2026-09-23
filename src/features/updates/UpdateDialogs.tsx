@@ -46,12 +46,12 @@ export function UpdateEditionDialog({
                 </span>
                 <div className="flex items-center gap-1.5">
                   {isCurrent && (
-                    <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold uppercase text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                    <span className="rounded bg-slate-100 px-2 py-0.5 text-[10px] font-bold uppercase text-slate-700 dark:bg-slate-800 dark:text-slate-300">
                       {t("updates.currentEdition")}
                     </span>
                   )}
                   {edition === "core" && (
-                    <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold uppercase text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                    <span className="rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
                       {t("updates.recommended")}
                     </span>
                   )}
@@ -139,7 +139,7 @@ export function DonationConfirmDialog({
   return (
     <ModalFrame title={t("donation.openTitle")} onClose={onCancel}>
       <div className="flex items-center gap-4">
-        <div className="flex h-12 w-12 flex-none items-center justify-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+        <div className="flex h-12 w-12 flex-none items-center justify-center rounded-md bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300">
           <Coffee className="h-6 w-6" />
         </div>
         <p className="text-sm leading-6 text-text-muted">{t("donation.openMessage")}</p>
@@ -175,7 +175,7 @@ function SizeRows({ candidate, locale }: {
         <dt className="flex items-center gap-1.5 text-text-muted">
           <Download className="h-3.5 w-3.5" /> {t("updates.downloadSize")}
         </dt>
-        <dd className="font-semibold text-text-primary">
+        <dd className="font-mono tabular-nums font-semibold text-text-primary">
           {formatUpdateBytes(candidate.downloadSizeBytes, locale)}
         </dd>
       </div>
@@ -183,7 +183,7 @@ function SizeRows({ candidate, locale }: {
         <dt className="flex items-center gap-1.5 text-text-muted">
           <HardDrive className="h-3.5 w-3.5" /> {t("updates.installedSize")}
         </dt>
-        <dd className="font-semibold text-text-primary">
+        <dd className="font-mono tabular-nums font-semibold text-text-primary">
           {formatUpdateBytes(candidate.installedSizeBytes, locale)}
         </dd>
       </div>
@@ -201,12 +201,12 @@ function ModalFrame({
   onClose(): void;
 }) {
   return (
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4">
       <div
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="w-full max-w-xl overflow-hidden rounded-lg border border-surface-border bg-surface shadow-2xl"
+        className="w-full max-w-xl overflow-hidden rounded-lg border border-surface-border bg-surface shadow-lg"
       >
         <div className="flex items-center justify-between border-b border-surface-border bg-surface-elevated px-5 py-4">
           <h2 className="text-sm font-bold text-text-primary">{title}</h2>

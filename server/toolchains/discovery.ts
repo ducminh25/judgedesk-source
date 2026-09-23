@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import {
   execFile as execFileCallback,
+  spawnSync,
   type ChildProcess,
 } from "node:child_process";
 import fs from "node:fs";
@@ -109,6 +110,10 @@ interface RuntimeDiscoveryState {
   promise?: Promise<ToolchainDiscoverySnapshot>;
   initialRefreshStarted: boolean;
   rescanRequested: boolean;
+  isAborted?: boolean;
+  nextRescanPromise?: Promise<ToolchainDiscoverySnapshot>;
+  resolveNextRescan?: (s: ToolchainDiscoverySnapshot) => void;
+  rejectNextRescan?: (err: unknown) => void;
 }
 
 interface CandidateLocation {
@@ -353,20 +358,32 @@ export function getToolchainDiscoveryAttempts(
   return getToolchainDiscoverySnapshot().profiles[profileId] || [];
 }
 
-export function startInitialToolchainDiscovery(): void {
+export function startInitialToolchainDiscovery(): Promise<ToolchainDiscoverySnapshot> {
   const runtime = runtimeState();
-  if (runtime.initialRefreshStarted) return;
+  if (runtime.initialRefreshStarted) {
+    return Promise.resolve(runtime.snapshot);
+  }
   runtime.initialRefreshStarted = true;
-  startDiscovery(runtime);
+  return startDiscovery(runtime);
 }
 
-export function requestToolchainRescan(): void {
+export function requestToolchainRescan(): Promise<ToolchainDiscoverySnapshot> {
   const runtime = runtimeState();
   if (runtime.promise) {
     runtime.rescanRequested = true;
-    return;
+    if (!runtime.nextRescanPromise) {
+      let resolveFn!: (s: ToolchainDiscoverySnapshot) => void;
+      let rejectFn!: (err: unknown) => void;
+      runtime.nextRescanPromise = new Promise<ToolchainDiscoverySnapshot>((resolve, reject) => {
+        resolveFn = resolve;
+        rejectFn = reject;
+      });
+      runtime.resolveNextRescan = resolveFn;
+      runtime.rejectNextRescan = rejectFn;
+    }
+    return runtime.nextRescanPromise;
   }
-  startDiscovery(runtime);
+  return startDiscovery(runtime);
 }
 
 export async function waitForToolchainDiscovery(): Promise<ToolchainDiscoverySnapshot> {
@@ -374,8 +391,10 @@ export async function waitForToolchainDiscovery(): Promise<ToolchainDiscoverySna
   return runtime.promise || runtime.snapshot;
 }
 
-function startDiscovery(runtime: RuntimeDiscoveryState): void {
-  if (runtime.promise) return;
+function startDiscovery(runtime: RuntimeDiscoveryState): Promise<ToolchainDiscoverySnapshot> {
+  if (runtime.promise) return runtime.promise;
+  runtime.isAborted = false;
+  const targetFilePath = getToolchainDiscoveryFilePath();
   const startedAt = new Date().toISOString();
   const cached = runtime.snapshot;
   if (cached.status === "complete") {
@@ -395,10 +414,14 @@ function startDiscovery(runtime: RuntimeDiscoveryState): void {
     };
   }
   const retainedProfiles = runtime.snapshot.profiles;
-  runtime.promise = Promise.resolve()
-    .then(() => runDiscovery(retainedProfiles))
+  const isAborted = () => !!runtime.isAborted;
+  const discoveryPromise = Promise.resolve()
+    .then(() => runDiscovery(retainedProfiles, isAborted))
     .then((snapshot) => {
-      writeDiscoverySnapshot(snapshot);
+      if (runtime.isAborted) {
+        return snapshot;
+      }
+      writeDiscoverySnapshot(snapshot, targetFilePath, isAborted);
       runtime.snapshot = snapshot;
       return snapshot;
     })
@@ -418,25 +441,52 @@ function startDiscovery(runtime: RuntimeDiscoveryState): void {
     })
     .finally(() => {
       runtime.promise = undefined;
+      if (runtime.isAborted) {
+        runtime.rescanRequested = false;
+        if (runtime.resolveNextRescan) {
+          runtime.resolveNextRescan(runtime.snapshot);
+          runtime.nextRescanPromise = undefined;
+          runtime.resolveNextRescan = undefined;
+          runtime.rejectNextRescan = undefined;
+        }
+        return;
+      }
       if (runtime.rescanRequested) {
         runtime.rescanRequested = false;
-        startDiscovery(runtime);
+        const nextPromise = startDiscovery(runtime);
+        const resolve = runtime.resolveNextRescan;
+        const reject = runtime.rejectNextRescan;
+        runtime.nextRescanPromise = undefined;
+        runtime.resolveNextRescan = undefined;
+        runtime.rejectNextRescan = undefined;
+        if (resolve) {
+          nextPromise.then(resolve, reject);
+        }
       }
     });
+
+  runtime.promise = discoveryPromise;
+  return discoveryPromise;
 }
 
 async function runDiscovery(
   previousProfiles: DiscoveryProfiles,
+  isAborted?: () => boolean,
 ): Promise<Extract<ToolchainDiscoverySnapshot, { status: "complete" }>> {
   const profiles: Record<string, DiscoveredToolchainCandidate[]> = emptyProfiles();
   const deadlineAt = Date.now() + DISCOVERY_DEADLINE_MS;
   await Promise.all(listRegisteredLanguageProfiles().map(async (entry) => {
     const profileId = entry.profile.ref.id;
+    if (isAborted?.()) {
+      profiles[profileId] = [...(previousProfiles[profileId] || [])];
+      return;
+    }
     try {
       profiles[profileId] = await discoverKind(
         profileId,
         entry.toolchainKind,
         deadlineAt,
+        isAborted,
       );
     } catch (error) {
       console.error(`[Toolchains] Discovery failed for ${entry.toolchainKind}:`, error);
@@ -457,9 +507,11 @@ async function discoverKind(
   profileId: LanguageProfileId,
   kind: ToolchainKind,
   deadlineAt: number,
+  isAborted?: () => boolean,
 ): Promise<DiscoveredToolchainCandidate[]> {
   const attempts: DiscoveredToolchainCandidate[] = [];
   const seen = new Set<string>();
+  if (isAborted?.()) return attempts;
   const selectedLocation = selectedLocalPathLocation(kind);
   if (selectedLocation) {
     await probeLocations(
@@ -469,9 +521,10 @@ async function discoverKind(
       attempts,
       seen,
       deadlineAt,
+      isAborted,
     );
   }
-  if (Date.now() < deadlineAt && attempts.length < MAX_CANDIDATES_PER_PROFILE) {
+  if (!isAborted?.() && Date.now() < deadlineAt && attempts.length < MAX_CANDIDATES_PER_PROFILE) {
     const pathLocations = collectPathCandidates(kind);
     await probeLocations(
       profileId,
@@ -480,9 +533,10 @@ async function discoverKind(
       attempts,
       seen,
       deadlineAt,
+      isAborted,
     );
   }
-  if (Date.now() < deadlineAt && attempts.length < MAX_CANDIDATES_PER_PROFILE) {
+  if (!isAborted?.() && Date.now() < deadlineAt && attempts.length < MAX_CANDIDATES_PER_PROFILE) {
     const provider = testStandardCandidates || collectStandardCandidates;
     const standardPaths = await withinDeadline(
       provider(kind, deadlineAt),
@@ -501,6 +555,7 @@ async function discoverKind(
       attempts,
       seen,
       deadlineAt,
+      isAborted,
     );
   }
   return attempts;
@@ -531,19 +586,22 @@ async function probeLocations(
   attempts: DiscoveredToolchainCandidate[],
   seen: Set<string>,
   deadlineAt: number,
+  isAborted?: () => boolean,
 ): Promise<boolean> {
   for (const location of locations) {
     if (
-      attempts.length >= MAX_CANDIDATES_PER_PROFILE
+      isAborted?.()
+      || attempts.length >= MAX_CANDIDATES_PER_PROFILE
       || Date.now() >= deadlineAt
     ) {
-      continue;
+      break;
     }
     const canonicalPath = await canonicalExecutablePath(
       location.displayPath,
       kind,
       deadlineAt,
     );
+    if (isAborted?.()) break;
     if (!canonicalPath) continue;
     const key = os.platform() === "win32"
       ? canonicalPath.toLowerCase()
@@ -558,6 +616,7 @@ async function probeLocations(
       location,
       deadlineAt,
     );
+    if (isAborted?.()) break;
     attempts.push(candidate);
   }
   return attempts.some(
@@ -643,6 +702,9 @@ async function probeCandidate(
   }
 }
 
+const activeCompatibilityProbes = new Map<Promise<unknown>, AbortController>();
+const settledCompatibilityErrors: unknown[] = [];
+
 function scheduleCompatibilityProbe(
   kind: ToolchainKind,
   executablePath: string,
@@ -650,15 +712,22 @@ function scheduleCompatibilityProbe(
   if (testProbe || (kind !== "cpp" && kind !== "c" && kind !== "python")) {
     return;
   }
-  // The native-executor probe has its own longer lifecycle and must never
-  // extend the 1.45 s discovery deadline. Dynamic import also keeps cache reads
-  // free of the executor/job dependency graph.
-  void import("./local-execution.js")
+  const controller = new AbortController();
+  const probePromise = import("./local-execution.js")
     .then(({ scheduleLocalCompatibilityProbe }) =>
-      scheduleLocalCompatibilityProbe(kind, executablePath)
+      scheduleLocalCompatibilityProbe(kind, executablePath, undefined, controller.signal),
     )
     .catch((error) => {
       console.error(`[Toolchains] Local compatibility probe failed to start for ${kind}:`, error);
+      throw error;
+    });
+  activeCompatibilityProbes.set(probePromise, controller);
+  probePromise
+    .catch((err: unknown) => {
+      settledCompatibilityErrors.push(err);
+    })
+    .finally(() => {
+      activeCompatibilityProbes.delete(probePromise);
     });
 }
 
@@ -792,6 +861,17 @@ function withinDeadline<T>(
   return withTimeout(promise, Math.max(1, deadlineAt - Date.now()), errorMessage);
 }
 
+function trackDiscoveryChildProcess(child: ChildProcess): void {
+  activeDiscoveryChildren.add(child);
+  const onTerminal = () => {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      activeDiscoveryChildren.delete(child);
+    }
+  };
+  child.once("exit", onTerminal);
+  child.once("close", onTerminal);
+}
+
 async function runVersionCommand(
   request: ToolchainVersionProbeRequest,
 ): Promise<ToolchainVersionProbeOutput> {
@@ -809,7 +889,9 @@ async function runVersionCommand(
           shell: false,
         },
         (error, stdout, stderr) => {
-          activeDiscoveryChildren.delete(child);
+          if (child.exitCode !== null || child.signalCode !== null) {
+            activeDiscoveryChildren.delete(child);
+          }
           if (error) {
             reject(error);
             return;
@@ -821,9 +903,7 @@ async function runVersionCommand(
       reject(error);
       return;
     }
-    activeDiscoveryChildren.add(child);
-    child.once("exit", () => activeDiscoveryChildren.delete(child));
-    child.once("error", () => activeDiscoveryChildren.delete(child));
+    trackDiscoveryChildProcess(child);
   });
 }
 
@@ -845,7 +925,9 @@ function execFileText(
         shell: false,
       },
       (error, stdout, stderr) => {
-        activeDiscoveryChildren.delete(child);
+        if (child.exitCode !== null || child.signalCode !== null) {
+          activeDiscoveryChildren.delete(child);
+        }
         if (error) {
           reject(error);
           return;
@@ -853,9 +935,7 @@ function execFileText(
         resolve({ stdout: String(stdout), stderr: String(stderr) });
       },
     );
-    activeDiscoveryChildren.add(child);
-    child.once("exit", () => activeDiscoveryChildren.delete(child));
-    child.once("error", () => activeDiscoveryChildren.delete(child));
+    trackDiscoveryChildProcess(child);
   });
 }
 
@@ -1250,9 +1330,16 @@ async function canonicalExecutablePath(
 
 function writeDiscoverySnapshot(
   snapshot: Extract<ToolchainDiscoverySnapshot, { status: "complete" }>,
+  targetFilePath?: string,
+  isAborted?: () => boolean,
 ): void {
+  if (isAborted?.()) return;
   const persisted = { ...snapshot, refreshing: false, startedAt: undefined };
-  const filePath = getToolchainDiscoveryFilePath();
+  const filePath = targetFilePath || getToolchainDiscoveryFilePath();
+  const targetDir = path.dirname(filePath);
+  if (!fs.existsSync(targetDir)) {
+    return;
+  }
   const canonicalJson = `${JSON.stringify(persisted, null, 2)}\n`;
   if (Buffer.byteLength(canonicalJson, "utf8") > MAX_DISCOVERY_BYTES) {
     throw new Error("Toolchain discovery result exceeds its storage limit.");
@@ -1260,11 +1347,16 @@ function writeDiscoverySnapshot(
   const temporaryPath = `${filePath}.${process.pid}.${crypto.randomUUID()}.tmp`;
   let descriptor: number | undefined;
   try {
+    if (isAborted?.()) return;
     descriptor = fs.openSync(temporaryPath, "wx", 0o600);
     fs.writeFileSync(descriptor, canonicalJson, "utf8");
     fs.fsyncSync(descriptor);
     fs.closeSync(descriptor);
     descriptor = undefined;
+    if (isAborted?.()) {
+      fs.rmSync(temporaryPath, { force: true });
+      return;
+    }
     fs.renameSync(temporaryPath, filePath);
   } finally {
     if (descriptor !== undefined) fs.closeSync(descriptor);
@@ -1273,15 +1365,185 @@ function writeDiscoverySnapshot(
 }
 
 /** Stops in-flight discovery processes during application shutdown. */
-export function cancelToolchainDiscovery(): void {
-  for (const child of activeDiscoveryChildren) {
+export function cancelToolchainDiscovery(): unknown[] {
+  const errors: unknown[] = [];
+  for (const runtime of runtimeStates.values()) {
+    runtime.isAborted = true;
+    runtime.rescanRequested = false;
+  }
+  for (const controller of activeCompatibilityProbes.values()) {
     try {
-      child.kill("SIGKILL");
-    } catch {
-      // The process may have exited between enumeration and kill.
+      controller.abort();
+    } catch (err) {
+      errors.push(err);
     }
   }
-  activeDiscoveryChildren.clear();
+  for (const child of activeDiscoveryChildren) {
+    try {
+      if (process.platform === "win32" && child.pid) {
+        const res = spawnSync("taskkill", ["/F", "/T", "/PID", child.pid.toString()], {
+          encoding: "utf8",
+          windowsHide: true,
+        });
+        if (res.error) {
+          errors.push(res.error);
+        } else if (res.status !== null && res.status !== 0 && res.status !== 128) {
+          const stderr = (res.stderr || "").trim();
+          errors.push(new Error(`taskkill failed with exit code ${res.status}: ${stderr}`));
+        }
+      } else {
+        const killed = child.kill("SIGKILL");
+        if (!killed && child.exitCode === null && child.signalCode === null) {
+          errors.push(new Error(`Failed to send SIGKILL to child process ${child.pid}`));
+        }
+      }
+    } catch (err: unknown) {
+      errors.push(err);
+    }
+  }
+  return errors;
+}
+
+/** Cancels in-flight discovery and awaits all in-flight promises and child processes to drain. */
+export async function drainToolchainDiscovery(deadlineMs = 3000): Promise<void> {
+  const killErrors = cancelToolchainDiscovery();
+  const errors: unknown[] = [...killErrors, ...settledCompatibilityErrors];
+
+  const pending: Promise<unknown>[] = [];
+  for (const runtime of runtimeStates.values()) {
+    if (runtime.promise) {
+      pending.push(runtime.promise);
+    }
+    if (runtime.nextRescanPromise) {
+      pending.push(runtime.nextRescanPromise);
+    }
+  }
+
+  const probeOps: Promise<unknown>[] = Array.from(activeCompatibilityProbes.keys());
+
+  const childWaitOps: Promise<void>[] = [];
+  if (activeDiscoveryChildren.size > 0) {
+    for (const child of Array.from(activeDiscoveryChildren)) {
+      if (child.exitCode !== null || child.signalCode !== null) {
+        activeDiscoveryChildren.delete(child);
+        continue;
+      }
+      childWaitOps.push(
+        new Promise<void>((resolve, reject) => {
+          let timer: NodeJS.Timeout | null = null;
+          let settled = false;
+          const cleanup = () => {
+            if (timer) clearTimeout(timer);
+            child.removeListener("exit", onTerminal);
+            child.removeListener("close", onTerminal);
+            child.removeListener("error", onError);
+          };
+          const onTerminal = () => {
+            if (!settled && (child.exitCode !== null || child.signalCode !== null)) {
+              settled = true;
+              cleanup();
+              activeDiscoveryChildren.delete(child);
+              resolve();
+            }
+          };
+          const onError = (err: unknown) => {
+            errors.push(err);
+            // Do NOT resolve drain as exit! Process must still emit terminal exit/close.
+          };
+          child.once("exit", onTerminal);
+          child.once("close", onTerminal);
+          child.once("error", onError);
+          if (child.exitCode !== null || child.signalCode !== null) {
+            settled = true;
+            cleanup();
+            activeDiscoveryChildren.delete(child);
+            resolve();
+            return;
+          }
+          timer = setTimeout(() => {
+            if (!settled) {
+              settled = true;
+              cleanup();
+              if (child.exitCode === null && child.signalCode === null) {
+                reject(
+                  new Error(
+                    `Discovery child process PID ${child.pid} failed to exit within ${deadlineMs}ms deadline`,
+                  ),
+                );
+              } else {
+                activeDiscoveryChildren.delete(child);
+                resolve();
+              }
+            }
+          }, deadlineMs);
+        }),
+      );
+    }
+  }
+
+  const allOps = [...pending, ...probeOps, ...childWaitOps];
+  if (allOps.length > 0) {
+    let overallTimer: NodeJS.Timeout | null = null;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      overallTimer = setTimeout(() => {
+        reject(new Error(`drainToolchainDiscovery timed out after ${deadlineMs}ms`));
+      }, deadlineMs);
+    });
+    try {
+      const results = await Promise.race([
+        Promise.allSettled(allOps),
+        timeoutPromise,
+      ]);
+      for (const res of results) {
+        if (res.status === "rejected") {
+          errors.push(res.reason);
+        }
+      }
+    } catch (timeoutErr) {
+      errors.push(timeoutErr);
+    } finally {
+      if (overallTimer) clearTimeout(overallTimer);
+    }
+  }
+
+  if (activeDiscoveryChildren.size === 0) {
+    runtimeStates.clear();
+  }
+
+  if (errors.length > 0) {
+    const errorObjects = errors.map((e) => (e instanceof Error ? e : new Error(String(e))));
+    const messages = errors.map((e) => (e instanceof Error ? e.message : String(e)));
+    throw new AggregateError(
+      errorObjects,
+      `drainToolchainDiscovery failed with ${errors.length} background/kill error(s):\n  ${messages.join("\n  ")}`,
+    );
+  }
+}
+
+export function registerDiscoveryChildForTests(child: ChildProcess): void {
+  trackDiscoveryChildProcess(child);
+}
+
+export function getActiveDiscoveryChildrenCountForTests(): number {
+  return activeDiscoveryChildren.size;
+}
+
+export function registerCompatibilityProbeForTests(
+  probe: Promise<unknown>,
+  controller: AbortController = new AbortController(),
+): void {
+  activeCompatibilityProbes.set(probe, controller);
+  probe
+    .catch((err: unknown) => {
+      settledCompatibilityErrors.push(err);
+    })
+    .finally(() => {
+      activeCompatibilityProbes.delete(probe);
+    });
+}
+
+export function getActiveCompatibilityProbesCountForTests(): number {
+  return activeCompatibilityProbes.size;
 }
 
 export function setToolchainDiscoveryProbeForTests(
@@ -1298,5 +1560,17 @@ export function setToolchainDiscoveryStandardCandidatesForTests(
 
 export function resetToolchainDiscoveryRuntimeForTests(): void {
   cancelToolchainDiscovery();
+  if (activeDiscoveryChildren.size === 0) {
+    runtimeStates.clear();
+  }
+  activeCompatibilityProbes.clear();
+  settledCompatibilityErrors.length = 0;
+}
+
+export function forceClearToolchainDiscoveryRuntimeForTests(): void {
+  cancelToolchainDiscovery();
+  activeDiscoveryChildren.clear();
   runtimeStates.clear();
+  activeCompatibilityProbes.clear();
+  settledCompatibilityErrors.length = 0;
 }

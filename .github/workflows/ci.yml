@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-2022, macos-15]
+        os: [windows-2022, macos-15, ubuntu-24.04]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout repository
@@ -41,6 +41,21 @@ jobs:
         with:
           workspaces: "./src-tauri -> target"
 
+      - name: Install Tauri Linux prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
       - name: Install dependencies
         run: npm ci
 
@@ -48,6 +63,13 @@ jobs:
         run: |
           npm run lint
           npm run test:server
+
+      - name: Static Themis checker parity
+        run: npm run test:themis-parity
+
+      - name: Live Themis Oracle gate (Windows only)
+        if: runner.os == 'Windows'
+        run: npm run test:themis-oracle
 
       - name: Build frontend and native sidecar
         run: |
@@ -59,3 +81,4 @@ jobs:
         run: |
           cargo fmt --check
           cargo check
+

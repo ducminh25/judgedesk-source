@@ -98,17 +98,17 @@ export function TestEditPopover(props: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/50 backdrop-blur-[2px] p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4"
       onClick={props.onCancel}
     >
       <div
-        className="w-full max-w-sm rounded-xl border border-surface-border bg-surface shadow-2xl overflow-hidden animate-in zoom-in-95 duration-150 flex flex-col"
+        className="w-full max-w-sm rounded-lg border border-surface-border bg-surface shadow-lg overflow-hidden flex flex-col"
         onClick={(event) => event.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-surface-border bg-surface-elevated px-4 py-3">
           <div className="flex items-center gap-2.5">
-            <div className={`rounded-lg p-2 ${header.iconColor}`}>
+            <div className={`rounded-md p-2 ${header.iconColor}`}>
               <HeaderIcon className="h-4 w-4" />
             </div>
             <div>
@@ -124,7 +124,7 @@ export function TestEditPopover(props: Props) {
             type="button"
             onClick={props.onCancel}
             aria-label={t("common.cancel")}
-            className="text-text-muted hover:text-text-primary p-1 rounded-lg transition-colors hover:bg-surface-hover"
+            className="text-text-muted hover:text-text-primary p-1 rounded transition-colors hover:bg-surface-hover"
           >
             <X className="h-4 w-4" />
           </button>
@@ -214,7 +214,7 @@ export function TestEditPopover(props: Props) {
                       handleSubmit();
                     }
                   }}
-                  className="w-full bg-input-bg border border-surface-border-strong rounded-lg px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400 font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
+                  className="w-full bg-input-bg border border-surface-border-strong rounded px-3 py-2 text-sm text-emerald-600 dark:text-emerald-400 font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono"
                 />
               </div>
 
@@ -241,7 +241,7 @@ export function TestEditPopover(props: Props) {
                       handleSubmit();
                     }
                   }}
-                  className="w-full bg-input-bg border border-surface-border-strong rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+                  className="w-full bg-input-bg border border-surface-border-strong rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
                 />
               </div>
             </div>
@@ -252,13 +252,13 @@ export function TestEditPopover(props: Props) {
             <button
               type="button"
               onClick={props.onCancel}
-              className="px-3.5 py-1.5 bg-surface-elevated hover:bg-surface-hover rounded-lg text-xs font-semibold text-text-primary transition-colors border border-surface-border"
+              className="px-3.5 py-1.5 bg-surface-elevated hover:bg-surface-hover rounded text-xs font-semibold text-text-primary transition-colors border border-surface-border"
             >
               {t("common.cancel")}
             </button>
             <button
               type="submit"
-              className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs text-white font-bold transition-colors shadow-sm"
+              className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded text-xs text-white font-bold transition-colors shadow-xs"
             >
               {t("common.save")}
             </button>
@@ -294,7 +294,7 @@ function TextEditor({ label, value, onChange, hint, onEnter }: EditorProps) {
             onEnter();
           }
         }}
-        className="w-full bg-input-bg border border-surface-border-strong rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        className="w-full bg-input-bg border border-surface-border-strong rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-indigo-500"
       />
       {hint && <span className="text-[10px] text-text-muted block leading-tight">{hint}</span>}
     </div>
@@ -327,8 +327,8 @@ function NumberEditor({
             onEnter();
           }
         }}
-        className={`w-full bg-input-bg border border-surface-border-strong rounded-lg px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-          mono ? "font-mono" : ""
+        className={`w-full bg-input-bg border border-surface-border-strong rounded px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+          mono ? "font-mono tabular-nums" : ""
         }`}
       />
       {hint && <span className="text-[10px] text-text-muted block leading-tight">{hint}</span>}

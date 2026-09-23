@@ -52,9 +52,9 @@ export default function ChangelogModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
       <div
-        className="flex flex-col w-full max-w-2xl max-h-[85vh] rounded-2xl border border-surface-border bg-surface shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
+        className="flex flex-col w-full max-w-2xl max-h-[85vh] rounded-lg border border-surface-border bg-surface shadow-lg overflow-hidden"
         role="dialog"
         aria-modal="true"
         aria-labelledby="changelog-modal-title"
@@ -62,7 +62,7 @@ export default function ChangelogModal({
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-surface-border bg-surface-elevated px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/15 text-indigo-600 dark:text-indigo-400">
+            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-indigo-500/10 text-indigo-600 dark:text-indigo-400">
               <Sparkles className="h-5 w-5" />
             </div>
             <div>
@@ -84,13 +84,13 @@ export default function ChangelogModal({
             type="button"
             onClick={onClose}
             aria-label={t("common.close", "Đóng")}
-            className="rounded-lg p-1.5 text-text-muted hover:bg-surface-hover hover:text-text-primary transition"
+            className="rounded p-1.5 text-text-muted hover:bg-surface-hover hover:text-text-primary transition"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* Version Selector Pills Bar */}
+        {/* Version Selector Tabs */}
         <div className="flex items-center gap-1.5 px-6 py-2.5 border-b border-surface-border bg-surface-elevated/50 overflow-x-auto no-scrollbar">
           <span className="text-[11px] font-semibold text-text-muted mr-1 shrink-0">
             {t("changelog.allVersions", "Phiên bản")}:
@@ -103,9 +103,9 @@ export default function ChangelogModal({
                 key={release.version}
                 type="button"
                 onClick={() => setSelectedVersion(release.version)}
-                className={`relative px-3 py-1 rounded-full text-xs font-semibold shrink-0 transition ${
+                className={`relative px-2.5 py-1 rounded text-xs font-mono font-semibold shrink-0 transition tabular-nums ${
                   isSelected
-                    ? "bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-600/30"
+                    ? "bg-indigo-600 text-white shadow-xs"
                     : "bg-surface-elevated text-text-muted hover:text-text-primary hover:bg-surface-hover border border-surface-border"
                 }`}
               >
@@ -127,12 +127,12 @@ export default function ChangelogModal({
                   JudgeDesk v{activeRelease.version}
                 </h3>
                 {activeRelease.version === APP_VERSION && (
-                  <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
+                  <span className="rounded bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 text-[10px] font-bold text-indigo-600 dark:text-indigo-400">
                     {t("changelog.currentVersion", "Hiện tại")}
                   </span>
                 )}
               </div>
-              <p className="text-[11px] text-text-muted mt-0.5">
+              <p className="text-[11px] text-text-muted mt-0.5 font-mono tabular-nums">
                 {t("changelog.releaseDate", { date: activeRelease.date })}
               </p>
             </div>
@@ -168,7 +168,7 @@ export default function ChangelogModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg bg-indigo-600 px-5 py-2 text-xs font-bold text-white hover:bg-indigo-500 shadow-sm transition"
+            className="rounded bg-indigo-600 px-4 py-1.5 text-xs font-bold text-white hover:bg-indigo-500 shadow-xs transition"
           >
             {t("changelog.gotIt", "Đã hiểu")}
           </button>

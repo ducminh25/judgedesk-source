@@ -1,0 +1,53 @@
+{
+  "build": {
+    "appVersion": "1.5.0",
+    "buildNumber": "local",
+    "builtAt": "development",
+    "gitCommit": "unknown"
+  },
+  "gpp": {
+    "checkerReady": true,
+    "installed": true,
+    "managedInstalled": true,
+    "source": "managed",
+    "submissionReady": true,
+    "version": "14.2.0"
+  },
+  "isServerMode": false,
+  "isolate": {
+    "installed": false
+  },
+  "platform": "win32",
+  "python": {
+    "checkerReady": true,
+    "installed": true,
+    "managedInstalled": true,
+    "source": "managed",
+    "submissionReady": true,
+    "version": "3.12.13"
+  },
+  "sandbox": {
+    "docker": {
+      "installed": false,
+      "ready": false
+    },
+    "mode": "none",
+    "ready": false,
+    "wsl": {
+      "installed": false,
+      "ready": false
+    }
+  },
+  "secureRunner": {
+    "diagnostics": [],
+    "executorVersion": "1.5.0",
+    "filesystemIsolated": true,
+    "memoryLimitSupported": true,
+    "mode": "windows-lpac-job",
+    "networkBlocked": true,
+    "processTreeControlled": true,
+    "ready": true,
+    "selfTestAt": "<TIMESTAMP>"
+  },
+  "tempDir": "<TEMP_ROOT>/judgedesk"
+}

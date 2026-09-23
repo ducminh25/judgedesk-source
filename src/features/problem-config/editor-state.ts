@@ -1,5 +1,13 @@
 import { PolygonConfig } from "../../types";
-import { parseRational, toCanonicalPointValue } from "../../../shared/rational";
+import {
+  addRational,
+  createRational,
+  divideRational,
+  multiplyRational,
+  parseRational,
+  Rational,
+  toCanonicalPointValue,
+} from "../../../shared/rational";
 
 export interface TestDetail {
   name: string;
@@ -102,4 +110,52 @@ export function setGroupDependency(
 export function formatTestSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   return `${(bytes / 1024).toFixed(1)} KB`;
+}
+
+export function distributeTotalScore(
+  config: PolygonConfig,
+  totalScoreInput: string | number | null | undefined,
+  testNames: readonly string[]
+): PolygonConfig {
+  if (testNames.length === 0) return config;
+  if (totalScoreInput === null || totalScoreInput === undefined || String(totalScoreInput).trim() === "") {
+    return config;
+  }
+  const totalRational = parseRational(totalScoreInput);
+  if (totalRational.n <= 0) return config;
+
+  const currentPoints = testNames.map((name) =>
+    parseRational(config.tests[name]?.points ?? 1)
+  );
+  const currentSum = currentPoints.reduce(
+    (acc, p) => addRational(acc, p),
+    createRational(0)
+  );
+
+  const allEqual = currentPoints.every(
+    (p) => p.n === currentPoints[0].n && p.d === currentPoints[0].d
+  );
+
+  const nextTests = { ...config.tests };
+  const countRat = createRational(testNames.length);
+
+  for (let i = 0; i < testNames.length; i++) {
+    const testName = testNames[i];
+    let newPt: Rational;
+    if (allEqual || currentSum.n === 0) {
+      newPt = divideRational(totalRational, countRat);
+    } else {
+      const ratio = divideRational(currentPoints[i], currentSum);
+      newPt = multiplyRational(totalRational, ratio);
+    }
+    nextTests[testName] = {
+      ...(nextTests[testName] ?? {}),
+      points: toCanonicalPointValue(newPt),
+    };
+  }
+
+  return {
+    ...config,
+    tests: nextTests,
+  };
 }

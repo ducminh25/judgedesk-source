@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PolygonConfig } from "../../types";
-import { applyTestEdit, createsGroupCycle, setGroupDependency } from "./editor-state";
+import { applyTestEdit, createsGroupCycle, distributeTotalScore, setGroupDependency } from "./editor-state";
 
 const baseConfig = (): PolygonConfig => ({
   enableGroups: true,
@@ -73,3 +73,34 @@ test("dependency helpers reject indirect cycles and preserve other groups", () =
   assert.deepEqual(updated.groups.C.dependencies, ["B"]);
   assert.deepEqual(updated.groups.A.dependencies, ["B"]);
 });
+
+test("distributeTotalScore evenly divides total score when tests have equal points", () => {
+  const config = baseConfig(); // 2 tests with 1 pt each
+  const result = distributeTotalScore(config, 4, ["01", "02"]);
+  assert.equal(result.tests["01"].points, 2);
+  assert.equal(result.tests["02"].points, 2);
+});
+
+test("distributeTotalScore proportionally scales when tests have different weights", () => {
+  const config: PolygonConfig = {
+    enableGroups: false,
+    tests: { "01": { points: 1 }, "02": { points: 3 } },
+    groups: {},
+  };
+  const result = distributeTotalScore(config, "100", ["01", "02"]);
+  assert.equal(result.tests["01"].points, 25);
+  assert.equal(result.tests["02"].points, 75);
+});
+
+test("distributeTotalScore supports fractional division", () => {
+  const config: PolygonConfig = {
+    enableGroups: false,
+    tests: { "01": { points: 1 }, "02": { points: 1 }, "03": { points: 1 } },
+    groups: {},
+  };
+  const result = distributeTotalScore(config, "10", ["01", "02", "03"]);
+  assert.equal(result.tests["01"].points, "10/3");
+  assert.equal(result.tests["02"].points, "10/3");
+  assert.equal(result.tests["03"].points, "10/3");
+});
+

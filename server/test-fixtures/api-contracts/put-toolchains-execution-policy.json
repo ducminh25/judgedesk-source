@@ -1,0 +1,8 @@
+{
+  "executionPolicy": {
+    "allowResourceOnlyLocalExecution": false,
+    "schemaVersion": 1,
+    "status": "ready"
+  },
+  "success": true
+}

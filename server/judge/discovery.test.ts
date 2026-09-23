@@ -4,14 +4,14 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { isTextFile, readTextPreview } from "../file-utils.js";
-import { createSubmissionResolver, findSubmission, listContestants } from "./submission-discovery";
+import { createSubmissionResolver, findSubmission, listContestants } from "./submission-discovery.js";
 import {
   createProblemDirectoryResolver,
   discoverTestCases,
   listTestDirectories,
   resolveTestCaseFiles,
-} from "./testcase-discovery";
-import { discoverCustomCheckers, discoverInteractors } from "../routes/problem-routes";
+} from "./testcase-discovery.js";
+import { discoverCustomCheckers, discoverInteractors } from "../routes/problem-routes.js";
 
 test("discovery matches problem names case-insensitively and sorts tests naturally", t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "themis-discovery-"));

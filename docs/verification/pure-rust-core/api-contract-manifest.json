@@ -1,0 +1,1131 @@
+{
+  "$schemaVersion": 1,
+  "title": "JudgeDesk Pure Rust Core API & Stream Contract Manifest",
+  "generatedAt": "2026-09-19T23:37:00+07:00",
+  "totalRoutes": 29,
+  "routes": [
+    {
+      "id": "status-get",
+      "method": "GET",
+      "path": "/api/status",
+      "dynamicPattern": null,
+      "dynamicFamily": null,
+      "frontendCallers": [
+        { "file": "src/App.tsx", "symbol": "apiFetch('/api/status')" }
+      ],
+      "nodeImplementation": {
+        "file": "server/routes/system-routes.ts",
+        "function": "registerSystemRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_status"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [200],
+      "concurrencyGates": [],
+      "persistence": null,
+      "requestSchema": {
+        "headers": {},
+        "query": {},
+        "body": null
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["gpp", "python", "platform", "isServerMode", "secureRunner"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/get-status.json",
+      "goldenFailureFixtures": [],
+      "docConflicts": null,
+      "rustParityGaps": "Rust returns partial status without isolate and with hardcoded platform/toolchain fields."
+    },
+    {
+      "id": "distribution-get",
+      "method": "GET",
+      "path": "/api/distribution",
+      "dynamicPattern": null,
+      "dynamicFamily": null,
+      "frontendCallers": [
+        { "file": "src/features/updates/useAppUpdater.ts", "symbol": "apiFetch('/api/distribution')" }
+      ],
+      "nodeImplementation": {
+        "file": "server/routes/system-routes.ts",
+        "function": "registerSystemRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_distribution"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [200],
+      "concurrencyGates": [],
+      "persistence": null,
+      "requestSchema": {
+        "headers": {},
+        "query": {},
+        "body": null
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["distribution", "platform", "arch"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/get-distribution.json",
+      "goldenFailureFixtures": [],
+      "docConflicts": null,
+      "rustParityGaps": null
+    },
+    {
+      "id": "shutdown-post",
+      "method": "POST",
+      "path": "/api/shutdown",
+      "dynamicPattern": null,
+      "dynamicFamily": null,
+      "frontendCallers": [
+        { "file": "src-tauri/src/backend.rs", "symbol": "POST /api/shutdown on window close" }
+      ],
+      "nodeImplementation": {
+        "file": "server/routes/system-routes.ts",
+        "function": "registerSystemRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_shutdown"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [200, 503],
+      "concurrencyGates": ["serverLifecycle.beginDrain()", "cancelAllActiveJudgeJobs()", "ACTIVE_JUDGE_DRAIN_TIMEOUT_MS"],
+      "persistence": null,
+      "requestSchema": {
+        "headers": {},
+        "query": {},
+        "body": null
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["success"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/post-shutdown.json",
+      "goldenFailureFixtures": ["server/test-fixtures/api-contracts/error-503-drain-timeout.json"],
+      "docConflicts": null,
+      "rustParityGaps": "Rust immediately schedules shutdown signal without drain timeout or cancelling active judge sessions."
+    },
+    {
+      "id": "select-directory-post",
+      "method": "POST",
+      "path": "/api/select-directory",
+      "dynamicPattern": null,
+      "dynamicFamily": null,
+      "frontendCallers": [
+        { "file": "src/platform/directory-picker.ts", "symbol": "apiFetch('/api/select-directory')" }
+      ],
+      "nodeImplementation": {
+        "file": "server/routes/system-routes.ts",
+        "function": "registerSystemRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_select_directory"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [200],
+      "concurrencyGates": [],
+      "persistence": null,
+      "requestSchema": {
+        "headers": { "Content-Type": "application/json" },
+        "query": {},
+        "body": { "defaultPath": "string?" }
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["success"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/post-select-directory-success.json",
+      "goldenFailureFixtures": ["server/test-fixtures/api-contracts/post-select-directory-canceled.json"],
+      "docConflicts": null,
+      "rustParityGaps": "Rust server/mod.rs interpolates path directly into PowerShell without safe argument boundaries."
+    },
+    {
+      "id": "fetch-contestants-get",
+      "method": "GET",
+      "path": "/api/fetch-contestants",
+      "dynamicPattern": null,
+      "dynamicFamily": null,
+      "frontendCallers": [
+        { "file": "src/features/workspace/useContestWorkspace.ts", "symbol": "apiFetch('/api/fetch-contestants?path=...')" }
+      ],
+      "nodeImplementation": {
+        "file": "server/routes/problem-routes.ts",
+        "function": "registerProblemRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_fetch_contestants"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [200, 400, 404, 500],
+      "concurrencyGates": [],
+      "persistence": null,
+      "requestSchema": {
+        "headers": {},
+        "query": { "path": "string (required)" },
+        "body": null
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["success", "data"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/get-fetch-contestants.json",
+      "goldenFailureFixtures": [
+        "server/test-fixtures/api-contracts/error-400-path-required.json",
+        "server/test-fixtures/api-contracts/error-404-directory-not-found.json",
+        "server/test-fixtures/api-contracts/error-400-not-a-directory.json"
+      ],
+      "docConflicts": null,
+      "rustParityGaps": null
+    },
+    {
+      "id": "fetch-problems-get",
+      "method": "GET",
+      "path": "/api/fetch-problems",
+      "dynamicPattern": null,
+      "dynamicFamily": null,
+      "frontendCallers": [
+        { "file": "src/features/workspace/useContestWorkspace.ts", "symbol": "apiFetch('/api/fetch-problems?path=...')" }
+      ],
+      "nodeImplementation": {
+        "file": "server/routes/problem-routes.ts",
+        "function": "registerProblemRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_fetch_problems"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [200, 400, 404, 500],
+      "concurrencyGates": [],
+      "persistence": null,
+      "requestSchema": {
+        "headers": {},
+        "query": { "path": "string (required)" },
+        "body": null
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["success", "data", "customCheckers", "interactors"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/get-fetch-problems.json",
+      "goldenFailureFixtures": [
+        "server/test-fixtures/api-contracts/error-400-path-required.json",
+        "server/test-fixtures/api-contracts/error-404-directory-not-found.json"
+      ],
+      "docConflicts": null,
+      "rustParityGaps": null
+    },
+    {
+      "id": "fetch-tests-get",
+      "method": "GET",
+      "path": "/api/fetch-tests",
+      "dynamicPattern": null,
+      "dynamicFamily": null,
+      "frontendCallers": [],
+      "nodeImplementation": {
+        "file": "server/routes/problem-routes.ts",
+        "function": "registerProblemRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_fetch_tests"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [200, 400, 404, 500],
+      "concurrencyGates": [],
+      "persistence": null,
+      "requestSchema": {
+        "headers": {},
+        "query": { "path": "string (required)", "isInteractive": "boolean?" },
+        "body": null
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["success", "data"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/get-fetch-tests.json",
+      "goldenFailureFixtures": [
+        "server/test-fixtures/api-contracts/error-400-path-required.json"
+      ],
+      "docConflicts": null,
+      "rustParityGaps": null
+    },
+    {
+      "id": "fetch-polygon-tests-get",
+      "method": "GET",
+      "path": "/api/fetch-polygon-tests",
+      "dynamicPattern": null,
+      "dynamicFamily": null,
+      "frontendCallers": [
+        { "file": "src/features/problem-config/useProblemConfigEditor.ts", "symbol": "apiFetch('/api/fetch-polygon-tests?path=...&problem=...')" }
+      ],
+      "nodeImplementation": {
+        "file": "server/routes/problem-routes.ts",
+        "function": "registerProblemRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_fetch_polygon_tests"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [200, 400, 404, 500],
+      "concurrencyGates": [],
+      "persistence": null,
+      "requestSchema": {
+        "headers": {},
+        "query": { "path": "string (required)", "problem": "string (required)", "isInteractive": "boolean?" },
+        "body": null
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["success", "data"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/get-fetch-polygon-tests.json",
+      "goldenFailureFixtures": [
+        "server/test-fixtures/api-contracts/error-400-path-required.json"
+      ],
+      "docConflicts": null,
+      "rustParityGaps": "Rust byte slice on UTF-8 testcase inputs can panic at character boundaries without safe char boundary truncation."
+    },
+    {
+      "id": "polygon-config-get",
+      "method": "GET",
+      "path": "/api/polygon-config",
+      "dynamicPattern": null,
+      "dynamicFamily": null,
+      "frontendCallers": [
+        { "file": "src/features/problem-config/useProblemConfigEditor.ts", "symbol": "apiFetch('/api/polygon-config?path=...')" }
+      ],
+      "nodeImplementation": {
+        "file": "server/routes/problem-routes.ts",
+        "function": "registerProblemRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_get_polygon_config"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [200, 400, 500],
+      "concurrencyGates": [],
+      "persistence": "Reads polygon-config.json or legacy Config.cfg",
+      "requestSchema": {
+        "headers": {},
+        "query": { "path": "string (required)" },
+        "body": null
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["success", "data"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/get-polygon-config.json",
+      "goldenFailureFixtures": [
+        "server/test-fixtures/api-contracts/error-400-path-required.json"
+      ],
+      "docConflicts": null,
+      "rustParityGaps": null
+    },
+    {
+      "id": "polygon-config-post",
+      "method": "POST",
+      "path": "/api/polygon-config",
+      "dynamicPattern": null,
+      "dynamicFamily": null,
+      "frontendCallers": [
+        { "file": "src/features/problem-config/useProblemConfigEditor.ts", "symbol": "apiFetch('/api/polygon-config', { method: 'POST' })" }
+      ],
+      "nodeImplementation": {
+        "file": "server/routes/problem-routes.ts",
+        "function": "registerProblemRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_save_polygon_config"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [200, 400, 500],
+      "concurrencyGates": [],
+      "persistence": "Writes polygon-config.json and legacy Config.cfg",
+      "requestSchema": {
+        "headers": { "Content-Type": "application/json" },
+        "query": {},
+        "body": { "path": "string (required)", "config": "ProblemConfig (required)" }
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["success"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/post-polygon-config.json",
+      "goldenFailureFixtures": [
+        "server/test-fixtures/api-contracts/error-400-params-required.json"
+      ],
+      "docConflicts": null,
+      "rustParityGaps": null
+    },
+    {
+      "id": "open-excel-post",
+      "method": "POST",
+      "path": "/api/open-excel",
+      "dynamicPattern": null,
+      "dynamicFamily": null,
+      "frontendCallers": [
+        { "file": "src/features/export/useScoreboardExport.ts", "symbol": "apiFetch('/api/open-excel', { method: 'POST' })" }
+      ],
+      "nodeImplementation": {
+        "file": "server/routes/export-routes.ts",
+        "function": "registerExportRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_open_excel"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [200, 400, 413, 500],
+      "concurrencyGates": [],
+      "persistence": "Extracts Book.xlsx and diagnostics.json to TEMP_ROOT/exports/<uuid>/",
+      "requestSchema": {
+        "headers": { "Content-Type": "application/vnd.judgedesk.score-export-v1" },
+        "query": {},
+        "body": "Raw binary payload (max 256 MiB)"
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["success", "path", "diagnosticsPath", "openMode"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/post-open-excel.json",
+      "goldenFailureFixtures": [
+        "server/test-fixtures/api-contracts/error-400-missing-score-export-payload.json"
+      ],
+      "docConflicts": null,
+      "rustParityGaps": "Rust decodes payload without full score export bundle parity checks."
+    },
+    {
+      "id": "toolchains-get",
+      "method": "GET",
+      "path": "/api/toolchains",
+      "dynamicPattern": null,
+      "dynamicFamily": null,
+      "frontendCallers": [
+        { "file": "src/App.tsx", "symbol": "apiFetch('/api/toolchains')" },
+        { "file": "src/features/toolchains/useToolchains.ts", "symbol": "apiFetch('/api/toolchains')" },
+        { "file": "src/features/toolchains/useThemisPromptModal.ts", "symbol": "apiFetch('/api/toolchains')" },
+        { "file": "src/features/toolchains/useScratchPromptModal.ts", "symbol": "apiFetch('/api/toolchains')" }
+      ],
+      "nodeImplementation": {
+        "file": "server/routes/toolchain-routes.ts",
+        "function": "registerToolchainRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_toolchains"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [200],
+      "concurrencyGates": [],
+      "persistence": null,
+      "requestSchema": {
+        "headers": {},
+        "query": {},
+        "body": null
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["distribution", "platform", "arch", "preferences", "profiles", "active", "capabilities", "toolchains"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/get-toolchains.json",
+      "goldenFailureFixtures": [],
+      "docConflicts": null,
+      "rustParityGaps": "Rust returns in-memory mock toolchains and preferences without persistent revision tracking or recovery document status."
+    },
+    {
+      "id": "toolchains-rescan-post",
+      "method": "POST",
+      "path": "/api/toolchains/rescan",
+      "dynamicPattern": null,
+      "dynamicFamily": null,
+      "frontendCallers": [
+        { "file": "src/features/toolchains/useToolchains.ts", "symbol": "apiFetch('/api/toolchains/rescan', { method: 'POST' })" }
+      ],
+      "nodeImplementation": {
+        "file": "server/routes/toolchain-routes.ts",
+        "function": "registerToolchainRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_toolchains_rescan"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [202, 409],
+      "concurrencyGates": ["toolchainMutationsBlocked()"],
+      "persistence": null,
+      "requestSchema": {
+        "headers": {},
+        "query": {},
+        "body": null
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["success", "discovery"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/post-toolchains-rescan.json",
+      "goldenFailureFixtures": [
+        "server/test-fixtures/api-contracts/error-409-toolchain-mutation-blocked.json"
+      ],
+      "docConflicts": null,
+      "rustParityGaps": "Rust does not block rescan when judging session is active."
+    },
+    {
+      "id": "toolchains-execution-policy-put",
+      "method": "PUT",
+      "path": "/api/toolchains/execution-policy",
+      "dynamicPattern": null,
+      "dynamicFamily": null,
+      "frontendCallers": [
+        { "file": "src/features/toolchains/useThemisPromptModal.ts", "symbol": "apiFetch('/api/toolchains/execution-policy', { method: 'PUT' })" },
+        { "file": "src/features/toolchains/useToolchains.ts", "symbol": "apiFetch('/api/toolchains/execution-policy', { method: 'PUT' })" }
+      ],
+      "nodeImplementation": {
+        "file": "server/routes/toolchain-routes.ts",
+        "function": "registerToolchainRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_toolchains_execution_policy"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [200, 400, 409, 500],
+      "concurrencyGates": ["toolchainMutationsBlocked()"],
+      "persistence": "Saves execution-policy.json",
+      "requestSchema": {
+        "headers": { "Content-Type": "application/json" },
+        "query": {},
+        "body": { "allowResourceOnlyLocalExecution": "boolean (required)" }
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["success", "executionPolicy"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/put-toolchains-execution-policy.json",
+      "goldenFailureFixtures": [
+        "server/test-fixtures/api-contracts/error-400-invalid-execution-policy.json",
+        "server/test-fixtures/api-contracts/error-409-toolchain-mutation-blocked.json"
+      ],
+      "docConflicts": null,
+      "rustParityGaps": "Rust echoes body in memory without persisting execution policy."
+    },
+    {
+      "id": "toolchains-prewarm-post",
+      "method": "POST",
+      "path": "/api/toolchains/prewarm",
+      "dynamicPattern": null,
+      "dynamicFamily": null,
+      "frontendCallers": [
+        { "file": "src/features/toolchains/ToolchainManager.tsx", "symbol": "fetch('/api/toolchains/prewarm', { method: 'POST' })" }
+      ],
+      "nodeImplementation": {
+        "file": "server/routes/toolchain-routes.ts",
+        "function": "registerToolchainRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_toolchains_prewarm"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [200],
+      "concurrencyGates": [],
+      "persistence": null,
+      "requestSchema": {
+        "headers": {},
+        "query": {},
+        "body": null
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["success", "message"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/post-toolchains-prewarm.json",
+      "goldenFailureFixtures": [],
+      "docConflicts": null,
+      "rustParityGaps": null
+    },
+    {
+      "id": "toolchains-preference-put",
+      "method": "PUT",
+      "path": "/api/toolchains/profiles/:profileId/preference",
+      "dynamicPattern": "^/api/toolchains/profiles/([^/]+)/preference$",
+      "dynamicFamily": "toolchain-profile-preference",
+      "frontendCallers": [
+        { "file": "src/features/toolchains/useThemisPromptModal.ts", "symbol": "apiFetch('/api/toolchains/profiles/${profileId}/preference')" },
+        { "file": "src/features/toolchains/useScratchPromptModal.ts", "symbol": "apiFetch('/api/toolchains/profiles/scratch-turbowarp-v1/preference')" },
+        { "file": "src/features/toolchains/useToolchains.ts", "symbol": "apiFetch('/api/toolchains/profiles/${profileId}/preference')" }
+      ],
+      "nodeImplementation": {
+        "file": "server/routes/toolchain-routes.ts",
+        "function": "registerToolchainRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_toolchains_preference"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [200, 400, 404, 409, 422],
+      "concurrencyGates": ["toolchainMutationsBlocked()"],
+      "persistence": "Updates toolchains-v2.json with atomic revision bump",
+      "requestSchema": {
+        "headers": { "Content-Type": "application/json" },
+        "query": {},
+        "body": { "mode": "none | managed | local_path | local_auto", "localPath": "string?" }
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["success", "preference", "revision"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/put-toolchain-preference.json",
+      "goldenFailureFixtures": [
+        "server/test-fixtures/api-contracts/error-404-unknown-language-profile.json",
+        "server/test-fixtures/api-contracts/error-400-invalid-profile-preference.json",
+        "server/test-fixtures/api-contracts/error-409-toolchain-mutation-blocked.json"
+      ],
+      "docConflicts": null,
+      "rustParityGaps": "Rust updates in-memory HashMap without atomic storage or revision check."
+    },
+    {
+      "id": "toolchains-certification-plan-post",
+      "method": "POST",
+      "path": "/api/toolchains/profiles/:profileId/certification-plan",
+      "dynamicPattern": "^/api/toolchains/profiles/([^/]+)/certification-plan$",
+      "dynamicFamily": "toolchain-profile-certification-plan",
+      "frontendCallers": [
+        { "file": "src/features/toolchains/useToolchains.ts", "symbol": "apiFetch('/api/toolchains/profiles/${profileId}/certification-plan')" }
+      ],
+      "nodeImplementation": {
+        "file": "server/routes/toolchain-routes.ts",
+        "function": "registerToolchainRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_toolchains_certification_plan"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [200, 404, 409, 422],
+      "concurrencyGates": ["toolchainMutationsBlocked()"],
+      "persistence": null,
+      "requestSchema": {
+        "headers": {},
+        "query": {},
+        "body": null
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["success", "plan"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/post-toolchain-certification-plan.json",
+      "goldenFailureFixtures": [
+        "server/test-fixtures/api-contracts/error-404-unknown-language-profile.json",
+        "server/test-fixtures/api-contracts/error-422-certification-windows-only.json"
+      ],
+      "docConflicts": null,
+      "rustParityGaps": "Rust returns static mock certification plan."
+    },
+    {
+      "id": "toolchains-certify-post",
+      "method": "POST",
+      "path": "/api/toolchains/profiles/:profileId/certify",
+      "dynamicPattern": "^/api/toolchains/profiles/([^/]+)/certify$",
+      "dynamicFamily": "toolchain-profile-certify",
+      "frontendCallers": [
+        { "file": "src/features/toolchains/useToolchains.ts", "symbol": "apiFetch('/api/toolchains/profiles/${profileId}/certify')" }
+      ],
+      "nodeImplementation": {
+        "file": "server/routes/toolchain-routes.ts",
+        "function": "registerToolchainRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_toolchains_certify"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [200, 404, 409, 422],
+      "concurrencyGates": ["toolchainMutationsBlocked()"],
+      "persistence": "Stores certification record in AppData/certified-toolchains/",
+      "requestSchema": {
+        "headers": {},
+        "query": {},
+        "body": null
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["success", "result"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/post-toolchain-certify.json",
+      "goldenFailureFixtures": [
+        "server/test-fixtures/api-contracts/error-404-unknown-language-profile.json"
+      ],
+      "docConflicts": null,
+      "rustParityGaps": "Rust returns hardcoded certification result without compiling probes."
+    },
+    {
+      "id": "toolchains-diagnose-post",
+      "method": "POST",
+      "path": "/api/toolchains/profiles/:profileId/diagnose",
+      "dynamicPattern": "^/api/toolchains/profiles/([^/]+)/diagnose$",
+      "dynamicFamily": "toolchain-profile-diagnose",
+      "frontendCallers": [
+        { "file": "src/features/toolchains/useToolchains.ts", "symbol": "apiFetch('/api/toolchains/profiles/${profileId}/diagnose')" }
+      ],
+      "nodeImplementation": {
+        "file": "server/routes/toolchain-routes.ts",
+        "function": "registerToolchainRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_toolchains_diagnose"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [200, 404, 409, 500],
+      "concurrencyGates": ["serverLifecycle.activeJudgeSessionCount > 0"],
+      "persistence": null,
+      "requestSchema": {
+        "headers": {},
+        "query": {},
+        "body": null
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["success", "diagnostic"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/post-toolchain-diagnose.json",
+      "goldenFailureFixtures": [
+        "server/test-fixtures/api-contracts/error-404-unknown-language-profile.json"
+      ],
+      "docConflicts": null,
+      "rustParityGaps": "Rust runs diagnostics on local path with ResourceOnly for Pascal/Java/Scratch."
+    },
+    {
+      "id": "toolchains-custom-path-post",
+      "method": "POST",
+      "path": "/api/toolchains/custom-path",
+      "dynamicPattern": null,
+      "dynamicFamily": null,
+      "frontendCallers": [],
+      "nodeImplementation": {
+        "file": "server/routes/toolchain-routes.ts",
+        "function": "registerToolchainRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_toolchains_custom_path"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [200, 400, 409],
+      "concurrencyGates": ["toolchainMutationsBlocked()"],
+      "persistence": "Updates toolchain preferences (legacy schema-v1 compatibility)",
+      "requestSchema": {
+        "headers": { "Content-Type": "application/json" },
+        "query": {},
+        "body": { "kind": "cpp | python", "path": "string?", "preferredSource": "managed | custom | system?" }
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["success", "message", "preferences"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/post-toolchain-custom-path.json",
+      "goldenFailureFixtures": [
+        "server/test-fixtures/api-contracts/error-400-invalid-toolchain-kind.json"
+      ],
+      "docConflicts": "Compatibility route for v1 frontends; tracked to avoid accidental removal.",
+      "rustParityGaps": null
+    },
+    {
+      "id": "toolchains-install-post",
+      "method": "POST",
+      "path": "/api/toolchains/:id/install",
+      "dynamicPattern": "^/api/toolchains/([^/]+)/install$",
+      "dynamicFamily": "toolchain-install",
+      "frontendCallers": [
+        { "file": "src/features/toolchains/useToolchains.ts", "symbol": "apiFetch('/api/toolchains/${id}/install')" }
+      ],
+      "nodeImplementation": {
+        "file": "server/routes/toolchain-routes.ts",
+        "function": "registerToolchainRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_toolchains_install"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [202, 400, 404, 409, 503],
+      "concurrencyGates": ["toolchainMutationsBlocked()", "assertToolchainMutationAllowed"],
+      "persistence": "Extracts toolchain package to AppData/toolchains/<id>/",
+      "requestSchema": {
+        "headers": {},
+        "query": {},
+        "body": null
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["success", "message"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/post-toolchain-install.json",
+      "goldenFailureFixtures": [
+        "server/test-fixtures/api-contracts/error-404-toolchain-not-found.json"
+      ],
+      "docConflicts": null,
+      "rustParityGaps": "Rust simulates install by inserting into in-memory set without downloading or extracting."
+    },
+    {
+      "id": "toolchains-cancel-post",
+      "method": "POST",
+      "path": "/api/toolchains/:id/cancel",
+      "dynamicPattern": "^/api/toolchains/([^/]+)/cancel$",
+      "dynamicFamily": "toolchain-cancel",
+      "frontendCallers": [
+        { "file": "src/features/toolchains/useToolchains.ts", "symbol": "apiFetch('/api/toolchains/${id}/cancel')" }
+      ],
+      "nodeImplementation": {
+        "file": "server/routes/toolchain-routes.ts",
+        "function": "registerToolchainRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_toolchains_op_success"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [200],
+      "concurrencyGates": [],
+      "persistence": null,
+      "requestSchema": {
+        "headers": {},
+        "query": {},
+        "body": null
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["success", "message"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/post-toolchain-cancel.json",
+      "goldenFailureFixtures": [],
+      "docConflicts": null,
+      "rustParityGaps": null
+    },
+    {
+      "id": "toolchains-uninstall-delete",
+      "method": "DELETE",
+      "path": "/api/toolchains/:id",
+      "dynamicPattern": "^/api/toolchains/([^/]+)$",
+      "dynamicFamily": "toolchain-uninstall",
+      "frontendCallers": [
+        { "file": "src/features/toolchains/useToolchains.ts", "symbol": "apiFetch('/api/toolchains/${id}', { method: 'DELETE' })" }
+      ],
+      "nodeImplementation": {
+        "file": "server/routes/toolchain-routes.ts",
+        "function": "registerToolchainRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_toolchains_uninstall"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [200, 404, 409, 500],
+      "concurrencyGates": ["toolchainMutationsBlocked()"],
+      "persistence": "Deletes toolchain directory and removes installed receipt",
+      "requestSchema": {
+        "headers": {},
+        "query": {},
+        "body": null
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["success", "message"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/delete-toolchain.json",
+      "goldenFailureFixtures": [
+        "server/test-fixtures/api-contracts/error-404-toolchain-not-found.json"
+      ],
+      "docConflicts": null,
+      "rustParityGaps": "Rust removes from in-memory set without disk deletion or receipt checks."
+    },
+    {
+      "id": "batch-judge-post",
+      "method": "POST",
+      "path": "/api/batch-judge",
+      "dynamicPattern": null,
+      "dynamicFamily": null,
+      "frontendCallers": [
+        { "file": "src/features/judging/useJudgeSession.ts", "symbol": "apiFetch('/api/batch-judge', { method: 'POST' })" }
+      ],
+      "nodeImplementation": {
+        "file": "server/judge/batch-judge-route.ts",
+        "function": "registerBatchJudgeRoute"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_batch_judge"
+      },
+      "streaming": "ndjson",
+      "eventOrder": ["progress(init)", "metadata", "progress*", "problem_completed*", "done|error"],
+      "statusCodes": [200, 400],
+      "concurrencyGates": [
+        "SingleJudgeSessionGate (only 1 session)",
+        "toolchainMaintenanceGate.tryAcquireJudge()",
+        "serverLifecycle.acceptsNewJudgeSessions",
+        "executorClient.health.ready"
+      ],
+      "persistence": "Creates temporary workspace in TEMP_ROOT, cleaned up in finally",
+      "requestSchema": {
+        "headers": { "Content-Type": "application/json" },
+        "query": {},
+        "body": {
+          "thisinhPath": "string (required)",
+          "testPath": "string (required)",
+          "jobId": "string?",
+          "problemConfigs": "Record<string, ProblemConfig>?",
+          "targetContestants": "string[]?",
+          "targetProblems": "string[]?"
+        }
+      },
+      "responseSchema": {
+        "type": "stream/ndjson",
+        "headers": {
+          "Content-Type": "application/x-ndjson",
+          "Cache-Control": "no-cache",
+          "X-JudgeDesk-Job-Id": "string"
+        },
+        "eventSchemas": {
+          "progress": { "contestant": "string", "problem": "string", "action": "string", "percent": "number" },
+          "metadata": "RunMetadata",
+          "problem_completed": { "contestant": "string", "problemResult": "ProblemResult" },
+          "done": { "success": "boolean" },
+          "error": { "message": "string" }
+        }
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/post-batch-judge-stream.json",
+      "goldenFailureFixtures": [
+        "server/test-fixtures/api-contracts/error-400-missing-paths-batch-judge.json",
+        "server/test-fixtures/api-contracts/error-event-judge-busy.json"
+      ],
+      "docConflicts": "Docs previously stated /api/judge/session and SSE; actual frontend consumes NDJSON over /api/batch-judge.",
+      "rustParityGaps": "Rust does not deserialize problemConfigs, lacks SingleJudgeSessionGate, emits metadata before progress, omits python in metadata.toolchains, does not set X-JudgeDesk-Job-Id."
+    },
+    {
+      "id": "batch-judge-cancel-post",
+      "method": "POST",
+      "path": "/api/batch-judge/cancel",
+      "dynamicPattern": null,
+      "dynamicFamily": null,
+      "frontendCallers": [
+        { "file": "src/features/judging/useJudgeSession.ts", "symbol": "apiFetch('/api/batch-judge/cancel', { method: 'POST' })" }
+      ],
+      "nodeImplementation": {
+        "file": "server/jobs.ts",
+        "function": "registerJobRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_batch_judge_cancel"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [200, 500, 503],
+      "concurrencyGates": ["JudgeJobRegistry.cancelJob(jobId)"],
+      "persistence": null,
+      "requestSchema": {
+        "headers": { "Content-Type": "application/json" },
+        "query": {},
+        "body": { "jobId": "string?" }
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["success"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/post-batch-judge-cancel.json",
+      "goldenFailureFixtures": [
+        "server/test-fixtures/api-contracts/error-503-cancel-registry-full.json"
+      ],
+      "docConflicts": null,
+      "rustParityGaps": "Rust ignores jobId and mutates a single global AtomicBool cancel flag."
+    },
+    {
+      "id": "osd-start-post",
+      "method": "POST",
+      "path": "/api/osd/start",
+      "dynamicPattern": null,
+      "dynamicFamily": null,
+      "frontendCallers": [
+        { "file": "src/features/osd/useOsdSession.ts", "symbol": "apiFetch('/api/osd/start', { method: 'POST' })" }
+      ],
+      "nodeImplementation": {
+        "file": "server/routes/osd-routes.ts",
+        "function": "registerOsdRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_osd_start"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [200, 400],
+      "concurrencyGates": [],
+      "persistence": null,
+      "requestSchema": {
+        "headers": { "Content-Type": "application/json" },
+        "query": {},
+        "body": {
+          "osdPath": "string (required)",
+          "contestantsPath": "string (required)",
+          "testPath": "string (required)",
+          "enableLog": "boolean?",
+          "problemConfigs": "Record<string, ProblemConfig>?"
+        }
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["success", "status"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/post-osd-start.json",
+      "goldenFailureFixtures": [
+        "server/test-fixtures/api-contracts/error-400-osd-paths-required.json"
+      ],
+      "docConflicts": null,
+      "rustParityGaps": "Rust returns static mock OSD status and does not start a real filesystem watcher or queue."
+    },
+    {
+      "id": "osd-stop-post",
+      "method": "POST",
+      "path": "/api/osd/stop",
+      "dynamicPattern": null,
+      "dynamicFamily": null,
+      "frontendCallers": [
+        { "file": "src/features/osd/useOsdSession.ts", "symbol": "apiFetch('/api/osd/stop', { method: 'POST' })" }
+      ],
+      "nodeImplementation": {
+        "file": "server/routes/osd-routes.ts",
+        "function": "registerOsdRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_osd_stop"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [200],
+      "concurrencyGates": [],
+      "persistence": null,
+      "requestSchema": {
+        "headers": {},
+        "query": {},
+        "body": null
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["success", "status"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/post-osd-stop.json",
+      "goldenFailureFixtures": [],
+      "docConflicts": null,
+      "rustParityGaps": null
+    },
+    {
+      "id": "osd-status-get",
+      "method": "GET",
+      "path": "/api/osd/status",
+      "dynamicPattern": null,
+      "dynamicFamily": null,
+      "frontendCallers": [],
+      "nodeImplementation": {
+        "file": "server/routes/osd-routes.ts",
+        "function": "registerOsdRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_osd_status"
+      },
+      "streaming": "none",
+      "eventOrder": null,
+      "statusCodes": [200],
+      "concurrencyGates": [],
+      "persistence": null,
+      "requestSchema": {
+        "headers": {},
+        "query": {},
+        "body": null
+      },
+      "responseSchema": {
+        "type": "object",
+        "required": ["success", "status"]
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/get-osd-status.json",
+      "goldenFailureFixtures": [],
+      "docConflicts": null,
+      "rustParityGaps": null
+    },
+    {
+      "id": "osd-events-get",
+      "method": "GET",
+      "path": "/api/osd/events",
+      "dynamicPattern": null,
+      "dynamicFamily": null,
+      "frontendCallers": [
+        { "file": "src/features/osd/useOsdSession.ts", "symbol": "new EventSource('/api/osd/events')" }
+      ],
+      "nodeImplementation": {
+        "file": "server/routes/osd-routes.ts",
+        "function": "registerOsdRoutes"
+      },
+      "rustImplementation": {
+        "file": "crates/judgedesk-core/src/server/mod.rs",
+        "handler": "handle_osd_events"
+      },
+      "streaming": "sse",
+      "eventOrder": ["status", "event*"],
+      "statusCodes": [200],
+      "concurrencyGates": [],
+      "persistence": null,
+      "requestSchema": {
+        "headers": { "Accept": "text/event-stream" },
+        "query": {},
+        "body": null
+      },
+      "responseSchema": {
+        "type": "stream/sse",
+        "headers": {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          "Connection": "keep-alive"
+        }
+      },
+      "goldenSuccessFixture": "server/test-fixtures/api-contracts/get-osd-events.json",
+      "goldenFailureFixtures": [],
+      "docConflicts": null,
+      "rustParityGaps": "Rust returns infinite empty SSE stream without real OSD state push."
+    }
+  ]
+}

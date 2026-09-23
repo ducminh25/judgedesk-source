@@ -1,0 +1,15 @@
+{
+  "status": {
+    "active": false,
+    "contestantsPath": null,
+    "currentJob": null,
+    "enableLog": true,
+    "lastProcessedJob": null,
+    "osdPath": null,
+    "paused": false,
+    "queueLength": 0,
+    "testPath": null,
+    "totalProcessed": 0
+  },
+  "success": true
+}

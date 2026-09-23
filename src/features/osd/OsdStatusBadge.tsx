@@ -49,7 +49,7 @@ export default function OsdStatusBadge({ status, onClick, disabled }: Props) {
       </span>
 
       {status.active && status.queueLength > 0 && (
-        <span className="rounded-full bg-emerald-500 px-1.5 py-0.2 text-[10px] font-bold text-white leading-tight">
+        <span className="rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold tabular-nums font-mono text-white leading-tight">
           {status.queueLength}
         </span>
       )}

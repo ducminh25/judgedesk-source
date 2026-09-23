@@ -1,7 +1,8 @@
 # Technical Requirements Document (TRD) — JudgeDesk
 
 **Project Name**: JudgeDesk  
-**Version**: `1.5.0` (`v1.5.x`)  
+**Released Baseline**: `v1.5.0`
+**Development Target**: `v1.6.0` (the eight authoritative version files remain `1.5.0` until the final coordinated release bump)
 **Document Status**: Official / Approved  
 **Classification**: Internal / Technical Specification  
 

@@ -1,0 +1,18 @@
+{
+  "discovery": {
+    "profiles": {
+      "c-gcc14": [],
+      "cpp-legacy-v1": [],
+      "java-temurin21": [],
+      "pascal-fpc322": [],
+      "python-cpython312": [],
+      "scratch-turbowarp-v1": []
+    },
+    "refreshing": true,
+    "registryRevision": 6,
+    "schemaVersion": 2,
+    "startedAt": "<TIMESTAMP>",
+    "status": "running"
+  },
+  "success": true
+}

@@ -594,7 +594,7 @@ export default function HelpCenter({
 
   return (
     <div
-      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-2 backdrop-blur-sm sm:p-4"
+      className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-2 sm:p-4"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
@@ -603,10 +603,10 @@ export default function HelpCenter({
         role="dialog"
         aria-modal="true"
         aria-labelledby="help-center-title"
-        className="flex h-[min(92vh,880px)] w-full max-w-7xl flex-col overflow-hidden rounded-xl border border-surface-border bg-surface shadow-2xl"
+        className="flex h-[min(92vh,880px)] w-full max-w-7xl flex-col overflow-hidden rounded-lg border border-surface-border bg-surface shadow-lg"
       >
         <header className="flex flex-none items-center gap-3 border-b border-surface-border bg-surface-elevated px-4 py-3 sm:px-5">
-          <div className="flex h-10 w-10 flex-none items-center justify-center rounded-lg bg-indigo-600 text-white">
+          <div className="flex h-10 w-10 flex-none items-center justify-center rounded-md bg-indigo-600 text-white">
             <BookOpenText className="h-5 w-5" />
           </div>
           <div className="min-w-0 flex-1">
@@ -796,7 +796,7 @@ function HelpArticle({
                   key={id}
                   type="button"
                   onClick={() => onSelectSection(id)}
-                  className="rounded-full border border-surface-border bg-surface-elevated px-3 py-1.5 text-xs font-semibold text-indigo-600 hover:bg-surface-hover dark:text-indigo-300"
+                  className="rounded border border-surface-border bg-surface-elevated px-2.5 py-1 text-xs font-medium text-text-primary hover:bg-surface-hover transition-colors"
                 >
                   {t(localePath(related, "title"))}
                 </button>

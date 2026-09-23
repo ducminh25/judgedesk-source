@@ -87,11 +87,11 @@ export default function ThemisToolchainPromptModal({
   if (selectedChoice !== null) {
     const isManaged = selectedChoice === "managed";
     return (
-      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm animate-in fade-in duration-150">
-        <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-surface-border bg-surface shadow-2xl">
+      <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
+        <div className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-lg border border-surface-border bg-surface shadow-lg">
           <div className="flex items-center justify-between border-b border-surface-border bg-surface-elevated p-4">
             <div className="flex items-center gap-3">
-              <div className={`rounded-lg p-2 ${isManaged ? "bg-indigo-500/10 text-indigo-500" : "bg-amber-500/10 text-amber-500"}`}>
+              <div className={`rounded-md p-2 ${isManaged ? "bg-indigo-500/10 text-indigo-500" : "bg-amber-500/10 text-amber-500"}`}>
                 <PackageCheck className="h-5 w-5" />
               </div>
               <div>
@@ -191,12 +191,12 @@ export default function ThemisToolchainPromptModal({
 
   // Step 1: Side-by-Side Comparison Dialog
   return (
-    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-surface-border bg-surface shadow-2xl">
+    <div className="fixed inset-0 z-[95] flex items-center justify-center bg-black/70 p-4">
+      <div className="flex max-h-[94vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border border-surface-border bg-surface shadow-lg">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-surface-border bg-surface-elevated p-4">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-indigo-500/10 p-2 text-indigo-500 dark:text-indigo-400">
+            <div className="rounded-md bg-indigo-500/10 p-2 text-indigo-500 dark:text-indigo-400">
               <Cpu className="h-5 w-5" />
             </div>
             <div>
@@ -247,7 +247,7 @@ export default function ThemisToolchainPromptModal({
           {/* Comparison Cards */}
           <div className="grid gap-4 md:grid-cols-2">
             {/* Card 1: Olympic Standard (64-bit Managed) */}
-            <div className="flex flex-col justify-between rounded-xl border-2 border-indigo-500/60 bg-surface-elevated p-4 shadow-sm transition-all hover:border-indigo-500">
+            <div className="flex flex-col justify-between rounded-lg border border-indigo-500/60 bg-surface-elevated p-4 shadow-xs transition-all hover:border-indigo-500">
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -256,7 +256,7 @@ export default function ThemisToolchainPromptModal({
                       {t("toolchains.themisPrompt.managedTitle")}
                     </h3>
                   </div>
-                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300">
+                  <span className="rounded bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700 dark:bg-emerald-950/80 dark:text-emerald-300">
                     {t("toolchains.themisPrompt.recommendedBadge")}
                   </span>
                 </div>
@@ -306,7 +306,7 @@ export default function ThemisToolchainPromptModal({
                 <button
                   type="button"
                   onClick={() => handleSelectChoice("managed")}
-                  className="w-full rounded-lg bg-indigo-600 py-2.5 text-xs font-bold text-white shadow-md hover:bg-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition-colors flex items-center justify-center gap-1.5"
+                  className="w-full rounded bg-indigo-600 py-2 text-xs font-bold text-white shadow-xs hover:bg-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 transition-colors flex items-center justify-center gap-1.5"
                 >
                   <ShieldCheck className="h-4 w-4" />
                   {t("toolchains.themisPrompt.chooseManagedAction")}
@@ -315,7 +315,7 @@ export default function ThemisToolchainPromptModal({
             </div>
 
             {/* Card 2: Themis Compatibility Mode (32-bit Local) */}
-            <div className="flex flex-col justify-between rounded-xl border border-surface-border bg-surface-elevated p-4 shadow-sm transition-all hover:border-amber-400">
+            <div className="flex flex-col justify-between rounded-lg border border-surface-border bg-surface-elevated p-4 shadow-xs transition-all hover:border-amber-400">
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -324,7 +324,7 @@ export default function ThemisToolchainPromptModal({
                       {t("toolchains.themisPrompt.themisTitle")}
                     </h3>
                   </div>
-                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-800 dark:bg-amber-950/80 dark:text-amber-300">
+                  <span className="rounded bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-800 dark:bg-amber-950/80 dark:text-amber-300">
                     {t("toolchains.themisPrompt.themisBadge")}
                   </span>
                 </div>
@@ -374,7 +374,7 @@ export default function ThemisToolchainPromptModal({
                 <button
                   type="button"
                   onClick={() => handleSelectChoice("themis")}
-                  className="w-full rounded-lg border border-amber-500/50 bg-amber-500/10 py-2.5 text-xs font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 transition-colors flex items-center justify-center gap-1.5"
+                  className="w-full rounded border border-amber-500/50 bg-amber-500/10 py-2 text-xs font-bold text-amber-800 dark:text-amber-200 hover:bg-amber-500/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 transition-colors flex items-center justify-center gap-1.5"
                 >
                   <Wrench className="h-4 w-4" />
                   {t("toolchains.themisPrompt.chooseThemisAction")}

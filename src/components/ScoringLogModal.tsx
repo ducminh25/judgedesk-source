@@ -85,7 +85,7 @@ export default function ScoringLogModal({
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-lg border border-surface-border bg-surface shadow-2xl">
+      <div className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-lg border border-surface-border bg-surface shadow-lg">
         <div className="flex items-center justify-between border-b border-surface-border px-5 py-4 bg-surface-elevated">
           <div className="flex items-center gap-2">
             <FileText className="h-4 w-4 text-sky-500 dark:text-sky-400" />
@@ -148,10 +148,10 @@ export default function ScoringLogModal({
                   <td className="whitespace-nowrap px-4 py-2.5 font-semibold text-text-primary">
                     {row.status}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2.5 font-mono text-text-muted">
+                  <td className="whitespace-nowrap px-4 py-2.5 font-mono tabular-nums text-text-muted">
                     {row.time}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-2.5 font-mono text-text-primary">
+                  <td className="whitespace-nowrap px-4 py-2.5 font-mono tabular-nums text-text-primary">
                     {row.score}
                   </td>
                   <td className="max-w-xl px-4 py-2.5 font-mono text-text-muted">

@@ -18,6 +18,7 @@ const TREE_GUARD_GENERATION_ENV: &str = "JUDGEDESK_TREE_GUARD_GENERATION";
 struct BackendProcessState {
     child: Option<CommandChild>,
     process_id: Option<u32>,
+    embedded: bool,
 }
 
 #[derive(Default)]
@@ -218,16 +219,56 @@ pub fn spawn(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         println!("[Tauri Shell] Backend log: {}", path.display());
     }
 
-    println!("[Tauri Shell] Allocating backend sidecar on port {}", port);
+    println!("[Tauri Shell] Allocating backend on port {}", port);
+
+    let use_pure_rust = std::env::var("JUDGEDESK_PURE_RUST_CORE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    if use_pure_rust {
+        println!("[Tauri Shell] Launching Pure Rust Native Core embedded server on port {port}");
+        tauri::async_runtime::spawn(async move {
+            match judgedesk_core::server::start_embedded_server(port).await {
+                Ok((addr, _task)) => {
+                    println!(
+                        "[Tauri Shell] Pure Rust Native Core running directly on port {}",
+                        addr.port()
+                    );
+                }
+                Err(err) => {
+                    eprintln!("[Tauri Shell] Failed to start native embedded server: {err}");
+                }
+            }
+        });
+        {
+            let backend = app.state::<BackendSidecar>();
+            let mut state = backend.state.lock().unwrap();
+            state.embedded = true;
+        }
+        write_dev_state(port);
+        return Ok(());
+    }
+
     let sidecar = match app.shell().sidecar("server") {
         Ok(command) => command,
         Err(error) => {
-            let message =
-                format!("[Tauri Shell] Failed to create backend sidecar command: {error}");
-            eprintln!("{message}");
-            if let Some(path) = log_path.as_deref() {
-                append_log(path, &message);
+            println!("[Tauri Shell] Sidecar server unavailable ({error}); launching Pure Rust Native Core embedded server on port {port}");
+            tauri::async_runtime::spawn(async move {
+                match judgedesk_core::server::start_embedded_server(port).await {
+                    Ok((addr, _task)) => {
+                        println!("[Tauri Shell] Pure Rust Native Core running directly on port {}", addr.port());
+                    }
+                    Err(err) => {
+                        eprintln!("[Tauri Shell] Failed to start native embedded server: {err}");
+                    }
+                }
+            });
+            {
+                let backend = app.state::<BackendSidecar>();
+                let mut state = backend.state.lock().unwrap();
+                state.embedded = true;
             }
+            write_dev_state(port);
             return Ok(());
         }
     };
@@ -252,11 +293,27 @@ pub fn spawn(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let (mut events, mut child) = match spawn_result {
         Ok(process) => process,
         Err(error) => {
-            let message = format!("[Tauri Shell] Failed to spawn backend sidecar: {error}");
+            let message = format!("[Tauri Shell] Failed to spawn backend sidecar: {error}; falling back to Pure Rust Native Core embedded server on port {port}");
             eprintln!("{message}");
             if let Some(path) = log_path.as_deref() {
                 append_log(path, &message);
             }
+            tauri::async_runtime::spawn(async move {
+                match judgedesk_core::server::start_embedded_server(port).await {
+                    Ok((addr, _task)) => {
+                        println!("[Tauri Shell] Pure Rust Native Core running directly on port {}", addr.port());
+                    }
+                    Err(err) => {
+                        eprintln!("[Tauri Shell] Failed to start native embedded server: {err}");
+                    }
+                }
+            });
+            {
+                let backend = app.state::<BackendSidecar>();
+                let mut state = backend.state.lock().unwrap();
+                state.embedded = true;
+            }
+            write_dev_state(port);
             return Ok(());
         }
     };
@@ -351,7 +408,10 @@ fn wait_for_termination(backend: &BackendSidecar, timeout: Duration) -> bool {
 pub fn stop(app: &AppHandle) -> std::io::Result<()> {
     let port = app.try_state::<BackendPort>().map(|port| port.0);
     let backend = app.state::<BackendSidecar>();
-    let backend_is_running = backend.state.lock().unwrap().process_id.is_some();
+    let (backend_is_running, is_embedded) = {
+        let state = backend.state.lock().unwrap();
+        (state.process_id.is_some() || state.embedded, state.embedded)
+    };
     let graceful_outcome = if backend_is_running {
         port.map_or(
             GracefulShutdownOutcome::Unavailable,
@@ -360,6 +420,15 @@ pub fn stop(app: &AppHandle) -> std::io::Result<()> {
     } else {
         GracefulShutdownOutcome::Unavailable
     };
+    if is_embedded {
+        if let Some(port) = port {
+            clear_dev_state(port);
+        }
+        return match graceful_outcome {
+            GracefulShutdownOutcome::Rejected(error) => Err(std::io::Error::other(error)),
+            GracefulShutdownOutcome::Completed | GracefulShutdownOutcome::Unavailable => Ok(()),
+        };
+    }
     let graceful_requested = graceful_outcome == GracefulShutdownOutcome::Completed;
     if !graceful_requested || !wait_for_termination(&backend, Duration::from_secs(2)) {
         #[cfg(any(windows, target_os = "macos"))]

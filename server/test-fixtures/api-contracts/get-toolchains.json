@@ -1,0 +1,526 @@
+{
+  "active": {
+    "cpp": {
+      "executablePath": "<TEMP_ROOT>/<ISOLATED_ENV>/appdata/toolchains/gcc-windows-x64/bin/g++.exe",
+      "kind": "cpp",
+      "packageComponentId": "gcc.cxx",
+      "packageDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "packageOrigin": "downloaded",
+      "packageRoot": "<TEMP_ROOT>/<ISOLATED_ENV>/appdata/toolchains/gcc-windows-x64",
+      "provenance": "managed-package",
+      "ready": true,
+      "source": "managed",
+      "version": "14.2.0"
+    },
+    "python": {
+      "executablePath": "<TEMP_ROOT>/<ISOLATED_ENV>/appdata/toolchains/python-windows-x64/python.exe",
+      "kind": "python",
+      "packageComponentId": "python.runtime",
+      "packageDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "packageOrigin": "downloaded",
+      "packageRoot": "<TEMP_ROOT>/<ISOLATED_ENV>/appdata/toolchains/python-windows-x64",
+      "provenance": "managed-package",
+      "ready": true,
+      "source": "managed",
+      "version": "3.12.13"
+    }
+  },
+  "arch": "x64",
+  "capabilities": {
+    "cpp": {
+      "checkerReady": true,
+      "detected": true,
+      "installable": true,
+      "managed": true,
+      "submissionReady": true
+    },
+    "python": {
+      "checkerReady": true,
+      "detected": true,
+      "installable": true,
+      "managed": true,
+      "submissionReady": true
+    }
+  },
+  "discovery": {
+    "checkedAt": "<TIMESTAMP>",
+    "errorCode": "DISCOVERY_STATE_INVALID",
+    "profiles": {
+      "c-gcc14": [],
+      "cpp-legacy-v1": [],
+      "java-temurin21": [],
+      "pascal-fpc322": [],
+      "python-cpython312": [],
+      "scratch-turbowarp-v1": []
+    },
+    "refreshing": false,
+    "registryRevision": 6,
+    "schemaVersion": 2,
+    "status": "failed"
+  },
+  "distribution": "development",
+  "executionPolicy": {
+    "allowResourceOnlyLocalExecution": true,
+    "schemaVersion": 1,
+    "status": "ready"
+  },
+  "manifestStatus": "loading",
+  "mutationsBlocked": false,
+  "platform": "win32",
+  "preferenceDocument": {
+    "recoveryDiagnostics": [],
+    "revision": "<REVISION>",
+    "status": "ready"
+  },
+  "preferences": {
+    "installedToolchains": [],
+    "preferredSourceCpp": "managed",
+    "preferredSourcePython": "managed"
+  },
+  "profiles": [
+    {
+      "active": {
+        "executablePath": "<TEMP_ROOT>/<ISOLATED_ENV>/appdata/toolchains/gcc-windows-x64/bin/g++.exe",
+        "kind": "cpp",
+        "packageComponentId": "gcc.cxx",
+        "packageDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "packageOrigin": "downloaded",
+        "packageRoot": "<TEMP_ROOT>/<ISOLATED_ENV>/appdata/toolchains/gcc-windows-x64",
+        "provenance": "managed-package",
+        "ready": true,
+        "source": "managed",
+        "version": "14.2.0"
+      },
+      "candidates": [],
+      "certification": {
+        "canCertify": false,
+        "required": false,
+        "supported": false
+      },
+      "detected": true,
+      "displayNameKey": "languages.cpp",
+      "extensions": [
+        ".cpp"
+      ],
+      "id": "cpp-legacy-v1",
+      "kind": "cpp",
+      "localPolicy": {
+        "executionMode": "quick_verified_direct",
+        "supportedVersions": [
+          "4.8.0–<18.0.0",
+          "majors: 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17"
+        ]
+      },
+      "managedPackage": {
+        "downloadAvailable": false,
+        "id": "gcc-windows-x64",
+        "installed": true,
+        "integrity": "verified-receipt",
+        "origin": "downloaded",
+        "progress": {
+          "bytesReceived": 0,
+          "id": "gcc-windows-x64",
+          "percent": 0,
+          "status": "idle",
+          "totalBytes": 0
+        },
+        "uninstallable": true,
+        "version": "14.2.0"
+      },
+      "provenance": "managed-package",
+      "roles": {
+        "checkerReady": true,
+        "submissionReady": true
+      },
+      "selection": {
+        "mode": "managed"
+      },
+      "sources": {
+        "local_auto": {
+          "available": true
+        },
+        "local_path": {
+          "available": true
+        },
+        "managed": {
+          "available": true
+        },
+        "none": {
+          "available": true
+        }
+      },
+      "stability": "stable",
+      "status": "submission_ready",
+      "supportedOnHost": true,
+      "version": 1
+    },
+    {
+      "active": {
+        "executablePath": "<TEMP_ROOT>/<ISOLATED_ENV>/appdata/toolchains/gcc-windows-x64/bin/gcc.exe",
+        "kind": "c",
+        "packageComponentId": "gcc.c",
+        "packageDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "packageOrigin": "downloaded",
+        "packageRoot": "<TEMP_ROOT>/<ISOLATED_ENV>/appdata/toolchains/gcc-windows-x64",
+        "provenance": "managed-package",
+        "ready": true,
+        "source": "managed",
+        "version": "14.2.0"
+      },
+      "candidates": [],
+      "detected": true,
+      "displayNameKey": "languages.c",
+      "extensions": [
+        ".c"
+      ],
+      "id": "c-gcc14",
+      "kind": "c",
+      "localPolicy": {
+        "executionMode": "quick_verified_direct",
+        "supportedVersions": [
+          "4.8.0–<18.0.0",
+          "majors: 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17"
+        ]
+      },
+      "managedPackage": {
+        "downloadAvailable": false,
+        "id": "gcc-windows-x64",
+        "installed": true,
+        "integrity": "verified-receipt",
+        "origin": "downloaded",
+        "progress": {
+          "bytesReceived": 0,
+          "id": "gcc-windows-x64",
+          "percent": 0,
+          "status": "idle",
+          "totalBytes": 0
+        },
+        "uninstallable": true,
+        "version": "14.2.0"
+      },
+      "provenance": "managed-package",
+      "roles": {
+        "checkerReady": false,
+        "submissionReady": true
+      },
+      "selection": {
+        "mode": "managed"
+      },
+      "sources": {
+        "local_auto": {
+          "available": true
+        },
+        "local_path": {
+          "available": true
+        },
+        "managed": {
+          "available": true
+        },
+        "none": {
+          "available": true
+        }
+      },
+      "stability": "stable",
+      "status": "submission_ready",
+      "supportedOnHost": true,
+      "version": 1
+    },
+    {
+      "active": {
+        "executablePath": "<TEMP_ROOT>/<ISOLATED_ENV>/appdata/toolchains/python-windows-x64/python.exe",
+        "kind": "python",
+        "packageComponentId": "python.runtime",
+        "packageDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "packageOrigin": "downloaded",
+        "packageRoot": "<TEMP_ROOT>/<ISOLATED_ENV>/appdata/toolchains/python-windows-x64",
+        "provenance": "managed-package",
+        "ready": true,
+        "source": "managed",
+        "version": "3.12.13"
+      },
+      "candidates": [],
+      "detected": true,
+      "displayNameKey": "languages.python",
+      "extensions": [
+        ".py"
+      ],
+      "id": "python-cpython312",
+      "kind": "python",
+      "localPolicy": {
+        "executionMode": "quick_verified_direct",
+        "supportedVersions": [
+          "3.6.0–<3.14.0",
+          "majors: 3"
+        ]
+      },
+      "managedPackage": {
+        "downloadAvailable": false,
+        "id": "python-windows-x64",
+        "installed": true,
+        "integrity": "verified-receipt",
+        "origin": "downloaded",
+        "progress": {
+          "bytesReceived": 0,
+          "id": "python-windows-x64",
+          "percent": 0,
+          "status": "idle",
+          "totalBytes": 0
+        },
+        "uninstallable": true,
+        "version": "3.12.13"
+      },
+      "provenance": "managed-package",
+      "roles": {
+        "checkerReady": true,
+        "submissionReady": true
+      },
+      "selection": {
+        "mode": "managed"
+      },
+      "sources": {
+        "local_auto": {
+          "available": true
+        },
+        "local_path": {
+          "available": true
+        },
+        "managed": {
+          "available": true
+        },
+        "none": {
+          "available": true
+        }
+      },
+      "stability": "stable",
+      "status": "submission_ready",
+      "supportedOnHost": true,
+      "version": 1
+    },
+    {
+      "active": {
+        "executablePath": "<TEMP_ROOT>/<ISOLATED_ENV>/appdata/toolchains/fpc-windows-x64/bin/ppcx64.exe",
+        "kind": "pascal",
+        "packageComponentId": "fpc.compiler",
+        "packageDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "packageOrigin": "downloaded",
+        "packageRoot": "<TEMP_ROOT>/<ISOLATED_ENV>/appdata/toolchains/fpc-windows-x64",
+        "provenance": "managed-package",
+        "ready": true,
+        "source": "managed",
+        "version": "3.2.2"
+      },
+      "candidates": [],
+      "detected": true,
+      "displayNameKey": "languages.pascal",
+      "extensions": [
+        ".pas",
+        ".pp"
+      ],
+      "id": "pascal-fpc322",
+      "kind": "pascal",
+      "localPolicy": {
+        "executionMode": "managed_only",
+        "supportedVersions": [
+          "3.2.2",
+          "3.2.0",
+          "3.0.4",
+          "3.0.0"
+        ]
+      },
+      "managedPackage": {
+        "downloadAvailable": false,
+        "id": "fpc-windows-x64",
+        "installed": true,
+        "integrity": "verified-receipt",
+        "origin": "downloaded",
+        "progress": {
+          "bytesReceived": 0,
+          "id": "fpc-windows-x64",
+          "percent": 0,
+          "status": "idle",
+          "totalBytes": 0
+        },
+        "uninstallable": true,
+        "version": "3.2.2"
+      },
+      "provenance": "managed-package",
+      "roles": {
+        "checkerReady": false,
+        "submissionReady": true
+      },
+      "selection": {
+        "mode": "managed"
+      },
+      "sources": {
+        "local_auto": {
+          "available": false,
+          "reasonCode": "LOCAL_NOT_SANDBOX_COMPATIBLE"
+        },
+        "local_path": {
+          "available": false,
+          "reasonCode": "LOCAL_NOT_SANDBOX_COMPATIBLE"
+        },
+        "managed": {
+          "available": true
+        },
+        "none": {
+          "available": true
+        }
+      },
+      "stability": "stable",
+      "status": "submission_ready",
+      "supportedOnHost": true,
+      "version": 1
+    },
+    {
+      "active": {
+        "executablePath": "<TEMP_ROOT>/<ISOLATED_ENV>/appdata/toolchains/temurin21-windows-x64/bin/javac.exe",
+        "kind": "java",
+        "packageComponentId": "java.compiler",
+        "packageDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "packageOrigin": "downloaded",
+        "packageRoot": "<TEMP_ROOT>/<ISOLATED_ENV>/appdata/toolchains/temurin21-windows-x64",
+        "provenance": "managed-package",
+        "ready": true,
+        "source": "managed",
+        "version": "21.0.12+8"
+      },
+      "candidates": [],
+      "detected": true,
+      "displayNameKey": "languages.java",
+      "extensions": [
+        ".java"
+      ],
+      "id": "java-temurin21",
+      "kind": "java",
+      "localPolicy": {
+        "executionMode": "managed_only",
+        "supportedVersions": [
+          "21.0.12",
+          "1.7.0",
+          "1.8.0"
+        ]
+      },
+      "managedPackage": {
+        "downloadAvailable": false,
+        "id": "temurin21-windows-x64",
+        "installed": true,
+        "integrity": "verified-receipt",
+        "origin": "downloaded",
+        "progress": {
+          "bytesReceived": 0,
+          "id": "temurin21-windows-x64",
+          "percent": 0,
+          "status": "idle",
+          "totalBytes": 0
+        },
+        "uninstallable": true,
+        "version": "21.0.12+8"
+      },
+      "provenance": "managed-package",
+      "roles": {
+        "checkerReady": false,
+        "submissionReady": true
+      },
+      "selection": {
+        "mode": "managed"
+      },
+      "sources": {
+        "local_auto": {
+          "available": false,
+          "reasonCode": "LOCAL_NOT_SANDBOX_COMPATIBLE"
+        },
+        "local_path": {
+          "available": false,
+          "reasonCode": "LOCAL_NOT_SANDBOX_COMPATIBLE"
+        },
+        "managed": {
+          "available": true
+        },
+        "none": {
+          "available": true
+        }
+      },
+      "stability": "stable",
+      "status": "submission_ready",
+      "supportedOnHost": true,
+      "version": 1
+    },
+    {
+      "active": {
+        "executablePath": "<TEMP_ROOT>/<ISOLATED_ENV>/appdata/toolchains/scratch-windows-x64/scratch-run.exe",
+        "kind": "scratch",
+        "packageComponentId": "scratch.runtime",
+        "packageDigest": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "packageOrigin": "downloaded",
+        "packageRoot": "<TEMP_ROOT>/<ISOLATED_ENV>/appdata/toolchains/scratch-windows-x64",
+        "provenance": "managed-package",
+        "ready": true,
+        "source": "managed",
+        "version": "0.1.7"
+      },
+      "candidates": [],
+      "detected": true,
+      "displayNameKey": "languages.scratch",
+      "extensions": [
+        ".sb3",
+        ".sb2",
+        ".sb"
+      ],
+      "id": "scratch-turbowarp-v1",
+      "kind": "scratch",
+      "localPolicy": {
+        "executionMode": "managed_only",
+        "supportedVersions": [
+          "0.1.7"
+        ]
+      },
+      "managedPackage": {
+        "downloadAvailable": false,
+        "id": "scratch-windows-x64",
+        "installed": true,
+        "integrity": "verified-receipt",
+        "origin": "downloaded",
+        "progress": {
+          "bytesReceived": 0,
+          "id": "scratch-windows-x64",
+          "percent": 0,
+          "status": "idle",
+          "totalBytes": 0
+        },
+        "uninstallable": true,
+        "version": "0.1.7"
+      },
+      "provenance": "managed-package",
+      "roles": {
+        "checkerReady": false,
+        "submissionReady": true
+      },
+      "selection": {
+        "mode": "managed"
+      },
+      "sources": {
+        "local_auto": {
+          "available": false,
+          "reasonCode": "LOCAL_NOT_SANDBOX_COMPATIBLE"
+        },
+        "local_path": {
+          "available": false,
+          "reasonCode": "LOCAL_NOT_SANDBOX_COMPATIBLE"
+        },
+        "managed": {
+          "available": true
+        },
+        "none": {
+          "available": true
+        }
+      },
+      "stability": "stable",
+      "status": "submission_ready",
+      "supportedOnHost": true,
+      "version": 1
+    }
+  ],
+  "registryRevision": 6,
+  "toolchains": []
+}

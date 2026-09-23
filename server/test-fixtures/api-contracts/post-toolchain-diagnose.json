@@ -1,0 +1,12 @@
+{
+  "diagnostic": {
+    "error": "TOOLCHAIN_NOT_SANDBOX_COMPATIBLE",
+    "language": "cpp",
+    "phase": "compilation",
+    "profileId": "cpp-legacy-v1",
+    "sourceMode": "managed",
+    "success": false,
+    "version": "14.2.0"
+  },
+  "success": false
+}

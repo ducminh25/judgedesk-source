@@ -57,16 +57,20 @@ export class ExecutorClient {
   private stderrPreview = "";
   private lifecycleState: ExecutorLifecycleState = "idle";
   private readonly platform: NodeJS.Platform;
-  private readonly environment: NodeJS.ProcessEnv;
+  private readonly explicitEnvironment?: NodeJS.ProcessEnv;
   private readonly shutdownRequestTimeoutMs: number;
   private readonly shutdownExitTimeoutMs: number;
   private readonly startupRetryChildren = new WeakSet<ChildProcessWithoutNullStreams>();
 
   constructor(options: ExecutorClientOptions = {}) {
     this.platform = options.platform ?? process.platform;
-    this.environment = { ...(options.environment ?? process.env) };
+    this.explicitEnvironment = options.environment ? { ...options.environment } : undefined;
     this.shutdownRequestTimeoutMs = options.shutdownRequestTimeoutMs ?? SHUTDOWN_REQUEST_TIMEOUT_MS;
     this.shutdownExitTimeoutMs = options.shutdownExitTimeoutMs ?? SHUTDOWN_EXIT_TIMEOUT_MS;
+  }
+
+  private getEnvironment(): NodeJS.ProcessEnv {
+    return this.explicitEnvironment ? { ...this.explicitEnvironment } : { ...process.env };
   }
 
   get health(): ExecutorHealth {
@@ -259,7 +263,7 @@ export class ExecutorClient {
       const child = spawn(executable, [], {
         stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
-        env: minimalExecutorEnvironment(this.environment),
+        env: minimalExecutorEnvironment(this.getEnvironment()),
       });
       this.child = child;
       child.stdout.on("data", (chunk: Buffer) => this.receive(child, chunk));
@@ -456,7 +460,7 @@ export class ExecutorClient {
   }
 
   private requiresGuardedMacosDrain(): boolean {
-    return this.platform === "darwin" && this.environment.JUDGEDESK_TREE_GUARD_REQUIRED === "1";
+    return this.platform === "darwin" && this.getEnvironment().JUDGEDESK_TREE_GUARD_REQUIRED === "1";
   }
 
   private cannotStart(): boolean {

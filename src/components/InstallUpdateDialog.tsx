@@ -30,8 +30,8 @@ export default function InstallUpdateDialog({
   if (!show) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md overflow-hidden rounded-xl border border-surface-border bg-surface shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="w-full max-w-md overflow-hidden rounded-lg border border-surface-border bg-surface shadow-lg">
         <div className="flex items-center justify-between border-b border-surface-border bg-surface-elevated px-5 py-4">
           <h3 className="text-sm font-bold text-text-primary">
             {updateRequiresRestart

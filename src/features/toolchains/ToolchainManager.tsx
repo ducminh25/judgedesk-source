@@ -61,11 +61,11 @@ export default function ToolchainManager({ onClose, firstRun = false }: Props) {
   }, [onClose]);
 
   return (
-    <div className={`fixed inset-0 ${firstRun ? "z-[90]" : "z-50"} flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm`}>
-      <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-lg border border-surface-border bg-surface shadow-2xl">
+    <div className={`fixed inset-0 ${firstRun ? "z-[90]" : "z-50"} flex items-center justify-center bg-black/70 p-4`}>
+      <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-lg border border-surface-border bg-surface shadow-lg">
         <div className="flex items-center justify-between border-b border-surface-border bg-surface-elevated p-4">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="rounded-lg bg-indigo-500/10 p-2">
+            <div className="rounded-md bg-indigo-500/10 p-2">
               <Cpu className="h-5 w-5 text-indigo-500 dark:text-indigo-400" />
             </div>
             <div className="min-w-0">
@@ -520,9 +520,9 @@ function ProfileRow({
               <div className="w-full max-w-44">
                 <div className="mb-1 flex justify-between text-[10px] text-text-muted">
                   <span>{t(`toolchains.${managed.progress.status}`)}</span>
-                  <span>{managed.progress.percent}%</span>
+                  <span className="font-mono tabular-nums">{managed.progress.percent}%</span>
                 </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-input-bg">
+                <div className="h-1.5 overflow-hidden rounded-sm bg-input-bg">
                   <div
                     className="h-full bg-indigo-600 transition-all"
                     style={{ width: `${managed.progress.percent}%` }}

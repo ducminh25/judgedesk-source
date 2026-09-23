@@ -67,13 +67,13 @@ export function ToolchainCard({
     toolchain.progress.status === "verifying";
 
   return (
-    <div className="border border-surface-border bg-surface-elevated rounded-lg p-4 flex flex-col justify-between shadow-sm hover:shadow-md transition">
+    <div className="border border-surface-border bg-surface-elevated rounded-lg p-4 flex flex-col justify-between shadow-xs transition-colors">
       <div className="space-y-2">
         <div className="flex items-start justify-between">
           <div>
             <h4 className="text-sm font-bold text-text-primary flex items-center gap-2">
               {t(`languages.${toolchain.kind}`)}
-              <span className="text-[10px] font-mono bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded font-bold">
+              <span className="text-[10px] font-mono tabular-nums bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 px-2 py-0.5 rounded font-bold">
                 {toolchain.version}
               </span>
             </h4>
@@ -81,7 +81,7 @@ export function ToolchainCard({
               {toolchain.platform === "win32"
                 ? t("toolchains.windows")
                 : t("toolchains.macos")}{" "}
-              • {toolchain.arch} • {formatSize(toolchain.sizeBytes)}
+              • {toolchain.arch} • <span className="font-mono tabular-nums">{formatSize(toolchain.sizeBytes)}</span>
             </p>
           </div>
           {(toolchain.installed || toolchain.progress.status === "success") && (
@@ -94,9 +94,9 @@ export function ToolchainCard({
           <div className="space-y-1.5 pt-2">
             <div className="flex justify-between text-2xs text-text-muted font-bold uppercase">
               <span>{getStatusMessage()}</span>
-              <span>{toolchain.progress.percent}%</span>
+              <span className="font-mono tabular-nums">{toolchain.progress.percent}%</span>
             </div>
-            <div className="w-full bg-input-bg border border-surface-border-strong rounded-full h-2 overflow-hidden">
+            <div className="w-full bg-input-bg border border-surface-border-strong rounded-sm h-2 overflow-hidden">
               <div
                 className="bg-indigo-600 h-full transition-all duration-300"
                 style={{ width: `${toolchain.progress.percent}%` }}

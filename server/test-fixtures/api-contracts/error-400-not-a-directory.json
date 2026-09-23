@@ -1,0 +1,5 @@
+{
+  "success": false,
+  "code": "NOT_A_DIRECTORY",
+  "message": "Path is not a directory"
+}

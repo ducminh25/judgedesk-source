@@ -1,0 +1,5 @@
+{
+  "success": false,
+  "code": "PARAMS_REQUIRED",
+  "message": "Path and config required"
+}

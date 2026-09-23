@@ -1,0 +1,5 @@
+{
+  "success": false,
+  "code": "JUDGE_DRAIN_TIMEOUT",
+  "message": "Timed out waiting for 1 active judging session(s) to stop."
+}

@@ -220,7 +220,7 @@ pub enum ExecutorResponse {
     },
     InteractiveRunResult {
         id: String,
-        result: InteractiveRunResult,
+        result: Box<InteractiveRunResult>,
     },
     CancelResult {
         id: String,

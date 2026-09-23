@@ -65,9 +65,9 @@ export default function DirectoryPickerModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
       <div
-        className="w-full max-w-lg bg-surface border border-surface-border rounded-lg shadow-2xl overflow-hidden flex flex-col"
+        className="w-full max-w-lg bg-surface border border-surface-border rounded-lg shadow-lg overflow-hidden flex flex-col"
         onDragOver={(event) => {
           event.preventDefault();
           setIsDragging(true);
@@ -128,13 +128,13 @@ export default function DirectoryPickerModal({
           <div
             className={`border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center gap-2.5 transition-all duration-200 ${
               activeDragging
-                ? "border-indigo-500 bg-indigo-500/10 ring-2 ring-indigo-500/30 scale-[1.02] shadow-lg shadow-indigo-500/10"
+                ? "border-indigo-500 bg-indigo-500/10"
                 : "border-surface-border-strong bg-surface hover:border-surface-border"
             }`}
           >
             <FolderOpen
-              className={`w-9 h-9 transition-all duration-200 ${
-                activeDragging ? "text-indigo-500 dark:text-indigo-400 animate-bounce" : "text-text-muted"
+              className={`w-9 h-9 transition-colors duration-200 ${
+                activeDragging ? "text-indigo-500 dark:text-indigo-400" : "text-text-muted"
               }`}
             />
             <div className="text-center">

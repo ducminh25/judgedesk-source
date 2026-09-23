@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { checkerResultFromExit, parsePartialScore } from "./custom-checker-runner";
+import { checkerResultFromExit, parsePartialScore } from "./custom-checker-runner.js";
 
 test("partial checker scores accept multipliers and absolute points", () => {
   assert.equal(parsePartialScore("result = 0.25", "", 10), 0.25);

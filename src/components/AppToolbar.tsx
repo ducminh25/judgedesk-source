@@ -41,6 +41,7 @@ interface Props {
   canDeleteSelected: boolean;
   canExport: boolean;
   canRun: boolean;
+  runDisabledReason?: string | null;
   canSaveContest: boolean;
   canSortScores: boolean;
   scoreSortMode: ContestantSortMode;
@@ -80,6 +81,7 @@ export default function AppToolbar({
   canDeleteSelected,
   canExport,
   canRun,
+  runDisabledReason,
   canSaveContest,
   canSortScores,
   scoreSortMode,
@@ -219,7 +221,7 @@ export default function AppToolbar({
             <div
               role="menu"
               style={{ top: `${brandMenuPosition.top}px`, left: `${brandMenuPosition.left}px` }}
-              className="fixed z-[90] min-w-[200px] overflow-hidden rounded-md border border-surface-border bg-surface-elevated p-1.5 shadow-2xl"
+              className="fixed z-[90] min-w-[200px] overflow-hidden rounded-md border border-surface-border bg-surface-elevated p-1.5 shadow-lg"
             >
               <div className="border-b border-surface-border/60 px-3 py-2 text-xs font-semibold text-text-muted select-none">
                 JudgeDesk v{APP_VERSION}
@@ -273,7 +275,11 @@ export default function AppToolbar({
           type="button"
           onClick={onRun}
           disabled={interactionLocked || !canRun}
-          title={!canRun ? t("actions.missingData") : `${t("toolbar.run")} (F9)`}
+          title={
+            !canRun
+              ? (runDisabledReason ? t(`actions.${runDisabledReason}`) : t("actions.missingData"))
+              : `${t("toolbar.run")} (F9)`
+          }
           className="flex h-9 flex-none items-center gap-2 rounded bg-indigo-600 px-4 text-xs font-bold text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {isJudging ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
@@ -290,7 +296,11 @@ export default function AppToolbar({
           onClick={onDeleteSelected}
           disabled={!canDeleteSelected || interactionLocked}
           className={iconCommandButton}
-          title={t("actions.deleteSelectedScores")}
+          title={
+            !canDeleteSelected
+              ? t("actions.deleteSelectedScoresNoResults")
+              : t("actions.deleteSelectedScores")
+          }
           aria-label={t("actions.deleteSelectedScores")}
         >
           <Trash2 className="h-4 w-4 text-rose-500" />
@@ -517,9 +527,9 @@ export function UpdateButton({ state, disabled, onCheck, onChoose, onInstall }: 
       aria-label={accessibleLabel}
       className={`flex h-10 max-w-56 flex-none items-center justify-center gap-2 whitespace-nowrap rounded border px-3 text-xs font-bold transition-all disabled:cursor-wait ${
         state.status === "available"
-          ? "border-amber-400/60 bg-gradient-to-r from-indigo-600 via-indigo-500 to-indigo-600 text-white shadow-md shadow-indigo-500/20 ring-2 ring-indigo-400/40 hover:brightness-110"
+          ? "border-indigo-500 bg-indigo-600 text-white shadow-sm hover:bg-indigo-500"
           : state.status === "downloaded"
-            ? "border-emerald-400 bg-emerald-600 text-white shadow-md shadow-emerald-500/20 ring-2 ring-emerald-400/40 hover:bg-emerald-500"
+            ? "border-emerald-500 bg-emerald-600 text-white shadow-sm hover:bg-emerald-500"
             : state.status === "error"
               ? "border-rose-400 bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300"
               : "border-surface-border bg-surface-elevated text-text-primary hover:bg-surface-hover"
@@ -528,7 +538,7 @@ export function UpdateButton({ state, disabled, onCheck, onChoose, onInstall }: 
       {isBusy ? (
         <RefreshCw className="h-4 w-4 shrink-0 animate-spin text-indigo-500 dark:text-indigo-400" />
       ) : state.status === "available" ? (
-        <Download className="h-4 w-4 shrink-0 animate-bounce text-amber-300" />
+        <Download className="h-4 w-4 shrink-0 text-amber-300" />
       ) : state.status === "downloaded" ? (
         <Download className="h-4 w-4 shrink-0 text-white" />
       ) : state.status === "current" ? (
@@ -567,7 +577,7 @@ export function HostStatusMenu({
 }) {
   const { t } = useTranslation();
   return (
-    <div role="menu" className="fixed right-3 top-14 z-[80] w-72 overflow-hidden rounded-md border border-surface-border bg-surface-elevated p-2 shadow-2xl">
+    <div role="menu" className="fixed right-3 top-14 z-[80] w-72 overflow-hidden rounded-md border border-surface-border bg-surface-elevated p-2 shadow-lg">
       <div className="flex items-center justify-between px-2 py-1.5">
         <div className="text-[10px] font-bold uppercase text-text-muted">{t("toolbar.statusMenu.title")}</div>
         <button type="button" onClick={onClose} className="rounded p-1 text-text-muted hover:bg-surface-hover hover:text-text-primary" aria-label={t("common.close")}>

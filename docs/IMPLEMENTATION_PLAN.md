@@ -1,7 +1,8 @@
 # Master Implementation Plan — JudgeDesk
 
 **Project Name**: JudgeDesk  
-**Current Version**: `v1.5.0` (`v1.5.x` Production Stable)  
+**Released Baseline**: `v1.5.0` (`v1.5.x` Production Stable)
+**Development Target**: `v1.6.0` — see [`pure-rust-core-detailed-implementation-plan.md`](./pure-rust-core-detailed-implementation-plan.md); keep all eight version files at `1.5.0` until the final coordinated release bump.
 **Document Status**: Official / Approved  
 **Classification**: Implementation History & Engineering Standards  
 
@@ -110,5 +111,3 @@ timeline
 ## 4. Kế Hoạch Tiếp Theo
 
 Mọi tính năng mới hoặc kế hoạch mở rộng trong tương lai sẽ được thảo luận và thống nhất trực tiếp với tác giả trước khi bổ sung vào tài liệu triển khai.
-
-
