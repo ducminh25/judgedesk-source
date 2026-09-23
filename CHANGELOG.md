@@ -5,6 +5,12 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-09-23
+
+### Sửa lỗi và cải tiến nhỏ (Bug fixes and small improvements)
+
+- Bug fixes and small improvements.
+
 ## [1.5.0] - 2026-09-16
 
 ### Universal Precompiled Header C++, Tự Động Di Trú Chính Sách & Cải Tiến Updater
