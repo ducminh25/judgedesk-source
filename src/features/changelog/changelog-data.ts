@@ -11,6 +11,18 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
   {
+    version: "1.5.1",
+    date: "2026-09-23",
+    sections: [
+      {
+        title: "Sửa lỗi và cải tiến nhỏ",
+        items: [
+          "Bug fixes and small improvements."
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.0",
     date: "2026-09-16",
     sections: [
@@ -512,6 +524,18 @@ export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
 ];
 
 export const CHANGELOG_DATA_EN: ChangelogRelease[] = [
+  {
+    version: "1.5.1",
+    date: "2026-09-23",
+    sections: [
+      {
+        title: "Bug fixes and small improvements",
+        items: [
+          "Bug fixes and small improvements."
+        ],
+      },
+    ],
+  },
   {
     version: "1.5.0",
     date: "2026-09-16",
