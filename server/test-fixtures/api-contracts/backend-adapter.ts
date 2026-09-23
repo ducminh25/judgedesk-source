@@ -304,6 +304,7 @@ export class RustBackendAdapter implements BackendAdapter {
               `Rust test-server process timed out waiting for readiness signal (${timeoutMs}ms)`,
             );
             try {
+              this.process = null;
               await this.terminateChildProcess(proc);
               finishReject(timeoutError);
             } catch (termErr) {
@@ -362,7 +363,7 @@ export class RustBackendAdapter implements BackendAdapter {
     deadlineMs = 5000,
   ): Promise<void> {
     const errors: unknown[] = [];
-    if (proc.exitCode !== null) {
+    if (proc.exitCode !== null || proc.signalCode !== null) {
       if (boundPort !== undefined) {
         await this.verifyPortReleased(boundPort);
       }
@@ -409,7 +410,7 @@ export class RustBackendAdapter implements BackendAdapter {
           } else {
             proc.kill("SIGTERM");
             const killTimer = setTimeout(() => {
-              if (proc.exitCode === null) {
+              if (proc.exitCode === null && proc.signalCode === null) {
                 try {
                   proc.kill("SIGKILL");
                 } catch {
@@ -431,7 +432,7 @@ export class RustBackendAdapter implements BackendAdapter {
         }
 
         deadlineTimer = setTimeout(() => {
-          if (proc.exitCode === null) {
+          if (proc.exitCode === null && proc.signalCode === null) {
             finishReject(new Error(`Child process PID ${proc.pid} failed to exit within ${deadlineMs}ms deadline`));
           } else {
             finishResolve();
