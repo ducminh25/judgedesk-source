@@ -989,8 +989,9 @@ describe("WP0.2 API and Stream Contract Verification", () => {
     });
 
     it("proves real process startup, child process exit observation, and port release/rebind on Rust adapter", async () => {
+      const isWin = process.platform === "win32";
       const realServerScript = path.join(os.tmpdir(), `real_mock_server_${Date.now()}.cjs`);
-      const launcherScript = path.join(os.tmpdir(), `real_mock_server_${Date.now()}.cmd`);
+      const launcherScript = path.join(os.tmpdir(), `real_mock_server_${Date.now()}${isWin ? ".cmd" : ".sh"}`);
 
       const scriptContent = `
 const http = require("node:http");
@@ -1004,7 +1005,12 @@ server.listen(0, "127.0.0.1", () => {
 });
 `;
       fs.writeFileSync(realServerScript, scriptContent, "utf8");
-      fs.writeFileSync(launcherScript, `@echo off\r\n"${process.execPath}" "${realServerScript}"\r\n`, "utf8");
+      if (isWin) {
+        fs.writeFileSync(launcherScript, `@echo off\r\n"${process.execPath}" "${realServerScript}"\r\n`, "utf8");
+      } else {
+        fs.writeFileSync(launcherScript, `#!/bin/sh\nexec "${process.execPath}" "${realServerScript}"\n`, "utf8");
+        fs.chmodSync(launcherScript, 0o755);
+      }
 
       const adapter = new RustBackendAdapter();
       adapter.customBinPath = launcherScript;
@@ -1077,8 +1083,14 @@ server.listen(0, "127.0.0.1", () => {
     });
 
     it("proves real Rust adapter readiness timeout failure path and child cleanup", async () => {
-      const silentScript = path.join(os.tmpdir(), `silent_rust_mock_${Date.now()}.cmd`);
-      fs.writeFileSync(silentScript, "@echo off\r\nping 127.0.0.1 -n 5 >nul\r\n", "utf8");
+      const isWin = process.platform === "win32";
+      const silentScript = path.join(os.tmpdir(), `silent_rust_mock_${Date.now()}${isWin ? ".cmd" : ".sh"}`);
+      if (isWin) {
+        fs.writeFileSync(silentScript, "@echo off\r\nping 127.0.0.1 -n 5 >nul\r\n", "utf8");
+      } else {
+        fs.writeFileSync(silentScript, "#!/bin/sh\nsleep 5\n", "utf8");
+        fs.chmodSync(silentScript, 0o755);
+      }
 
       const timedOutAdapter = new RustBackendAdapter();
       timedOutAdapter.customBinPath = silentScript;

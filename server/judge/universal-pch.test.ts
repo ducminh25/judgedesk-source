@@ -159,8 +159,14 @@ test("ensureUniversalCppPch reuses intact cached PCH without recompilation", asy
 test("ensureUniversalCppPch gracefully returns null when compiler fails", async () => {
   await withTemporaryDirectory(async (appDir) => {
     // A dummy script/binary that fails execution
-    const failingExe = path.join(appDir, "failing_g++.cmd");
-    fs.writeFileSync(failingExe, "@echo off\r\nexit /b 1\r\n");
+    const isWin = process.platform === "win32";
+    const failingExe = path.join(appDir, isWin ? "failing_g++.cmd" : "failing_g++.sh");
+    if (isWin) {
+      fs.writeFileSync(failingExe, "@echo off\r\nexit /b 1\r\n");
+    } else {
+      fs.writeFileSync(failingExe, "#!/bin/sh\nexit 1\n");
+      fs.chmodSync(failingExe, 0o755);
+    }
 
     const cppToolchain = {
       kind: "cpp" as const,
