@@ -408,6 +408,16 @@ export class RustBackendAdapter implements BackendAdapter {
             }
           } else {
             proc.kill("SIGTERM");
+            const killTimer = setTimeout(() => {
+              if (proc.exitCode === null) {
+                try {
+                  proc.kill("SIGKILL");
+                } catch {
+                  // Ignore ESRCH
+                }
+              }
+            }, Math.min(1500, Math.max(100, Math.floor(deadlineMs / 2))));
+            proc.once("exit", () => clearTimeout(killTimer));
           }
         } catch (err: unknown) {
           const isEsrch =
