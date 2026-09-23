@@ -98,13 +98,7 @@ fn validate_run_with_builtin_root(
             (Some(grant), None) => {
                 let (executable, package_root) =
                     resolve_granted_toolchain(&canonical_root, spec, grant, built_in_root)?;
-                let isolation = if grant.package_id.starts_with("scratch-")
-                    || grant.package_id.starts_with("temurin")
-                    || grant.package_id.starts_with("java")
-                    || grant.package_id.starts_with("jdk")
-                    || grant.package_id.starts_with("fpc-")
-                    || grant.package_id.starts_with("pascal")
-                {
+                let isolation = if grant.package_id.starts_with("scratch-") {
                     LocalToolchainIsolation::ResourceOnly
                 } else {
                     LocalToolchainIsolation::Strict
