@@ -1,0 +1,22 @@
+[
+  {
+    "Name": "themisv2",
+    "Root": "C:\\Users\\mon\\AppData\\Local\\ThemisV2",
+    "Exists": true,
+    "Files": 17730,
+    "Directories": 826,
+    "Entries": 18556,
+    "AggregateSHA256": "D9B45B8065F301377A939ED3720229A65B51AC2C0C27D41CBD0258003857A8CA",
+    "CapturedAt": "2026-09-22T12:38:18.7619846+07:00"
+  },
+  {
+    "Name": "executor",
+    "Root": "C:\\Users\\mon\\AppData\\Local\\JudgeDesk\\JudgeDeskExecutor",
+    "Exists": true,
+    "Files": 7733,
+    "Directories": 696,
+    "Entries": 8429,
+    "AggregateSHA256": "6BB20D8747CDC2873C1B6CF217E63B1D1A1665DC0967520AEE14E97BC5BDDB13",
+    "CapturedAt": "2026-09-22T12:38:25.8481759+07:00"
+  }
+]

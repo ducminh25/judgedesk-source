@@ -1,0 +1,4 @@
+{
+  "success": false,
+  "message": "Toolchain settings cannot change while judging is in progress."
+}

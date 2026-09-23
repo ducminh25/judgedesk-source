@@ -1,0 +1,30 @@
+[
+  {
+    "ProcessId": 19956,
+    "ParentProcessId": 7296,
+    "Name": "node.exe",
+    "ExecutablePath": "C:\\Users\\mon\\AppData\\Local\\Volta\\tools\\image\\node\\22.23.1\\node.exe",
+    "CommandLine": "\"C:\\Users\\mon\\AppData\\Local\\Volta\\tools\\image\\node\\22.23.1\\\\node.exe\"  \"C:\\Users\\mon\\AppData\\Local\\Volta\\tools\\image\\node\\22.23.1\\node_modules\\npm\\bin\\npx-cli.js\" -y chrome-devtools-mcp@latest --autoConnect --no-usage-statistics --no-performance-crux"
+  },
+  {
+    "ProcessId": 9048,
+    "ParentProcessId": 19056,
+    "Name": "node.exe",
+    "ExecutablePath": "C:\\Users\\mon\\AppData\\Local\\Volta\\tools\\image\\node\\22.23.1\\node.exe",
+    "CommandLine": "\"node\"   \"C:\\Users\\mon\\AppData\\Local\\npm-cache\\_npx\\15c61037b1978c83\\node_modules\\.bin\\\\..\\chrome-devtools-mcp\\build\\src\\bin\\chrome-devtools-mcp.js\" --autoConnect --no-usage-statistics --no-performance-crux"
+  },
+  {
+    "ProcessId": 5084,
+    "ParentProcessId": 10468,
+    "Name": "node.exe",
+    "ExecutablePath": "C:\\Users\\mon\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\f53823cd54b14f45\\bin\\node.exe",
+    "CommandLine": "\"C:\\Users\\mon\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\f53823cd54b14f45\\bin\\node.exe\" C:\\Users\\mon\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\f53823cd54b14f45\\bin\\node_modules\\@oai\\cua-repl\\bin\\cua-repl.mjs"
+  },
+  {
+    "ProcessId": 6832,
+    "ParentProcessId": 3892,
+    "Name": "node.exe",
+    "ExecutablePath": "C:\\Users\\mon\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\f53823cd54b14f45\\bin\\node.exe",
+    "CommandLine": "\"C:\\Users\\mon\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\f53823cd54b14f45\\bin\\node.exe\"  ./server.mjs"
+  }
+]

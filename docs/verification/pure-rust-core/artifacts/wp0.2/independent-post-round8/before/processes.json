@@ -1,0 +1,79 @@
+[
+  {
+    "ProcessId": 13320,
+    "ParentProcessId": 16560,
+    "Name": "node.exe",
+    "ExecutablePath": "C:\\Program Files\\Volta\\node.exe",
+    "CommandLine": "\"C:\\Program Files\\Volta\\node.exe\" scripts/run-all-tests.js --filter=api-contracts.test.ts"
+  },
+  {
+    "ProcessId": 17992,
+    "ParentProcessId": 13320,
+    "Name": "cmd.exe",
+    "ExecutablePath": "C:\\WINDOWS\\system32\\cmd.exe",
+    "CommandLine": "\"cmd.exe\" /C node scripts/run-all-tests.js --filter=api-contracts.test.ts"
+  },
+  {
+    "ProcessId": 20172,
+    "ParentProcessId": 17992,
+    "Name": "node.exe",
+    "ExecutablePath": "C:\\Users\\mon\\AppData\\Local\\Volta\\tools\\image\\node\\24.19.0\\node.exe",
+    "CommandLine": "node  scripts/run-all-tests.js --filter=api-contracts.test.ts"
+  },
+  {
+    "ProcessId": 15608,
+    "ParentProcessId": 20172,
+    "Name": "node.exe",
+    "ExecutablePath": "C:\\Users\\mon\\AppData\\Local\\Volta\\tools\\image\\node\\24.19.0\\node.exe",
+    "CommandLine": "C:\\Users\\mon\\AppData\\Local\\Volta\\tools\\image\\node\\24.19.0\\node.exe D:\\Minh\\Code\\judgedesk\\node_modules\\tsx\\dist\\cli.mjs --test --test-concurrency=1 server/api-contracts.test.ts"
+  },
+  {
+    "ProcessId": 4992,
+    "ParentProcessId": 15608,
+    "Name": "node.exe",
+    "ExecutablePath": "C:\\Users\\mon\\AppData\\Local\\Volta\\tools\\image\\node\\24.19.0\\node.exe",
+    "CommandLine": "C:\\Users\\mon\\AppData\\Local\\Volta\\tools\\image\\node\\24.19.0\\node.exe --require D:\\Minh\\Code\\judgedesk\\node_modules\\tsx\\dist\\preflight.cjs --import file:///D:/Minh/Code/judgedesk/node_modules/tsx/dist/loader.mjs --enable-source-maps --test --test-concurrency=1 server/api-contracts.test.ts"
+  },
+  {
+    "ProcessId": 14680,
+    "ParentProcessId": 4992,
+    "Name": "node.exe",
+    "ExecutablePath": "C:\\Users\\mon\\AppData\\Local\\Volta\\tools\\image\\node\\24.19.0\\node.exe",
+    "CommandLine": "C:\\Users\\mon\\AppData\\Local\\Volta\\tools\\image\\node\\24.19.0\\node.exe --use-largepages=off --trace-event-file-pattern=node_trace.${rotation}.log --v8-pool-size=4 --node-snapshot --cpu-prof-interval=1000 --report-signal=SIGUSR2 --tls-cipher-list=TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA256:ECDHE-RSA-AES256-SHA384:DHE-RSA-AES256-SHA384:ECDHE-RSA-AES256-SHA256:DHE-RSA-AES256-SHA256:HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!SRP:!CAMELLIA --secure-heap=0 --secure-heap-min=2 --require=D:\\Minh\\Code\\judgedesk\\node_modules\\tsx\\dist\\preflight.cjs --stack-trace-limit=10 --test-isolation=process --network-family-autoselection-attempt-timeout=250 --enable-source-maps --experimental-addon-modules --heapsnapshot-near-heap-limit=0 --heap-prof-interval=524288 --max-http-header-size=16384 --test-concurrency=1 --test-timeout=0 --test-coverage-branches=0 --test-coverage-functions=0 --test-coverage-lines=0 --watch-kill-signal=SIGTERM --import=file:///D:/Minh/Code/judgedesk/node_modules/tsx/dist/loader.mjs --inspect-port=127.0.0.1:9229 --inspect-publish-uid=stderr,http --require D:\\Minh\\Code\\judgedesk\\node_modules\\tsx\\dist\\preflight.cjs --import file:///D:/Minh/Code/judgedesk/node_modules/tsx/dist/loader.mjs server\\api-contracts.test.ts"
+  },
+  {
+    "ProcessId": 17720,
+    "ParentProcessId": 4916,
+    "Name": "node.exe",
+    "ExecutablePath": "C:\\Users\\mon\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\df473e5367fa2b42\\bin\\node.exe",
+    "CommandLine": "\"C:\\Users\\mon\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\df473e5367fa2b42\\bin\\node.exe\" C:\\Users\\mon\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\df473e5367fa2b42\\bin\\node_modules\\@oai\\cua-repl\\bin\\cua-repl.mjs"
+  },
+  {
+    "ProcessId": 20108,
+    "ParentProcessId": 19824,
+    "Name": "node.exe",
+    "ExecutablePath": "C:\\Users\\mon\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\df473e5367fa2b42\\bin\\node.exe",
+    "CommandLine": "\"C:\\Users\\mon\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\df473e5367fa2b42\\bin\\node.exe\"  ./server.mjs"
+  },
+  {
+    "ProcessId": 14172,
+    "ParentProcessId": 4916,
+    "Name": "node.exe",
+    "ExecutablePath": "C:\\Users\\mon\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\df473e5367fa2b42\\bin\\node.exe",
+    "CommandLine": "\"C:\\Users\\mon\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\df473e5367fa2b42\\bin\\node.exe\" C:\\Users\\mon\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\df473e5367fa2b42\\bin\\node_modules\\@oai\\cua-repl\\bin\\cua-repl.mjs"
+  },
+  {
+    "ProcessId": 5992,
+    "ParentProcessId": 20280,
+    "Name": "node.exe",
+    "ExecutablePath": "C:\\Users\\mon\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\df473e5367fa2b42\\bin\\node.exe",
+    "CommandLine": "\"C:\\Users\\mon\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\df473e5367fa2b42\\bin\\node.exe\"  ./server.mjs"
+  },
+  {
+    "ProcessId": 13716,
+    "ParentProcessId": 4916,
+    "Name": "pwsh.exe",
+    "ExecutablePath": "C:\\Users\\mon\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell\\pwsh.exe",
+    "CommandLine": "\"C:\\Users\\mon\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell\\pwsh.exe\" -Command \"try { [Console]::OutputEncoding=[System.Text.Encoding]::UTF8 } catch {}\n$ErrorActionPreference='Stop'\n$evidence='D:\\Minh\\Code\\judgedesk\\docs\\verification\\pure-rust-core\\artifacts\\wp0.2\\independent-post-round8'\nif(Test-Path -LiteralPath $evidence){ throw \\\"Evidence directory already exists: $evidence\\\" }\nNew-Item -ItemType Directory -Path (Join-Path $evidence 'before') -Force | Out-Null\nSet-Content -LiteralPath (Join-Path $evidence '.judgedesk-verifier-owned-root') -Value 'WP0.2 independent post-Round-8 verification evidence; 2026-09-21 Asia/Bangkok' -Encoding utf8\nfunction Get-StableHash([string]$text){\n  $sha=[System.Security.Cryptography.SHA256]::Create()\n  try { $bytes=[System.Text.UTF8Encoding]::new($false).GetBytes($text); return [Convert]::ToHexString($sha.ComputeHash($bytes)) } finally { $sha.Dispose() }\n}\nfunction Normalize-JsonValue($value){\n  if($null -eq $value){ return $null }\n  if($value -is [System.Management.Automation.PSCustomObject]){\n    $ordered=[ordered]@{}\n    foreach($p in ($value.PSObject.Properties.Name | Sort-Object -CaseSensitive)){ $ordered[$p]=Normalize-JsonValue $value.$p }\n    return $ordered\n  }\n  if($value -is [System.Collections.IDictionary]){\n    $ordered=[ordered]@{}\n    foreach($k in ($value.Keys | Sort-Object -CaseSensitive)){ $ordered[$k]=Normalize-JsonValue $value[$k] }\n    return $ordered\n  }\n  if(($value -is [System.Collections.IEnumerable]) -and -not ($value -is [string])){\n    $items=@(); foreach($item in $value){ $items += ,(Normalize-JsonValue $item) }; return $items\n  }\n  return $value\n}\nfunction Snapshot-Root([string]$name,[string]$root,[string]$outDir){\n  $exists=Test-Path -LiteralPath $root\n  $rows=[System.Collections.Generic.List[object]]::new()\n  $semantic=[System.Collections.Generic.List[object]]::new()\n  if($exists){\n    $items=Get-ChildItem -LiteralPath $root -Force -Recurse -ErrorAction Stop | Sort-Object { [IO.Path]::GetRelativePath($root,$_.FullName) }\n    foreach($item in $items){\n      $rel=[IO.Path]::GetRelativePath($root,$item.FullName).Replace('\\','/')\n      $attrs=$item.Attributes\n      $isReparse=($attrs -band [IO.FileAttributes]::ReparsePoint) -ne 0\n      if($item.PSIsContainer){$type=if($isReparse){'directory-reparse'}else{'directory'};$size=0;$hash='-'}\n      else{$type=if($isReparse){'file-reparse'}else{'file'};$size=$item.Length;$hash=(Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash}\n      $target=''\n      if($isReparse){ try{$target=($item.Target -join '|')}catch{} }\n      $rows.Add([pscustomobject]@{RelativePath=$rel;EntryType=$type;Size=$size;SHA256=$hash;LinkTarget=$target})\n      if(-not $item.PSIsContainer -and ($item.Name -eq '.judgedesk-package.json' -or $rel -in @('toolchains.json','toolchain-discovery-v2.json','toolchain-execution-policy-v1.json','toolchain-distribution-state-v1.json'))){\n        $raw=Get-Content -LiteralPath $item.FullName -Raw\n        try{$parsed=$raw | ConvertFrom-Json -Depth 100; $normalized=Normalize-JsonValue $parsed; $canonical=$normalized | ConvertTo-Json -Depth 100 -Compress; $semantic.Add([pscustomobject]@{RelativePath=$rel;RawSHA256=$hash;CanonicalSHA256=(Get-StableHash $canonical);Content=$normalized})}catch{$semantic.Add([pscustomobject]@{RelativePath=$rel;RawSHA256=$hash;ParseError=$_.Exception.Message})}\n      }\n    }\n  }\n  $lines=@('RelativePath`tEntryType`tSize`tSHA256`tLinkTarget') + ($rows | ForEach-Object { \\\"$($_.RelativePath)`t$($_.EntryType)`t$($_.Size)`t$($_.SHA256)`t$($_.LinkTarget)\\\" })\n  $text=($lines -join \\\"`n\\\")+\\\"`n\\\"\n  $path=Join-Path $outDir \\\"$name.entries.tsv\\\"\n  [IO.File]::WriteAllText($path,$text,[Text.UTF8Encoding]::new($false))\n  $meta=[pscustomobject]@{Name=$name;Root=$root;Exists=$exists;Files=($rows|Where-Object EntryType -Like 'file*').Count;Directories=($rows|Where-Object EntryType -Like 'directory*').Count;Entries=$rows.Count;AggregateSHA256=(Get-StableHash $text);CapturedAt=(Get-Date).ToString('o')}\n  $meta | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $outDir \\\"$name.metadata.json\\\") -Encoding utf8\n  $semantic | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath (Join-Path $outDir \\\"$name.semantic-state.json\\\") -Encoding utf8\n  return $meta\n}\n$before=Join-Path $evidence 'before'\n$metas=@(\n  Snapshot-Root 'themisv2' 'C:\\Users\\mon\\AppData\\Local\\ThemisV2' $before\n  Snapshot-Root 'executor' 'C:\\Users\\mon\\AppData\\Local\\JudgeDesk\\JudgeDeskExecutor' $before\n)\n$metas | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $before 'summary.json') -Encoding utf8\n$proc=Get-CimInstance Win32_Process | Where-Object { $_.Name -match '^(node|judgedesk|judge-executor|cargo|rustc|excel)\\.exe$' -or $_.CommandLine -match 'jd_contract_env_|jd_test_server_appdata_|jd_test_executor_|check-contract-parity|api-contracts' } | Select-Object ProcessId,ParentProcessId,Name,ExecutablePath,CommandLine\n$proc | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $before 'processes.json') -Encoding utf8\nGet-NetTCPConnection -State Listen -ErrorAction SilentlyContinue | Where-Object { $_.LocalPort -ge 3000 } | Sort-Object LocalPort | Select-Object LocalAddress,LocalPort,OwningProcess,State | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $before 'listening-ports.json') -Encoding utf8\n$temp=[IO.Path]::GetTempPath()\nGet-ChildItem -LiteralPath $temp -Force -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'jd_contract_env_*' -or $_.Name -like 'jd_test_server_appdata_*' -or $_.Name -like 'jd_test_executor_*' -or $_.Name -like 'export_*' } | Select-Object FullName,Attributes,CreationTimeUtc,LastWriteTimeUtc | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $before 'temp-roots.json') -Encoding utf8\ntry { Get-MpThreatDetection | Select-Object DetectionID,ThreatID,ThreatName,InitialDetectionTime,LastThreatStatusChangeTime,ActionSuccess,CurrentThreatExecutionStatus,Resources | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $before 'defender-threat-detections.json') -Encoding utf8 } catch { $_ | Out-String | Set-Content -LiteralPath (Join-Path $before 'defender-query-error.txt') -Encoding utf8 }\ntry { Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Windows Defender/Operational'; StartTime=(Get-Date).AddDays(-2)} -ErrorAction Stop | Where-Object { $_.Id -in @(1116,1117,1118,1119,1121,1122,5007) } | Select-Object TimeCreated,Id,LevelDisplayName,Message | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $before 'defender-events.json') -Encoding utf8 } catch { $_ | Out-String | Set-Content -LiteralPath (Join-Path $before 'defender-events-query-error.txt') -Encoding utf8 }\n$metas | Format-Table -AutoSize\nWrite-Output \\\"EVIDENCE=$evidence\\\"\nGet-ChildItem -LiteralPath $before | Select-Object Name,Length | Format-Table -AutoSize\""
+  }
+]

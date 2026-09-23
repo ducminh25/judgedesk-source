@@ -12,6 +12,7 @@ import {
   applyTestEdit,
   createEmptyPolygonConfig,
   createsGroupCycle,
+  distributeTotalScore,
   setGroupDependency,
   TestDetail,
   TestEditPopover
@@ -69,12 +70,30 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
         for (const test of details) {
           loaded.tests[test.name] ??= { points: initialConfig.defaultScore ?? 1 };
         }
+
+        const loadedTotalScore = configData.data?.totalScore ?? initialConfig.totalScore;
+        const currentSum = details.reduce(
+          (acc, test) => addRational(acc, parseRational(loaded.tests[test.name]?.points)),
+          createRational(0)
+        );
+        let resolvedTotalScore: string | null = null;
+        if (loadedTotalScore !== null && loadedTotalScore !== undefined && String(loadedTotalScore).trim() !== "") {
+          const loadedTotalRat = parseRational(loadedTotalScore);
+          resolvedTotalScore = formatRational(loadedTotalRat);
+          if (details.length > 0 && (currentSum.n !== loadedTotalRat.n || currentSum.d !== loadedTotalRat.d)) {
+            const distributed = distributeTotalScore(loaded, loadedTotalScore, details.map(d => d.name));
+            Object.assign(loaded.tests, distributed.tests);
+          }
+        } else if (details.length > 0 && currentSum.n > 0) {
+          resolvedTotalScore = formatRational(currentSum);
+        }
         setPolygonConfig(loaded);
 
         if (configData.success && configData.data) {
           setConfig(previous => ({
             ...previous,
             ...configData.data,
+            totalScore: resolvedTotalScore ?? previous.totalScore ?? null,
             checkerType: configData.data.checkerType || previous.checkerType || "C1",
             compile: normalizeCompileConfig(configData.data.compile ?? previous.compile),
             isInteractive: configData.data.isInteractive ?? previous.isInteractive ?? false,
@@ -84,6 +103,8 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
           setUseStdOut(configData.data.useStdOut ?? configData.data.useStdIO ?? false);
           setInputFile(configData.data.inputFile || `${problemName}.inp`);
           setOutputFile(configData.data.outputFile || `${problemName}.out`);
+        } else if (resolvedTotalScore !== null) {
+          setConfig(previous => ({ ...previous, totalScore: resolvedTotalScore }));
         }
       } catch (error) {
         console.error("Failed to fetch test folders", error);
@@ -121,8 +142,25 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
       : new Set(testDetails.map(test => test.name)));
   };
 
+  const setTotalScore = (val: string | null) => {
+    setConfig(previous => ({ ...previous, totalScore: val }));
+    if (val !== null && val.trim() !== "" && testDetails.length > 0) {
+      setPolygonConfig(previous => distributeTotalScore(previous, val, testDetails.map(t => t.name)));
+    }
+  };
+
   const applyEdit = (edit: TestEditPopover, input: string) => {
-    setPolygonConfig(previous => applyTestEdit(previous, edit, input, selectedTests));
+    setPolygonConfig(previous => {
+      const next = applyTestEdit(previous, edit, input, selectedTests);
+      if (edit.type === "points" || edit.type === "batchPoints") {
+        const nextSum = testDetails.reduce(
+          (acc, test) => addRational(acc, parseRational(next.tests[test.name]?.points)),
+          createRational(0)
+        );
+        setConfig(cfg => ({ ...cfg, totalScore: formatRational(nextSum) }));
+      }
+      return next;
+    });
     if (edit.type.startsWith("batch")) setSelectedTests(new Set());
   };
 
@@ -144,13 +182,22 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
     setIsSaving(true);
     setSaveError("");
     try {
+      const finalTotalScore = config.totalScore !== null && config.totalScore !== undefined && String(config.totalScore).trim() !== ""
+        ? config.totalScore
+        : totalPoints;
+      const testScores: Record<string, number | string> = {};
+      for (const [name, testCfg] of Object.entries(polygonConfig.tests) as [string, PolygonTestConfig][]) {
+        if (testCfg.points !== undefined) {
+          testScores[name] = testCfg.points;
+        }
+      }
       const configToSave = {
         ...polygonConfig,
         checkerType: config.checkerType || "C1",
         memoryLimit: config.memoryLimit ?? 256,
-        totalScore: config.totalScore ?? null,
+        totalScore: finalTotalScore,
         defaultScore: config.defaultScore ?? 1,
-        testScores: config.testScores ?? {},
+        testScores,
         useStdIn,
         useStdOut,
         inputFile,
@@ -166,6 +213,7 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
       });
       onSave(problemName, {
         ...config,
+        totalScore: finalTotalScore,
         checkerType: config.checkerType || "C1",
         useStdIn,
         useStdOut,
@@ -188,6 +236,7 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
   return {
     config,
     setConfig,
+    setTotalScore,
     polygonConfig,
     setPolygonConfig,
     testDetails,

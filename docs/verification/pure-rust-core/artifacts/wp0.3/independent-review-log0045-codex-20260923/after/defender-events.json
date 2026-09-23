@@ -1,0 +1,206 @@
+[
+  {
+    "TimeCreated": "2026-09-23T11:35:51.9904986+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\UX Configuration\\ToastOrSsoTrigger = 0x0\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\UX Configuration\\ToastOrSsoTrigger = 0x1"
+  },
+  {
+    "TimeCreated": "2026-09-23T09:20:59.6325959+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\UX Configuration\\ToastOrSsoTrigger = 0x1\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\UX Configuration\\ToastOrSsoTrigger = 0x0"
+  },
+  {
+    "TimeCreated": "2026-09-23T07:38:01.3743988+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\CoreService\\WdConfigHash = 0xBE7B5966\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\CoreService\\WdConfigHash = 0xB7F6F521"
+  },
+  {
+    "TimeCreated": "2026-09-23T07:27:35.653302+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\ServiceStartStates = 0x1\r\n \tNew value: Default\\ServiceStartStates = 0x0"
+  },
+  {
+    "TimeCreated": "2026-09-23T07:26:45.0042414+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Diagnostics\\InitializingComponentProgress = LoadingEngine\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Diagnostics\\InitializingComponentProgress = ServiceStartedSuccessfully"
+  },
+  {
+    "TimeCreated": "2026-09-23T07:26:45.0031697+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: Default\\ProductAppDataPath = C:\\ProgramData\\Microsoft\\Windows Defender\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\ProductAppDataPath = C:\\ProgramData\\Microsoft\\Windows Defender"
+  },
+  {
+    "TimeCreated": "2026-09-23T07:26:35.5387809+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Diagnostics\\InitializingComponentProgress = InitWcsLibrary\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Diagnostics\\InitializingComponentProgress = LoadingEngine"
+  },
+  {
+    "TimeCreated": "2026-09-23T07:26:35.5376009+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: Default\\ServiceStartStates = 0x0\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\ServiceStartStates = 0x1"
+  },
+  {
+    "TimeCreated": "2026-09-23T07:26:22.4669886+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Diagnostics\\InitializingComponentProgress = InitializeMiscConfigLibrary\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Diagnostics\\InitializingComponentProgress = InitWcsLibrary"
+  },
+  {
+    "TimeCreated": "2026-09-23T07:26:22.4630679+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: Default\\IsServiceRunning = 0x0\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\IsServiceRunning = 0x1"
+  },
+  {
+    "TimeCreated": "2026-09-22T23:15:55.5124683+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Diagnostics\\CleanupComponentProgress = CleanupCompleted\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Diagnostics\\CleanupComponentProgress = RtpPluginStop"
+  },
+  {
+    "TimeCreated": "2026-09-22T19:15:20.9139732+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\CoreService\\WdConfigHash = 0x2B54BC3C\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\CoreService\\WdConfigHash = 0xBE7B5966"
+  },
+  {
+    "TimeCreated": "2026-09-22T18:55:30.3128594+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\UX Configuration\\ToastOrSsoTrigger = 0x0\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\UX Configuration\\ToastOrSsoTrigger = 0x1"
+  },
+  {
+    "TimeCreated": "2026-09-22T11:26:05.7414439+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\UX Configuration\\ToastOrSsoTrigger = 0x1\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\UX Configuration\\ToastOrSsoTrigger = 0x0"
+  },
+  {
+    "TimeCreated": "2026-09-22T09:01:56.5335819+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Features\\EcsConfigs\\ETag\\Tag = \"YijmdmWANbfhG5V0Mnd8bPmBn6LkdVIobUV/5+o0gys=\"\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Features\\EcsConfigs\\ETag\\Tag = \"EOdBB+6rXJwcYi6Ms6Y9HRdJNRdlN8W1roex9r7UYZk=\""
+  },
+  {
+    "TimeCreated": "2026-09-22T09:01:56.5330464+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: \r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Features\\EcsConfigs\\MpFC_EnableCoreSvcUsageHistogram = 0x1"
+  },
+  {
+    "TimeCreated": "2026-09-22T08:54:57.0273854+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\UX Configuration\\ToastOrSsoTrigger = 0x0\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\UX Configuration\\ToastOrSsoTrigger = 0x1"
+  },
+  {
+    "TimeCreated": "2026-09-22T07:41:59.5892669+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Exclusions\\TemporaryPaths\\\\\\?\\D:\\Minh\\Code\\judgedesk\\native-executor\\target\\x86_64-pc-windows-msvc\\release\\judgedesk-native-executor.exe = 0x102\r\n \tNew value: "
+  },
+  {
+    "TimeCreated": "2026-09-22T07:41:59.5676185+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\CoreService\\WdConfigHash = 0x7613A59C\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\CoreService\\WdConfigHash = 0x2B54BC3C"
+  },
+  {
+    "TimeCreated": "2026-09-22T07:31:51.6100739+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\ServiceStartStates = 0x1\r\n \tNew value: Default\\ServiceStartStates = 0x0"
+  },
+  {
+    "TimeCreated": "2026-09-22T07:30:55.2223722+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Diagnostics\\InitializingComponentProgress = LoadingEngine\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Diagnostics\\InitializingComponentProgress = ServiceStartedSuccessfully"
+  },
+  {
+    "TimeCreated": "2026-09-22T07:30:55.2204703+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: Default\\ProductAppDataPath = C:\\ProgramData\\Microsoft\\Windows Defender\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\ProductAppDataPath = C:\\ProgramData\\Microsoft\\Windows Defender"
+  },
+  {
+    "TimeCreated": "2026-09-22T07:30:51.5593006+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Diagnostics\\InitializingComponentProgress = InitWcsLibrary\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Diagnostics\\InitializingComponentProgress = LoadingEngine"
+  },
+  {
+    "TimeCreated": "2026-09-22T07:30:51.5585435+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: Default\\ServiceStartStates = 0x0\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\ServiceStartStates = 0x1"
+  },
+  {
+    "TimeCreated": "2026-09-22T07:30:38.4845477+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Diagnostics\\InitializingComponentProgress = InitializeSampleManager\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Diagnostics\\InitializingComponentProgress = InitWcsLibrary"
+  },
+  {
+    "TimeCreated": "2026-09-22T07:30:37.9160116+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Diagnostics\\InitializingComponentProgress = InitializeMiscConfigLibrary\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Diagnostics\\InitializingComponentProgress = InitializeSampleManager"
+  },
+  {
+    "TimeCreated": "2026-09-22T07:30:37.9131843+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: Default\\IsServiceRunning = 0x0\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\IsServiceRunning = 0x1"
+  },
+  {
+    "TimeCreated": "2026-09-22T06:18:56.5125737+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Diagnostics\\CleanupComponentProgress = CleanupCompleted\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Diagnostics\\CleanupComponentProgress = RtpPluginStop"
+  },
+  {
+    "TimeCreated": "2026-09-22T06:18:39.6424348+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\CoreService\\WdConfigHash = 0x12128C33\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\CoreService\\WdConfigHash = 0x7613A59C"
+  },
+  {
+    "TimeCreated": "2026-09-22T03:40:44.8559105+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Features\\EcsConfigs\\ETag\\Tag = \"kHcLjYe0rw0zP/SDMfnj1Wsbl1FKH+eX6ntsLot/OLg=\"\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Features\\EcsConfigs\\ETag\\Tag = \"YijmdmWANbfhG5V0Mnd8bPmBn6LkdVIobUV/5+o0gys=\""
+  },
+  {
+    "TimeCreated": "2026-09-22T02:40:43.3899806+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: \r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Features\\Controls\\203 = 0x1"
+  },
+  {
+    "TimeCreated": "2026-09-22T02:40:43.3798063+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\CoreService\\WdConfigHash = 0x7775B775\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\CoreService\\WdConfigHash = 0x12128C33"
+  },
+  {
+    "TimeCreated": "2026-09-22T02:40:42.8536143+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Features\\EcsConfigs\\ETag\\Tag = \"EPYxe9O7xurwoOAWcW0ktsmOc4f95Hqt21mp8NUU/Dk=\"\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\Features\\EcsConfigs\\ETag\\Tag = \"kHcLjYe0rw0zP/SDMfnj1Wsbl1FKH+eX6ntsLot/OLg=\""
+  },
+  {
+    "TimeCreated": "2026-09-21T20:01:09.5014065+07:00",
+    "Id": 5007,
+    "LevelDisplayName": "Information",
+    "Message": "Microsoft Defender Antivirus Configuration has changed. If this is an unexpected event you should review the settings as this may be the result of malware.\r\n \tOld value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\CoreService\\WdConfigHash = 0x3ED1FD54\r\n \tNew value: HKLM\\SOFTWARE\\Microsoft\\Windows Defender\\CoreService\\WdConfigHash = 0x7775B775"
+  }
+]

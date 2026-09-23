@@ -1,0 +1,15 @@
+{
+  "status": {
+    "active": true,
+    "contestantsPath": "<TEMP_ROOT>/<TEST_CONTEXT>/contestants",
+    "currentJob": null,
+    "enableLog": false,
+    "lastProcessedJob": null,
+    "osdPath": "<TEMP_ROOT>/<TEST_CONTEXT>",
+    "paused": false,
+    "queueLength": 0,
+    "testPath": "<TEMP_ROOT>/<TEST_CONTEXT>/problems",
+    "totalProcessed": 0
+  },
+  "success": true
+}

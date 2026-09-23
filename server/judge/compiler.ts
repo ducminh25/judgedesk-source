@@ -1561,6 +1561,7 @@ export function normalizeCompilerError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   if (message.includes("GENERATED_FILE_TOO_LARGE")) return "GENERATED_FILE_TOO_LARGE";
   if (message.includes("COMPILER_TIMEOUT")) return "COMPILER_TIMEOUT";
+  if (message.startsWith("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE")) return "TOOLCHAIN_NOT_SANDBOX_COMPATIBLE";
   return message.trim() || "Compilation failed";
 }
 

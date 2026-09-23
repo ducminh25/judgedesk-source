@@ -1,0 +1,10 @@
+{
+  "Name": "executor",
+  "Root": "C:\\Users\\mon\\AppData\\Local\\JudgeDesk\\JudgeDeskExecutor",
+  "Exists": true,
+  "Files": 7733,
+  "Directories": 696,
+  "Entries": 8429,
+  "AggregateSHA256": "91A0B977D8F4A4B48D1CD2E5BF21C61B154DC58A417EBB8A205D8AF3B88C71F3",
+  "CapturedAt": "2026-09-22T08:36:20.3445681+07:00"
+}

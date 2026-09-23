@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { WINDOWS_PICKER_SCRIPT } from "./directory-picker";
+import { WINDOWS_PICKER_SCRIPT } from "./directory-picker.js";
 
 test("Windows directory picker only uses the public FolderBrowserDialog API", () => {
   assert.match(WINDOWS_PICKER_SCRIPT, /FolderBrowserDialog/);

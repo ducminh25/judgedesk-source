@@ -90,7 +90,7 @@ export default function OsdSettingsModal({
 
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-surface-border bg-surface shadow-2xl">
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-surface-border bg-surface shadow-lg">
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-surface-border px-5 py-4 bg-surface-elevated">
           <div className="flex items-center gap-2">
@@ -131,7 +131,7 @@ export default function OsdSettingsModal({
                     : t("osd.statusInactive", { defaultValue: "Chấm trực tuyến đang tắt" })}
                 </p>
                 {status.active && (
-                  <p className="text-xs text-text-muted mt-0.5">
+                  <p className="text-xs text-text-muted mt-0.5 font-mono tabular-nums">
                     {t("osd.stats", {
                       defaultValue: `Hàng đợi: ${status.queueLength} bài | Đã xử lý: ${status.totalProcessed} bài`,
                       queue: status.queueLength,

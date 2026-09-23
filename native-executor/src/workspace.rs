@@ -35,31 +35,64 @@ pub fn initialize_root(platform_root: PathBuf) -> Result<PathBuf, String> {
     Ok(root)
 }
 
-fn ensure_directory(path: &Path, description: &str) -> Result<(), String> {
+fn validate_trusted_directory(path: &Path, description: &str) -> Result<(), String> {
     match fs::symlink_metadata(path) {
-        Ok(metadata) if metadata.file_type().is_dir() && !metadata.file_type().is_symlink() => {
+        Ok(metadata) => {
+            #[cfg(windows)]
+            {
+                use std::os::windows::fs::MetadataExt;
+                if metadata.file_attributes() & 0x400 != 0 {
+                    return Err(format!("{description} is a reparse point"));
+                }
+            }
+            if !metadata.file_type().is_dir() || metadata.file_type().is_symlink() {
+                return Err(format!("{description} is not a trusted directory"));
+            }
             Ok(())
         }
-        Ok(_) => Err(format!("{description} is not a trusted directory")),
-        Err(error) if error.kind() == ErrorKind::NotFound => fs::create_dir_all(path)
-            .map_err(|error| format!("cannot initialize {description}: {error}")),
+        Err(error) => Err(format!("cannot inspect {description}: {error}")),
+    }
+}
+
+fn ensure_directory(path: &Path, description: &str) -> Result<(), String> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => validate_trusted_directory(path, description),
+        Err(error) if error.kind() == ErrorKind::NotFound => {
+            fs::create_dir_all(path)
+                .map_err(|error| format!("cannot initialize {description}: {error}"))?;
+            validate_trusted_directory(path, description)
+        }
         Err(error) => Err(format!("cannot inspect {description}: {error}")),
     }
 }
 
 fn reset_directory(path: &Path, description: &str) -> Result<(), String> {
+    reset_directory_with_contender(path, description, || Ok(()))
+}
+
+fn reset_directory_with_contender<F: FnOnce() -> std::io::Result<()>>(
+    path: &Path,
+    description: &str,
+    before_create: F,
+) -> Result<(), String> {
     match fs::symlink_metadata(path) {
-        Ok(metadata) => {
-            if !metadata.file_type().is_dir() || metadata.file_type().is_symlink() {
-                return Err(format!("{description} is not a trusted directory"));
-            }
+        Ok(_) => {
+            validate_trusted_directory(path, description)?;
             fs::remove_dir_all(path)
                 .map_err(|error| format!("cannot clear {description}: {error}"))?;
         }
         Err(error) if error.kind() == ErrorKind::NotFound => {}
         Err(error) => return Err(format!("cannot inspect {description}: {error}")),
     }
-    fs::create_dir(path).map_err(|error| format!("cannot initialize {description}: {error}"))
+    before_create()
+        .map_err(|error| format!("cannot run {description} create contender: {error}"))?;
+    match fs::create_dir(path) {
+        Ok(()) => validate_trusted_directory(path, description),
+        Err(error) if error.kind() == ErrorKind::AlreadyExists => {
+            validate_trusted_directory(path, description)
+        }
+        Err(error) => Err(format!("cannot initialize {description}: {error}")),
+    }
 }
 
 pub fn inspect_workspace(path: &Path) -> (u64, u32) {
@@ -167,5 +200,118 @@ mod tests {
         let error = initialize_root(platform.0.clone()).unwrap_err();
         assert!(error.contains("workspace cache is not a trusted directory"));
         assert_eq!(fs::read(outside.0.join("sentinel")).unwrap(), b"preserve");
+    }
+
+    #[test]
+    fn test_reset_directory_pre_existing_regular_file_rejected() {
+        use super::reset_directory;
+
+        let test_dir = TestDirectory::new("reset-race-pre-file");
+        let conflict_path = test_dir.0.join("conflict_path");
+        fs::write(&conflict_path, b"not a directory").unwrap();
+
+        let err = reset_directory(&conflict_path, "test cache").unwrap_err();
+        assert!(err.contains("test cache is not a trusted directory"));
+    }
+
+    #[test]
+    fn test_reset_directory_already_exists_winner_refuses_regular_file() {
+        use super::reset_directory_with_contender;
+
+        let test_dir = TestDirectory::new("reset-race-winner-file");
+        let conflict_path = test_dir.0.join("conflict_path");
+
+        // The contender writes a regular file between removal and create_dir
+        let err = reset_directory_with_contender(&conflict_path, "test cache", || {
+            fs::write(&conflict_path, b"winner regular file")
+        })
+        .unwrap_err();
+        assert!(
+            err.contains("test cache is not a trusted directory"),
+            "Expected 'is not a trusted directory', got: {err}"
+        );
+    }
+
+    #[test]
+    fn test_reset_directory_already_exists_winner_refuses_symlink() {
+        use super::reset_directory_with_contender;
+
+        let test_dir = TestDirectory::new("reset-race-symlink");
+        let outside = TestDirectory::new("outside-sentinel-symlink");
+        let sentinel_path = outside.0.join("sentinel.txt");
+        fs::write(&sentinel_path, b"OUTSIDE_SENTINEL_UNTOUCHED").unwrap();
+        let conflict_path = test_dir.0.join("conflict_symlink");
+
+        #[cfg(unix)]
+        let link_created = std::os::unix::fs::symlink(&outside.0, &conflict_path).is_ok();
+        #[cfg(windows)]
+        let link_created = std::os::windows::fs::symlink_dir(&outside.0, &conflict_path).is_ok();
+
+        if link_created {
+            let _ = fs::remove_file(&conflict_path).or_else(|_| fs::remove_dir(&conflict_path));
+            let err = reset_directory_with_contender(&conflict_path, "test cache", || {
+                #[cfg(unix)]
+                {
+                    std::os::unix::fs::symlink(&outside.0, &conflict_path)
+                }
+                #[cfg(windows)]
+                {
+                    std::os::windows::fs::symlink_dir(&outside.0, &conflict_path)
+                }
+            })
+            .unwrap_err();
+            assert!(
+                err.contains("is not a trusted directory") || err.contains("is a reparse point"),
+                "Expected rejection of symlink, got: {err}"
+            );
+            assert_eq!(
+                fs::read(&sentinel_path).unwrap(),
+                b"OUTSIDE_SENTINEL_UNTOUCHED"
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn test_reset_directory_already_exists_winner_refuses_windows_junction() {
+        use super::reset_directory_with_contender;
+
+        let test_dir = TestDirectory::new("reset-race-junction");
+        let outside = TestDirectory::new("outside-sentinel-junction");
+        let sentinel_path = outside.0.join("sentinel.txt");
+        fs::write(&sentinel_path, b"OUTSIDE_JUNCTION_SENTINEL_DATA").unwrap();
+        let conflict_path = test_dir.0.join("conflict_junction");
+
+        let err = reset_directory_with_contender(&conflict_path, "test cache", || {
+            let status = std::process::Command::new("cmd")
+                .args([
+                    "/c",
+                    "mklink",
+                    "/J",
+                    conflict_path.to_str().unwrap(),
+                    outside.0.to_str().unwrap(),
+                ])
+                .status()?;
+            if !status.success() {
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    "mklink /J failed",
+                ));
+            }
+            Ok(())
+        })
+        .unwrap_err();
+
+        assert!(
+            err.contains("test cache is a reparse point"),
+            "Expected 'test cache is a reparse point', got: {err}"
+        );
+        assert_eq!(
+            fs::read(&sentinel_path).unwrap(),
+            b"OUTSIDE_JUNCTION_SENTINEL_DATA",
+            "Outside sentinel file must remain byte-identical"
+        );
+
+        let _ = std::fs::remove_dir(&conflict_path);
     }
 }

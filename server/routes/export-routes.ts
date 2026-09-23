@@ -3,14 +3,19 @@ import crypto from "crypto";
 import path from "path";
 import { raw, type Express } from "express";
 import { TEMP_ROOT } from "../runtime.js";
-import { openScoreWorkbook } from "../export/workbook-opener.js";
+import { openScoreWorkbook, type WorkbookOpenMode } from "../export/workbook-opener.js";
 import {
   decodeScoreExportPayload,
   MAX_SCORE_EXPORT_PAYLOAD_BYTES,
   SCORE_EXPORT_CONTENT_TYPE,
 } from "../../shared/score-export-wire.js";
 
-export function registerExportRoutes(app: Express): void {
+export type WorkbookOpenerFn = (workbookPath: string) => Promise<WorkbookOpenMode>;
+
+export function registerExportRoutes(
+  app: Express,
+  workbookOpener: WorkbookOpenerFn = openScoreWorkbook,
+): void {
   app.post("/api/open-excel", raw({
     type: SCORE_EXPORT_CONTENT_TYPE,
     limit: MAX_SCORE_EXPORT_PAYLOAD_BYTES,
@@ -32,10 +37,10 @@ export function registerExportRoutes(app: Express): void {
         fs.promises.writeFile(diagnosticsPath, diagnosticJson, "utf8"),
       ]);
 
-      const openMode = await openScoreWorkbook(exportPath);
+      const openMode = await workbookOpener(exportPath);
       return res.json({ success: true, path: exportPath, diagnosticsPath, openMode });
-    } catch (error: any) {
-      const message = error.message || "Failed to open workbook.";
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
       const status = /payload|Workbook|Diagnostic JSON/.test(message) ? 400 : 500;
       return res.status(status).json({ success: false, message });
     }

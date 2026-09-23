@@ -1,0 +1,371 @@
+[
+  {
+    "RelativePath": "toolchain-discovery-v2.json",
+    "RawSHA256": "FB9ED4B57287ACAF065206020307969A16DE9B9507BB03E24EE595760E6535DC",
+    "CanonicalSHA256": "116B5676B4DF1F269F5B482FA27BDEB5544CEC5487774661DD8F7CFF0DF4FE46",
+    "Content": {
+      "completedAt": "2026-09-22T05:38:40.489Z",
+      "profiles": {
+        "c-gcc14": [
+          {
+            "candidateId": "10b0640ff86fcdaea79fcccc",
+            "canonicalPath": "C:\\msys64\\ucrt64\\bin\\gcc.exe",
+            "displayPath": "C:\\msys64\\ucrt64\\bin\\gcc.exe",
+            "error": null,
+            "family": "gnu-gcc",
+            "kind": "c",
+            "lastSeenAt": "2026-09-22T05:38:39.742Z",
+            "origin": "path",
+            "pathRank": 19,
+            "profileId": "c-gcc14",
+            "target": "x86_64-w64-mingw32",
+            "version": "16.1.0"
+          },
+          {
+            "candidateId": "2531f40614987f6cdb1b1df2",
+            "canonicalPath": "C:\\Themis\\GCC\\bin\\gcc.exe",
+            "displayPath": "C:\\Themis\\GCC\\bin\\gcc.exe",
+            "error": null,
+            "family": "gnu-gcc",
+            "kind": "c",
+            "lastSeenAt": "2026-09-22T05:38:39.82Z",
+            "origin": "standard-location",
+            "pathRank": null,
+            "profileId": "c-gcc14",
+            "target": "mingw32",
+            "version": "9.2.0"
+          }
+        ],
+        "cpp-legacy-v1": [
+          {
+            "candidateId": "e75c9924c68d4fc1d6f7064f",
+            "canonicalPath": "C:\\msys64\\ucrt64\\bin\\g++.exe",
+            "displayPath": "C:\\msys64\\ucrt64\\bin\\g++.exe",
+            "error": null,
+            "family": "gnu-gcc",
+            "kind": "cpp",
+            "lastSeenAt": "2026-09-22T05:38:39.752Z",
+            "origin": "path",
+            "pathRank": 19,
+            "profileId": "cpp-legacy-v1",
+            "target": "x86_64-w64-mingw32",
+            "version": "16.1.0"
+          },
+          {
+            "candidateId": "0aece8356de3b16623d330ff",
+            "canonicalPath": "C:\\Themis\\GCC\\bin\\g++.exe",
+            "displayPath": "C:\\Themis\\GCC\\bin\\g++.exe",
+            "error": null,
+            "family": "gnu-gcc",
+            "kind": "cpp",
+            "lastSeenAt": "2026-09-22T05:38:39.832Z",
+            "origin": "standard-location",
+            "pathRank": null,
+            "profileId": "cpp-legacy-v1",
+            "target": "mingw32",
+            "version": "9.2.0"
+          }
+        ],
+        "java-temurin21": [
+          {
+            "candidateId": "4c932374ef8ac542416e8e48",
+            "canonicalPath": "C:\\jdk-25.0.3\\bin\\javac.exe",
+            "displayPath": "C:\\jdk-25.0.3\\bin\\javac.exe",
+            "error": null,
+            "family": "java",
+            "kind": "java",
+            "lastSeenAt": "2026-09-22T05:38:39.691Z",
+            "origin": "path",
+            "pathRank": 20,
+            "profileId": "java-temurin21",
+            "target": null,
+            "version": "25.0.3"
+          },
+          {
+            "candidateId": "f716514ff906629c4fe3d8da",
+            "canonicalPath": "C:\\Themis\\JDK\\bin\\javac.exe",
+            "displayPath": "C:\\Themis\\JDK\\bin\\javac.exe",
+            "error": null,
+            "family": "java",
+            "kind": "java",
+            "lastSeenAt": "2026-09-22T05:38:40.108Z",
+            "origin": "standard-location",
+            "pathRank": null,
+            "profileId": "java-temurin21",
+            "target": null,
+            "version": "1.7.0"
+          }
+        ],
+        "pascal-fpc322": {
+          "candidateId": "a18be7fc6b47a912817b9985",
+          "canonicalPath": "C:\\Themis\\FPC\\bin\\i386-win32\\fpc.exe",
+          "displayPath": "C:\\Themis\\FPC\\bin\\i386-win32\\fpc.exe",
+          "error": "probe_timeout",
+          "family": null,
+          "kind": "pascal",
+          "lastSeenAt": "2026-09-22T05:38:39.763Z",
+          "origin": "standard-location",
+          "pathRank": null,
+          "profileId": "pascal-fpc322",
+          "target": null,
+          "version": null
+        },
+        "python-cpython312": [
+          {
+            "candidateId": "19c2e045d90f7e53275ccbb1",
+            "canonicalPath": "C:\\Users\\mon\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+            "displayPath": "C:\\Users\\mon\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+            "error": null,
+            "family": "cpython",
+            "kind": "python",
+            "lastSeenAt": "2026-09-22T05:38:39.731Z",
+            "origin": "path",
+            "pathRank": 15,
+            "profileId": "python-cpython312",
+            "target": null,
+            "version": "3.12.10"
+          },
+          {
+            "candidateId": "de8f3666404a9df86673d2c4",
+            "canonicalPath": "C:\\msys64\\ucrt64\\bin\\python3.exe",
+            "displayPath": "C:\\msys64\\ucrt64\\bin\\python3.exe",
+            "error": null,
+            "family": "cpython",
+            "kind": "python",
+            "lastSeenAt": "2026-09-22T05:38:39.794Z",
+            "origin": "path",
+            "pathRank": 19,
+            "profileId": "python-cpython312",
+            "target": null,
+            "version": "3.14.5"
+          },
+          {
+            "candidateId": "b219f641c427d17af190c4bf",
+            "canonicalPath": "C:\\msys64\\ucrt64\\bin\\python.exe",
+            "displayPath": "C:\\msys64\\ucrt64\\bin\\python.exe",
+            "error": null,
+            "family": "cpython",
+            "kind": "python",
+            "lastSeenAt": "2026-09-22T05:38:39.865Z",
+            "origin": "path",
+            "pathRank": 19,
+            "profileId": "python-cpython312",
+            "target": null,
+            "version": "3.14.5"
+          },
+          {
+            "candidateId": "e4dca1d3840a0da4ed76f4e1",
+            "canonicalPath": "C:\\Themis\\PYTHON\\python.exe",
+            "displayPath": "C:\\Themis\\Python\\python.exe",
+            "error": null,
+            "family": "cpython",
+            "kind": "python",
+            "lastSeenAt": "2026-09-22T05:38:39.95Z",
+            "origin": "standard-location",
+            "pathRank": null,
+            "profileId": "python-cpython312",
+            "target": null,
+            "version": "3.12.4"
+          }
+        ],
+        "scratch-turbowarp-v1": null
+      },
+      "refreshing": false,
+      "registryRevision": 6,
+      "schemaVersion": 2,
+      "status": "complete"
+    }
+  },
+  {
+    "RelativePath": "toolchain-distribution-state-v1.json",
+    "RawSHA256": "8E784761494A9CAD6ABF699A9EA315B578B5645A3C6205900BAE9FBC1779B098",
+    "CanonicalSHA256": "8D616BEB811C28B846756BE9A3C3F3B0B607CE7D2E5D611275C95D6FFB68173B",
+    "Content": {
+      "autoConfiguredRevision": 1,
+      "lastDistribution": "development",
+      "schemaVersion": 1
+    }
+  },
+  {
+    "RelativePath": "toolchain-execution-policy-v1.json",
+    "RawSHA256": "55E1D245F8376B9D1F52A2C8C50A51C8AC0909A21792FF374EFACB9F67A9C4B2",
+    "CanonicalSHA256": "B78A50E9041C371A8DF71DDC49E2CFAF004EFAC10C3C2E32CE56B971AE11786C",
+    "Content": {
+      "allowResourceOnlyLocalExecution": true,
+      "schemaVersion": 1
+    }
+  },
+  {
+    "RelativePath": "toolchains.json",
+    "RawSHA256": "5F1BE9EF03B198D9672124B7E194822250B818842C8C392C054EE0B7605F5A7C",
+    "CanonicalSHA256": "83A570356337C33649A95A17D87EC60410EE51C8338A9C17FF6BF2523DFB1F3E",
+    "Content": {
+      "profiles": {
+        "c-gcc14": {
+          "mode": "managed"
+        },
+        "cpp-legacy-v1": {
+          "localPath": "C:\\Themis\\GCC\\bin\\g++.exe",
+          "mode": "managed"
+        },
+        "java-temurin21": {
+          "mode": "managed"
+        },
+        "pascal-fpc322": {
+          "mode": "managed"
+        },
+        "python-cpython312": {
+          "localPath": "C:\\Users\\mon\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+          "mode": "managed"
+        },
+        "scratch-turbowarp-v1": {
+          "mode": "managed"
+        }
+      },
+      "schemaVersion": 2
+    }
+  },
+  {
+    "RelativePath": "toolchains/fpc-windows-x64/.judgedesk-package.json",
+    "RawSHA256": "D7479BF3F896829665BF4A6B12114BF9BAA3F9C68E63DC0B41976D8500D66663",
+    "CanonicalSHA256": "5B3B755D4B4E8F1492422A50C4158DBB25F3E24AF653C9802C28B37A5F63215E",
+    "Content": {
+      "archiveSha256": "187b62082fd00ff328c83103a87a96a53ceb006677b47f9009019935ae680fdd",
+      "components": [
+        {
+          "id": "fpc.compiler",
+          "kind": "executable",
+          "relativePath": "bin/ppcx64.exe",
+          "roles": "compiler"
+        },
+        {
+          "id": "fpc.root",
+          "kind": "support-root",
+          "relativePath": ".",
+          "roles": "compiler"
+        }
+      ],
+      "entrypointComponentId": "fpc.compiler",
+      "packageId": "fpc-windows-x64",
+      "schemaVersion": 1,
+      "version": "3.2.2"
+    }
+  },
+  {
+    "RelativePath": "toolchains/gcc-windows-x64/.judgedesk-package.json",
+    "RawSHA256": "2BFBAFDDD3C921BF07B4C5C4D6972A9AE2F40E93E9983457D9F27C461ACC61FA",
+    "CanonicalSHA256": "CD05818CACD21F4D1DFF8A092302C44340496B1CA816EF04791708F4B6D1B8A5",
+    "Content": {
+      "archiveSha256": "0da7f5ce533705777ab711871777e09fb8232987c2144547054c726dd00e1a36",
+      "components": [
+        {
+          "id": "gcc.cxx",
+          "kind": "executable",
+          "relativePath": "bin/g++.exe",
+          "roles": "compiler"
+        },
+        {
+          "id": "gcc.c",
+          "kind": "executable",
+          "relativePath": "bin/gcc.exe",
+          "roles": "compiler"
+        },
+        {
+          "id": "gcc.root",
+          "kind": "support-root",
+          "relativePath": ".",
+          "roles": "compiler"
+        }
+      ],
+      "entrypointComponentId": "gcc.cxx",
+      "packageId": "gcc-windows-x64",
+      "schemaVersion": 1,
+      "version": "14.2.0"
+    }
+  },
+  {
+    "RelativePath": "toolchains/python-windows-x64/.judgedesk-package.json",
+    "RawSHA256": "858F79C23585B409F7C57B82322AAA9FE2078722B299397A9E02DB02654DADDD",
+    "CanonicalSHA256": "D34971A410E9325D675E3C0E8CAF397918BBC8D0A4D689016925F6F3A2954D43",
+    "Content": {
+      "archiveSha256": "4c2ae1e966194c9198a19dfb3af653b481bd629c2811e39dd38a8464f382498a",
+      "components": [
+        {
+          "id": "python.runtime",
+          "kind": "executable",
+          "relativePath": "python.exe",
+          "roles": [
+            "submission-runtime",
+            "checker-runtime"
+          ]
+        },
+        {
+          "id": "python.root",
+          "kind": "support-root",
+          "relativePath": ".",
+          "roles": [
+            "submission-runtime",
+            "checker-runtime"
+          ]
+        }
+      ],
+      "entrypointComponentId": "python.runtime",
+      "packageId": "python-windows-x64",
+      "schemaVersion": 1,
+      "version": "3.12.13"
+    }
+  },
+  {
+    "RelativePath": "toolchains/scratch-windows-x64/.judgedesk-package.json",
+    "RawSHA256": "95B48712BE2E74D0F3050FF7FBB0E13F1CCE62E3AFDE979E0DE31E5FCEF6AEE2",
+    "CanonicalSHA256": "33C81E2BEA69D182077B9234268F4F44F2462657789D791B434B9311A47B4C49",
+    "Content": {
+      "archiveSha256": "de4109acd05e76cb5e3662675e5c9bf7fb90678ad79e470f4404fa22a91b49cb",
+      "components": {
+        "id": "scratch.runtime",
+        "kind": "executable",
+        "relativePath": "scratch-run.exe",
+        "roles": "submission-runtime"
+      },
+      "entrypointComponentId": "scratch.runtime",
+      "packageId": "scratch-windows-x64",
+      "schemaVersion": 1,
+      "version": "0.1.7"
+    }
+  },
+  {
+    "RelativePath": "toolchains/temurin21-windows-x64/.judgedesk-package.json",
+    "RawSHA256": "670E566384862EC835BF9EBFD0F75C937605C9DED29FD3975271B64EF8ABE67F",
+    "CanonicalSHA256": "62EBD6D5DDB10B855D4941A0838D1CB899275AEA2C2848378C8A3398C03CC7D2",
+    "Content": {
+      "archiveSha256": "fbeb704c92ccb67c036064ea44137ffc60604660de5f9c6a091f0f63c17f4be2",
+      "components": [
+        {
+          "id": "java.compiler",
+          "kind": "executable",
+          "relativePath": "bin/javac.exe",
+          "roles": "compiler"
+        },
+        {
+          "id": "java.runtime",
+          "kind": "executable",
+          "relativePath": "bin/java.exe",
+          "roles": "submission-runtime"
+        },
+        {
+          "id": "java.root",
+          "kind": "support-root",
+          "relativePath": ".",
+          "roles": [
+            "compiler",
+            "submission-runtime"
+          ]
+        }
+      ],
+      "entrypointComponentId": "java.compiler",
+      "packageId": "temurin21-windows-x64",
+      "schemaVersion": 1,
+      "version": "21.0.12+8"
+    }
+  }
+]

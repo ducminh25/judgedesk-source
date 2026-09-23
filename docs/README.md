@@ -1,7 +1,7 @@
 # JudgeDesk Documentation Index
 
 Chào mừng bạn đến với kho tài liệu chuẩn của dự án **JudgeDesk** (Private Source).  
-Hệ thống tài liệu bao gồm đầy đủ 6 bộ tài liệu chuẩn (Core Specifications) được khảo sát, chuẩn hóa và đồng bộ 100% với phiên bản hiện tại (`v1.5.0` / `v1.5.x`):
+`v1.5.0` là baseline đã phát hành. Nhánh phát triển hiện hướng tới `v1.6.0` với Pure Rust Core; tám file version vẫn giữ ở `1.5.0` cho đến bước bump đồng bộ cuối cùng trước release-candidate gate. Sáu tài liệu cốt lõi bên dưới mô tả baseline sản phẩm và đang được cập nhật cho target mới:
 
 ---
 
@@ -19,6 +19,12 @@ Hệ thống tài liệu bao gồm đầy đủ 6 bộ tài liệu chuẩn (Core
 ---
 
 ## 🛠️ Tài Liệu Kỹ Thuật Bổ Trợ Khác
+* [`pure-rust-core-start-here.md`](./pure-rust-core-start-here.md): Điểm bắt đầu ngắn gọn cho người dùng, Antigravity và Codex; quy tắc conversation, ownership và verification.
+* [`verification/pure-rust-core/STATUS.md`](./verification/pure-rust-core/STATUS.md): Nguồn sự thật hiện tại về package nào READY/đang làm/đang review/DONE/có thể skip.
+* [`verification/pure-rust-core/WORKLOG.md`](./verification/pure-rust-core/WORKLOG.md): Nhật ký append-only về claim, handoff, test evidence, blocker và quyết định review.
+* [`pure-rust-core-detailed-implementation-plan.md`](./pure-rust-core-detailed-implementation-plan.md): Kế hoạch triển khai và kiểm thử chi tiết cho target `v1.6.0`.
+* [`pure-rust-core-next-steps-audit.md`](./pure-rust-core-next-steps-audit.md): Bằng chứng baseline `v1.5.0`, khoảng trống hiện tại và thứ tự công việc tiếp theo.
+* [`pure-rust-core-antigravity-handoff.md`](./pure-rust-core-antigravity-handoff.md): Prompt, flags và quy trình chia work package khi triển khai bằng Gemini 3.8 Flash High trong Antigravity.
 * [`guidelines.md`](../guidelines.md): Bộ quy chuẩn kỹ thuật toàn diện cho lập trình viên & AI Agents (Bắt buộc đọc).
 * [`CONTEST-FORMAT.md`](./CONTEST-FORMAT.md): Đặc tả định dạng container file `.judgedesk` (ZIP layout).
 * [`scratch-integration.md`](./scratch-integration.md): Hướng dẫn nộp bài & đặc tả kỹ thuật chấm bài Scratch (.sb3, .sb2, .sb).
@@ -26,4 +32,3 @@ Hệ thống tài liệu bao gồm đầy đủ 6 bộ tài liệu chuẩn (Core
 * [`BUILDING.md`](../BUILDING.md): Hướng dẫn build và đóng gói installer.
 * [`RELEASING.md`](../RELEASING.md): Quy trình đóng gói và xuất bản release.
 * [`WINDOWS_TEST_CHECKLIST.md`](./WINDOWS_TEST_CHECKLIST.md): Danh mục kiểm thử hệ thống cục bộ trên Windows.
-

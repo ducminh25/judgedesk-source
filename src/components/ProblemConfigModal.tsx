@@ -86,9 +86,9 @@ export default function ProblemConfigModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
       <div
-        className="bg-surface border border-surface-border rounded-lg w-full max-w-6xl shadow-2xl flex flex-col max-h-[95vh]"
+        className="bg-surface border border-surface-border rounded-lg w-full max-w-6xl shadow-lg flex flex-col max-h-[95vh]"
         onClick={() => popover && closePopover()}
       >
         <div className="flex items-center justify-between p-4 border-b border-surface-border bg-surface-elevated">
@@ -135,6 +135,7 @@ export default function ProblemConfigModal({
             setInputFile={editor.setInputFile}
             outputFile={editor.outputFile}
             setOutputFile={editor.setOutputFile}
+            setTotalScore={editor.setTotalScore}
           />
         </div>
 

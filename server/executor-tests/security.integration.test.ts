@@ -10,6 +10,105 @@ interface OwnedMacosTreeGuard {
   directory: string;
 }
 
+interface OwnedWindowsExecutorEnvironment {
+  root: string;
+  hostExecutorRoot: string;
+  hostExecutorState: Map<string, string>;
+  previous: Record<string, string | undefined>;
+}
+
+const TEST_ROOT_MARKER = "judgedesk-test-owned\n";
+
+function snapshotTree(root: string): Map<string, string> {
+  const state = new Map<string, string>();
+  const walk = (directory: string): void => {
+    if (!fs.existsSync(directory)) return;
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const fullPath = path.join(directory, entry.name);
+      const relativePath = path.relative(root, fullPath).replaceAll("\\", "/");
+      if (entry.isSymbolicLink()) {
+        state.set(relativePath, `link:${fs.readlinkSync(fullPath)}`);
+      } else if (entry.isDirectory()) {
+        state.set(relativePath, "directory");
+        walk(fullPath);
+      } else if (entry.isFile()) {
+        const content = fs.readFileSync(fullPath);
+        const hash = crypto.createHash("sha256").update(content).digest("hex");
+        state.set(relativePath, `file:${content.length}:${hash}`);
+      }
+    }
+  };
+  walk(root);
+  return new Map([...state.entries()].sort(([left], [right]) => left.localeCompare(right)));
+}
+
+function provisionWindowsExecutorEnvironment(): OwnedWindowsExecutorEnvironment | null {
+  if (process.platform !== "win32") return null;
+
+  const hostLocalAppData = process.env.LOCALAPPDATA
+    || path.join(os.homedir(), "AppData", "Local");
+  const hostThemisRoot = process.env.THEMIS_APP_DATA_DIR
+    || path.join(hostLocalAppData, "ThemisV2");
+  const hostExecutorRoot = path.join(hostLocalAppData, "JudgeDesk", "JudgeDeskExecutor");
+  const hostExecutorState = snapshotTree(hostExecutorRoot);
+  const keys = [
+    "LOCALAPPDATA",
+    "APPDATA",
+    "TEMP",
+    "TMP",
+    "THEMIS_APP_DATA_DIR",
+  ] as const;
+  const previous: Record<string, string | undefined> = {};
+  for (const key of keys) previous[key] = process.env[key];
+
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "jd_test_executor_security_"));
+  try {
+    fs.writeFileSync(path.join(root, ".judgedesk-test-root"), TEST_ROOT_MARKER, {
+      encoding: "utf8",
+      flag: "wx",
+    });
+    const localAppData = path.join(root, "localappdata");
+    const roamingAppData = path.join(root, "roamingappdata");
+    const temp = path.join(root, "temp");
+    const isolatedThemisRoot = path.join(localAppData, "ThemisV2");
+    fs.mkdirSync(localAppData, { recursive: true });
+    fs.mkdirSync(roamingAppData, { recursive: true });
+    fs.mkdirSync(temp, { recursive: true });
+    const hostPythonPackage = path.join(
+      hostThemisRoot,
+      "toolchains",
+      "python-windows-x64",
+    );
+    if (fs.existsSync(hostPythonPackage)) {
+      fs.cpSync(
+        hostPythonPackage,
+        path.join(isolatedThemisRoot, "toolchains", "python-windows-x64"),
+        { recursive: true, errorOnExist: true },
+      );
+    }
+    process.env.LOCALAPPDATA = localAppData;
+    process.env.APPDATA = roamingAppData;
+    process.env.TEMP = temp;
+    process.env.TMP = temp;
+    process.env.THEMIS_APP_DATA_DIR = isolatedThemisRoot;
+    return { root, hostExecutorRoot, hostExecutorState, previous };
+  } catch (setupError) {
+    const cleanupErrors: unknown[] = [];
+    try {
+      fs.rmSync(root, { recursive: true, force: true });
+    } catch (cleanupError) {
+      cleanupErrors.push(cleanupError);
+    }
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(
+        [setupError, ...cleanupErrors],
+        `Failed to provision and clean isolated Windows executor root at ${root}`,
+      );
+    }
+    throw setupError;
+  }
+}
+
 function provisionMacosTreeGuard(): OwnedMacosTreeGuard | null {
   if (process.platform !== "darwin") return null;
   const keys = [
@@ -46,6 +145,7 @@ function provisionMacosTreeGuard(): OwnedMacosTreeGuard | null {
   return { directory };
 }
 
+const ownedWindowsExecutorEnvironment = provisionWindowsExecutorEnvironment();
 const ownedMacosTreeGuard = provisionMacosTreeGuard();
 const [
   { executorClient },
@@ -74,9 +174,46 @@ const helperBinary = path.join(
     : `judgedesk-executor-${process.arch === "arm64" ? "aarch64" : "x86_64"}-apple-darwin`,
 );
 after(async () => {
-  await executorClient.shutdown();
+  const errors: unknown[] = [];
+  try {
+    await executorClient.shutdown();
+  } catch (error) {
+    errors.push(error);
+  }
   if (ownedMacosTreeGuard) {
-    fs.rmSync(ownedMacosTreeGuard.directory, { recursive: true });
+    try {
+      fs.rmSync(ownedMacosTreeGuard.directory, { recursive: true });
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  if (ownedWindowsExecutorEnvironment) {
+    for (const [key, value] of Object.entries(ownedWindowsExecutorEnvironment.previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    try {
+      fs.rmSync(ownedWindowsExecutorEnvironment.root, { recursive: true, force: true });
+      assert.equal(
+        fs.existsSync(ownedWindowsExecutorEnvironment.root),
+        false,
+        `isolated Windows executor root still exists: ${ownedWindowsExecutorEnvironment.root}`,
+      );
+    } catch (error) {
+      errors.push(error);
+    }
+    try {
+      assert.deepEqual(
+        snapshotTree(ownedWindowsExecutorEnvironment.hostExecutorRoot),
+        ownedWindowsExecutorEnvironment.hostExecutorState,
+        "real JudgeDeskExecutor AppData changed during the security integration suite",
+      );
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  if (errors.length > 0) {
+    throw new AggregateError(errors, "Security integration teardown failed.");
   }
 });
 
@@ -104,8 +241,8 @@ test("macOS Seatbelt contract rejects every process-group escape path by role", 
     path.join(process.cwd(), "native-executor/src/platform/macos.rs"),
     "utf8",
   );
-  const executorMain = fs.readFileSync(
-    path.join(process.cwd(), "native-executor/src/main.rs"),
+  const securityProbe = fs.readFileSync(
+    path.join(process.cwd(), "native-executor/src/security_probe.rs"),
     "utf8",
   );
   assert.match(
@@ -120,10 +257,10 @@ test("macOS Seatbelt contract rejects every process-group escape path by role", 
   assert.match(macosPlatform, /setsidBlockedWithEperm/);
   assert.match(macosPlatform, /posixSpawnGroupBlockedWithEperm/);
   assert.match(macosPlatform, /forbiddenExecBlockedWithEperm/);
-  assert.match(executorMain, /libc::POSIX_SPAWN_SETPGROUP/);
-  assert.match(executorMain, /spawn_result == libc::EPERM/);
-  assert.match(executorMain, /result < 0 && error == libc::EPERM && group_unchanged/);
-  assert.match(executorMain, /libc::execve/);
+  assert.match(securityProbe, /libc::POSIX_SPAWN_SETPGROUP/);
+  assert.match(securityProbe, /spawn_result == libc::EPERM/);
+  assert.match(securityProbe, /result < 0 && error == libc::EPERM && group_unchanged/);
+  assert.match(securityProbe, /libc::execve/);
 });
 
 test("startup self-test proves the platform boundaries before hostile fixtures run", async () => {

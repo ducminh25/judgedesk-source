@@ -27,3 +27,24 @@ export function canExportScoreboard(
 ): boolean {
   return contestantNames.length > 0 || problemNames.length > 0;
 }
+
+export type JudgeDisabledReason =
+  | "runnerUnavailable"
+  | "missingData"
+  | "noSelection";
+
+export function getJudgeDisabledReason(
+  availability: JudgeAvailability,
+): JudgeDisabledReason | null {
+  if (!availability.secureRunnerReady) {
+    return "runnerUnavailable";
+  }
+  if (!availability.contestantsPath.trim() || !availability.testsPath.trim()) {
+    return "missingData";
+  }
+  if (availability.contestantNames.length === 0 || availability.problemNames.length === 0) {
+    return "noSelection";
+  }
+  return null;
+}
+

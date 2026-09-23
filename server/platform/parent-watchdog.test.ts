@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parentProcessIsMissing, startParentWatchdog } from "./parent-watchdog";
+import { parentProcessIsMissing, startParentWatchdog } from "./parent-watchdog.js";
 
 test("parent watchdog is disabled without a valid Tauri parent PID", () => {
   assert.equal(parentProcessIsMissing(undefined), false);

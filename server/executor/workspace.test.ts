@@ -5,13 +5,16 @@ import path from "node:path";
 import test from "node:test";
 import { getDescriptorForHost } from "../toolchains/manifest.js";
 import type { ResolvedToolchain } from "../toolchains/types.js";
+import { executorClient } from "./client.js";
 import {
   cloneRegularDirectory,
+  createExecutorWorkspace,
   executorRelativeCanonicalPath,
   inspectRegularDirectory,
   managedCacheMarker,
   managedToolchainSourceRoot,
   prepareManagedToolchainExecutable,
+  sweepStaleQuarantines,
 } from "./workspace.js";
 
 test("managed cache markers bind receipt-backed copies to the package digest", () => {
@@ -244,4 +247,107 @@ test("workspace directory cloning rejects symlinks without leaving a partial cop
     /rejects symbolic links/,
   );
   assert.equal(fs.existsSync(destination), false);
+});
+
+test("sweepStaleQuarantines purges unlocked quarantined directories", (t) => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "judgedesk-quarantine-sweep-"),
+  );
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const normalWorkspace = path.join(root, "run_normal_123");
+  const quarantinedWorkspace = path.join(root, "run_locked_456.quarantine.123456");
+  fs.mkdirSync(normalWorkspace);
+  fs.mkdirSync(quarantinedWorkspace);
+  fs.writeFileSync(path.join(normalWorkspace, "stdout.txt"), "ok");
+  fs.writeFileSync(path.join(quarantinedWorkspace, "stdout.txt"), "locked");
+
+  sweepStaleQuarantines(root);
+
+  assert.equal(fs.existsSync(normalWorkspace), true);
+  assert.equal(fs.existsSync(quarantinedWorkspace), false);
+});
+
+test("sweepStaleQuarantines fails closed when a quarantine cannot be removed", (t) => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "jd_test_quarantine_fail_closed_"),
+  );
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const quarantinedWorkspace = path.join(root, "run_locked_456.quarantine.123456");
+  fs.mkdirSync(quarantinedWorkspace);
+
+  assert.throws(
+    () => sweepStaleQuarantines(root, {
+      removeSync: () => {
+        throw new Error("EPERM: simulated quarantine lock");
+      },
+    }),
+    (error: unknown) => {
+      assert(error instanceof Error);
+      assert.match(error.message, /Failed to clean stale executor quarantine/);
+      assert.match(error.message, /EPERM: simulated quarantine lock/);
+      assert.match(error.message, /run_locked_456\.quarantine\.123456/);
+      return true;
+    },
+  );
+  assert.equal(fs.existsSync(quarantinedWorkspace), true);
+});
+
+test("executor workspace dispose fails closed when deletion fails", async (t) => {
+  const root = fs.mkdtempSync(
+    path.join(os.tmpdir(), "jd_test_ws_fail_closed_"),
+  );
+  fs.mkdirSync(path.join(root, "workspaces"), { recursive: true });
+  t.after(() => {
+    try {
+      fs.rmSync(root, { recursive: true, force: true });
+    } catch {
+      // ignore
+    }
+  });
+
+  const origStart = executorClient.start.bind(executorClient);
+  executorClient.start = async () => ({
+    ready: true,
+    mode: "windows-lpac-job",
+    executorVersion: "1.5.0",
+    executorRoot: root,
+    diagnostics: [],
+    networkBlocked: true,
+    filesystemIsolated: true,
+    processTreeControlled: true,
+    memoryLimitSupported: true,
+  });
+  t.after(() => {
+    executorClient.start = origStart;
+  });
+
+  let shouldFail = true;
+  const simulatedRmSync = (target: string, opts?: fs.RmOptions) => {
+    if (shouldFail) {
+      throw new Error("EPERM: operation not permitted");
+    }
+    fs.rmSync(target, opts);
+  };
+
+  const workspace = await createExecutorWorkspace({ rmSync: simulatedRmSync });
+  const testFile = path.join(workspace.path, "test.txt");
+  fs.writeFileSync(testFile, "test-data");
+
+  // Attempt dispose while rmSync fails: must throw fail-closed and report workspace.path
+  assert.throws(
+    () => workspace.dispose(),
+    (err: unknown) => {
+      assert(err instanceof Error);
+      assert(err.message.includes("Failed to clean up executor workspace at"));
+      assert(err.message.includes(workspace.path));
+      assert(err.message.includes("EPERM"));
+      return true;
+    },
+  );
+  assert.equal(fs.existsSync(workspace.path), true);
+
+  // When failure condition clears, dispose succeeds cleanly
+  shouldFail = false;
+  workspace.dispose();
+  assert.equal(fs.existsSync(workspace.path), false);
 });

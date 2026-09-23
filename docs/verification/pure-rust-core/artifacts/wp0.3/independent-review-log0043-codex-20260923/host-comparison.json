@@ -1,0 +1,79 @@
+{
+  "checkedAt": "2026-09-23T10:19:33.3712509+07:00",
+  "checks": [
+    {
+      "name": "themisv2.entries.tsv",
+      "beforeSha256": "AF26B3A4A0AB63121824C0F14AC2EB88391A13E0A9C04E51DE4C314CD31AE095",
+      "afterSha256": "AF26B3A4A0AB63121824C0F14AC2EB88391A13E0A9C04E51DE4C314CD31AE095",
+      "equal": true
+    },
+    {
+      "name": "themisv2.semantic-state.json",
+      "beforeSha256": "CE1F31D69F40F5B8F0F2067B4A927573979C49F074F786256667A25BF56E8902",
+      "afterSha256": "CE1F31D69F40F5B8F0F2067B4A927573979C49F074F786256667A25BF56E8902",
+      "equal": true
+    },
+    {
+      "name": "executor.entries.tsv",
+      "beforeSha256": "4D9647B411010692FB31B817E004E384B10B521007535421D2EAB97CCADC111E",
+      "afterSha256": "4D9647B411010692FB31B817E004E384B10B521007535421D2EAB97CCADC111E",
+      "equal": true
+    },
+    {
+      "name": "executor.semantic-state.json",
+      "beforeSha256": "BD3197D35D6C7BF61198EDF848071AC61FADE7094E1DA0A0E225F2C172569046",
+      "afterSha256": "BD3197D35D6C7BF61198EDF848071AC61FADE7094E1DA0A0E225F2C172569046",
+      "equal": true
+    },
+    {
+      "name": "listening-ports.json",
+      "beforeSha256": "394BBDE06DDC463B207B624072057FEC6B28663B27241E88C65669BC06BE556A",
+      "afterSha256": "394BBDE06DDC463B207B624072057FEC6B28663B27241E88C65669BC06BE556A",
+      "equal": true
+    },
+    {
+      "name": "temp-roots.json",
+      "beforeSha256": "21757FDF501E83753E002C845DEE81E094A670ED50F1C40457740C7B456740EE",
+      "afterSha256": "21757FDF501E83753E002C845DEE81E094A670ED50F1C40457740C7B456740EE",
+      "equal": true
+    },
+    {
+      "name": "defender-threat-detections.json",
+      "beforeSha256": "2F29BCBB1C888D3EF6D396DB8C0A9B8CB5C17792C2C043F611216968AB9323AD",
+      "afterSha256": "2F29BCBB1C888D3EF6D396DB8C0A9B8CB5C17792C2C043F611216968AB9323AD",
+      "equal": true
+    },
+    {
+      "name": "defender-events.json",
+      "beforeSha256": "A3349EB8F783E9A4CF7A8161C2FC44CF9ECE55C4FDCFBEF1D44F142DA573EE29",
+      "afterSha256": "A3349EB8F783E9A4CF7A8161C2FC44CF9ECE55C4FDCFBEF1D44F142DA573EE29",
+      "equal": true
+    }
+  ],
+  "processIdsBefore": [
+    10624,
+    16632,
+    19956,
+    9048,
+    16220,
+    2392,
+    17068,
+    13668,
+    5084,
+    6832
+  ],
+  "processIdsAfter": [
+    10624,
+    16632,
+    19956,
+    9048,
+    16220,
+    2392,
+    17068,
+    13668,
+    5084,
+    6832
+  ],
+  "processIdsEqual": true,
+  "allEqual": true
+}

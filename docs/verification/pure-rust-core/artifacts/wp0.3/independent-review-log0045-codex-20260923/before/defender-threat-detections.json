@@ -1,0 +1,50 @@
+[
+  {
+    "DetectionID": "{C2B10338-D0D0-4C76-9345-696F559054F8}",
+    "ThreatID": 2147731250,
+    "ThreatName": null,
+    "InitialDetectionTime": "2026-09-21T12:36:03.371+07:00",
+    "LastThreatStatusChangeTime": "2026-09-21T12:36:39.359+07:00",
+    "ActionSuccess": true,
+    "CurrentThreatExecutionStatus": null,
+    "Resources": [
+      "file:_D:\\Minh\\Code\\judgedesk\\src-tauri\\binaries\\judgedesk-executor-x86_64-pc-windows-msvc.exe"
+    ]
+  },
+  {
+    "DetectionID": "{630742B0-662E-4730-9A39-2BC8DE62300A}",
+    "ThreatID": 2147731250,
+    "ThreatName": null,
+    "InitialDetectionTime": "2026-09-21T12:12:25.418+07:00",
+    "LastThreatStatusChangeTime": "2026-09-21T12:12:57.934+07:00",
+    "ActionSuccess": true,
+    "CurrentThreatExecutionStatus": null,
+    "Resources": [
+      "file:_D:\\Minh\\Code\\judgedesk\\native-executor\\target\\x86_64-pc-windows-msvc\\release\\judgedesk-native-executor.exe"
+    ]
+  },
+  {
+    "DetectionID": "{41499128-540F-4D57-9F24-7AC61F781A70}",
+    "ThreatID": 2147731250,
+    "ThreatName": null,
+    "InitialDetectionTime": "2026-09-21T11:58:17.719+07:00",
+    "LastThreatStatusChangeTime": "2026-09-21T11:58:53.035+07:00",
+    "ActionSuccess": true,
+    "CurrentThreatExecutionStatus": null,
+    "Resources": [
+      "file:_C:\\Users\\mon\\AppData\\Local\\JudgeDesk\\JudgeDeskExecutor\\workspaces\\startup_self_test\\probe.exe"
+    ]
+  },
+  {
+    "DetectionID": "{7817B296-DC15-4279-BA23-D01D17EF7D48}",
+    "ThreatID": 2147731250,
+    "ThreatName": null,
+    "InitialDetectionTime": "2026-09-21T11:59:00.171+07:00",
+    "LastThreatStatusChangeTime": "2026-09-21T11:59:36.72+07:00",
+    "ActionSuccess": true,
+    "CurrentThreatExecutionStatus": null,
+    "Resources": [
+      "file:_D:\\Minh\\Code\\judgedesk\\src-tauri\\binaries\\judgedesk-executor-x86_64-pc-windows-msvc.exe"
+    ]
+  }
+]

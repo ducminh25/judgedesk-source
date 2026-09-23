@@ -1619,8 +1619,12 @@ export async function loadOfficialManifest(
     options.manifestUrl ||
     process.env.THEMIS_TOOLCHAIN_MANIFEST_URL ||
     DEFAULT_TOOLCHAIN_MANIFEST_URL;
+  const defaultBundledPath = path.join(RESOURCE_ROOT, "toolchains-manifest.json");
+  const fallbackRepoPath = path.resolve("build", "distribution-resources", "toolchains-manifest.json");
   const bundledManifestPath = options.bundledManifestPath
-    ?? path.join(RESOURCE_ROOT, "toolchains-manifest.json");
+    ?? (fs.statSync(defaultBundledPath, { throwIfNoEntry: false })?.isFile()
+      ? defaultBundledPath
+      : fallbackRepoPath);
   const useBundledManifest = !options.forceRefresh
     && fs.statSync(bundledManifestPath, { throwIfNoEntry: false })?.isFile();
   const sourceKey = useBundledManifest
@@ -1648,15 +1652,31 @@ export async function loadOfficialManifest(
     }
   } else {
     const fetchImpl = options.fetchImpl || fetch;
-    const response = await fetchImpl(manifestUrl, {
-      headers: { Accept: "application/json" },
-      redirect: "follow",
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (!response.ok) {
-      throw new Error(`Toolchain manifest request failed (${response.status}).`);
+    try {
+      const response = await fetchImpl(manifestUrl, {
+        headers: { Accept: "application/json" },
+        redirect: "follow",
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!response.ok) {
+        throw new Error(`Toolchain manifest request failed (${response.status}).`);
+      }
+      document = await response.json();
+    } catch (networkError) {
+      if (fs.statSync(bundledManifestPath, { throwIfNoEntry: false })?.isFile()) {
+        const bytes = fs.readFileSync(bundledManifestPath);
+        if (bytes.byteLength === 0 || bytes.byteLength > 4 * 1024 * 1024) {
+          throw new Error("Bundled toolchain manifest has an invalid size.");
+        }
+        try {
+          document = JSON.parse(bytes.toString("utf8"));
+        } catch {
+          throw new Error("Bundled toolchain manifest is not valid JSON.");
+        }
+      } else {
+        throw networkError;
+      }
     }
-    document = await response.json();
   }
   const toolchains = validateManifestDocument(document, {
     trustedPublicKeys: options.trustedPublicKeys,
@@ -1676,9 +1696,13 @@ export function loadBundledOfficialManifestSync(
     trustedPublicKeys?: Readonly<Record<string, string>>;
   } = {},
 ): ToolchainDescriptor[] {
+  const defaultBundledPath = path.join(RESOURCE_ROOT, "toolchains-manifest.json");
+  const fallbackRepoPath = path.resolve("build", "distribution-resources", "toolchains-manifest.json");
   const filePath = path.resolve(
     options.bundledManifestPath
-      ?? path.join(RESOURCE_ROOT, "toolchains-manifest.json"),
+      ?? (fs.statSync(defaultBundledPath, { throwIfNoEntry: false })?.isFile()
+        ? defaultBundledPath
+        : fallbackRepoPath),
   );
   const metadata = fs.statSync(filePath, { throwIfNoEntry: false });
   if (

@@ -109,7 +109,13 @@ export async function purgeCachedManagedToolchain(
   fs.rmSync(cacheRoot, { recursive: true, force: true });
 }
 
-export async function createExecutorWorkspace(): Promise<ExecutorWorkspace> {
+export interface CreateExecutorWorkspaceOptions {
+  rmSync?: (target: string, options?: fs.RmOptions) => void;
+}
+
+export async function createExecutorWorkspace(
+  options?: CreateExecutorWorkspaceOptions,
+): Promise<ExecutorWorkspace> {
   const health = await executorClient.start();
   if (!health.ready) throw new Error(health.diagnostics.join("; ") || "SECURE_RUNNER_UNAVAILABLE");
   const id = crypto.randomUUID().replaceAll("-", "_");
@@ -147,14 +153,39 @@ export async function createExecutorWorkspace(): Promise<ExecutorWorkspace> {
     },
     dispose() {
       try {
-        fs.rmSync(workspacePath, { recursive: true, force: true });
+        (options?.rmSync ?? fs.rmSync)(workspacePath, { recursive: true, force: true });
       } catch (error) {
-        const quarantine = `${workspacePath}.quarantine.${Date.now()}`;
-        try { fs.renameSync(workspacePath, quarantine); } catch { /* Startup cleanup retries it. */ }
-        console.warn(`[Executor] Workspace cleanup deferred: ${error instanceof Error ? error.message : String(error)}`);
+        throw new Error(
+          `Failed to clean up executor workspace at ${workspacePath}: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     },
   };
+}
+
+export interface SweepStaleQuarantinesOptions {
+  removeSync?: (target: string, options?: fs.RmOptions) => void;
+}
+
+export function sweepStaleQuarantines(
+  workspacesRoot: string,
+  options?: SweepStaleQuarantinesOptions,
+): void {
+  if (!fs.existsSync(workspacesRoot)) return;
+  const rmSync = options?.removeSync ?? ((target, opts) => fs.rmSync(target, opts));
+  const entries = fs.readdirSync(workspacesRoot, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.isDirectory() && entry.name.includes(".quarantine.")) {
+      const fullPath = path.join(workspacesRoot, entry.name);
+      try {
+        rmSync(fullPath, { recursive: true, force: true });
+      } catch (error) {
+        throw new Error(
+          `Failed to clean stale executor quarantine at ${fullPath}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+  }
 }
 
 export async function importManagedToolchain(
@@ -165,9 +196,28 @@ export async function importManagedToolchain(
   packageDigest?: string,
 ): Promise<{ executableId: string; executablePath: string; root: string }> {
   const health = await executorClient.start();
-  const managedRoot = path.resolve(process.env.LOCALAPPDATA || "", "ThemisV2", "toolchains");
+  const hostToolchains = path.resolve(
+    process.env.USERPROFILE || os.homedir(),
+    "AppData",
+    "Local",
+    "ThemisV2",
+    "toolchains",
+  );
+  const rawManagedRoot = process.env.THEMIS_APP_DATA_DIR
+    ? path.join(process.env.THEMIS_APP_DATA_DIR, "toolchains")
+    : path.resolve(process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"), "ThemisV2", "toolchains");
+  const managedRoot = fs.existsSync(rawManagedRoot)
+    ? fs.realpathSync(rawManagedRoot)
+    : rawManagedRoot;
+  const canonicalHostToolchains = fs.existsSync(hostToolchains)
+    ? fs.realpathSync(hostToolchains)
+    : hostToolchains;
   const canonicalExecutable = fs.realpathSync(executablePath);
-  if (process.platform === "win32" && !isDescendant(managedRoot, canonicalExecutable)) {
+  if (
+    process.platform === "win32"
+    && !isDescendant(managedRoot, canonicalExecutable)
+    && !isDescendant(canonicalHostToolchains, canonicalExecutable)
+  ) {
     throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
   }
   const descriptor = getDescriptorForHost(os.platform(), os.arch(), kind);

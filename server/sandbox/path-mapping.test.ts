@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mapWindowsPath } from "./path-mapping";
+import { mapWindowsPath } from "./path-mapping.js";
 
 test("sandbox path mapping converts drive paths and preserves non-drive paths", () => {
   assert.equal(mapWindowsPath("D:\\Judge\\temp", "/mnt"), "/mnt/d/Judge/temp");

@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { FileText, RefreshCw, Settings2, Trash2 } from "lucide-react";
-import type { ScoreboardActionTarget } from "../features/scoreboard/Scoreboard";
+import type { ScoreboardActionTarget } from "../features/scoreboard/Scoreboard.js";
 import { useTranslation } from "react-i18next";
 
 interface Props {
@@ -50,7 +50,7 @@ export default function EntityActionMenu({
       />
       <div
         role="menu"
-        className="fixed z-[61] w-52 overflow-hidden rounded-md border border-surface-border-strong bg-surface-elevated py-1 shadow-2xl"
+        className="fixed z-[61] w-52 overflow-hidden rounded-md border border-surface-border-strong bg-surface-elevated py-1 shadow-lg"
         style={{ left: target.x, top: target.y }}
       >
         {target.type === "problem" && (

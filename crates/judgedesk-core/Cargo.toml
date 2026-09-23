@@ -1,0 +1,29 @@
+[package]
+name = "judgedesk-core"
+version = "1.5.0"
+edition = "2021"
+license = "MIT"
+autobins = false
+
+[features]
+default = []
+test-server = []
+
+[[bin]]
+name = "server"
+path = "src/bin/server.rs"
+
+[[bin]]
+name = "test-server"
+path = "src/bin/test_server.rs"
+required-features = ["test-server"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+judgedesk-native-executor = { path = "../../native-executor" }
+tokio = { version = "1", features = ["full"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }

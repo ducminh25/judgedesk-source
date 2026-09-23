@@ -1,0 +1,50 @@
+JUDGEDESK END USER LICENSE AGREEMENT (EULA)
+============================================
+Version: 1.5.0
+Copyright (c) 2026 Mon (JudgeDesk Project). All Rights Reserved.
+
+PLEASE READ THIS END USER LICENSE AGREEMENT CAREFULLY BEFORE INSTALLING OR
+USING JUDGEDESK. BY INSTALLING OR USING THE SOFTWARE, YOU AGREE TO BE BOUND
+BY THE TERMS OF THIS AGREEMENT.
+
+1. LICENSE GRANT
+----------------
+The Author grants you a personal, non-exclusive, revocable, and free license
+to install and use JudgeDesk solely for personal, non-commercial, educational,
+and competitive programming training purposes (e.g., classroom teaching,
+training clubs, student practice, and non-profit local contests).
+
+You may distribute unmodified official installer packages of the Software
+to other students and educators free of charge.
+
+2. COMMERCIAL RESTRICTIONS
+--------------------------
+You may NOT use, sell, rent, lease, sublicense, distribute, or bundle the
+Software for any commercial purpose or paid service without express prior
+written permission from the Author.
+
+3. REVERSE ENGINEERING & MODIFICATION PROHIBITION
+-------------------------------------------------
+You may NOT reverse-engineer, decompile, disassemble, modify, adapt, translate,
+extract binary assets/components from, or attempt to derive the source code
+of the Software, nor may you bypass or disable the sandbox security boundaries
+(such as Windows AppContainer or macOS Seatbelt isolation).
+
+4. INTELLECTUAL PROPERTY & TRADEMARKS
+-------------------------------------
+"JudgeDesk", the JudgeDesk logo, icon, and all associated branding are the
+exclusive intellectual property of the Author (Mon). No ownership rights
+are transferred to you under this Agreement.
+
+5. UPDATES
+----------
+The Software may periodically query official release endpoints to discover
+and apply digitally signed in-app updates and security patches.
+
+6. DISCLAIMER OF WARRANTY & LIMITATION OF LIABILITY
+---------------------------------------------------
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE,
+ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.

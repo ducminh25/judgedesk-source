@@ -1,0 +1,17 @@
+{
+  "cases": 24,
+  "physicalFixtureFiles": 111,
+  "physicalFilesWithValidator": 112,
+  "fixtureDirectories": 50,
+  "declaredEntries": 116,
+  "regularFiles": 110,
+  "structureDescriptors": 1,
+  "emptyDirectories": 1,
+  "expectedAbsences": 4,
+  "fixtureBytes": 4633,
+  "physicalBytesIncludingValidator": 26756,
+  "uniqueCoverageTags": 29,
+  "manifestSha256": "86BD0569484227C40E4EB38305B9496A99A094DB60E35FF5D6EF02AB0C47A0FF",
+  "schemaSha256": "2A8F44944D61B7554F73EF31BC02C633DA2376A4C77B5AD956F06C94BFBBDA65",
+  "corpusAggregateSha256": "B92B0BD34C580AB70F82B44EFA42B7EF6A54AB478A60EC0F62115AD2344BAFCD"
+}

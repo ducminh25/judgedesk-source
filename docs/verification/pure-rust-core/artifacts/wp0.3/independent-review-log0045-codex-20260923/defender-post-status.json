@@ -1,0 +1,7 @@
+{
+  "AMServiceEnabled": true,
+  "AntivirusEnabled": true,
+  "RealTimeProtectionEnabled": true,
+  "IoavProtectionEnabled": true,
+  "AntispywareEnabled": true
+}

@@ -13,13 +13,16 @@ import { startParentWatchdog } from "./server/platform/parent-watchdog.js";
 import { startInitialToolchainDiscovery } from "./server/toolchains/discovery.js";
 import { startBackgroundJudgePrewarm } from "./server/judge/background-prewarm.js";
 import { migrateLegacyExecutionPolicy } from "./server/toolchains/migration.js";
+import { serverLifecycle } from "./server/platform/server-lifecycle.js";
 
 startParentWatchdog(process.env.JUDGEDESK_PARENT_PID, async () => {
   console.error("[Tauri Shell] Parent process ended; shutting down backend sidecars.");
   try {
-    await executorClient.shutdown();
-  } finally {
+    await serverLifecycle.drain();
     process.exit(0);
+  } catch (err) {
+    console.error("[Server Teardown] Parent watchdog drain failed:", err);
+    process.exit(1);
   }
 });
 
@@ -74,11 +77,20 @@ async function startServer() {
   registerSystemRoutes(app);
   registerProblemRoutes(app);
   registerExportRoutes(app);
-  registerToolchainRoutes(app);
+  registerToolchainRoutes(
+    app,
+    undefined,
+    undefined,
+    serverLifecycle,
+  );
   // Fast discovery is passive and asynchronous. Cached state remains available
   // immediately while every backend launch refreshes it in the background.
-  startInitialToolchainDiscovery();
-  startBackgroundJudgePrewarm();
+  void serverLifecycle.runBackgroundOperation(async () => {
+    await startInitialToolchainDiscovery();
+  });
+  void serverLifecycle.runBackgroundOperation(async () => {
+    await startBackgroundJudgePrewarm();
+  });
 
   registerBatchJudgeRoute(app);
   registerOsdRoutes(app);
@@ -108,7 +120,13 @@ async function startServer() {
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {
-    void executorClient.shutdown().finally(() => process.exit(0));
+    serverLifecycle
+      .drain()
+      .then(() => process.exit(0))
+      .catch((err) => {
+        console.error(`[Server Teardown] Teardown failed on ${signal}:`, err);
+        process.exit(1);
+      });
   });
 }
 

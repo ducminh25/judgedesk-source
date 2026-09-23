@@ -26,6 +26,9 @@ tauri-plugin-updater = "2"
 serde_json = "1"
 walkdir = "2"
 zip = { version = "4.6.1", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+judgedesk-core = { path = "../crates/judgedesk-core" }
+judgedesk-native-executor = { path = "../native-executor" }
+tokio = { version = "1", features = ["full"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_JobObjects", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"] }

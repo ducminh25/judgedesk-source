@@ -1,0 +1,10 @@
+{
+  "message": "Preferences updated.",
+  "preferences": {
+    "customCppPath": "<TEMP_ROOT>/<TEST_CONTEXT>",
+    "installedToolchains": [],
+    "preferredSourceCpp": "managed",
+    "preferredSourcePython": "managed"
+  },
+  "success": true
+}

@@ -1,0 +1,34 @@
+{
+  "Timestamp": "2026-09-21T20:12:34.5953496+07:00",
+  "DelayedSeconds": 10,
+  "VerifierOwnedTempRoots": [],
+  "RelevantProcesses": [],
+  "RelevantListeningPorts": [],
+  "ExcelProcesses": [],
+  "PreExistingUnmarkedLegacyRoots": [
+    {
+      "FullName": "C:\\Users\\mon\\AppData\\Local\\Temp\\jd_test_core_executor_13740",
+      "LastWriteTime": "2026-09-21T08:43:17.6421649+07:00"
+    },
+    {
+      "FullName": "C:\\Users\\mon\\AppData\\Local\\Temp\\jd_test_core_executor_13980",
+      "LastWriteTime": "2026-09-21T08:43:26.1820814+07:00"
+    },
+    {
+      "FullName": "C:\\Users\\mon\\AppData\\Local\\Temp\\jd_test_core_executor_18560",
+      "LastWriteTime": "2026-09-21T08:43:31.1951682+07:00"
+    },
+    {
+      "FullName": "C:\\Users\\mon\\AppData\\Local\\Temp\\jd_test_core_executor_19976",
+      "LastWriteTime": "2026-09-21T14:57:49.2348224+07:00"
+    },
+    {
+      "FullName": "C:\\Users\\mon\\AppData\\Local\\Temp\\jd_test_core_executor_2420",
+      "LastWriteTime": "2026-09-21T14:57:54.4897224+07:00"
+    },
+    {
+      "FullName": "C:\\Users\\mon\\AppData\\Local\\Temp\\jd_test_core_executor_9532",
+      "LastWriteTime": "2026-09-21T14:57:58.1679442+07:00"
+    }
+  ]
+}

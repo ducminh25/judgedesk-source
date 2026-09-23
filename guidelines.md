@@ -348,19 +348,18 @@ graph TD
 
 ### 7.1. Test Command Suite
 
-#### 1. Typecheck & Code Style
+#### 1. Typecheck & Quality Invariant Gate
 ```powershell
-npm run lint
+npm run check:fast  # Runs Node check, tsc --noEmit, and check-quality-gate.js
 cargo fmt --check --manifest-path src-tauri/Cargo.toml
 cargo fmt --check --manifest-path native-executor/Cargo.toml
 ```
 
-#### 2. Server & Feature Unit Tests
+#### 2. Dynamic Server & Feature Unit Tests
 ```powershell
-npm run test:server
-npm run test:update-ui
+npm run test:server  # Dynamically executes all 98 test suites on disk (>530 tests)
 ```
-*(Executes 490+ automated tests covering submission parsing, rational scoring logic, custom checkers & interactors, Universal PCH, toolchain preferences, Scratch runtime, and multi-language gates).*
+*(Executes 535+ automated tests covering submission parsing, rational scoring logic, custom checkers & interactors, Universal PCH, toolchain preferences, Scratch runtime, multi-language gates, and core dialogs/components).*
 
 #### 3. Native Executor Tests (Rust)
 ```powershell
@@ -527,6 +526,9 @@ All engineers and AI Agents contributing code must strictly adhere to the follow
 5. **Atomic File Writes**: Any persistent state changes (e.g. `Config.cfg`, toolchain preferences, `.judgedesk` contest archives) must write to a temporary file (`.tmp`) first, followed by an atomic rename to prevent file corruption during sudden system shutdowns.
 6. **No Background Processes Left Running**: The sidecar monitor (`parent-watchdog.ts`) terminates the backend within 3s of Tauri window destruction. Always ensure child process cleanup via RAII / Job Object / PGID kill mechanisms.
 
+### 9.6. Autonomous Skill Activation Protocol for AI Agents
+All AI Coding Agents (Antigravity, Cursor, Claude Code, GitHub Copilot, Codex, etc.) are governed by the **[AGENTS.md](AGENTS.md)** protocol and the engineering skills located in **`.agents/skills/`**. Agents are strictly required to **autonomously detect task intent and apply the relevant skills** (TDD, doubt-driven edge-case hunting, security threat modeling, 5-axis code review, and debugging) without requiring the user to explicitly invoke them.
+
 ---
 
 ## 10. Quick Command Cheatsheet
@@ -534,8 +536,10 @@ All engineers and AI Agents contributing code must strictly adhere to the follow
 | Goal | Command |
 | :--- | :--- |
 | **Install Dependencies** | `npm ci` |
+| **Fast Invariant & Type Gate** | `npm run check:fast` |
 | **Typecheck & Lint** | `npm run lint` |
-| **Run Server Unit Tests** | `npm run test:server` |
+| **Run Server Unit Tests (98 suites)** | `npm run test:server` |
+| **Comprehensive Pre-Commit Gate** | `npm run check:full` |
 | **Launch Desktop App in Dev Mode** | `npm run test:desktop` |
 | **Launch Frontend in Browser** | `npm run dev:frontend` |
 | **Build Native Executor Binary** | `npm run build:executor` |

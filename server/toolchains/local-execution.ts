@@ -8,6 +8,7 @@ import type {
   ExecutorRunResult,
 } from "../executor/protocol.js";
 import { createExecutorWorkspace } from "../executor/workspace.js";
+import { executorClient } from "../executor/client.js";
 import { runReservedExecutor } from "../jobs.js";
 import {
   buildCheckerExecutorRunSpec,
@@ -54,6 +55,7 @@ export interface CachedLocalExecutionResolution {
 export type LocalCompatibilityProbeRunner = (
   kind: LocallyExecutableKind,
   derived: DerivedLocalToolchain,
+  signal?: AbortSignal,
 ) => Promise<void>;
 
 interface CachedProbeEntry extends LocalCompatibilityProbeSnapshot {
@@ -200,7 +202,15 @@ export function scheduleLocalCompatibilityProbe(
   kind: LocallyExecutableKind,
   executablePath: string,
   runner: LocalCompatibilityProbeRunner = runNativeLocalCompatibilityProbe,
+  signal?: AbortSignal,
 ): Promise<LocalCompatibilityProbeSnapshot> {
+  if (signal?.aborted) {
+    return Promise.resolve({
+      status: "incompatible",
+      checkedAt: new Date().toISOString(),
+      diagnostic: "Compatibility probe aborted",
+    });
+  }
   let derived: DerivedLocalToolchain;
   try {
     derived = deriveLocalToolchain(kind, executablePath, "strict");
@@ -222,7 +232,7 @@ export function scheduleLocalCompatibilityProbe(
   }
 
   const promise = Promise.resolve()
-    .then(() => runner(kind, derived))
+    .then(() => runner(kind, derived, signal))
     .then<LocalCompatibilityProbeSnapshot>(() => ({
       status: "compatible",
       checkedAt: new Date().toISOString(),
@@ -345,21 +355,38 @@ function isSafeExecutableRelativePath(value: string): boolean {
 async function runNativeLocalCompatibilityProbe(
   kind: LocallyExecutableKind,
   derived: DerivedLocalToolchain,
+  signal?: AbortSignal,
 ): Promise<void> {
+  if (signal?.aborted) {
+    throw new Error("Compatibility probe aborted");
+  }
   if (kind === "python") {
-    await probeLocalPython(derived);
+    await probeLocalPython(derived, signal);
     return;
   }
-  await probeLocalCompiler(kind, derived);
+  await probeLocalCompiler(kind, derived, signal);
 }
 
 async function probeLocalCompiler(
   kind: Extract<LocallyExecutableKind, "cpp" | "c">,
   derived: DerivedLocalToolchain,
+  signal?: AbortSignal,
 ): Promise<void> {
+  if (signal?.aborted) {
+    throw new Error("Compatibility probe aborted");
+  }
   const workspace = await createExecutorWorkspace();
   const runId = `local_compiler_probe_${crypto.randomUUID().replaceAll("-", "_")}`;
+  const onAbort = () => {
+    void executorClient.cancel(runId).catch(() => {});
+  };
+  if (signal) {
+    signal.addEventListener("abort", onAbort, { once: true });
+  }
   try {
+    if (signal?.aborted) {
+      throw new Error("Compatibility probe aborted");
+    }
     const sourceName = kind === "cpp" ? "probe.cpp" : "probe.c";
     const sourcePath = path.join(workspace.path, sourceName);
     const outputPath = path.join(
@@ -387,7 +414,7 @@ async function probeLocalCompiler(
     if (process.platform === "win32") {
       args.splice(support.argumentPrefix.length + 3, 0, "-static");
     }
-    const result = await runReservedExecutor(undefined, buildCompilerExecutorRunSpec({
+    const runPromise = runReservedExecutor(undefined, buildCompilerExecutorRunSpec({
       runId,
       workspaceId: workspace.id,
       executableId: derived.executableId,
@@ -403,16 +430,36 @@ async function probeLocalCompiler(
       maxWorkspaceWriteBytes: 16 * 1024 * 1024,
       maxCreatedFiles: 64,
     }));
+    const abortPromise = new Promise<never>((_, reject) => {
+      if (signal?.aborted) {
+        reject(new Error("Compatibility probe aborted"));
+        return;
+      }
+      signal?.addEventListener("abort", () => {
+        void executorClient.cancel(runId).catch(() => {});
+        reject(new Error("Compatibility probe aborted"));
+      }, { once: true });
+    });
+    const result = await Promise.race([runPromise, abortPromise]);
     assertSuccessfulProbe(result, "local compiler");
     if (!fs.statSync(outputPath, { throwIfNoEntry: false })?.isFile()) {
       throw new Error("local compiler probe did not produce an executable");
     }
   } finally {
+    if (signal) {
+      signal.removeEventListener("abort", onAbort);
+    }
     workspace.dispose();
   }
 }
 
-async function probeLocalPython(derived: DerivedLocalToolchain): Promise<void> {
+async function probeLocalPython(
+  derived: DerivedLocalToolchain,
+  signal?: AbortSignal,
+): Promise<void> {
+  if (signal?.aborted) {
+    throw new Error("Compatibility probe aborted");
+  }
   const workspace = await createExecutorWorkspace();
   const environment = buildLocalPythonEnvironment(derived);
   const probeProgram = [
@@ -420,44 +467,74 @@ async function probeLocalPython(derived: DerivedLocalToolchain): Promise<void> {
     "assert sys.flags.isolated == 1",
     "assert sys.dont_write_bytecode",
   ].join(";");
+  const submissionRunId =
+    `local_python_probe_${crypto.randomUUID().replaceAll("-", "_")}`;
+  const checkerRunId =
+    `local_python_checker_probe_${crypto.randomUUID().replaceAll("-", "_")}`;
+  const onAbort = () => {
+    void executorClient.cancel(submissionRunId).catch(() => {});
+    void executorClient.cancel(checkerRunId).catch(() => {});
+  };
+  if (signal) {
+    signal.addEventListener("abort", onAbort, { once: true });
+  }
   try {
-    const submissionRunId =
-      `local_python_probe_${crypto.randomUUID().replaceAll("-", "_")}`;
-    const submission = await runReservedExecutor(
-      undefined,
-      buildSubmissionExecutorRunSpec({
-        runId: submissionRunId,
-        workspaceId: workspace.id,
-        executableId: derived.executableId,
-        args: ["-I", "-B", "-c", probeProgram],
-        environment,
-        localToolchain: derived.identity,
-        timeLimitMs: LOCAL_PYTHON_PROBE_TIMEOUT_MS,
-        memoryBytes: 256 * 1024 * 1024,
-      }),
-    );
+    if (signal?.aborted) {
+      throw new Error("Compatibility probe aborted");
+    }
+    const abortPromise = new Promise<never>((_, reject) => {
+      if (signal?.aborted) {
+        reject(new Error("Compatibility probe aborted"));
+        return;
+      }
+      signal?.addEventListener("abort", () => {
+        void executorClient.cancel(submissionRunId).catch(() => {});
+        void executorClient.cancel(checkerRunId).catch(() => {});
+        reject(new Error("Compatibility probe aborted"));
+      }, { once: true });
+    });
+    const submission = await Promise.race([
+      runReservedExecutor(
+        undefined,
+        buildSubmissionExecutorRunSpec({
+          runId: submissionRunId,
+          workspaceId: workspace.id,
+          executableId: derived.executableId,
+          args: ["-I", "-B", "-c", probeProgram],
+          environment,
+          localToolchain: derived.identity,
+          timeLimitMs: LOCAL_PYTHON_PROBE_TIMEOUT_MS,
+          memoryBytes: 256 * 1024 * 1024,
+        }),
+      ),
+      abortPromise,
+    ]);
     assertSuccessfulProbe(submission, "local Python submission runtime");
 
-    const checkerRunId =
-      `local_python_checker_probe_${crypto.randomUUID().replaceAll("-", "_")}`;
-    const checker = await runReservedExecutor(
-      undefined,
-      buildCheckerExecutorRunSpec({
-        runId: checkerRunId,
-        workspaceId: workspace.id,
-        executableId: derived.executableId,
-        args: ["-I", "-B", "-c", probeProgram],
-        environment,
-        localToolchain: derived.identity,
-        runtimeBacked: true,
-        timeoutMs: LOCAL_PYTHON_PROBE_TIMEOUT_MS,
-        memoryBytes: 256 * 1024 * 1024,
-        stdoutFile: "checker-probe.stdout",
-        stderrFile: "checker-probe.stderr",
-      }),
-    );
+    const checker = await Promise.race([
+      runReservedExecutor(
+        undefined,
+        buildCheckerExecutorRunSpec({
+          runId: checkerRunId,
+          workspaceId: workspace.id,
+          executableId: derived.executableId,
+          args: ["-I", "-B", "-c", probeProgram],
+          environment,
+          localToolchain: derived.identity,
+          runtimeBacked: true,
+          timeoutMs: LOCAL_PYTHON_PROBE_TIMEOUT_MS,
+          memoryBytes: 256 * 1024 * 1024,
+          stdoutFile: "checker-probe.stdout",
+          stderrFile: "checker-probe.stderr",
+        }),
+      ),
+      abortPromise,
+    ]);
     assertSuccessfulProbe(checker, "local Python checker runtime");
   } finally {
+    if (signal) {
+      signal.removeEventListener("abort", onAbort);
+    }
     workspace.dispose();
   }
 }

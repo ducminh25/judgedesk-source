@@ -1,0 +1,37 @@
+{
+  "owner": "a3a80386-f46a-485c-b669-5c05a8f56d0a",
+  "completedAt": "2026-09-22T02:44:06.594Z",
+  "results": [
+    {
+      "name": "collision-kind-replaced",
+      "exitCode": 0,
+      "accepted": true,
+      "tail": [
+        "ℹ tests 10",
+        "ℹ suites 1",
+        "ℹ pass 10",
+        "ℹ fail 0",
+        "ℹ cancelled 0",
+        "ℹ skipped 0",
+        "ℹ todo 0",
+        "ℹ duration_ms 285.8179"
+      ]
+    },
+    {
+      "name": "long-path-semantics-stripped",
+      "exitCode": 0,
+      "accepted": true,
+      "tail": [
+        "ℹ tests 10",
+        "ℹ suites 1",
+        "ℹ pass 10",
+        "ℹ fail 0",
+        "ℹ cancelled 0",
+        "ℹ skipped 0",
+        "ℹ todo 0",
+        "ℹ duration_ms 295.0892"
+      ]
+    }
+  ],
+  "residual": []
+}

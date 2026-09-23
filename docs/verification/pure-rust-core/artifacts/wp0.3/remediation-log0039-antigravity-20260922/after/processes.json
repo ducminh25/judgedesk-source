@@ -1,0 +1,16 @@
+[
+  {
+    "ProcessId": 21020,
+    "ParentProcessId": 4860,
+    "Name": "node.exe",
+    "ExecutablePath": "C:\\Users\\mon\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\df473e5367fa2b42\\bin\\node.exe",
+    "CommandLine": "\"C:\\Users\\mon\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\df473e5367fa2b42\\bin\\node.exe\" C:\\Users\\mon\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\df473e5367fa2b42\\bin\\node_modules\\@oai\\cua-repl\\bin\\cua-repl.mjs"
+  },
+  {
+    "ProcessId": 18556,
+    "ParentProcessId": 11504,
+    "Name": "node.exe",
+    "ExecutablePath": "C:\\Users\\mon\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\df473e5367fa2b42\\bin\\node.exe",
+    "CommandLine": "\"C:\\Users\\mon\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\df473e5367fa2b42\\bin\\node.exe\"  ./server.mjs"
+  }
+]

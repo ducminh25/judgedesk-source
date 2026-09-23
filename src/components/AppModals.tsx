@@ -502,10 +502,10 @@ export default function AppModals({
       )}
 
       {isWindowDragging && !loadModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md pointer-events-none transition-all duration-300">
-          <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed border-indigo-500 bg-surface/95 px-12 py-10 shadow-2xl ring-4 ring-indigo-500/20 max-w-lg text-center animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-500/15 text-indigo-500 dark:text-indigo-400">
-              <FolderOpen className="h-9 w-9 animate-bounce" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 pointer-events-none transition-opacity duration-200">
+          <div className="flex flex-col items-center justify-center gap-4 rounded-lg border-2 border-dashed border-indigo-500 bg-surface px-12 py-10 shadow-lg max-w-lg text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-md bg-indigo-500/10 text-indigo-500 dark:text-indigo-400">
+              <FolderOpen className="h-8 w-8" />
             </div>
             <div>
               <h3 className="text-base font-bold text-text-primary">

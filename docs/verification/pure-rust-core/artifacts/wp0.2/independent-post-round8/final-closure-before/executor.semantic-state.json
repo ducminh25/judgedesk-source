@@ -1,0 +1,186 @@
+[
+  {
+    "RelativePath": "toolchains/gcc-windows-x64_14.2.0/.judgedesk-package.json",
+    "RawSHA256": "9AB488AE6609F5D9753519BCF6B79B06541576A76B68174D6CBEB31B8DAB5CFB",
+    "CanonicalSHA256": "5C5BD6F009F5D32B2DCC67DD8EAEC94245D45485E566A85457D7E57CDB868269",
+    "Content": {
+      "archiveSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "components": [
+        {
+          "id": "gcc.cxx",
+          "kind": "executable",
+          "relativePath": "bin/g++.exe",
+          "roles": "compiler"
+        },
+        {
+          "id": "gcc.c",
+          "kind": "executable",
+          "relativePath": "bin/gcc.exe",
+          "roles": "compiler"
+        },
+        {
+          "id": "gcc.root",
+          "kind": "support-root",
+          "relativePath": ".",
+          "roles": "compiler"
+        }
+      ],
+      "entrypointComponentId": "gcc.cxx",
+      "packageId": "gcc-windows-x64",
+      "schemaVersion": 1,
+      "version": "14.2.0"
+    }
+  },
+  {
+    "RelativePath": "toolchains/python-windows-x64_3.12.13/.judgedesk-package.json",
+    "RawSHA256": "858F79C23585B409F7C57B82322AAA9FE2078722B299397A9E02DB02654DADDD",
+    "CanonicalSHA256": "D34971A410E9325D675E3C0E8CAF397918BBC8D0A4D689016925F6F3A2954D43",
+    "Content": {
+      "archiveSha256": "4c2ae1e966194c9198a19dfb3af653b481bd629c2811e39dd38a8464f382498a",
+      "components": [
+        {
+          "id": "python.runtime",
+          "kind": "executable",
+          "relativePath": "python.exe",
+          "roles": [
+            "submission-runtime",
+            "checker-runtime"
+          ]
+        },
+        {
+          "id": "python.root",
+          "kind": "support-root",
+          "relativePath": ".",
+          "roles": [
+            "submission-runtime",
+            "checker-runtime"
+          ]
+        }
+      ],
+      "entrypointComponentId": "python.runtime",
+      "packageId": "python-windows-x64",
+      "schemaVersion": 1,
+      "version": "3.12.13"
+    }
+  },
+  {
+    "RelativePath": "toolchains/python-windows-x64-3.12.13/.judgedesk-package.json",
+    "RawSHA256": "858F79C23585B409F7C57B82322AAA9FE2078722B299397A9E02DB02654DADDD",
+    "CanonicalSHA256": "D34971A410E9325D675E3C0E8CAF397918BBC8D0A4D689016925F6F3A2954D43",
+    "Content": {
+      "archiveSha256": "4c2ae1e966194c9198a19dfb3af653b481bd629c2811e39dd38a8464f382498a",
+      "components": [
+        {
+          "id": "python.runtime",
+          "kind": "executable",
+          "relativePath": "python.exe",
+          "roles": [
+            "submission-runtime",
+            "checker-runtime"
+          ]
+        },
+        {
+          "id": "python.root",
+          "kind": "support-root",
+          "relativePath": ".",
+          "roles": [
+            "submission-runtime",
+            "checker-runtime"
+          ]
+        }
+      ],
+      "entrypointComponentId": "python.runtime",
+      "packageId": "python-windows-x64",
+      "schemaVersion": 1,
+      "version": "3.12.13"
+    }
+  },
+  {
+    "RelativePath": "toolchains/scratch-windows-x64_0.1.7/.judgedesk-package.json",
+    "RawSHA256": "95B48712BE2E74D0F3050FF7FBB0E13F1CCE62E3AFDE979E0DE31E5FCEF6AEE2",
+    "CanonicalSHA256": "33C81E2BEA69D182077B9234268F4F44F2462657789D791B434B9311A47B4C49",
+    "Content": {
+      "archiveSha256": "de4109acd05e76cb5e3662675e5c9bf7fb90678ad79e470f4404fa22a91b49cb",
+      "components": {
+        "id": "scratch.runtime",
+        "kind": "executable",
+        "relativePath": "scratch-run.exe",
+        "roles": "submission-runtime"
+      },
+      "entrypointComponentId": "scratch.runtime",
+      "packageId": "scratch-windows-x64",
+      "schemaVersion": 1,
+      "version": "0.1.7"
+    }
+  },
+  {
+    "RelativePath": "toolchains/temurin21-windows-x64_21.0.12_8/.judgedesk-package.json",
+    "RawSHA256": "670E566384862EC835BF9EBFD0F75C937605C9DED29FD3975271B64EF8ABE67F",
+    "CanonicalSHA256": "62EBD6D5DDB10B855D4941A0838D1CB899275AEA2C2848378C8A3398C03CC7D2",
+    "Content": {
+      "archiveSha256": "fbeb704c92ccb67c036064ea44137ffc60604660de5f9c6a091f0f63c17f4be2",
+      "components": [
+        {
+          "id": "java.compiler",
+          "kind": "executable",
+          "relativePath": "bin/javac.exe",
+          "roles": "compiler"
+        },
+        {
+          "id": "java.runtime",
+          "kind": "executable",
+          "relativePath": "bin/java.exe",
+          "roles": "submission-runtime"
+        },
+        {
+          "id": "java.root",
+          "kind": "support-root",
+          "relativePath": ".",
+          "roles": [
+            "compiler",
+            "submission-runtime"
+          ]
+        }
+      ],
+      "entrypointComponentId": "java.compiler",
+      "packageId": "temurin21-windows-x64",
+      "schemaVersion": 1,
+      "version": "21.0.12+8"
+    }
+  },
+  {
+    "RelativePath": "toolchains/temurin21-windows-x64-21.0.12+8/.judgedesk-package.json",
+    "RawSHA256": "670E566384862EC835BF9EBFD0F75C937605C9DED29FD3975271B64EF8ABE67F",
+    "CanonicalSHA256": "62EBD6D5DDB10B855D4941A0838D1CB899275AEA2C2848378C8A3398C03CC7D2",
+    "Content": {
+      "archiveSha256": "fbeb704c92ccb67c036064ea44137ffc60604660de5f9c6a091f0f63c17f4be2",
+      "components": [
+        {
+          "id": "java.compiler",
+          "kind": "executable",
+          "relativePath": "bin/javac.exe",
+          "roles": "compiler"
+        },
+        {
+          "id": "java.runtime",
+          "kind": "executable",
+          "relativePath": "bin/java.exe",
+          "roles": "submission-runtime"
+        },
+        {
+          "id": "java.root",
+          "kind": "support-root",
+          "relativePath": ".",
+          "roles": [
+            "compiler",
+            "submission-runtime"
+          ]
+        }
+      ],
+      "entrypointComponentId": "java.compiler",
+      "packageId": "temurin21-windows-x64",
+      "schemaVersion": 1,
+      "version": "21.0.12+8"
+    }
+  }
+]

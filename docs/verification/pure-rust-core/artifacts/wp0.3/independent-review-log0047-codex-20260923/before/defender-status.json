@@ -1,0 +1,8 @@
+{
+  "AntivirusEnabled": true,
+  "RealTimeProtectionEnabled": true,
+  "IoavProtectionEnabled": true,
+  "AntispywareEnabled": true,
+  "AMServiceEnabled": true,
+  "AntivirusSignatureVersion": "1.459.343.0"
+}

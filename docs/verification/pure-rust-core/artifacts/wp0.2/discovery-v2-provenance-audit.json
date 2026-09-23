@@ -1,0 +1,188 @@
+{
+  "artifact": "WP0.2 Discovery V2 Provenance & Controlled Canonical Regeneration Audit",
+  "auditedAt": "2026-09-20T23:38:00+07:00",
+  "targetFile": "C:\\Users\\mon\\AppData\\Local\\ThemisV2\\toolchain-discovery-v2.json",
+  "provenFacts": {
+    "currentHostFile": {
+      "path": "C:\\Users\\mon\\AppData\\Local\\ThemisV2\\toolchain-discovery-v2.json",
+      "sizeBytes": 5539,
+      "sha256": "5C0AA69EA06E3C08D4529D6EFA8E584DF04310EF610B2C08AAB3418BEB6459F1",
+      "lastModified": "2026-09-20T15:26:54+07:00"
+    },
+    "wp01RecordedHash": {
+      "sizeBytes": 5539,
+      "sha256": "52A35F1BE3B92DF9D3B4FBF79AF14F2DE026A34771E2FC4D7246EA1B186338C7",
+      "historicalBaselineContentRetained": false,
+      "reconciliationNote": "The baseline content corresponding to 52A35F1B was not captured prior to the 12:24:05 leak. In accordance with Codex Round 4 review finding 5, no historical baseline content is fabricated or conjectured. Content diff against 52A35F1B is retracted as unproven."
+    },
+    "leakMechanismRetraction": {
+      "priorClaimRetraction": "The Round 3 claim characterizing the 12:24:05 write as a 'deliberate trusted regeneration' is formally retracted. As verified and reproduced in Codex LOG-0019, the write was an unowned asynchronous test leak caused by a background rescan completing after test environment teardown restored host environment variables."
+    }
+  },
+  "controlledCanonicalRegeneration": {
+    "executionTimestamp": "2026-09-20T13:52:56.448Z",
+    "executionEnvironment": "Isolated temporary directory (THEMIS_APP_DATA_DIR redirected to %TEMP%\\jd_controlled_disc_*)",
+    "retainedInputs": {
+      "nodeVersion": "v24.19.0",
+      "platform": "win32",
+      "arch": "x64",
+      "registeredProfiles": [
+        "cpp-legacy-v1",
+        "c-gcc14",
+        "python-cpython312",
+        "pascal-fpc322",
+        "java-temurin21",
+        "scratch-turbowarp-v1"
+      ]
+    },
+    "artifactPath": "docs/verification/pure-rust-core/artifacts/wp0.2/controlled-canonical-discovery-v2.json",
+    "artifactSha256": "654958C2A0C92DB78BF6B9B79E06E119F5B9E4EFBC0C9A51AC2883C9C2397B32",
+    "artifactSizeBytes": 5539,
+    "hostSemanticComparison": {
+      "semanticDiffRule": "Exclude volatile timestamps (completedAt, lastSeenAt) and environment-dependent pathRank. Under this rule, host and controlled canonical artifact match 100% identically across all candidates.",
+      "schemaVersionMatch": true,
+      "registryRevisionMatch": true,
+      "statusMatch": true,
+      "profileComparisons": {
+        "cpp-legacy-v1": {
+          "hostCandidateCount": 2,
+          "canonicalCandidateCount": 2,
+          "candidatesMatch": true,
+          "candidates": [
+            {
+              "canonicalPath": "C:\\msys64\\ucrt64\\bin\\g++.exe",
+              "family": "gnu-gcc",
+              "version": "16.1.0",
+              "error": null
+            },
+            {
+              "canonicalPath": "C:\\Themis\\GCC\\bin\\g++.exe",
+              "family": "gnu-gcc",
+              "version": "9.2.0",
+              "error": null
+            }
+          ]
+        },
+        "c-gcc14": {
+          "hostCandidateCount": 2,
+          "canonicalCandidateCount": 2,
+          "candidatesMatch": true,
+          "candidates": [
+            {
+              "canonicalPath": "C:\\msys64\\ucrt64\\bin\\gcc.exe",
+              "family": "gnu-gcc",
+              "version": "16.1.0",
+              "error": null
+            },
+            {
+              "canonicalPath": "C:\\Themis\\GCC\\bin\\gcc.exe",
+              "family": "gnu-gcc",
+              "version": "9.2.0",
+              "error": null
+            }
+          ]
+        },
+        "python-cpython312": {
+          "hostCandidateCount": 4,
+          "canonicalCandidateCount": 4,
+          "candidatesMatch": true,
+          "candidates": [
+            {
+              "canonicalPath": "C:\\Users\\mon\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+              "family": "cpython",
+              "version": "3.12.10",
+              "error": null
+            },
+            {
+              "canonicalPath": "C:\\msys64\\ucrt64\\bin\\python3.exe",
+              "family": "cpython",
+              "version": "3.14.5",
+              "error": null
+            },
+            {
+              "canonicalPath": "C:\\msys64\\ucrt64\\bin\\python.exe",
+              "family": "cpython",
+              "version": "3.14.5",
+              "error": null
+            },
+            {
+              "canonicalPath": "C:\\Themis\\PYTHON\\python.exe",
+              "family": "cpython",
+              "version": "3.12.4",
+              "error": null
+            }
+          ]
+        },
+        "pascal-fpc322": {
+          "hostCandidateCount": 1,
+          "canonicalCandidateCount": 1,
+          "candidatesMatch": true,
+          "candidates": [
+            {
+              "canonicalPath": "C:\\Themis\\FPC\\bin\\i386-win32\\fpc.exe",
+              "family": null,
+              "version": null,
+              "error": "probe_timeout"
+            }
+          ]
+        },
+        "java-temurin21": {
+          "hostCandidateCount": 2,
+          "canonicalCandidateCount": 2,
+          "candidatesMatch": true,
+          "candidates": [
+            {
+              "canonicalPath": "C:\\jdk-25.0.3\\bin\\javac.exe",
+              "family": "java",
+              "version": "25.0.3",
+              "error": null
+            },
+            {
+              "canonicalPath": "C:\\Themis\\JDK\\bin\\javac.exe",
+              "family": "java",
+              "version": "1.7.0",
+              "error": null
+            }
+          ]
+        },
+        "scratch-turbowarp-v1": {
+          "hostCandidateCount": 0,
+          "canonicalCandidateCount": 0,
+          "candidatesMatch": true,
+          "candidates": []
+        }
+      }
+    }
+  },
+  "remediationMeasures": [
+    {
+      "component": "server/toolchains/discovery.ts",
+      "action": "drainToolchainDiscovery() terminates active children validating taskkill status, does not treat child error as exit, retains tracking on error without null exitCode, awaits compatibility probes, rejects on deadline timeout, and only clears runtime state on observed process exit."
+    },
+    {
+      "component": "server/platform/server-lifecycle.ts and server/routes/toolchain-routes.ts",
+      "action": "ServerLifecycle enforces synchronous admission-before-start (assertAdmissible) across all mutating routes and factory invocations with zero invocation/mutation when closing; drain() is memoized and idempotent across concurrent and sequential callers."
+    },
+    {
+      "component": "server/test-fixtures/api-contracts/test-environment.ts",
+      "action": "cleanup() restores global state compositionally but retains the owned test root directory and reports the retained path if process or discovery quiescence fails."
+    },
+    {
+      "component": "scripts/run-all-tests.js",
+      "action": "Prefers owned mkdtemp roots, requires canonical containment in OS temp dir, enforces case-insensitive Windows comparisons against host paths, requires explicit test ownership markers, rejects symlink/junction/reparse escapes, and never deletes unowned roots."
+    },
+    {
+      "component": "crates/judgedesk-core/tests/server_test.rs",
+      "action": "Awaits graceful server shutdown completion, verifies port release with active rebinding, asserts absence of external export_* roots, and deletes test_root only after confirmed termination."
+    },
+    {
+      "component": "native-executor",
+      "action": "Serialized shared platform initialization across tests with TEST_SHARED_INITIALIZATION_LOCK and handled AlreadyExists in reset_directory to guarantee deterministic parallel cargo test execution."
+    },
+    {
+      "component": "server/judge/background-prewarm.ts",
+      "action": "Distinguishes intentional deferrals (returning typed PrewarmOutcome) from unexpected errors, re-throwing unexpected failures so they propagate to ServerLifecycle settledBackgroundErrors and adapter close."
+    }
+  ],
+  "verdict": "PROVEN_CANONICAL_SEMANTIC_MATCH_AND_DRAINED"
+}

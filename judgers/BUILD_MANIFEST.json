@@ -1,0 +1,56 @@
+{
+  "manifestVersion": "1.0.0",
+  "generatedAt": "2026-09-22T20:56:00+07:00",
+  "compiler": {
+    "command": "g++.exe (Rev5, Built by MSYS2 project) 16.1.0",
+    "flags": "-O3 -static -s",
+    "includeDir": "."
+  },
+  "binaries": [
+    {
+      "name": "C1.exe",
+      "checker": "C1",
+      "source": "C1LinesWordsIgnoreCase.cpp",
+      "sourceSha256": "44222ABF6B513A874EF659D0E7C89164BE3671871D6694BF8F195FDF7367C69C",
+      "binarySha256": "4928568A45920ED48BE4B747E016C70057064BC355F9838A75AF433A4C777A88",
+      "sizeBytes": 1356288,
+      "reproduceCommand": "g++ -O3 -static -s C1LinesWordsIgnoreCase.cpp -o C1.exe"
+    },
+    {
+      "name": "C2.exe",
+      "checker": "C2",
+      "source": "C2LinesWordsCase.cpp",
+      "sourceSha256": "346FC32967250140718549A329FCFBD1C08D98919636910271B6D5AE4108EB89",
+      "binarySha256": "65B733781B6801754E65BDBEB5A292ED32A192652A3C17C4D29D9B85C9FC399B",
+      "sizeBytes": 1356288,
+      "reproduceCommand": "g++ -O3 -static -s C2LinesWordsCase.cpp -o C2.exe"
+    },
+    {
+      "name": "C3.exe",
+      "checker": "C3",
+      "source": "C3WordsIgnoreCase.cpp",
+      "sourceSha256": "32BC9DA949D1C4F63FB5BA32220272F48D07710684E71F0D65208CA4460CDC63",
+      "binarySha256": "4A73D0B323EDD846C9D9B9DDF48289F476955B9BF1CBA0FB41A04F3B62AEABA2",
+      "sizeBytes": 1354240,
+      "reproduceCommand": "g++ -O3 -static -s C3WordsIgnoreCase.cpp -o C3.exe"
+    },
+    {
+      "name": "C4.exe",
+      "checker": "C4",
+      "source": "C4WordsCase.cpp",
+      "sourceSha256": "97335AA3921C1E33C44F1F60C89AFCD1EAD5915DC9B4825FAADD8B002DAC7CEF",
+      "binarySha256": "036D4465276875106B3DC15B1F4B1B838F626AEB39821AE53F352E3438497C27",
+      "sizeBytes": 1354240,
+      "reproduceCommand": "g++ -O3 -static -s C4WordsCase.cpp -o C4.exe"
+    },
+    {
+      "name": "C5.exe",
+      "checker": "C5",
+      "source": "C5Binary.cpp",
+      "sourceSha256": "2C5C875079C4250147A021DA4B3ACC1BF51F2350F9B3E2B1C089B6D4D77BC065",
+      "binarySha256": "C2889669E2C891B96438A6CBE3A46D11E89DAAC5FC66AE2FF43B639E1C585A88",
+      "sizeBytes": 1354240,
+      "reproduceCommand": "g++ -O3 -static -s C5Binary.cpp -o C5.exe"
+    }
+  ]
+}

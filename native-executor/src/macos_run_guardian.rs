@@ -283,9 +283,8 @@ mod imp {
             control_parent.set_read_timeout(Some(STARTUP_TIMEOUT))?;
             let ready =
                 read_authenticated_frame::<_, GuardianEvent>(&mut &control_parent, identity);
-            let reset_timeout = control_parent.set_read_timeout(None);
             let ready = ready.map_err(|error| contextual(error, "read guardian_ready"))?;
-            reset_timeout.map_err(|error| contextual(error, "reset guardian startup timeout"))?;
+            let _ = control_parent.set_read_timeout(None);
             let guardian = match ready {
                 Some(GuardianEvent::Ready { guardian, .. }) => guardian,
                 Some(GuardianEvent::Fatal { code, message, .. }) => {
@@ -1541,8 +1540,31 @@ mod imp {
         Ok(Some(canonical))
     }
 
-    fn trusted_current_executable() -> io::Result<PathBuf> {
-        let executable = std::env::current_exe()?;
+    fn resolve_executor_executable() -> io::Result<PathBuf> {
+        if let Some(path) = std::env::var_os("JUDGEDESK_EXECUTOR_PATH") {
+            let candidate = PathBuf::from(path);
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+        }
+        let current = std::env::current_exe()?;
+        let file_name = current.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if file_name.starts_with("judgedesk-native-executor")
+            || file_name.starts_with("judgedesk-executor")
+        {
+            return Ok(current);
+        }
+        if let Some(deps_parent) = current.parent().and_then(|p| p.parent()) {
+            let candidate = deps_parent.join("judgedesk-native-executor");
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+        }
+        Ok(current)
+    }
+
+    pub fn trusted_current_executable() -> io::Result<PathBuf> {
+        let executable = resolve_executor_executable()?;
         let executable = std::fs::canonicalize(executable)?;
         if executable.is_absolute() && executable.is_file() {
             Ok(executable)
@@ -2021,7 +2043,15 @@ mod imp {
 }
 
 #[cfg(target_os = "macos")]
-pub use imp::{spawn_run_guardian, try_run_internal_mode, GuardianChild, SpawnedRunGuardian};
+pub use imp::{
+    spawn_run_guardian, trusted_current_executable, try_run_internal_mode, GuardianChild,
+    SpawnedRunGuardian,
+};
+
+#[cfg(not(target_os = "macos"))]
+pub fn trusted_current_executable() -> io::Result<std::path::PathBuf> {
+    std::env::current_exe()
+}
 
 #[cfg(not(target_os = "macos"))]
 #[derive(Debug)]

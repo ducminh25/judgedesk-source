@@ -97,7 +97,7 @@ impl MacosPlatform {
             }
             fs::create_dir(&workspace)
                 .map_err(|error| format!("cannot create security probe workspace: {error}"))?;
-            let current_exe = std::env::current_exe()
+            let current_exe = crate::macos_run_guardian::trusted_current_executable()
                 .map_err(|error| format!("cannot locate security probe executable: {error}"))?;
             // Keep executable code outside the writable workspace. macOS vnguard can abort
             // executable mappings from a sandbox-writable location before the target reaches
@@ -788,6 +788,7 @@ fn seatbelt_literal(value: &str) -> String {
 
 #[repr(C)]
 #[derive(Default)]
+#[allow(dead_code)]
 struct ProcTaskInfo {
     virtual_size: u64,
     resident_size: u64,
@@ -817,6 +818,7 @@ extern "C" {
         buffer: *mut libc::c_void,
         buffer_size: i32,
     ) -> i32;
+    #[allow(dead_code)]
     fn proc_pidinfo(pid: i32, flavor: i32, arg: u64, buffer: *mut libc::c_void, size: i32) -> i32;
 }
 
@@ -851,6 +853,7 @@ fn real_user_process_count() -> Result<u64, String> {
     Ok(live)
 }
 
+#[allow(dead_code)]
 fn process_virtual_memory_bytes(pid: i32) -> u64 {
     const PROC_PIDTASKINFO: i32 = 4;
     let mut task = ProcTaskInfo::default();

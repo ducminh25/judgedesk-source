@@ -16,6 +16,8 @@ src-tauri/gen/
 src-tauri/binaries/server-*
 src-tauri/binaries/judgedesk-executor-*
 native-executor/target/
+crates/**/target/
+crates/**/workspaces/
 sea-prep.blob
 .DS_Store
 *.log
@@ -26,3 +28,5 @@ CONVERSATION_HISTORY.md
 scratch/
 *.docx
 *.pdf
+tools/**/*.exe
+

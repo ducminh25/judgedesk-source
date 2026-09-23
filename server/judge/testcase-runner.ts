@@ -213,7 +213,11 @@ async function prepareSubmission(
 }> {
   if (options.program?.kind === "native") {
     const artifact = await importExecutorArtifact(options.program.artifactPath);
-    return { executableId: artifact.executableId, args: [], environment: {} };
+    const environment: Record<string, string> = {};
+    if (options.language === "pascal" || options.program.language === "pascal") {
+      environment.JUDGEDESK_PASCAL_ISOLATED = "1";
+    }
+    return { executableId: artifact.executableId, args: [], environment };
   }
   if (
     options.program?.kind === "script-runtime"
@@ -262,9 +266,13 @@ async function prepareSubmission(
       `LANGUAGE_ADAPTER_UNAVAILABLE: ${options.program.language}`,
     );
   }
-  if (options.language === "cpp" || options.language === "c") {
+  if (options.language === "cpp" || options.language === "c" || options.language === "pascal") {
     const artifact = await importExecutorArtifact(options.executablePath);
-    return { executableId: artifact.executableId, args: [], environment: {} };
+    const environment: Record<string, string> = {};
+    if (options.language === "pascal") {
+      environment.JUDGEDESK_PASCAL_ISOLATED = "1";
+    }
+    return { executableId: artifact.executableId, args: [], environment };
   }
 
   if (options.language === "python") {
@@ -419,12 +427,15 @@ async function executeInteractiveTestCase(
 
     const transcript = readBounded(path.join(interactorWorkspace.path, "output.txt"), MAX_OUTPUT_SIZE).toString("utf8");
     const interactorStderr = readBounded(path.join(interactorWorkspace.path, "stderr.txt"), MAX_STDERR_PREVIEW).toString("utf8");
+    const interactorStdout = readBounded(path.join(interactorWorkspace.path, "stdout.txt"), MAX_STDERR_PREVIEW).toString("utf8");
 
     let status: TestCaseRun["status"] = "JE";
     let score = 0;
     const executionTime = result.executionTimeMs;
     const peakMemoryKb = result.peakMemoryBytes ? Math.ceil(result.peakMemoryBytes / 1024) : undefined;
-    const checkerMessage = interactorStderr || result.message;
+    const trimmedStderr = interactorStderr.trim();
+    const trimmedStdout = interactorStdout.trim();
+    const checkerMessage = trimmedStderr || trimmedStdout || (result.verdict === "AC" ? "ok" : result.message);
 
     if (result.verdict === "AC") {
       status = "AC";

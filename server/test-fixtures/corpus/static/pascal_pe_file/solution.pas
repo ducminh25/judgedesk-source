@@ -1,0 +1,1 @@
+var a: integer; fin, fout: text; begin assign(fin, 'in.txt'); reset(fin); read(fin, a); assign(fout, 'out.txt'); rewrite(fout); write(fout, 'maybe'); close(fin); close(fout); end.

@@ -1,0 +1,10 @@
+{
+  "caseCount": 24,
+  "physicalFiles": 111,
+  "declaredFiles": 111,
+  "missing": 0,
+  "mismatch": 0,
+  "orphan": 0,
+  "manifestSha256": "86BD0569484227C40E4EB38305B9496A99A094DB60E35FF5D6EF02AB0C47A0FF",
+  "fixtureInventorySha256": "919919D7244D7218A19A2671E9C85B347EC6B02A3AAA7461BB8E4FD61D6D70AC"
+}

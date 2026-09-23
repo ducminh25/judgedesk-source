@@ -29,12 +29,12 @@ export default function ScoreDeleteConfirmDialog({
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [disabled, onCancel]);
   return (
-    <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[115] flex items-center justify-center bg-black/70 p-4">
       <div
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="delete-score-title"
-        className="w-full max-w-md overflow-hidden rounded-lg border border-surface-border bg-surface shadow-2xl"
+        className="w-full max-w-md overflow-hidden rounded-lg border border-surface-border bg-surface shadow-lg"
       >
         <div className="flex items-start gap-3 border-b border-surface-border bg-surface-elevated px-5 py-4">
           <TriangleAlert className="mt-0.5 h-5 w-5 flex-none text-rose-500" />

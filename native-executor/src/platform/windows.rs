@@ -74,12 +74,13 @@ use windows_sys::Win32::System::IO::{CreateIoCompletionPort, GetQueuedCompletion
 const PROFILE_NAME: &str = "JudgeDesk.NativeSecureExecutor.v1";
 const CANCEL_EXIT_CODE: u32 = 0x4a44_0001;
 const LIMIT_EXIT_CODE: u32 = 0x4a44_0002;
-const MANAGED_RUNTIME_MARKERS: [&str; 5] = [
+const MANAGED_RUNTIME_MARKERS: [&str; 6] = [
     "JUDGEDESK_PYTHON_ISOLATED",
     "JUDGEDESK_NODE_ISOLATED",
     "JUDGEDESK_JAVA_ISOLATED",
     "JUDGEDESK_DOTNET_ISOLATED",
     "JUDGEDESK_SCRATCH_ISOLATED",
+    "JUDGEDESK_PASCAL_ISOLATED",
 ];
 
 pub struct WindowsPlatform {
@@ -97,14 +98,14 @@ struct SelfTest {
 }
 
 impl WindowsPlatform {
-    pub fn initialize() -> Result<(Self, PathBuf), String> {
+    pub fn initialize_with_root(base_dir: PathBuf) -> Result<(Self, PathBuf), String> {
         let startup_started = Instant::now();
         let mut phases = BTreeMap::new();
         let phase_started = Instant::now();
-        let (sid, profile_root) = create_or_open_profile()?;
+        let (sid, _) = create_or_open_profile()?;
         phases.insert("profile".into(), elapsed_us(phase_started));
         let phase_started = Instant::now();
-        let root = initialize_root(profile_root.join("LocalState"))?;
+        let root = initialize_root(base_dir.join("JudgeDesk"))?;
         phases.insert("root".into(), elapsed_us(phase_started));
         let phase_started = Instant::now();
         protect_cache_directory(&root.join("toolchains"), &sid)?;
@@ -139,6 +140,36 @@ impl WindowsPlatform {
         Ok((platform, root))
     }
 
+    pub fn initialize() -> Result<(Self, PathBuf), String> {
+        #[cfg(test)]
+        let base_dir = {
+            let dir = std::env::temp_dir().join(format!(
+                "jd_test_executor_{}_{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_nanos())
+                    .unwrap_or(0)
+            ));
+            std::fs::create_dir(&dir)
+                .map_err(|error| format!("cannot create owned executor test root: {error}"))?;
+            std::fs::write(dir.join(".judgedesk-test-root"), b"judgedesk-test-owned\n")
+                .map_err(|error| format!("cannot mark owned executor test root: {error}"))?;
+            dir
+        };
+        #[cfg(not(test))]
+        let base_dir = {
+            std::env::var_os("LOCALAPPDATA")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| {
+                    let (_, profile_root) =
+                        create_or_open_profile().unwrap_or_else(|_| (vec![], std::env::temp_dir()));
+                    profile_root.join("LocalState")
+                })
+        };
+        Self::initialize_with_root(base_dir)
+    }
+
     pub fn health(&self, root: &Path) -> ExecutorHealth {
         ExecutorHealth {
             ready: self.self_test.ready,
@@ -168,7 +199,11 @@ impl WindowsPlatform {
             fs::create_dir_all(&workspace)
                 .map_err(|error| format!("cannot create self-test workspace: {error}"))?;
             let probe = workspace.join("probe.exe");
-            let current_exe = std::env::current_exe().map_err(|error| error.to_string())?;
+            let current_exe = std::env::var_os("JUDGEDESK_EXECUTOR_PATH")
+                .map(PathBuf::from)
+                .filter(|p| p.is_file())
+                .or_else(|| std::env::current_exe().ok())
+                .ok_or_else(|| "cannot determine probe executable".to_string())?;
             let need_copy = match (fs::metadata(&current_exe), fs::metadata(&probe)) {
                 (Ok(src_meta), Ok(dst_meta)) => src_meta.len() != dst_meta.len(),
                 _ => true,
@@ -329,14 +364,22 @@ impl WindowsPlatform {
         // network and private user-file access remain default-deny; the Job Object continues to
         // enforce process and resource limits.
         let isolated_submission_runtime = matches!(spec.role, RunRole::Submission)
-            && (spec.toolchain.is_some() || spec.local_toolchain.is_some())
+            && (spec.toolchain.is_some()
+                || spec.local_toolchain.is_some()
+                || spec
+                    .environment
+                    .get("JUDGEDESK_PASCAL_ISOLATED")
+                    .map(String::as_str)
+                    == Some("1"))
             && MANAGED_RUNTIME_MARKERS
                 .iter()
                 .any(|marker| spec.environment.get(*marker).map(String::as_str) == Some("1"));
-        let is_checker = matches!(spec.role, RunRole::Checker | RunRole::CheckerRuntime);
+        let managed_checker_runtime = matches!(spec.role, RunRole::CheckerRuntime);
         let resource_only = matches!(paths.isolation, LocalToolchainIsolation::ResourceOnly);
-        let use_lpac =
-            !resource_only && !compiler_may_spawn && !isolated_submission_runtime && !is_checker;
+        let use_lpac = !resource_only
+            && !compiler_may_spawn
+            && !isolated_submission_runtime
+            && !managed_checker_runtime;
         let attribute_count = if resource_only {
             2
         } else if use_lpac {
@@ -750,9 +793,11 @@ impl WindowsPlatform {
             &sub_workspace_sid,
             &self.sid,
             job_sub.handle(),
-            sub_stdin_r.0,
-            sub_stdout_w.0,
-            sub_stderr.0,
+            ChildHandles {
+                stdin: sub_stdin_r.0,
+                stdout: sub_stdout_w.0,
+                stderr: sub_stderr.0,
+            },
         ) {
             Ok(handles) => handles,
             Err(SpawnError::ProcessCreationMemory(err)) => {
@@ -788,9 +833,11 @@ impl WindowsPlatform {
             &inter_workspace_sid,
             &self.sid,
             job_inter.handle(),
-            inter_stdin_r.0,
-            inter_stdout_w.0,
-            inter_stderr.0,
+            ChildHandles {
+                stdin: inter_stdin_r.0,
+                stdout: inter_stdout_w.0,
+                stderr: inter_stderr.0,
+            },
         ) {
             Ok(handles) => handles,
             Err(SpawnError::ProcessCreationMemory(err)) => {
@@ -1573,15 +1620,19 @@ enum SpawnError {
     Failed(String),
 }
 
+struct ChildHandles {
+    stdin: HANDLE,
+    stdout: HANDLE,
+    stderr: HANDLE,
+}
+
 fn spawn_child_process(
     spec: &RunSpec,
     paths: &ValidatedRun,
     workspace_capability_sid: &[u8],
     app_container_sid: &[u8],
     job: HANDLE,
-    stdin: HANDLE,
-    stdout: HANDLE,
-    stderr: HANDLE,
+    child_handles: ChildHandles,
 ) -> Result<(OwnedHandle, OwnedHandle), SpawnError> {
     let mut workspace_capability = SID_AND_ATTRIBUTES {
         Sid: workspace_capability_sid.as_ptr() as PSID,
@@ -1594,17 +1645,29 @@ fn spawn_child_process(
         Reserved: 0,
     };
     let mut lpac_policy = PROCESS_CREATION_ALL_APPLICATION_PACKAGES_OPT_OUT;
-    let mut handles = [stdin, stdout, stderr];
+    let mut handles = [
+        child_handles.stdin,
+        child_handles.stdout,
+        child_handles.stderr,
+    ];
     let compiler_may_spawn = matches!(spec.role, RunRole::Compiler);
     let isolated_submission_runtime = matches!(spec.role, RunRole::Submission)
-        && (spec.toolchain.is_some() || spec.local_toolchain.is_some())
+        && (spec.toolchain.is_some()
+            || spec.local_toolchain.is_some()
+            || spec
+                .environment
+                .get("JUDGEDESK_PASCAL_ISOLATED")
+                .map(String::as_str)
+                == Some("1"))
         && MANAGED_RUNTIME_MARKERS
             .iter()
             .any(|marker| spec.environment.get(*marker).map(String::as_str) == Some("1"));
-    let is_checker = matches!(spec.role, RunRole::Checker | RunRole::CheckerRuntime);
+    let managed_checker_runtime = matches!(spec.role, RunRole::CheckerRuntime);
     let resource_only = matches!(paths.isolation, LocalToolchainIsolation::ResourceOnly);
-    let use_lpac =
-        !resource_only && !compiler_may_spawn && !isolated_submission_runtime && !is_checker;
+    let use_lpac = !resource_only
+        && !compiler_may_spawn
+        && !isolated_submission_runtime
+        && !managed_checker_runtime;
     let attribute_count = if resource_only {
         2
     } else if use_lpac {
@@ -1650,9 +1713,9 @@ fn spawn_child_process(
     let mut startup: STARTUPINFOEXW = unsafe { zeroed() };
     startup.StartupInfo.cb = size_of::<STARTUPINFOEXW>() as u32;
     startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
-    startup.StartupInfo.hStdInput = stdin;
-    startup.StartupInfo.hStdOutput = stdout;
-    startup.StartupInfo.hStdError = stderr;
+    startup.StartupInfo.hStdInput = child_handles.stdin;
+    startup.StartupInfo.hStdOutput = child_handles.stdout;
+    startup.StartupInfo.hStdError = child_handles.stderr;
     startup.lpAttributeList = attributes.as_ptr();
     let mut process: PROCESS_INFORMATION = unsafe { zeroed() };
 
@@ -2327,8 +2390,37 @@ mod tests {
         assert!(protected_acl_matches(&directory.0, &expected).unwrap());
     }
 
+    static TEST_SHARED_INITIALIZATION_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn owned_executor_test_root(root: &Path) -> PathBuf {
+        let test_root = root
+            .ancestors()
+            .find(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("jd_test_executor_"))
+            })
+            .expect("executor test root must use the owned jd_test_executor_ prefix")
+            .to_path_buf();
+        assert!(
+            test_root.join(".judgedesk-test-root").is_file(),
+            "executor test root must contain its ownership marker"
+        );
+        test_root
+    }
+
+    fn cleanup_executor_test_root(root: &Path) {
+        let test_root = owned_executor_test_root(root);
+        std::fs::remove_dir_all(&test_root).expect("remove owned executor test root");
+        assert!(
+            !test_root.exists(),
+            "owned executor test root must be absent after cleanup"
+        );
+    }
+
     #[test]
     fn test_scratch_execution() {
+        let _lock = TEST_SHARED_INITIALIZATION_LOCK.lock().unwrap();
         let scratch_exe = PathBuf::from(
             r"C:\Users\mon\AppData\Local\ThemisV2\toolchains\scratch-windows-x64\scratch-run.exe",
         );
@@ -2339,7 +2431,7 @@ mod tests {
         if !scratch_exe.exists() || !sample_sb3.exists() || !sample_inp.exists() {
             return;
         }
-        let (runner, _) = WindowsPlatform::initialize().unwrap();
+        let (runner, root) = WindowsPlatform::initialize().unwrap();
         let workspace = TestDirectory::new("scratch-test-workspace");
         let stdin_path = workspace.0.join("stdin.txt");
         let stdout_path = workspace.0.join("stdout.txt");
@@ -2394,5 +2486,112 @@ mod tests {
         println!("Stderr: {stderr}");
         assert_eq!(result.exit_code, Some(0));
         assert_eq!(stdout.trim(), "5070720");
+
+        cleanup_executor_test_root(&root);
+    }
+
+    #[test]
+    fn test_pascal_execution() {
+        let _lock = TEST_SHARED_INITIALIZATION_LOCK.lock().unwrap();
+        let (runner, root) = WindowsPlatform::initialize().unwrap();
+        let ws_dir = root.join("workspaces").join("pascal-test-workspace");
+        let _ = fs::create_dir_all(&ws_dir);
+        let stdout_path = ws_dir.join("stdout.txt");
+        let _stderr_path = ws_dir.join("stderr.txt");
+        let exe_path = ws_dir.join("prog.exe");
+
+        // Compile probe.pas
+        let pascal_src = "program Probe;\nbegin\n  writeln('JUDGEDESK_PROBE_OK');\nend.\n";
+        let src_path = ws_dir.join("probe.pas");
+        fs::write(&src_path, pascal_src).unwrap();
+
+        let tool_root =
+            PathBuf::from(r"C:\Users\mon\AppData\Local\ThemisV2\toolchains\fpc-windows-x64");
+        if !tool_root.exists() {
+            cleanup_executor_test_root(&root);
+            return;
+        }
+
+        let mut cmd = std::process::Command::new(tool_root.join("bin/ppcx64.exe"));
+        cmd.arg("-O2")
+            .arg("-XS")
+            .arg("-Sg")
+            .arg("-WR")
+            .arg("-Xs")
+            .arg("-Cs66060288")
+            .arg(format!("-o{}", exe_path.display()))
+            .arg(&src_path);
+        let out = cmd.output().unwrap();
+        assert!(
+            out.status.success(),
+            "FPC compile failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(exe_path.exists(), "prog.exe was not created");
+
+        let spec = RunSpec {
+            run_id: "pascal_test_1".into(),
+            role: RunRole::Submission,
+            workspace_id: "pascal-test-workspace".into(),
+            executable_id: "workspaces/pascal-test-workspace/prog.exe".into(),
+            args: Vec::new(),
+            stdin_file: None,
+            stdout_file: "stdout.txt".into(),
+            stderr_file: "stderr.txt".into(),
+            environment: BTreeMap::from([("JUDGEDESK_PASCAL_ISOLATED".into(), "1".into())]),
+            toolchain: None,
+            local_toolchain: None,
+            limits: crate::protocol::RunLimits {
+                wall_time_ms: 5000,
+                memory_bytes: 128 * 1024 * 1024,
+                process_count: 1,
+                thread_count: 16,
+                output_bytes: 1024 * 1024,
+                total_write_bytes: 4 * 1024 * 1024,
+                open_files: 32,
+                created_files: 16,
+            },
+        };
+
+        let paths = crate::request_validation::validate_run(&root, &spec).unwrap();
+
+        let active = ActiveRuns::default();
+        let result = runner.run_inner(&spec, &paths, &active).unwrap();
+        let stdout = fs::read_to_string(&stdout_path).unwrap_or_default();
+        assert_eq!(result.exit_code, Some(0));
+        assert!(stdout.contains("JUDGEDESK_PROBE_OK"));
+
+        cleanup_executor_test_root(&root);
+    }
+
+    #[test]
+    fn test_sentinel_host_executor_appdata_untouched() {
+        let _lock = TEST_SHARED_INITIALIZATION_LOCK.lock().unwrap();
+        let host_appdata = match std::env::var_os("LOCALAPPDATA") {
+            Some(val) => PathBuf::from(val),
+            None => return,
+        };
+        let host_executor_dir = host_appdata.join("JudgeDesk").join("JudgeDeskExecutor");
+
+        // Run default WindowsPlatform::initialize()
+        let (_runner, root) = WindowsPlatform::initialize().expect("initialize platform");
+
+        // Verify root is NOT host_executor_dir and not inside host_executor_dir
+        assert_ne!(
+            root, host_executor_dir,
+            "Default test platform root must NOT be host executor AppData"
+        );
+        assert!(
+            !root.starts_with(&host_executor_dir),
+            "Default test platform root must NOT be inside host executor AppData"
+        );
+        assert!(
+            root.starts_with(std::env::temp_dir()),
+            "Default test platform root must be inside std::env::temp_dir()"
+        );
+
+        let test_root = owned_executor_test_root(&root);
+        assert!(test_root.starts_with(std::env::temp_dir()));
+        cleanup_executor_test_root(&root);
     }
 }

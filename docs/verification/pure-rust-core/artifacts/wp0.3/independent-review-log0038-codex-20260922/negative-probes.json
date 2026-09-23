@@ -1,0 +1,274 @@
+{
+  "schemaVersion": 1,
+  "owner": "b6ece562-5e00-4699-b6fd-ca318cf21305",
+  "completedAt": "2026-09-22T02:43:15.793Z",
+  "results": [
+    {
+      "name": "declared-byte-change",
+      "exitCode": 1,
+      "timedOut": false,
+      "rejected": true,
+      "expectedReasonMatched": true,
+      "outputTail": [
+        "      at Test.postRun (node:internal/test_runner/test:1522:19)",
+        "      at Test.run (node:internal/test_runner/test:1447:12)",
+        "      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {",
+        "    generatedMessage: false,",
+        "    code: 'ERR_ASSERTION',",
+        "    actual: 4,",
+        "    expected: 3,",
+        "    operator: 'strictEqual',",
+        "    diff: 'simple'",
+        "  }"
+      ]
+    },
+    {
+      "name": "referenced-file-delete",
+      "exitCode": 1,
+      "timedOut": false,
+      "rejected": true,
+      "expectedReasonMatched": true,
+      "outputTail": [
+        "      at Test.postRun (node:internal/test_runner/test:1522:19)",
+        "      at Test.run (node:internal/test_runner/test:1447:12)",
+        "      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {",
+        "    generatedMessage: false,",
+        "    code: 'ERR_ASSERTION',",
+        "    actual: false,",
+        "    expected: true,",
+        "    operator: '==',",
+        "    diff: 'simple'",
+        "  }"
+      ]
+    },
+    {
+      "name": "undeclared-file-add",
+      "exitCode": 1,
+      "timedOut": false,
+      "rejected": true,
+      "expectedReasonMatched": true,
+      "outputTail": [
+        "      at Test.postRun (node:internal/test_runner/test:1522:19)",
+        "      at Test.run (node:internal/test_runner/test:1447:12)",
+        "      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {",
+        "    generatedMessage: false,",
+        "    code: 'ERR_ASSERTION',",
+        "    actual: false,",
+        "    expected: true,",
+        "    operator: '==',",
+        "    diff: 'simple'",
+        "  }"
+      ]
+    },
+    {
+      "name": "duplicate-case-id",
+      "exitCode": 1,
+      "timedOut": false,
+      "rejected": true,
+      "expectedReasonMatched": true,
+      "outputTail": [
+        "      at async Promise.all (index 0)",
+        "      at async Suite.run (node:internal/test_runner/test:1869:7)",
+        "      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {",
+        "    generatedMessage: false,",
+        "    code: 'ERR_ASSERTION',",
+        "    actual: false,",
+        "    expected: true,",
+        "    operator: '==',",
+        "    diff: 'simple'",
+        "  }"
+      ]
+    },
+    {
+      "name": "required-coverage-delete",
+      "exitCode": 1,
+      "timedOut": false,
+      "rejected": true,
+      "expectedReasonMatched": true,
+      "outputTail": [
+        "      at Test.postRun (node:internal/test_runner/test:1522:19)",
+        "      at Test.run (node:internal/test_runner/test:1447:12)",
+        "      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {",
+        "    generatedMessage: false,",
+        "    code: 'ERR_ASSERTION',",
+        "    actual: false,",
+        "    expected: true,",
+        "    operator: '==',",
+        "    diff: 'simple'",
+        "  }"
+      ]
+    },
+    {
+      "name": "invalid-rational",
+      "exitCode": 1,
+      "timedOut": false,
+      "rejected": true,
+      "expectedReasonMatched": true,
+      "outputTail": [
+        "      at Test.postRun (node:internal/test_runner/test:1522:19)",
+        "      at Test.run (node:internal/test_runner/test:1447:12)",
+        "      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {",
+        "    generatedMessage: false,",
+        "    code: 'ERR_ASSERTION',",
+        "    actual: false,",
+        "    expected: true,",
+        "    operator: '==',",
+        "    diff: 'simple'",
+        "  }"
+      ]
+    },
+    {
+      "name": "fixture-root-traversal",
+      "exitCode": 1,
+      "timedOut": false,
+      "rejected": true,
+      "expectedReasonMatched": true,
+      "outputTail": [
+        "      at Test.postRun (node:internal/test_runner/test:1522:19)",
+        "      at Test.run (node:internal/test_runner/test:1447:12)",
+        "      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {",
+        "    generatedMessage: false,",
+        "    code: 'ERR_ASSERTION',",
+        "    actual: false,",
+        "    expected: true,",
+        "    operator: '==',",
+        "    diff: 'simple'",
+        "  }"
+      ]
+    },
+    {
+      "name": "declared-size-mismatch",
+      "exitCode": 1,
+      "timedOut": false,
+      "rejected": true,
+      "expectedReasonMatched": true,
+      "outputTail": [
+        "      at Test.postRun (node:internal/test_runner/test:1522:19)",
+        "      at Test.run (node:internal/test_runner/test:1447:12)",
+        "      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {",
+        "    generatedMessage: false,",
+        "    code: 'ERR_ASSERTION',",
+        "    actual: 33,",
+        "    expected: 34,",
+        "    operator: 'strictEqual',",
+        "    diff: 'simple'",
+        "  }"
+      ]
+    },
+    {
+      "name": "profile-extension-mismatch",
+      "exitCode": 0,
+      "timedOut": false,
+      "rejected": false,
+      "expectedReasonMatched": false,
+      "outputTail": [
+        "  ✔ missing required coverage fails (languages, verdicts, io) (0.256ms)",
+        "✔ WP0.3 Corpus Manifest Validation (76.7983ms)",
+        "ℹ tests 10",
+        "ℹ suites 1",
+        "ℹ pass 10",
+        "ℹ fail 0",
+        "ℹ cancelled 0",
+        "ℹ skipped 0",
+        "ℹ todo 0",
+        "ℹ duration_ms 260.5047"
+      ]
+    },
+    {
+      "name": "non-canonical-case-order",
+      "exitCode": 1,
+      "timedOut": false,
+      "rejected": true,
+      "expectedReasonMatched": true,
+      "outputTail": [
+        "      at Test.postRun (node:internal/test_runner/test:1522:19)",
+        "      at Test.run (node:internal/test_runner/test:1447:12)",
+        "      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {",
+        "    generatedMessage: false,",
+        "    code: 'ERR_ASSERTION',",
+        "    actual: [ 'scratch_legacy_ac', 'scratch_ac', 'python_tle_stdio', 'python_ole_stdio', 'python_interactor', 'python_custom_checker', 'python_checker_ac', 'pascal_pe_file', 'missing_config_default_wa', 'java_re_stdio', 'edge_case_structure', 'cpp_interactor', 'cpp_ce', 'cpp_ac_stdio', 'complete_group', 'c_wa_file', 'c_mle_stdio' ],",
+        "    expected: [ 'c_mle_stdio', 'c_wa_file', 'complete_group', 'cpp_ac_stdio', 'cpp_ce', 'cpp_interactor', 'edge_case_structure', 'java_re_stdio', 'missing_config_default_wa', 'pascal_pe_file', 'python_checker_ac', 'python_custom_checker', 'python_interactor', 'python_ole_stdio', 'python_tle_stdio', 'scratch_ac', 'scratch_legacy_ac' ],",
+        "    operator: 'deepStrictEqual',",
+        "    diff: 'simple'",
+        "  }"
+      ]
+    },
+    {
+      "name": "collision-semantics-stripped",
+      "exitCode": 1,
+      "timedOut": false,
+      "rejected": true,
+      "expectedReasonMatched": true,
+      "outputTail": [
+        "      at Test.postRun (node:internal/test_runner/test:1522:19)",
+        "      at Test.run (node:internal/test_runner/test:1447:12)",
+        "      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {",
+        "    generatedMessage: false,",
+        "    code: 'ERR_ASSERTION',",
+        "    actual: false,",
+        "    expected: true,",
+        "    operator: '==',",
+        "    diff: 'simple'",
+        "  }"
+      ]
+    },
+    {
+      "name": "schema-additional-property",
+      "exitCode": 1,
+      "timedOut": false,
+      "rejected": true,
+      "expectedReasonMatched": true,
+      "outputTail": [
+        "      at new SafePromise (node:internal/per_context/primordials:478:3)",
+        "      at node:internal/per_context/primordials:504:9",
+        "      at Array.map (<anonymous>) {",
+        "    generatedMessage: false,",
+        "    code: 'ERR_ASSERTION',",
+        "    actual: undefined,",
+        "    expected: undefined,",
+        "    operator: 'fail',",
+        "    diff: 'simple'",
+        "  }"
+      ]
+    },
+    {
+      "name": "windows-absolute-descriptor-path",
+      "exitCode": 1,
+      "timedOut": false,
+      "rejected": true,
+      "expectedReasonMatched": true,
+      "outputTail": [
+        "      at Test.postRun (node:internal/test_runner/test:1522:19)",
+        "      at Test.run (node:internal/test_runner/test:1447:12)",
+        "      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {",
+        "    generatedMessage: false,",
+        "    code: 'ERR_ASSERTION',",
+        "    actual: false,",
+        "    expected: true,",
+        "    operator: '==',",
+        "    diff: 'simple'",
+        "  }"
+      ]
+    },
+    {
+      "name": "nested-windows-device-path",
+      "exitCode": 1,
+      "timedOut": false,
+      "rejected": true,
+      "expectedReasonMatched": true,
+      "outputTail": [
+        "      at Test.postRun (node:internal/test_runner/test:1522:19)",
+        "      at Test.run (node:internal/test_runner/test:1447:12)",
+        "      at async Suite.processPendingSubtests (node:internal/test_runner/test:960:7) {",
+        "    generatedMessage: false,",
+        "    code: 'ERR_ASSERTION',",
+        "    actual: false,",
+        "    expected: true,",
+        "    operator: '==',",
+        "    diff: 'simple'",
+        "  }"
+      ]
+    }
+  ],
+  "residualOwnedRoots": []
+}

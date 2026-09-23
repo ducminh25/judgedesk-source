@@ -1,0 +1,16 @@
+[
+  {
+    "caseId": "scratch_ac",
+    "sourceBytes": 1539,
+    "truncatedBytes": 1459,
+    "accepted": true,
+    "error": ""
+  },
+  {
+    "caseId": "scratch_legacy_ac",
+    "sourceBytes": 923,
+    "truncatedBytes": 843,
+    "accepted": true,
+    "error": ""
+  }
+]

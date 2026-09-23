@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 2,
+  "registryRevision": 6,
+  "status": "complete",
+  "refreshing": false,
+  "completedAt": "2026-09-20T13:52:56.448Z",
+  "profiles": {
+    "cpp-legacy-v1": [
+      {
+        "candidateId": "e75c9924c68d4fc1d6f7064f",
+        "profileId": "cpp-legacy-v1",
+        "kind": "cpp",
+        "canonicalPath": "C:\\msys64\\ucrt64\\bin\\g++.exe",
+        "displayPath": "C:\\msys64\\ucrt64\\bin\\g++.exe",
+        "origin": "path",
+        "pathRank": 30,
+        "lastSeenAt": "2026-09-20T13:52:55.744Z",
+        "family": "gnu-gcc",
+        "version": "16.1.0",
+        "target": "x86_64-w64-mingw32",
+        "error": null
+      },
+      {
+        "candidateId": "0aece8356de3b16623d330ff",
+        "profileId": "cpp-legacy-v1",
+        "kind": "cpp",
+        "canonicalPath": "C:\\Themis\\GCC\\bin\\g++.exe",
+        "displayPath": "C:\\Themis\\GCC\\bin\\g++.exe",
+        "origin": "standard-location",
+        "pathRank": null,
+        "lastSeenAt": "2026-09-20T13:52:55.863Z",
+        "family": "gnu-gcc",
+        "version": "9.2.0",
+        "target": "mingw32",
+        "error": null
+      }
+    ],
+    "c-gcc14": [
+      {
+        "candidateId": "10b0640ff86fcdaea79fcccc",
+        "profileId": "c-gcc14",
+        "kind": "c",
+        "canonicalPath": "C:\\msys64\\ucrt64\\bin\\gcc.exe",
+        "displayPath": "C:\\msys64\\ucrt64\\bin\\gcc.exe",
+        "origin": "path",
+        "pathRank": 30,
+        "lastSeenAt": "2026-09-20T13:52:55.724Z",
+        "family": "gnu-gcc",
+        "version": "16.1.0",
+        "target": "x86_64-w64-mingw32",
+        "error": null
+      },
+      {
+        "candidateId": "2531f40614987f6cdb1b1df2",
+        "profileId": "c-gcc14",
+        "kind": "c",
+        "canonicalPath": "C:\\Themis\\GCC\\bin\\gcc.exe",
+        "displayPath": "C:\\Themis\\GCC\\bin\\gcc.exe",
+        "origin": "standard-location",
+        "pathRank": null,
+        "lastSeenAt": "2026-09-20T13:52:55.856Z",
+        "family": "gnu-gcc",
+        "version": "9.2.0",
+        "target": "mingw32",
+        "error": null
+      }
+    ],
+    "python-cpython312": [
+      {
+        "candidateId": "19c2e045d90f7e53275ccbb1",
+        "profileId": "python-cpython312",
+        "kind": "python",
+        "canonicalPath": "C:\\Users\\mon\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "displayPath": "C:\\Users\\mon\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+        "origin": "path",
+        "pathRank": 26,
+        "lastSeenAt": "2026-09-20T13:52:55.713Z",
+        "family": "cpython",
+        "version": "3.12.10",
+        "target": null,
+        "error": null
+      },
+      {
+        "candidateId": "de8f3666404a9df86673d2c4",
+        "profileId": "python-cpython312",
+        "kind": "python",
+        "canonicalPath": "C:\\msys64\\ucrt64\\bin\\python3.exe",
+        "displayPath": "C:\\msys64\\ucrt64\\bin\\python3.exe",
+        "origin": "path",
+        "pathRank": 30,
+        "lastSeenAt": "2026-09-20T13:52:55.817Z",
+        "family": "cpython",
+        "version": "3.14.5",
+        "target": null,
+        "error": null
+      },
+      {
+        "candidateId": "b219f641c427d17af190c4bf",
+        "profileId": "python-cpython312",
+        "kind": "python",
+        "canonicalPath": "C:\\msys64\\ucrt64\\bin\\python.exe",
+        "displayPath": "C:\\msys64\\ucrt64\\bin\\python.exe",
+        "origin": "path",
+        "pathRank": 30,
+        "lastSeenAt": "2026-09-20T13:52:55.913Z",
+        "family": "cpython",
+        "version": "3.14.5",
+        "target": null,
+        "error": null
+      },
+      {
+        "candidateId": "e4dca1d3840a0da4ed76f4e1",
+        "profileId": "python-cpython312",
+        "kind": "python",
+        "canonicalPath": "C:\\Themis\\PYTHON\\python.exe",
+        "displayPath": "C:\\Themis\\Python\\python.exe",
+        "origin": "standard-location",
+        "pathRank": null,
+        "lastSeenAt": "2026-09-20T13:52:55.970Z",
+        "family": "cpython",
+        "version": "3.12.4",
+        "target": null,
+        "error": null
+      }
+    ],
+    "pascal-fpc322": [
+      {
+        "candidateId": "a18be7fc6b47a912817b9985",
+        "profileId": "pascal-fpc322",
+        "kind": "pascal",
+        "canonicalPath": "C:\\Themis\\FPC\\bin\\i386-win32\\fpc.exe",
+        "displayPath": "C:\\Themis\\FPC\\bin\\i386-win32\\fpc.exe",
+        "origin": "standard-location",
+        "pathRank": null,
+        "lastSeenAt": "2026-09-20T13:52:55.733Z",
+        "family": null,
+        "version": null,
+        "target": null,
+        "error": "probe_timeout"
+      }
+    ],
+    "java-temurin21": [
+      {
+        "candidateId": "4c932374ef8ac542416e8e48",
+        "profileId": "java-temurin21",
+        "kind": "java",
+        "canonicalPath": "C:\\jdk-25.0.3\\bin\\javac.exe",
+        "displayPath": "C:\\jdk-25.0.3\\bin\\javac.exe",
+        "origin": "path",
+        "pathRank": 31,
+        "lastSeenAt": "2026-09-20T13:52:55.678Z",
+        "family": "java",
+        "version": "25.0.3",
+        "target": null,
+        "error": null
+      },
+      {
+        "candidateId": "f716514ff906629c4fe3d8da",
+        "profileId": "java-temurin21",
+        "kind": "java",
+        "canonicalPath": "C:\\Themis\\JDK\\bin\\javac.exe",
+        "displayPath": "C:\\Themis\\JDK\\bin\\javac.exe",
+        "origin": "standard-location",
+        "pathRank": null,
+        "lastSeenAt": "2026-09-20T13:52:55.880Z",
+        "family": "java",
+        "version": "1.7.0",
+        "target": null,
+        "error": null
+      }
+    ],
+    "scratch-turbowarp-v1": []
+  }
+}

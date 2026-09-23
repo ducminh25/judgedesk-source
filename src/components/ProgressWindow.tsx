@@ -101,7 +101,7 @@ export default function ProgressWindow({ currentContestant, currentProblem, acti
 
   return (
     <div 
-      className="fixed z-50 w-80 bg-surface border border-surface-border-strong shadow-2xl rounded-lg overflow-hidden flex flex-col select-none"
+      className="fixed z-50 w-80 bg-surface border border-surface-border-strong shadow-lg rounded-md overflow-hidden flex flex-col select-none"
       style={{
         top: '80px',
         right: '80px',
@@ -116,7 +116,7 @@ export default function ProgressWindow({ currentContestant, currentProblem, acti
           <Activity className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
           {t("progress.batchGrading")}
         </h3>
-        <div className="text-text-muted text-xs font-mono">{formatTime(elapsed)}</div>
+        <div className="text-text-muted text-xs font-mono tabular-nums">{formatTime(elapsed)}</div>
       </div>
       <div className="p-4 space-y-4">
         <div className="space-y-1">
@@ -130,13 +130,13 @@ export default function ProgressWindow({ currentContestant, currentProblem, acti
           </div>
         </div>
         <div className="space-y-1">
-          <div className="flex justify-between text-xs text-text-muted font-mono">
+          <div className="flex justify-between text-xs text-text-muted font-mono tabular-nums">
             <span>{t("progress.progress")}</span>
             <span>{displayPercent}%</span>
           </div>
-          <div className="h-2 w-full bg-input-bg rounded-full overflow-hidden border border-surface-border relative">
+          <div className="h-2 w-full bg-input-bg rounded-sm overflow-hidden border border-surface-border relative">
             {isIndeterminate ? (
-              <div className="h-full w-full bg-gradient-to-r from-indigo-500/20 via-indigo-500 to-indigo-500/20 animate-pulse" />
+              <div className="h-full w-full bg-indigo-500/50 animate-pulse" />
             ) : (
               <div 
                 className="h-full bg-indigo-500 transition-all duration-300"

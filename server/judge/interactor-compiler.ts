@@ -190,7 +190,7 @@ async function compileCustomCppInteractor(
 ): Promise<CompiledInteractor> {
   const sourcePath = path.join(problemDirectory, interactorFileName);
   if (!fs.existsSync(sourcePath)) {
-    return { path: null, error: `Interactor source ${interactorFileName} was not found.` };
+    return { path: null, error: "Cannot resolve interactor path" };
   }
 
   const cpp = providedToolchain ?? await resolveCompilationToolchain("cpp");

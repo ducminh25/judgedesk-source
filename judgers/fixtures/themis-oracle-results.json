@@ -1,0 +1,1743 @@
+{
+  "manifestVersion": "2.0.0",
+  "timestamp": "2026-09-22T15:43:36.382Z",
+  "platform": "win32-x86",
+  "dllHashes": {
+    "C1": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+    "C2": "94AAFCDABC491ED85FDF0485D74B7F44609317B158BCEC813A65337C7DC0AA7F",
+    "C3": "4E2EA751CB78BE300FF00CDEA329C2F2A36D064C7E56AA55B6B4D0D7EB598F94",
+    "C4": "1A5545B42C01C894F60F8C6517986580368A92B6868A1CE2D76FDDDFC9F95BE8",
+    "C5": "DC463A5786B379450D2E68BF9C4F758C44E94FBCAEC4CD27595C8E76AA26689A"
+  },
+  "harnessBuild": {
+    "compiler": "gcc (MinGW.org GCC-9.2.0-1) 9.2.0",
+    "flags": "-O2 -mconsole -lshell32",
+    "source": "tools/themis-oracle/themis_oracle_harness.c"
+  },
+  "summary": {
+    "totalFixtures": 67,
+    "c1toC4ValidatedExactMatches": 57,
+    "c5ExecutedWithProductDecision": 10
+  },
+  "c5ProductDecision": {
+    "decision": "INTENTIONALLY_NOT_EMULATED",
+    "rationale": "Delphi off-by-one loop bug in C5Binary.dll: The binary comparison loop is compiled from 'for i := 0 to FileSize do', which executes FileSize + 1 times in Pascal. On the (FileSize + 1)-th iteration, it reads past EOF, raising STATUS_ACCESS_VIOLATION at address 0x00000000. Delphi catches the exception and returns score 0.0000 with 'Kết quả KHÁC đáp án!'. 0-byte files fail CreateFileMappingW with Win32 error 1006. Product decision: implement the documented byte-for-byte C5 contract and mark the historical DLL defect as intentionally not emulated; never call this exact DLL runtime parity while C5 fixture records differ from the defective DLL behavior."
+  },
+  "results": [
+    {
+      "id": "bai5_test00",
+      "checker": "C1",
+      "description": "BAI5 test00: number 4 with CRCRLF",
+      "fixtureInputBytes": {
+        "expectedBase64": "NA0NCg==",
+        "actualBase64": "NA=="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single line"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "bai5_test01",
+      "checker": "C1",
+      "description": "BAI5 test01: number 6 with CRCRLF",
+      "fixtureInputBytes": {
+        "expectedBase64": "Ng0NCg==",
+        "actualBase64": "Ng=="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single line"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "bai5_test02",
+      "checker": "C1",
+      "description": "BAI5 test02: number 7 with CRCRLF",
+      "fixtureInputBytes": {
+        "expectedBase64": "Nw0NCg==",
+        "actualBase64": "Nw=="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single line"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "bai5_test03",
+      "checker": "C1",
+      "description": "BAI5 test03: number 11 with CRCRLF",
+      "fixtureInputBytes": {
+        "expectedBase64": "MTENDQo=",
+        "actualBase64": "MTE="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single line"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "bai5_test04",
+      "checker": "C1",
+      "description": "BAI5 test04: number 18 with CRCRLF",
+      "fixtureInputBytes": {
+        "expectedBase64": "MTgNDQo=",
+        "actualBase64": "MTg="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single line"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "bai5_test05",
+      "checker": "C1",
+      "description": "BAI5 test05: number 53 with CRCRLF",
+      "fixtureInputBytes": {
+        "expectedBase64": "NTMNDQo=",
+        "actualBase64": "NTM="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single line"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "bai5_test06",
+      "checker": "C1",
+      "description": "BAI5 test06: number 144 with CRCRLF",
+      "fixtureInputBytes": {
+        "expectedBase64": "MTQ0DQ0K",
+        "actualBase64": "MTQ0"
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single line"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "bai5_test07",
+      "checker": "C1",
+      "description": "BAI5 test07: number 232 with CRCRLF",
+      "fixtureInputBytes": {
+        "expectedBase64": "MjMyDQ0K",
+        "actualBase64": "MjMy"
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single line"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "bai5_test08",
+      "checker": "C1",
+      "description": "BAI5 test08: number 258 with CRCRLF",
+      "fixtureInputBytes": {
+        "expectedBase64": "MjU4DQ0K",
+        "actualBase64": "MjU4"
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single line"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "bai5_test09",
+      "checker": "C1",
+      "description": "BAI5 test09: number 270 with no newline",
+      "fixtureInputBytes": {
+        "expectedBase64": "Mjcw",
+        "actualBase64": "Mjcw"
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single line"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c1_empty_both_ac",
+      "checker": "C1",
+      "description": "C1: both files empty",
+      "fixtureInputBytes": {
+        "expectedBase64": "",
+        "actualBase64": ""
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "0 lines"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c1_empty_expected_wa",
+      "checker": "C1",
+      "description": "C1: empty expected vs non-empty actual",
+      "fixtureInputBytes": {
+        "expectedBase64": "",
+        "actualBase64": "aGVsbG8="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "WA",
+        "message": "Wrong answer at line 1"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c1_empty_actual_wa",
+      "checker": "C1",
+      "description": "C1: non-empty expected vs empty actual",
+      "fixtureInputBytes": {
+        "expectedBase64": "aGVsbG8=",
+        "actualBase64": ""
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "WA",
+        "message": "Wrong answer at line 1"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c1_crlf_at_eof",
+      "checker": "C1",
+      "description": "C1: CRLF at EOF matches plain word",
+      "fixtureInputBytes": {
+        "expectedBase64": "MTQ0DQo=",
+        "actualBase64": "MTQ0"
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single line"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c1_lf_at_eof",
+      "checker": "C1",
+      "description": "C1: LF at EOF matches plain word",
+      "fixtureInputBytes": {
+        "expectedBase64": "MTQ0Cg==",
+        "actualBase64": "MTQ0"
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single line"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c1_cr_at_eof",
+      "checker": "C1",
+      "description": "C1: solitary CR at EOF matches plain word",
+      "fixtureInputBytes": {
+        "expectedBase64": "MTQ0DQ==",
+        "actualBase64": "MTQ0"
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single line"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c1_case_insensitive_ac",
+      "checker": "C1",
+      "description": "C1: case insensitive matching across words on line",
+      "fixtureInputBytes": {
+        "expectedBase64": "SGVsbG8gV29ybGQ=",
+        "actualBase64": "aGVsbG8gd29ybGQ="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single line"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c1_trailing_blank_lines_ac",
+      "checker": "C1",
+      "description": "C1: trailing blank lines and spaces on actual output ignored",
+      "fixtureInputBytes": {
+        "expectedBase64": "MTQ0",
+        "actualBase64": "MTQ0DQoNCiAgIA0K"
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single line"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c1_leading_blank_line_wa",
+      "checker": "C1",
+      "description": "C1: leading blank line on output alters line numbering -> WA at line 1",
+      "fixtureInputBytes": {
+        "expectedBase64": "MTQ0",
+        "actualBase64": "DQoxNDQ="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "WA",
+        "message": "Wrong answer at line 1"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c1_middle_crcrlf_mismatch",
+      "checker": "C1",
+      "description": "C1: CRCRLF in middle creates empty line; a\\r\\r\\nb vs a\\r\\nb differs at line 2",
+      "fixtureInputBytes": {
+        "expectedBase64": "YQ0NCmI=",
+        "actualBase64": "YQ0KYg=="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "WA",
+        "message": "Wrong answer at line 2"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c1_middle_crcrlf_match",
+      "checker": "C1",
+      "description": "C1: a\\r\\r\\nb vs a\\r\\n\\r\\nb matches as 3 lines with empty line 2",
+      "fixtureInputBytes": {
+        "expectedBase64": "YQ0NCmI=",
+        "actualBase64": "YQ0KDQpi"
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "3 lines"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c1_extra_lines_wa",
+      "checker": "C1",
+      "description": "C1: actual output has extra line",
+      "fixtureInputBytes": {
+        "expectedBase64": "MTQ0",
+        "actualBase64": "MTQ0CmV4dHJh"
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "WA",
+        "message": "Wrong answer at line 2"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c1_leading_spaces_ac",
+      "checker": "C1",
+      "description": "C1: leading spaces on line ignored",
+      "fixtureInputBytes": {
+        "expectedBase64": "aGVsbG8=",
+        "actualBase64": "ICAgaGVsbG8="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single line"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c1_leading_tabs_ac",
+      "checker": "C1",
+      "description": "C1: leading tabs on line ignored",
+      "fixtureInputBytes": {
+        "expectedBase64": "aGVsbG8=",
+        "actualBase64": "CQloZWxsbw=="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single line"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c1_middle_spaces_ac",
+      "checker": "C1",
+      "description": "C1: multiple middle spaces match single space",
+      "fixtureInputBytes": {
+        "expectedBase64": "YSBi",
+        "actualBase64": "YSAgICAgYg=="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single line"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c1_middle_tabs_ac",
+      "checker": "C1",
+      "description": "C1: tabs between words match spaces",
+      "fixtureInputBytes": {
+        "expectedBase64": "YSBi",
+        "actualBase64": "YQkJYg=="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single line"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c1_trailing_spaces_tabs_ac",
+      "checker": "C1",
+      "description": "C1: trailing spaces and tabs on line ignored",
+      "fixtureInputBytes": {
+        "expectedBase64": "aGVsbG8=",
+        "actualBase64": "aGVsbG8gCSAg"
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single line"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c1_solitary_cr_middle_match",
+      "checker": "C1",
+      "description": "C1: solitary CR in middle separates lines",
+      "fixtureInputBytes": {
+        "expectedBase64": "YQ0KYg==",
+        "actualBase64": "YQ1i"
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "2 lines"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c1_solitary_lf_middle_match",
+      "checker": "C1",
+      "description": "C1: solitary LF in middle separates lines",
+      "fixtureInputBytes": {
+        "expectedBase64": "YQ0KYg==",
+        "actualBase64": "YQpi"
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "2 lines"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c1_direction_reversal_extra_expected_line",
+      "checker": "C1",
+      "description": "C1: expected has extra line missing in actual",
+      "fixtureInputBytes": {
+        "expectedBase64": "YQ0KYg==",
+        "actualBase64": "YQ=="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "WA",
+        "message": "Wrong answer at line 2"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c1_vt_treated_as_char_match",
+      "checker": "C1",
+      "description": "C1: vertical tab (0x0B) is not delimiter in Themis, treated as word char",
+      "fixtureInputBytes": {
+        "expectedBase64": "YQti",
+        "actualBase64": "YQti"
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single line"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c1_ff_treated_as_char_match",
+      "checker": "C1",
+      "description": "C1: form feed (0x0C) is not delimiter in Themis, treated as word char",
+      "fixtureInputBytes": {
+        "expectedBase64": "YQxi",
+        "actualBase64": "YQxi"
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single line"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c1_bom_treated_as_raw_bytes_match",
+      "checker": "C1",
+      "description": "C1: UTF-8 BOM treated as raw bytes",
+      "fixtureInputBytes": {
+        "expectedBase64": "w6/Cu8K/aGVsbG8=",
+        "actualBase64": "w6/Cu8K/aGVsbG8="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single line"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c1_non_ascii_bytes_match",
+      "checker": "C1",
+      "description": "C1: non-ASCII UTF-8 bytes match identically",
+      "fixtureInputBytes": {
+        "expectedBase64": "dGnhur9uZyB2aeG7h3Q=",
+        "actualBase64": "dGnhur9uZyB2aeG7h3Q="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single line"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c1_non_ascii_bytes_diff_wa",
+      "checker": "C1",
+      "description": "C1: non-ASCII byte difference produces WA",
+      "fixtureInputBytes": {
+        "expectedBase64": "dGnhur9uZw==",
+        "actualBase64": "dGnDqW5n"
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C1LinesWordsIgnoreCase.dll",
+        "dllSha256": "96145B8E1E74B32D8ED995439871FB771FA0FEFBAF502AF6217E53918F3FCB12",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "WA",
+        "message": "Wrong answer at line 1"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c2_empty_both_ac",
+      "checker": "C2",
+      "description": "C2: both files empty",
+      "fixtureInputBytes": {
+        "expectedBase64": "",
+        "actualBase64": ""
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C2LinesWordsCase.dll",
+        "dllSha256": "94AAFCDABC491ED85FDF0485D74B7F44609317B158BCEC813A65337C7DC0AA7F",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "0 lines"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c2_case_sensitive_wa",
+      "checker": "C2",
+      "description": "C2: case sensitive mismatch at line 1",
+      "fixtureInputBytes": {
+        "expectedBase64": "SGVsbG8gV29ybGQ=",
+        "actualBase64": "aGVsbG8gd29ybGQ="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C2LinesWordsCase.dll",
+        "dllSha256": "94AAFCDABC491ED85FDF0485D74B7F44609317B158BCEC813A65337C7DC0AA7F",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "WA",
+        "message": "Wrong answer at line 1"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c2_case_sensitive_ac",
+      "checker": "C2",
+      "description": "C2: exact case match with extra whitespace on line",
+      "fixtureInputBytes": {
+        "expectedBase64": "SGVsbG8gV29ybGQ=",
+        "actualBase64": "ICAJSGVsbG8gICAJV29ybGQgIA=="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C2LinesWordsCase.dll",
+        "dllSha256": "94AAFCDABC491ED85FDF0485D74B7F44609317B158BCEC813A65337C7DC0AA7F",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single line"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c2_middle_crcrlf_match",
+      "checker": "C2",
+      "description": "C2: CRCRLF matches blank line with case sensitive text",
+      "fixtureInputBytes": {
+        "expectedBase64": "TGluZTENDQpMaW5lMw==",
+        "actualBase64": "TGluZTENCg0KTGluZTM="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C2LinesWordsCase.dll",
+        "dllSha256": "94AAFCDABC491ED85FDF0485D74B7F44609317B158BCEC813A65337C7DC0AA7F",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "3 lines"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c2_direction_reversal_extra_expected",
+      "checker": "C2",
+      "description": "C2: expected has extra line missing in actual",
+      "fixtureInputBytes": {
+        "expectedBase64": "TGluZTENCkxpbmUy",
+        "actualBase64": "TGluZTE="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C2LinesWordsCase.dll",
+        "dllSha256": "94AAFCDABC491ED85FDF0485D74B7F44609317B158BCEC813A65337C7DC0AA7F",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "WA",
+        "message": "Wrong answer at line 2"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c2_non_ascii_bytes_match",
+      "checker": "C2",
+      "description": "C2: non-ASCII Vietnamese text matches with exact case",
+      "fixtureInputBytes": {
+        "expectedBase64": "SMOgIE7hu5lp",
+        "actualBase64": "SMOgIE7hu5lp"
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C2LinesWordsCase.dll",
+        "dllSha256": "94AAFCDABC491ED85FDF0485D74B7F44609317B158BCEC813A65337C7DC0AA7F",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single line"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c3_empty_both_ac",
+      "checker": "C3",
+      "description": "C3: both files empty",
+      "fixtureInputBytes": {
+        "expectedBase64": "",
+        "actualBase64": ""
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C3WordsIgnoreCase.dll",
+        "dllSha256": "4E2EA751CB78BE300FF00CDEA329C2F2A36D064C7E56AA55B6B4D0D7EB598F94",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "0 words"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c3_empty_expected_wa",
+      "checker": "C3",
+      "description": "C3: empty expected vs word actual",
+      "fixtureInputBytes": {
+        "expectedBase64": "",
+        "actualBase64": "d29yZA=="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C3WordsIgnoreCase.dll",
+        "dllSha256": "4E2EA751CB78BE300FF00CDEA329C2F2A36D064C7E56AA55B6B4D0D7EB598F94",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "WA",
+        "message": "Wrong answer: different number of words (expected 0, found 1)"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c3_empty_actual_wa",
+      "checker": "C3",
+      "description": "C3: word expected vs empty actual",
+      "fixtureInputBytes": {
+        "expectedBase64": "d29yZA==",
+        "actualBase64": ""
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C3WordsIgnoreCase.dll",
+        "dllSha256": "4E2EA751CB78BE300FF00CDEA329C2F2A36D064C7E56AA55B6B4D0D7EB598F94",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "WA",
+        "message": "Wrong answer: different number of words (expected 1, found 0)"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c3_words_across_lines_ac",
+      "checker": "C3",
+      "description": "C3: words across different line structures with case insensitivity",
+      "fixtureInputBytes": {
+        "expectedBase64": "aGVsbG8NCndvcmxk",
+        "actualBase64": "SEVMTE8gd29ybGQ="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C3WordsIgnoreCase.dll",
+        "dllSha256": "4E2EA751CB78BE300FF00CDEA329C2F2A36D064C7E56AA55B6B4D0D7EB598F94",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "2 words"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c3_word_mismatch_first",
+      "checker": "C3",
+      "description": "C3: word mismatch reported at first differing word even if count differs",
+      "fixtureInputBytes": {
+        "expectedBase64": "YSBiIGM=",
+        "actualBase64": "YSB4IGMgZA=="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C3WordsIgnoreCase.dll",
+        "dllSha256": "4E2EA751CB78BE300FF00CDEA329C2F2A36D064C7E56AA55B6B4D0D7EB598F94",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "WA",
+        "message": "Wrong answer at word 2"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c3_word_count_difference",
+      "checker": "C3",
+      "description": "C3: prefix matches but word count differs (actual longer)",
+      "fixtureInputBytes": {
+        "expectedBase64": "YSBi",
+        "actualBase64": "YSBiIGM="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C3WordsIgnoreCase.dll",
+        "dllSha256": "4E2EA751CB78BE300FF00CDEA329C2F2A36D064C7E56AA55B6B4D0D7EB598F94",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "WA",
+        "message": "Wrong answer: different number of words (expected 2, found 3)"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c3_direction_reversal_expected_longer",
+      "checker": "C3",
+      "description": "C3: prefix matches but word count differs (expected longer)",
+      "fixtureInputBytes": {
+        "expectedBase64": "YSBiIGM=",
+        "actualBase64": "YSBi"
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C3WordsIgnoreCase.dll",
+        "dllSha256": "4E2EA751CB78BE300FF00CDEA329C2F2A36D064C7E56AA55B6B4D0D7EB598F94",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "WA",
+        "message": "Wrong answer: different number of words (expected 3, found 2)"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c3_multiple_whitespace_types_ac",
+      "checker": "C3",
+      "description": "C3: multiple mixed whitespace types across lines",
+      "fixtureInputBytes": {
+        "expectedBase64": "QWxwaGEgQmV0YSBHYW1tYQ==",
+        "actualBase64": "ICBhbHBoYQkNCiAgYmV0YQ0KDSAgZ2FtbWEgIA=="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C3WordsIgnoreCase.dll",
+        "dllSha256": "4E2EA751CB78BE300FF00CDEA329C2F2A36D064C7E56AA55B6B4D0D7EB598F94",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "3 words"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c3_vt_as_word_char",
+      "checker": "C3",
+      "description": "C3: VT (0x0B) is part of word, matches case-folded",
+      "fixtureInputBytes": {
+        "expectedBase64": "YQti",
+        "actualBase64": "QQti"
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C3WordsIgnoreCase.dll",
+        "dllSha256": "4E2EA751CB78BE300FF00CDEA329C2F2A36D064C7E56AA55B6B4D0D7EB598F94",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "single word"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c4_empty_both_ac",
+      "checker": "C4",
+      "description": "C4: both files empty",
+      "fixtureInputBytes": {
+        "expectedBase64": "",
+        "actualBase64": ""
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C4WordsCase.dll",
+        "dllSha256": "1A5545B42C01C894F60F8C6517986580368A92B6868A1CE2D76FDDDFC9F95BE8",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "0 words"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c4_empty_expected_wa",
+      "checker": "C4",
+      "description": "C4: empty expected vs word actual",
+      "fixtureInputBytes": {
+        "expectedBase64": "",
+        "actualBase64": "d29yZA=="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C4WordsCase.dll",
+        "dllSha256": "1A5545B42C01C894F60F8C6517986580368A92B6868A1CE2D76FDDDFC9F95BE8",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "WA",
+        "message": "Wrong answer: different number of words (expected 0, found 1)"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c4_empty_actual_wa",
+      "checker": "C4",
+      "description": "C4: word expected vs empty actual",
+      "fixtureInputBytes": {
+        "expectedBase64": "d29yZA==",
+        "actualBase64": ""
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C4WordsCase.dll",
+        "dllSha256": "1A5545B42C01C894F60F8C6517986580368A92B6868A1CE2D76FDDDFC9F95BE8",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "WA",
+        "message": "Wrong answer: different number of words (expected 1, found 0)"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c4_case_sensitive_wa",
+      "checker": "C4",
+      "description": "C4: case sensitive word mismatch",
+      "fixtureInputBytes": {
+        "expectedBase64": "aGVsbG8gd29ybGQ=",
+        "actualBase64": "SEVMTE8gd29ybGQ="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C4WordsCase.dll",
+        "dllSha256": "1A5545B42C01C894F60F8C6517986580368A92B6868A1CE2D76FDDDFC9F95BE8",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "WA",
+        "message": "Wrong answer at word 1"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c4_case_sensitive_ac",
+      "checker": "C4",
+      "description": "C4: exact case words across different lines",
+      "fixtureInputBytes": {
+        "expectedBase64": "SGVsbG8NCndvcmxk",
+        "actualBase64": "SGVsbG8Jd29ybGQ="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C4WordsCase.dll",
+        "dllSha256": "1A5545B42C01C894F60F8C6517986580368A92B6868A1CE2D76FDDDFC9F95BE8",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "2 words"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c4_direction_reversal_expected_longer",
+      "checker": "C4",
+      "description": "C4: prefix matches but expected has extra word",
+      "fixtureInputBytes": {
+        "expectedBase64": "QWxwaGEgQmV0YSBHYW1tYQ==",
+        "actualBase64": "QWxwaGEgQmV0YQ=="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C4WordsCase.dll",
+        "dllSha256": "1A5545B42C01C894F60F8C6517986580368A92B6868A1CE2D76FDDDFC9F95BE8",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "WA",
+        "message": "Wrong answer: different number of words (expected 3, found 2)"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c4_multiple_whitespace_types_ac",
+      "checker": "C4",
+      "description": "C4: multiple whitespace types with exact case",
+      "fixtureInputBytes": {
+        "expectedBase64": "QWxwaGEgQmV0YSBHYW1tYQ==",
+        "actualBase64": "CUFscGhhDQoNCiAgQmV0YSANICBHYW1tYQo="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C4WordsCase.dll",
+        "dllSha256": "1A5545B42C01C894F60F8C6517986580368A92B6868A1CE2D76FDDDFC9F95BE8",
+        "rawScore": 1,
+        "rawComment": "Kết quả khớp đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20006B006800DB1E700020001101E10070002000E1006E002100",
+        "liveDllVerdict": "AC"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "3 words"
+      },
+      "parityStatus": "VERIFIED_EXACT_MATCH"
+    },
+    {
+      "id": "c5_empty_both_ac",
+      "checker": "C5",
+      "description": "C5: binary comparison of two empty files (0 bytes)",
+      "fixtureInputBytes": {
+        "expectedBase64": "",
+        "actualBase64": ""
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C5Binary.dll",
+        "dllSha256": "DC463A5786B379450D2E68BF9C4F758C44E94FBCAEC4CD27595C8E76AA26689A",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "files are identical (0 bytes)"
+      },
+      "parityStatus": "INTENTIONALLY_NOT_EMULATED",
+      "productDecision": {
+        "decision": "INTENTIONALLY_NOT_EMULATED",
+        "rationale": "Delphi off-by-one loop bug in C5Binary.dll: The binary comparison loop is compiled from 'for i := 0 to FileSize do', which executes FileSize + 1 times in Pascal. On the (FileSize + 1)-th iteration, it reads past EOF, raising STATUS_ACCESS_VIOLATION at address 0x00000000. Delphi catches the exception and returns score 0.0000 with 'Kết quả KHÁC đáp án!'. 0-byte files fail CreateFileMappingW with Win32 error 1006. Product decision: implement the documented byte-for-byte C5 contract and mark the historical DLL defect as intentionally not emulated; never call this exact DLL runtime parity while C5 fixture records differ from the defective DLL behavior."
+      }
+    },
+    {
+      "id": "c5_identical_bytes_ac",
+      "checker": "C5",
+      "description": "C5: binary comparison of raw bytes including nulls and high bytes",
+      "fixtureInputBytes": {
+        "expectedBase64": "AA0K/w==",
+        "actualBase64": "AA0K/w=="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C5Binary.dll",
+        "dllSha256": "DC463A5786B379450D2E68BF9C4F758C44E94FBCAEC4CD27595C8E76AA26689A",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "files are identical (4 bytes)"
+      },
+      "parityStatus": "INTENTIONALLY_NOT_EMULATED",
+      "productDecision": {
+        "decision": "INTENTIONALLY_NOT_EMULATED",
+        "rationale": "Delphi off-by-one loop bug in C5Binary.dll: The binary comparison loop is compiled from 'for i := 0 to FileSize do', which executes FileSize + 1 times in Pascal. On the (FileSize + 1)-th iteration, it reads past EOF, raising STATUS_ACCESS_VIOLATION at address 0x00000000. Delphi catches the exception and returns score 0.0000 with 'Kết quả KHÁC đáp án!'. 0-byte files fail CreateFileMappingW with Win32 error 1006. Product decision: implement the documented byte-for-byte C5 contract and mark the historical DLL defect as intentionally not emulated; never call this exact DLL runtime parity while C5 fixture records differ from the defective DLL behavior."
+      }
+    },
+    {
+      "id": "c5_first_byte_mismatch_wa",
+      "checker": "C5",
+      "description": "C5: mismatch at byte 1",
+      "fixtureInputBytes": {
+        "expectedBase64": "/wEC",
+        "actualBase64": "AAEC"
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C5Binary.dll",
+        "dllSha256": "DC463A5786B379450D2E68BF9C4F758C44E94FBCAEC4CD27595C8E76AA26689A",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "WA",
+        "message": "Wrong answer at byte 1; expected 0xFF; found 0x00; expected preview [0..2] FF 01 02; actual preview [0..2] 00 01 02"
+      },
+      "parityStatus": "INTENTIONALLY_NOT_EMULATED",
+      "productDecision": {
+        "decision": "INTENTIONALLY_NOT_EMULATED",
+        "rationale": "Delphi off-by-one loop bug in C5Binary.dll: The binary comparison loop is compiled from 'for i := 0 to FileSize do', which executes FileSize + 1 times in Pascal. On the (FileSize + 1)-th iteration, it reads past EOF, raising STATUS_ACCESS_VIOLATION at address 0x00000000. Delphi catches the exception and returns score 0.0000 with 'Kết quả KHÁC đáp án!'. 0-byte files fail CreateFileMappingW with Win32 error 1006. Product decision: implement the documented byte-for-byte C5 contract and mark the historical DLL defect as intentionally not emulated; never call this exact DLL runtime parity while C5 fixture records differ from the defective DLL behavior."
+      }
+    },
+    {
+      "id": "c5_mid_byte_mismatch_wa",
+      "checker": "C5",
+      "description": "C5: mismatch at byte 2",
+      "fixtureInputBytes": {
+        "expectedBase64": "AaoD",
+        "actualBase64": "AbsD"
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C5Binary.dll",
+        "dllSha256": "DC463A5786B379450D2E68BF9C4F758C44E94FBCAEC4CD27595C8E76AA26689A",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "WA",
+        "message": "Wrong answer at byte 2; expected 0xAA; found 0xBB; expected preview [0..2] 01 AA 03; actual preview [0..2] 01 BB 03"
+      },
+      "parityStatus": "INTENTIONALLY_NOT_EMULATED",
+      "productDecision": {
+        "decision": "INTENTIONALLY_NOT_EMULATED",
+        "rationale": "Delphi off-by-one loop bug in C5Binary.dll: The binary comparison loop is compiled from 'for i := 0 to FileSize do', which executes FileSize + 1 times in Pascal. On the (FileSize + 1)-th iteration, it reads past EOF, raising STATUS_ACCESS_VIOLATION at address 0x00000000. Delphi catches the exception and returns score 0.0000 with 'Kết quả KHÁC đáp án!'. 0-byte files fail CreateFileMappingW with Win32 error 1006. Product decision: implement the documented byte-for-byte C5 contract and mark the historical DLL defect as intentionally not emulated; never call this exact DLL runtime parity while C5 fixture records differ from the defective DLL behavior."
+      }
+    },
+    {
+      "id": "c5_last_byte_mismatch_wa",
+      "checker": "C5",
+      "description": "C5: mismatch at byte 3",
+      "fixtureInputBytes": {
+        "expectedBase64": "AQL+",
+        "actualBase64": "AQL/"
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C5Binary.dll",
+        "dllSha256": "DC463A5786B379450D2E68BF9C4F758C44E94FBCAEC4CD27595C8E76AA26689A",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "WA",
+        "message": "Wrong answer at byte 3; expected 0xFE; found 0xFF; expected preview [0..2] 01 02 FE; actual preview [0..2] 01 02 FF"
+      },
+      "parityStatus": "INTENTIONALLY_NOT_EMULATED",
+      "productDecision": {
+        "decision": "INTENTIONALLY_NOT_EMULATED",
+        "rationale": "Delphi off-by-one loop bug in C5Binary.dll: The binary comparison loop is compiled from 'for i := 0 to FileSize do', which executes FileSize + 1 times in Pascal. On the (FileSize + 1)-th iteration, it reads past EOF, raising STATUS_ACCESS_VIOLATION at address 0x00000000. Delphi catches the exception and returns score 0.0000 with 'Kết quả KHÁC đáp án!'. 0-byte files fail CreateFileMappingW with Win32 error 1006. Product decision: implement the documented byte-for-byte C5 contract and mark the historical DLL defect as intentionally not emulated; never call this exact DLL runtime parity while C5 fixture records differ from the defective DLL behavior."
+      }
+    },
+    {
+      "id": "c5_byte_mismatch_wa",
+      "checker": "C5",
+      "description": "C5: mismatch at byte 2 with previews",
+      "fixtureInputBytes": {
+        "expectedBase64": "AAECAw==",
+        "actualBase64": "AAkCAw=="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C5Binary.dll",
+        "dllSha256": "DC463A5786B379450D2E68BF9C4F758C44E94FBCAEC4CD27595C8E76AA26689A",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "WA",
+        "message": "Wrong answer at byte 2; expected 0x01; found 0x09; expected preview [0..3] 00 01 02 03; actual preview [0..3] 00 09 02 03"
+      },
+      "parityStatus": "INTENTIONALLY_NOT_EMULATED",
+      "productDecision": {
+        "decision": "INTENTIONALLY_NOT_EMULATED",
+        "rationale": "Delphi off-by-one loop bug in C5Binary.dll: The binary comparison loop is compiled from 'for i := 0 to FileSize do', which executes FileSize + 1 times in Pascal. On the (FileSize + 1)-th iteration, it reads past EOF, raising STATUS_ACCESS_VIOLATION at address 0x00000000. Delphi catches the exception and returns score 0.0000 with 'Kết quả KHÁC đáp án!'. 0-byte files fail CreateFileMappingW with Win32 error 1006. Product decision: implement the documented byte-for-byte C5 contract and mark the historical DLL defect as intentionally not emulated; never call this exact DLL runtime parity while C5 fixture records differ from the defective DLL behavior."
+      }
+    },
+    {
+      "id": "c5_length_mismatch_wa",
+      "checker": "C5",
+      "description": "C5: different file length when common prefix identical (actual longer)",
+      "fixtureInputBytes": {
+        "expectedBase64": "AAE=",
+        "actualBase64": "AAEC"
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C5Binary.dll",
+        "dllSha256": "DC463A5786B379450D2E68BF9C4F758C44E94FBCAEC4CD27595C8E76AA26689A",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "WA",
+        "message": "Wrong answer: different file length (expected 2, found 3); expected preview [0..1] 00 01; actual preview [0..2] 00 01 02"
+      },
+      "parityStatus": "INTENTIONALLY_NOT_EMULATED",
+      "productDecision": {
+        "decision": "INTENTIONALLY_NOT_EMULATED",
+        "rationale": "Delphi off-by-one loop bug in C5Binary.dll: The binary comparison loop is compiled from 'for i := 0 to FileSize do', which executes FileSize + 1 times in Pascal. On the (FileSize + 1)-th iteration, it reads past EOF, raising STATUS_ACCESS_VIOLATION at address 0x00000000. Delphi catches the exception and returns score 0.0000 with 'Kết quả KHÁC đáp án!'. 0-byte files fail CreateFileMappingW with Win32 error 1006. Product decision: implement the documented byte-for-byte C5 contract and mark the historical DLL defect as intentionally not emulated; never call this exact DLL runtime parity while C5 fixture records differ from the defective DLL behavior."
+      }
+    },
+    {
+      "id": "c5_length_mismatch_expected_longer_wa",
+      "checker": "C5",
+      "description": "C5: different file length when common prefix identical (expected longer)",
+      "fixtureInputBytes": {
+        "expectedBase64": "AQIDBA==",
+        "actualBase64": "AQI="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C5Binary.dll",
+        "dllSha256": "DC463A5786B379450D2E68BF9C4F758C44E94FBCAEC4CD27595C8E76AA26689A",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "WA",
+        "message": "Wrong answer: different file length (expected 4, found 2); expected preview [0..3] 01 02 03 04; actual preview [0..1] 01 02"
+      },
+      "parityStatus": "INTENTIONALLY_NOT_EMULATED",
+      "productDecision": {
+        "decision": "INTENTIONALLY_NOT_EMULATED",
+        "rationale": "Delphi off-by-one loop bug in C5Binary.dll: The binary comparison loop is compiled from 'for i := 0 to FileSize do', which executes FileSize + 1 times in Pascal. On the (FileSize + 1)-th iteration, it reads past EOF, raising STATUS_ACCESS_VIOLATION at address 0x00000000. Delphi catches the exception and returns score 0.0000 with 'Kết quả KHÁC đáp án!'. 0-byte files fail CreateFileMappingW with Win32 error 1006. Product decision: implement the documented byte-for-byte C5 contract and mark the historical DLL defect as intentionally not emulated; never call this exact DLL runtime parity while C5 fixture records differ from the defective DLL behavior."
+      }
+    },
+    {
+      "id": "c5_length_mismatch_actual_longer_wa",
+      "checker": "C5",
+      "description": "C5: different file length when common prefix identical (actual longer by 2)",
+      "fixtureInputBytes": {
+        "expectedBase64": "AQI=",
+        "actualBase64": "AQIDBA=="
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C5Binary.dll",
+        "dllSha256": "DC463A5786B379450D2E68BF9C4F758C44E94FBCAEC4CD27595C8E76AA26689A",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "WA",
+        "message": "Wrong answer: different file length (expected 2, found 4); expected preview [0..1] 01 02; actual preview [0..3] 01 02 03 04"
+      },
+      "parityStatus": "INTENTIONALLY_NOT_EMULATED",
+      "productDecision": {
+        "decision": "INTENTIONALLY_NOT_EMULATED",
+        "rationale": "Delphi off-by-one loop bug in C5Binary.dll: The binary comparison loop is compiled from 'for i := 0 to FileSize do', which executes FileSize + 1 times in Pascal. On the (FileSize + 1)-th iteration, it reads past EOF, raising STATUS_ACCESS_VIOLATION at address 0x00000000. Delphi catches the exception and returns score 0.0000 with 'Kết quả KHÁC đáp án!'. 0-byte files fail CreateFileMappingW with Win32 error 1006. Product decision: implement the documented byte-for-byte C5 contract and mark the historical DLL defect as intentionally not emulated; never call this exact DLL runtime parity while C5 fixture records differ from the defective DLL behavior."
+      }
+    },
+    {
+      "id": "c5_nul_and_high_bytes_ac",
+      "checker": "C5",
+      "description": "C5: binary match with NUL and high bytes (0x00, 0xFF, 0x80, 0x7F)",
+      "fixtureInputBytes": {
+        "expectedBase64": "AAD//4B/",
+        "actualBase64": "AAD//4B/"
+      },
+      "oracleExecution": {
+        "invoked": true,
+        "exitCode": 0,
+        "signal": null,
+        "dll": "C5Binary.dll",
+        "dllSha256": "DC463A5786B379450D2E68BF9C4F758C44E94FBCAEC4CD27595C8E76AA26689A",
+        "rawScore": 0,
+        "rawComment": "Kết quả KHÁC đáp án!",
+        "hexComment": "4B00BF1E7400200071007500A31E20004B004800C100430020001101E10070002000E1006E002100",
+        "liveDllVerdict": "WA"
+      },
+      "judgedesk": {
+        "verdict": "AC",
+        "message": "files are identical (6 bytes)"
+      },
+      "parityStatus": "INTENTIONALLY_NOT_EMULATED",
+      "productDecision": {
+        "decision": "INTENTIONALLY_NOT_EMULATED",
+        "rationale": "Delphi off-by-one loop bug in C5Binary.dll: The binary comparison loop is compiled from 'for i := 0 to FileSize do', which executes FileSize + 1 times in Pascal. On the (FileSize + 1)-th iteration, it reads past EOF, raising STATUS_ACCESS_VIOLATION at address 0x00000000. Delphi catches the exception and returns score 0.0000 with 'Kết quả KHÁC đáp án!'. 0-byte files fail CreateFileMappingW with Win32 error 1006. Product decision: implement the documented byte-for-byte C5 contract and mark the historical DLL defect as intentionally not emulated; never call this exact DLL runtime parity while C5 fixture records differ from the defective DLL behavior."
+      }
+    }
+  ]
+}

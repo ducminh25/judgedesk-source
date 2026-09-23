@@ -1,0 +1,125 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CorpusManifest",
+  "type": "object",
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "languageProfileId": { "type": "string" },
+          "extension": { "type": "string" },
+          "platforms": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "ioMode": { "type": "string", "enum": ["stdio", "file"] },
+          "fixtureRoot": { "type": "string" },
+          "expectedCompileOutcome": { "type": "string", "enum": ["SUCCESS", "CE", "FAIL"] },
+          "expectedProblemVerdict": { "type": "string", "enum": ["AC", "WA", "PE", "PARTIAL", "CE", "RE", "TLE", "MLE", "OLE", "JE"] },
+          "expectedMaxScore": {
+            "type": "object",
+            "properties": {
+              "numerator": { "type": "string", "pattern": "^-?\\d+$" },
+              "denominator": { "type": "string", "pattern": "^[1-9]\\d*$" },
+              "display": { "type": "number" }
+            },
+            "required": ["numerator", "denominator", "display"],
+            "additionalProperties": false
+          },
+          "expectedScore": {
+            "type": "object",
+            "properties": {
+              "numerator": { "type": "string", "pattern": "^-?\\d+$" },
+              "denominator": { "type": "string", "pattern": "^[1-9]\\d*$" },
+              "display": { "type": "number" }
+            },
+            "required": ["numerator", "denominator", "display"],
+            "additionalProperties": false
+          },
+          "provenance": { "type": "string" },
+          "tests": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" },
+                "verdict": { "type": "string", "enum": ["AC", "WA", "PE", "PARTIAL", "CE", "RE", "TLE", "MLE", "OLE", "JE"] },
+                "checkerMessage": { "type": ["string", "null"] },
+                "score": {
+                  "type": "object",
+                  "properties": {
+                    "numerator": { "type": "string", "pattern": "^-?\\d+$" },
+                    "denominator": { "type": "string", "pattern": "^[1-9]\\d*$" },
+                    "display": { "type": "number" }
+                  },
+                  "required": ["numerator", "denominator", "display"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["name", "verdict", "checkerMessage", "score"],
+              "additionalProperties": false
+            }
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": { "type": "string" },
+                "role": { "type": "string" },
+                "size": { "type": "integer" },
+                "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+                "expectedAbsence": { "type": "boolean" },
+                "emptyDirectory": { "type": "boolean" }
+              },
+              "required": ["path", "role"],
+              "additionalProperties": false
+            }
+          },
+          "groupEffects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "groupId": { "type": "string" },
+                "resolvedVerdict": { "type": "string", "enum": ["AC", "WA", "PE", "PARTIAL", "CE", "RE", "TLE", "MLE", "OLE", "JE"] },
+                "dependenciesMet": { "type": "boolean" },
+                "score": {
+                  "type": "object",
+                  "properties": {
+                    "numerator": { "type": "string", "pattern": "^-?\\d+$" },
+                    "denominator": { "type": "string", "pattern": "^[1-9]\\d*$" },
+                    "display": { "type": "number" }
+                  },
+                  "required": ["numerator", "denominator", "display"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["groupId", "resolvedVerdict", "dependenciesMet", "score"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "id", "tags", "languageProfileId", "extension", "platforms", "ioMode",
+          "fixtureRoot", "expectedCompileOutcome", "expectedProblemVerdict",
+          "expectedMaxScore", "expectedScore", "provenance", "tests", "files"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["version", "cases"],
+  "additionalProperties": false
+}

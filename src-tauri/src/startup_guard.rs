@@ -588,8 +588,38 @@ fn acquire_in_directory(directory: &Path, file_path: Option<&str>) -> io::Result
     acquire_in_directory_with_timeout(directory, ACTIVATION_RECOVERY_TIMEOUT, file_path)
 }
 
+fn resolve_base_data_dir() -> Option<PathBuf> {
+    dirs::data_local_dir().or_else(|| {
+        #[cfg(windows)]
+        {
+            std::env::var_os("LOCALAPPDATA")
+                .map(PathBuf::from)
+                .or_else(|| dirs::home_dir().map(|h| h.join("AppData").join("Local")))
+                .or_else(|| {
+                    std::env::var_os("USERPROFILE")
+                        .map(|p| PathBuf::from(p).join("AppData").join("Local"))
+                })
+        }
+        #[cfg(target_os = "macos")]
+        {
+            dirs::home_dir()
+                .map(|h| h.join("Library").join("Application Support"))
+                .or_else(|| {
+                    std::env::var_os("HOME")
+                        .map(|h| PathBuf::from(h).join("Library").join("Application Support"))
+                })
+        }
+        #[cfg(not(any(windows, target_os = "macos")))]
+        {
+            std::env::var_os("XDG_DATA_HOME")
+                .map(PathBuf::from)
+                .or_else(|| dirs::home_dir().map(|h| h.join(".local").join("share")))
+        }
+    })
+}
+
 pub(crate) fn acquire(identifier: &str, file_path: Option<&str>) -> io::Result<AcquireOutcome> {
-    let base_directory = dirs::data_local_dir().ok_or_else(|| {
+    let base_directory = resolve_base_data_dir().ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::NotFound,
             "local application data directory is unavailable",
@@ -745,8 +775,8 @@ pub(crate) fn focus_primary(app: &tauri::AppHandle) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        acquire_in_directory, read_activation_metadata, AcquireOutcome, SecondaryOutcome,
-        ACTIVATION_METADATA_FILE,
+        acquire_in_directory, read_activation_metadata, resolve_base_data_dir, AcquireOutcome,
+        SecondaryOutcome, ACTIVATION_METADATA_FILE,
     };
     use std::fs;
     use std::io::{Read, Write};
@@ -1158,4 +1188,14 @@ mod tests {
         std::thread::sleep(Duration::from_secs(15));
         panic!("job descendant was not terminated with its owner");
     }
+
+    #[test]
+    fn resolve_base_data_dir_resolves_non_empty_directory() {
+        let dir = resolve_base_data_dir();
+        assert!(dir.is_some(), "base data directory must resolve");
+        let path = dir.unwrap();
+        assert!(!path.as_os_str().is_empty(), "path must not be empty");
+    }
 }
+
+

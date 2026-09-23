@@ -1,0 +1,26 @@
+[
+  {
+    "caseId": "scratch_ac",
+    "sourceSha256": "d279e8e4612ca3782bd903e1929a42981df03e66d9a5fae2fc4b307aefc33064",
+    "stagedSha256": "d279e8e4612ca3782bd903e1929a42981df03e66d9a5fae2fc4b307aefc33064",
+    "selectedName": "project.sb3",
+    "selectedSha256": "d279e8e4612ca3782bd903e1929a42981df03e66d9a5fae2fc4b307aefc33064",
+    "selectedEqualsSource": true
+  },
+  {
+    "caseId": "scratch_legacy_ac",
+    "sourceSha256": "6be0536fc09f76224e5689b3678ab95d008cef69683ef127fd5c348b1ce8b496",
+    "stagedSha256": "6be0536fc09f76224e5689b3678ab95d008cef69683ef127fd5c348b1ce8b496",
+    "selectedName": "project.sb2",
+    "selectedSha256": "6be0536fc09f76224e5689b3678ab95d008cef69683ef127fd5c348b1ce8b496",
+    "selectedEqualsSource": true
+  },
+  {
+    "caseId": "scratch_sb_stdio",
+    "sourceSha256": "1b8f5bb6488c78db7de426c7d3776b8dd3edb0399d6027e31f2b11164ab19a7d",
+    "stagedSha256": "1b8f5bb6488c78db7de426c7d3776b8dd3edb0399d6027e31f2b11164ab19a7d",
+    "selectedName": "project.sb",
+    "selectedSha256": "1b8f5bb6488c78db7de426c7d3776b8dd3edb0399d6027e31f2b11164ab19a7d",
+    "selectedEqualsSource": true
+  }
+]

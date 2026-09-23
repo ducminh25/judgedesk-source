@@ -1,0 +1,30 @@
+[
+  {
+    "ThreatID": 2147731250,
+    "ThreatStatusID": 3,
+    "InitialDetectionTime": "2026-09-21T11:58:17.719+07:00",
+    "LastThreatStatusChangeTime": "2026-09-21T11:58:53.035+07:00",
+    "Resources": "file:_C:\\Users\\mon\\AppData\\Local\\JudgeDesk\\JudgeDeskExecutor\\workspaces\\startup_self_test\\probe.exe"
+  },
+  {
+    "ThreatID": 2147731250,
+    "ThreatStatusID": 3,
+    "InitialDetectionTime": "2026-09-21T11:59:00.171+07:00",
+    "LastThreatStatusChangeTime": "2026-09-21T11:59:36.72+07:00",
+    "Resources": "file:_D:\\Minh\\Code\\judgedesk\\src-tauri\\binaries\\judgedesk-executor-x86_64-pc-windows-msvc.exe"
+  },
+  {
+    "ThreatID": 2147731250,
+    "ThreatStatusID": 7,
+    "InitialDetectionTime": "2026-09-21T12:12:25.418+07:00",
+    "LastThreatStatusChangeTime": "2026-09-21T12:12:57.934+07:00",
+    "Resources": "file:_D:\\Minh\\Code\\judgedesk\\native-executor\\target\\x86_64-pc-windows-msvc\\release\\judgedesk-native-executor.exe"
+  },
+  {
+    "ThreatID": 2147731250,
+    "ThreatStatusID": 103,
+    "InitialDetectionTime": "2026-09-21T12:36:03.371+07:00",
+    "LastThreatStatusChangeTime": "2026-09-21T12:36:39.359+07:00",
+    "Resources": "file:_D:\\Minh\\Code\\judgedesk\\src-tauri\\binaries\\judgedesk-executor-x86_64-pc-windows-msvc.exe"
+  }
+]

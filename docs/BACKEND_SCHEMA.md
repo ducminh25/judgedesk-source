@@ -4,6 +4,8 @@
 **Document Status**: Official / Approved  
 **Classification**: Technical API & Wire Schema Reference  
 
+**Release context**: JSON examples use the released `v1.5.0` baseline. Current development targets `v1.6.0`; runtime/package version fields change only after the final coordinated eight-file bump.
+
 ---
 
 ## 1. REST & SSE Endpoint Specification

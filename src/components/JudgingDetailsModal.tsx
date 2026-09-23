@@ -105,8 +105,8 @@ export default function JudgingDetailsModal({
   }, [data.testCases, filter]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-surface border border-surface-border rounded-lg w-full max-w-4xl shadow-2xl flex flex-col max-h-[95vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="bg-surface border border-surface-border rounded-lg w-full max-w-4xl shadow-lg flex flex-col max-h-[95vh]">
         <div className="flex items-center justify-between p-4 border-b border-surface-border">
           <div className="flex flex-col">
             <h3 className="text-text-primary font-bold tracking-wider uppercase text-[11px]">
@@ -115,7 +115,7 @@ export default function JudgingDetailsModal({
                 {contestantName}
               </span>
             </h3>
-            <span className="text-text-muted text-2xs font-mono mt-0.5">
+            <span className="text-text-muted text-2xs font-mono tabular-nums mt-0.5">
               {t("judgingDetails.problem")}: {data.problemName} |{" "}
               {t("judgingDetails.overall")}: {data.summary.status} |{" "}
               {t("judgingDetails.score")}: {formatScore(data.summary.score)}/
@@ -182,16 +182,16 @@ export default function JudgingDetailsModal({
                       {tc.name}
                     </span>
                     <div className="flex items-center gap-4">
-                      <span className="font-mono text-text-muted text-2xs">
+                      <span className="font-mono tabular-nums text-text-muted text-2xs">
                         {(tc.executionTime / 1000).toFixed(4)}
                         {t("judgingDetails.seconds")}
                       </span>
                       {tc.peakMemory !== undefined && (
-                        <span className="font-mono text-text-muted text-2xs">
+                        <span className="font-mono tabular-nums text-text-muted text-2xs">
                           {(tc.peakMemory / 1024).toFixed(2)} MB
                         </span>
                       )}
-                      <span className="text-text-muted font-bold text-[10px]">
+                      <span className="text-text-muted font-bold text-[10px] tabular-nums">
                         {t("judgingDetails.score")}:{" "}
                         {formatScore(Number(tc.score))}
                       </span>

@@ -1,0 +1,438 @@
+use judgedesk_core::engine::compiler::compile_submission;
+use judgedesk_core::engine::runner::{run_test_case, TestCaseExecutionConfig};
+use judgedesk_native_executor::platform::Platform;
+use std::fs;
+
+mod common;
+
+#[test]
+fn test_platform_initialization_is_confined_to_owned_test_root() {
+    let test_environment = common::OwnedTestEnvironment::new();
+    let owned_root = test_environment.root().to_path_buf();
+    let platform = test_environment.with_isolated_roots(Platform::initialize);
+
+    assert!(
+        platform.root().starts_with(&owned_root),
+        "test platform root {} must remain inside owned root {}",
+        platform.root().display(),
+        owned_root.display()
+    );
+
+    drop(platform);
+    drop(test_environment);
+    assert!(
+        !owned_root.exists(),
+        "owned platform test root must be removed after teardown"
+    );
+}
+
+#[test]
+fn test_cpp_compile_and_run_ac() {
+    let _test_environment = common::OwnedTestEnvironment::new();
+    common::ensure_test_environment();
+    let platform = _test_environment.with_isolated_roots(Platform::initialize);
+    let temp_dir = std::env::temp_dir().join(format!("test_exec_ac_{}", std::process::id()));
+    fs::create_dir_all(&temp_dir).unwrap();
+
+    let cpp_source = temp_dir.join("solution.cpp");
+    fs::write(
+        &cpp_source,
+        r#"#include <iostream>
+using namespace std;
+int main() {
+    int a, b;
+    if (cin >> a >> b) {
+        cout << (a + b) << endl;
+    }
+    return 0;
+}
+"#,
+    )
+    .unwrap();
+
+    let comp_res = compile_submission("cpp", &cpp_source, &temp_dir);
+    assert_eq!(
+        comp_res.status, "OK",
+        "Compilation failed: {:?}",
+        comp_res.error
+    );
+    let exe_path = comp_res.executable.unwrap();
+    assert!(exe_path.exists());
+
+    let inp_file = temp_dir.join("add.inp");
+    let out_file = temp_dir.join("add.out");
+    fs::write(&inp_file, "10 20\n").unwrap();
+    fs::write(&out_file, "30\n").unwrap();
+
+    let ws_dir = temp_dir.join("ws");
+
+    let result = run_test_case(TestCaseExecutionConfig {
+        executable_path: &exe_path,
+        input_path: &inp_file,
+        expected_output_path: &out_file,
+        input_file_name: "add.inp",
+        output_file_name: "add.out",
+        time_limit_ms: 2000,
+        memory_limit_mb: 256,
+        checker_type: "C1",
+        custom_checker_path: None,
+        workspace_dir: &ws_dir,
+        platform: &platform,
+    });
+
+    assert_eq!(
+        result.status, "AC",
+        "Unexpected status: {:?}, msg: {:?}",
+        result.status, result.message
+    );
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_cpp_compile_and_run_wa() {
+    let _test_environment = common::OwnedTestEnvironment::new();
+    common::ensure_test_environment();
+    let platform = _test_environment.with_isolated_roots(Platform::initialize);
+    let temp_dir = std::env::temp_dir().join(format!("test_exec_wa_{}", std::process::id()));
+    fs::create_dir_all(&temp_dir).unwrap();
+
+    let cpp_source = temp_dir.join("solution.cpp");
+    fs::write(
+        &cpp_source,
+        r#"#include <iostream>
+using namespace std;
+int main() {
+    cout << "wrong answer" << endl;
+    return 0;
+}
+"#,
+    )
+    .unwrap();
+
+    let comp_res = compile_submission("cpp", &cpp_source, &temp_dir);
+    let exe_path = comp_res.executable.unwrap();
+
+    let inp_file = temp_dir.join("test.inp");
+    let out_file = temp_dir.join("test.out");
+    fs::write(&inp_file, "10\n").unwrap();
+    fs::write(&out_file, "correct answer\n").unwrap();
+
+    let ws_dir = temp_dir.join("ws");
+
+    let result = run_test_case(TestCaseExecutionConfig {
+        executable_path: &exe_path,
+        input_path: &inp_file,
+        expected_output_path: &out_file,
+        input_file_name: "test.inp",
+        output_file_name: "test.out",
+        time_limit_ms: 2000,
+        memory_limit_mb: 256,
+        checker_type: "C1",
+        custom_checker_path: None,
+        workspace_dir: &ws_dir,
+        platform: &platform,
+    });
+
+    assert_eq!(result.status, "WA");
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_cpp_compile_and_run_tle() {
+    let _test_environment = common::OwnedTestEnvironment::new();
+    common::ensure_test_environment();
+    let platform = _test_environment.with_isolated_roots(Platform::initialize);
+    let temp_dir = std::env::temp_dir().join(format!("test_exec_tle_{}", std::process::id()));
+    fs::create_dir_all(&temp_dir).unwrap();
+
+    let cpp_source = temp_dir.join("solution.cpp");
+    fs::write(
+        &cpp_source,
+        r#"int main() {
+    volatile int x = 0;
+    while (true) {
+        x++;
+    }
+    return 0;
+}
+"#,
+    )
+    .unwrap();
+
+    let comp_res = compile_submission("cpp", &cpp_source, &temp_dir);
+    let exe_path = comp_res.executable.unwrap();
+
+    let inp_file = temp_dir.join("test.inp");
+    let out_file = temp_dir.join("test.out");
+    fs::write(&inp_file, "10\n").unwrap();
+    fs::write(&out_file, "10\n").unwrap();
+
+    let ws_dir = temp_dir.join("ws");
+
+    let result = run_test_case(TestCaseExecutionConfig {
+        executable_path: &exe_path,
+        input_path: &inp_file,
+        expected_output_path: &out_file,
+        input_file_name: "test.inp",
+        output_file_name: "test.out",
+        time_limit_ms: 200, // 200ms time limit
+        memory_limit_mb: 256,
+        checker_type: "C1",
+        custom_checker_path: None,
+        workspace_dir: &ws_dir,
+        platform: &platform,
+    });
+
+    assert_eq!(result.status, "TLE");
+    assert!(result.execution_time_ms >= 200);
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_cpp_compile_and_run_re() {
+    let _test_environment = common::OwnedTestEnvironment::new();
+    common::ensure_test_environment();
+    let platform = _test_environment.with_isolated_roots(Platform::initialize);
+    let temp_dir = std::env::temp_dir().join(format!("test_exec_re_{}", std::process::id()));
+    fs::create_dir_all(&temp_dir).unwrap();
+
+    let cpp_source = temp_dir.join("solution.cpp");
+    fs::write(
+        &cpp_source,
+        r#"#include <cstdlib>
+int main() {
+    exit(42);
+}
+"#,
+    )
+    .unwrap();
+
+    let comp_res = compile_submission("cpp", &cpp_source, &temp_dir);
+    let exe_path = comp_res.executable.unwrap();
+
+    let inp_file = temp_dir.join("test.inp");
+    let out_file = temp_dir.join("test.out");
+    fs::write(&inp_file, "1\n").unwrap();
+    fs::write(&out_file, "1\n").unwrap();
+
+    let ws_dir = temp_dir.join("ws");
+
+    let result = run_test_case(TestCaseExecutionConfig {
+        executable_path: &exe_path,
+        input_path: &inp_file,
+        expected_output_path: &out_file,
+        input_file_name: "test.inp",
+        output_file_name: "test.out",
+        time_limit_ms: 2000,
+        memory_limit_mb: 256,
+        checker_type: "C1",
+        custom_checker_path: None,
+        workspace_dir: &ws_dir,
+        platform: &platform,
+    });
+
+    assert_eq!(result.status, "RE");
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_cpp_freopen_file_io() {
+    let _test_environment = common::OwnedTestEnvironment::new();
+    common::ensure_test_environment();
+    let platform = _test_environment.with_isolated_roots(Platform::initialize);
+    let temp_dir = std::env::temp_dir().join(format!("test_exec_freopen_{}", std::process::id()));
+    fs::create_dir_all(&temp_dir).unwrap();
+
+    let cpp_source = temp_dir.join("solution.cpp");
+    fs::write(
+        &cpp_source,
+        r#"#include <cstdio>
+int main() {
+    freopen("problem.inp", "r", stdin);
+    freopen("problem.out", "w", stdout);
+    int a, b;
+    if (scanf("%d %d", &a, &b) == 2) {
+        printf("%d\n", a * b);
+    }
+    return 0;
+}
+"#,
+    )
+    .unwrap();
+
+    let comp_res = compile_submission("cpp", &cpp_source, &temp_dir);
+    let exe_path = comp_res.executable.unwrap();
+
+    let inp_file = temp_dir.join("problem.inp");
+    let out_file = temp_dir.join("problem.out");
+    fs::write(&inp_file, "6 7\n").unwrap();
+    fs::write(&out_file, "42\n").unwrap();
+
+    let ws_dir = temp_dir.join("ws");
+
+    let result = run_test_case(TestCaseExecutionConfig {
+        executable_path: &exe_path,
+        input_path: &inp_file,
+        expected_output_path: &out_file,
+        input_file_name: "problem.inp",
+        output_file_name: "problem.out",
+        time_limit_ms: 2000,
+        memory_limit_mb: 256,
+        checker_type: "C1",
+        custom_checker_path: None,
+        workspace_dir: &ws_dir,
+        platform: &platform,
+    });
+
+    assert_eq!(result.status, "AC");
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_custom_checker_execution() {
+    let _test_environment = common::OwnedTestEnvironment::new();
+    common::ensure_test_environment();
+    let platform = _test_environment.with_isolated_roots(Platform::initialize);
+    let temp_dir =
+        std::env::temp_dir().join(format!("test_exec_custom_chk_{}", std::process::id()));
+    fs::create_dir_all(&temp_dir).unwrap();
+
+    // Solution outputting 42
+    let cpp_source = temp_dir.join("solution.cpp");
+    fs::write(
+        &cpp_source,
+        r#"#include <iostream>
+using namespace std;
+int main() {
+    cout << 42 << endl;
+    return 0;
+}
+"#,
+    )
+    .unwrap();
+
+    let comp_sol = compile_submission("cpp", &cpp_source, &temp_dir);
+    let sol_exe = comp_sol.executable.unwrap();
+
+    // Custom checker checking if contestant output matches 42
+    let chk_source = temp_dir.join("checker.cpp");
+    fs::write(
+        &chk_source,
+        r#"#include <iostream>
+#include <fstream>
+#include <string>
+using namespace std;
+
+// Testlib exit codes: 0 = OK, 1 = WA, 7 = Partial
+int main(int argc, char* argv[]) {
+    // argv: [prog, input, actual, expected]
+    if (argc < 4) return 1;
+    ifstream actual(argv[2]);
+    int val;
+    if (actual >> val) {
+        if (val == 42) {
+            cout << "ok Correct answer!" << endl;
+            return 0;
+        } else if (val == 21) {
+            cerr << "points 0.5" << endl;
+            return 7;
+        }
+    }
+    cout << "wrong answer" << endl;
+    return 1;
+}
+"#,
+    )
+    .unwrap();
+
+    let chk_res = judgedesk_core::engine::compiler::compile_checker(&chk_source, &temp_dir);
+    assert_eq!(
+        chk_res.status, "OK",
+        "Checker compilation failed: {:?}",
+        chk_res.error
+    );
+    let chk_exe = chk_res.executable.unwrap();
+
+    let inp_file = temp_dir.join("test.inp");
+    let out_file = temp_dir.join("test.out");
+    fs::write(&inp_file, "dummy\n").unwrap();
+    fs::write(&out_file, "42\n").unwrap();
+
+    let ws_dir = temp_dir.join("ws");
+
+    let result = run_test_case(TestCaseExecutionConfig {
+        executable_path: &sol_exe,
+        input_path: &inp_file,
+        expected_output_path: &out_file,
+        input_file_name: "",
+        output_file_name: "",
+        time_limit_ms: 4000,
+        memory_limit_mb: 256,
+        checker_type: "custom",
+        custom_checker_path: Some(&chk_exe),
+        workspace_dir: &ws_dir,
+        platform: &platform,
+    });
+
+    assert_eq!(result.status, "AC");
+    assert_eq!(result.score_multiplier, 1.0);
+    assert!(result.message.unwrap().contains("Correct answer"));
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn test_runner_c1_bai5_fixture_double_cr() {
+    let _test_environment = common::OwnedTestEnvironment::new();
+    common::ensure_test_environment();
+    let platform = _test_environment.with_isolated_roots(Platform::initialize);
+    let temp_dir = std::env::temp_dir().join(format!("test_exec_bai5_{}", std::process::id()));
+    fs::create_dir_all(&temp_dir).unwrap();
+
+    let cpp_source = temp_dir.join("BAI5.CPP");
+    fs::write(
+        &cpp_source,
+        r#"#include <iostream>
+using namespace std;
+int main() {
+    cout << 6 << "\r\n";
+    return 0;
+}
+"#,
+    )
+    .unwrap();
+
+    let comp_res = compile_submission("cpp", &cpp_source, &temp_dir);
+    assert_eq!(comp_res.status, "OK");
+    let exe_path = comp_res.executable.unwrap();
+
+    let inp_file = temp_dir.join("BAI5.INP");
+    let out_file = temp_dir.join("BAI5.OUT");
+    fs::write(&inp_file, "dummy\r\n").unwrap();
+    // The exact BAI5 test00 expected output with double CR at EOF (\r\r\n):
+    fs::write(&out_file, b"6\r\r\n").unwrap();
+
+    let ws_dir = temp_dir.join("ws");
+
+    let result = run_test_case(TestCaseExecutionConfig {
+        executable_path: &exe_path,
+        input_path: &inp_file,
+        expected_output_path: &out_file,
+        input_file_name: "",
+        output_file_name: "",
+        time_limit_ms: 2000,
+        memory_limit_mb: 256,
+        checker_type: "C1",
+        custom_checker_path: None,
+        workspace_dir: &ws_dir,
+        platform: &platform,
+    });
+
+    assert_eq!(
+        result.status, "AC",
+        "Expected AC for BAI5 double CR test00, got: {:?} ({:?})",
+        result.status, result.message
+    );
+    assert_eq!(result.message.as_deref(), Some("single line"));
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}

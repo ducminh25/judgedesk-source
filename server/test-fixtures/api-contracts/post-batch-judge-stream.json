@@ -1,0 +1,60 @@
+[
+  {
+    "data": {
+      "action": "progress.initializing",
+      "contestant": "",
+      "percent": 0,
+      "problem": ""
+    },
+    "type": "progress"
+  },
+  {
+    "data": {
+      "arch": "x64",
+      "build": {
+        "appVersion": "1.5.0",
+        "buildNumber": "local",
+        "builtAt": "development",
+        "gitCommit": "unknown"
+      },
+      "executor": {
+        "mode": "windows-lpac-job",
+        "ready": true,
+        "version": "1.5.0"
+      },
+      "platform": "win32",
+      "startedAt": "<TIMESTAMP>",
+      "toolchains": {
+        "cpp": {
+          "checkerReady": true,
+          "provenance": "managed-package",
+          "source": "managed",
+          "submissionReady": true,
+          "version": "14.2.0"
+        },
+        "python": {
+          "checkerReady": true,
+          "source": "managed",
+          "submissionReady": true,
+          "version": "3.12.13"
+        }
+      }
+    },
+    "type": "metadata"
+  },
+  {
+    "data": {
+      "action": "progress.scanning",
+      "contestant": "",
+      "percent": 0,
+      "problem": ""
+    },
+    "type": "progress"
+  },
+  {
+    "data": {
+      "success": true
+    },
+    "type": "done"
+  }
+]

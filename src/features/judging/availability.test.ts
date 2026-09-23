@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canExportScoreboard, canStartJudge, selectedNames } from "./availability.js";
+import { canExportScoreboard, canStartJudge, getJudgeDisabledReason, selectedNames } from "./availability.js";
 
 test("judge becomes available again after selecting all contestants and problems", () => {
   const contestants = ["Alice", "Bob"];
@@ -36,6 +36,13 @@ test("judge requires paths, one selected target of each kind, and a ready runner
   assert.equal(canStartJudge({ ...valid, secureRunnerReady: false }), false);
   assert.equal(canStartJudge({ ...valid, contestantsPath: " " }), false);
   assert.equal(canStartJudge({ ...valid, testsPath: " " }), false);
+
+  assert.equal(getJudgeDisabledReason(valid), null);
+  assert.equal(getJudgeDisabledReason({ ...valid, secureRunnerReady: false }), "runnerUnavailable");
+  assert.equal(getJudgeDisabledReason({ ...valid, contestantsPath: "" }), "missingData");
+  assert.equal(getJudgeDisabledReason({ ...valid, testsPath: "" }), "missingData");
+  assert.equal(getJudgeDisabledReason({ ...valid, contestantNames: [] }), "noSelection");
+  assert.equal(getJudgeDisabledReason({ ...valid, problemNames: [] }), "noSelection");
 });
 
 test("score export needs a contestant or a problem, but not both", () => {

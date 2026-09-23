@@ -21,6 +21,7 @@ import {
 import {
   canExportScoreboard,
   canStartJudge,
+  getJudgeDisabledReason,
   selectedNames,
 } from "./features/judging/availability.js";
 import { useJudgeSession } from "./features/judging/useJudgeSession.js";
@@ -458,13 +459,15 @@ export default function App() {
 
   const selectedContestantNames = selectedNames(contestantsList, selectedContestants);
   const selectedProblemNames = selectedNames(problemsList, selectedProblems);
-  const canRun = canStartJudge({
+  const judgeAvailability = {
     contestantsPath: thisinhPath,
     testsPath: testPath,
     contestantNames: selectedContestantNames,
     problemNames: selectedProblemNames,
     secureRunnerReady: hostStatus?.secureRunner.ready === true,
-  });
+  };
+  const canRun = canStartJudge(judgeAvailability);
+  const runDisabledReason = getJudgeDisabledReason(judgeAvailability);
   const canDeleteSelected = !!judgeResult?.contestants.some(
     (contestant) => selectedContestants[contestant.contestantName]
       && contestant.problems.some((problem) => selectedProblemNames.some(
@@ -590,6 +593,7 @@ export default function App() {
           canDeleteSelected={canDeleteSelected}
           canExport={canExportScoreboard(contestantsList, problemsList)}
           canRun={canRun}
+          runDisabledReason={runDisabledReason}
           canSaveContest={isContestDirty && hasContestData}
           canSortScores={canSortScores}
           scoreSortMode={contestantSort}

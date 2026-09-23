@@ -23,6 +23,7 @@ interface Props {
   setInputFile: (value: string) => void;
   outputFile: string;
   setOutputFile: (value: string) => void;
+  setTotalScore?: (value: string | null) => void;
 }
 
 export function BasicProblemSettings(props: Props) {
@@ -150,10 +151,15 @@ export function BasicProblemSettings(props: Props) {
             value={config.totalScore !== null && config.totalScore !== undefined ? String(config.totalScore) : ""}
             onChange={event => {
               const val = event.target.value;
-              setConfig(previous => ({
-                ...previous,
-                totalScore: val.trim() ? val.trim() : null,
-              }));
+              const normalized = val.trim() ? val.trim() : null;
+              if (props.setTotalScore) {
+                props.setTotalScore(normalized);
+              } else {
+                setConfig(previous => ({
+                  ...previous,
+                  totalScore: normalized,
+                }));
+              }
             }}
             className="flex-1 min-w-0 bg-input-bg border border-surface-border-strong rounded px-2.5 py-1.5 text-text-primary text-xs focus:border-indigo-500 transition outline-none font-mono"
           />

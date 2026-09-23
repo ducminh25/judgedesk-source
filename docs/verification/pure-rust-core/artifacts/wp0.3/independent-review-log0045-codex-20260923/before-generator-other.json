@@ -1,0 +1,14 @@
+[
+  {
+    "path": "docs/verification/pure-rust-core/corpus-manifest.json",
+    "sha256": "86BD0569484227C40E4EB38305B9496A99A094DB60E35FF5D6EF02AB0C47A0FF"
+  },
+  {
+    "path": "judgers/fixtures/themis-c1-c5-corpus.json",
+    "sha256": "04A0E1B6BBB0088317F5ABDA76750086534DDF2D61AC0D0901FD561A831442F2"
+  },
+  {
+    "path": "judgers/fixtures/themis-oracle-results.json",
+    "sha256": "521F6C4D6E8015CA98A02512A668269EC68C9B4BEF7BF390C04D812E7D845995"
+  }
+]

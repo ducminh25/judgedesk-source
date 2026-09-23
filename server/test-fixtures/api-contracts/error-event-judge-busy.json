@@ -1,0 +1,6 @@
+{
+  "type": "error",
+  "data": {
+    "message": "JUDGE_BUSY: another judging session is already running."
+  }
+}
