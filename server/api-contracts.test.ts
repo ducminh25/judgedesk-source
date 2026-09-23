@@ -1108,7 +1108,7 @@ server.listen(0, "127.0.0.1", () => {
       await customAdapter.start();
       try {
         const res = await customAdapter.fetch(
-          "/api/toolchains/profiles/cpp-legacy-v1/preference",
+          "/api/toolchains/profiles/python-cpython312/preference",
           {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
