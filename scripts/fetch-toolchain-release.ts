@@ -43,7 +43,7 @@ function assertBuildOutput(outputRoot: string): void {
   }
 }
 
-async function downloadArchive(
+async function downloadArchiveOnce(
   url: string,
   outputPath: string,
   expectedBytes: number,
@@ -83,14 +83,37 @@ async function downloadArchive(
     });
   } catch (error) {
     handle.destroy();
+    try { fs.rmSync(outputPath, { force: true }); } catch {}
     throw error;
   }
   if (
     received !== expectedBytes
     || hash.digest("hex") !== expectedSha256
   ) {
+    try { fs.rmSync(outputPath, { force: true }); } catch {}
     throw new Error("Toolchain package failed signed size or SHA-256 verification.");
   }
+}
+
+async function downloadArchive(
+  url: string,
+  outputPath: string,
+  expectedBytes: number,
+  expectedSha256: string,
+): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      try { fs.rmSync(outputPath, { force: true }); } catch {}
+      await downloadArchiveOnce(url, outputPath, expectedBytes, expectedSha256);
+      return;
+    } catch (err) {
+      lastError = err;
+      console.warn(`Download attempt ${attempt}/3 failed: ${(err as Error)?.message || err}. Retrying...`);
+      await new Promise((r) => setTimeout(r, 2000 * attempt));
+    }
+  }
+  throw lastError;
 }
 
 const mode = (process.argv[2] || "full").toLowerCase();
