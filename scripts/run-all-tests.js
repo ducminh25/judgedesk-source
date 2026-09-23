@@ -80,7 +80,10 @@ export function isSafeTestAppDataDir(dir) {
     try {
       const stat = fs.lstatSync(ancestor);
       if (stat.isSymbolicLink()) {
-        return false;
+        const isSystemPosixLink = !isWindows && (ancestor === "/var" || ancestor === "/tmp");
+        if (!isSystemPosixLink) {
+          return false;
+        }
       }
     } catch {
       return false;

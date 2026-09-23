@@ -187,15 +187,31 @@ try {
     if (!blueprint) {
       throw new Error(`No trusted archive filename for '${descriptor.id}'.`);
     }
-    console.log(
-      `Downloading ${descriptor.id} (${descriptor.sizeBytes} signed bytes)...`,
-    );
-    await downloadArchive(
-      descriptor.downloadUrl,
-      path.join(stagingRoot, blueprint.archiveFilename),
-      descriptor.sizeBytes,
-      descriptor.sha256,
-    );
+    const existingCandidate = path.join(outputRoot, blueprint.archiveFilename);
+    const targetFile = path.join(stagingRoot, blueprint.archiveFilename);
+    let reused = false;
+    if (fs.existsSync(existingCandidate)) {
+      const stat = fs.statSync(existingCandidate);
+      if (stat.size === descriptor.sizeBytes) {
+        const hash = crypto.createHash("sha256").update(fs.readFileSync(existingCandidate)).digest("hex");
+        if (hash === descriptor.sha256) {
+          console.log(`Reusing verified cached archive for ${descriptor.id}.`);
+          fs.copyFileSync(existingCandidate, targetFile);
+          reused = true;
+        }
+      }
+    }
+    if (!reused) {
+      console.log(
+        `Downloading ${descriptor.id} (${descriptor.sizeBytes} signed bytes)...`,
+      );
+      await downloadArchive(
+        descriptor.downloadUrl,
+        targetFile,
+        descriptor.sizeBytes,
+        descriptor.sha256,
+      );
+    }
   }
   if (fs.existsSync(outputRoot)) {
     fs.renameSync(outputRoot, backupRoot);
