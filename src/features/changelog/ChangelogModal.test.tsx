@@ -58,8 +58,8 @@ describe("ChangelogModal", () => {
     );
 
     assert.match(html, /Có gì mới trong JudgeDesk/);
-    assert.match(html, /Universal Precompiled Header C\+\+, Tự Động Di Trú Chính Sách &amp; Cải Tiến Updater/);
-    assert.match(html, /v1\.5\.0/);
+    assert.match(html, /Sửa lỗi và cải tiến nhỏ/);
+    assert.match(html, /v1\.5\.1/);
     assert.match(html, /v1\.2\.5/);
     assert.match(html, /Đã hiểu/);
   });
@@ -85,7 +85,7 @@ describe("ChangelogModal", () => {
     );
 
     assert.match(html, /What&#x27;s New in JudgeDesk/);
-    assert.match(html, /Universal C\+\+ Precompiled Header, Policy Migration &amp; Streamlined Updater Flow/);
+    assert.match(html, /Bug fixes and small improvements/);
     assert.match(html, /Got it/);
   });
 });
