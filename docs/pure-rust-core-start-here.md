@@ -4,9 +4,9 @@ This is the small entry point for humans, Antigravity, Codex, and other agents. 
 
 ## Release state
 
-- Released baseline: `v1.5.0`.
+- Historical released baseline: `v1.5.0`; current verified source lockstep: `1.5.1` (STATUS/LOG-0050).
 - Development target: `v1.6.0`.
-- Keep the eight authoritative version files at `1.5.0` until WP10.3.
+- Keep the eight authoritative version files at the verified source lockstep (`1.5.1` currently) until WP10.3; do not restore an older prose baseline.
 - WP10.3 is the only package allowed to bump all eight files together to `1.6.0`.
 
 ## Where the files live
@@ -34,6 +34,7 @@ Read these only when needed:
 - `docs/pure-rust-core-next-steps-audit.md`: baseline evidence and known gaps.
 - `docs/pure-rust-core-migration-plan.md`: original architecture and historical intent.
 - `docs/pure-rust-core-antigravity-handoff.md`: CLI flags, full paste-ready prompt, and steering prompts.
+- `docs/pure-rust-core-efficient-execution.md`: final gate deduplication, evidence references, audit windows and compact handoffs; WP contracts and exit criteria remain intact.
 - `guidelines.md`, `CONSTRAINTS.md`: mandatory architecture and quality contract; every implementing agent must read them before edits even when they are not attached to the prompt.
 - PRD/TRD/API/UI documents: read the sections referenced by the current WP, not all documents by default.
 
@@ -43,12 +44,12 @@ If Antigravity works in this exact dirty checkout, it can see untracked files. A
 
 ## The first action
 
-Open `docs/verification/pure-rust-core/STATUS.md`. The first implementation package initially marked `READY` is WP0.1.
+Open `docs/verification/pure-rust-core/STATUS.md`. Do not replay the historical WP0.1 bootstrap: WP0.1–WP0.3 are DONE and WP0.4 is IN_PROGRESS as of LOG-0051. Resume only the authorized current owner/package, or claim a permitted READY package after dependencies are DONE. A plan-review request does not itself authorize runtime implementation.
 
-Start a fresh Antigravity conversation and paste:
+Use the compact current-package prompt:
 
 ```text
-Work from D:\Minh\Code\judgedesk. Read AGENTS.md, docs/pure-rust-core-start-here.md, and docs/verification/pure-rust-core/STATUS.md first. Claim exactly WP0.1 in STATUS and append the claim to WORKLOG before doing package work. Then execute only WP0.1 from docs/pure-rust-core-detailed-implementation-plan.md using the required project skills. v1.5.0 is the released baseline; v1.6.0 is the target; do not bump versions. Finish the WP report, set STATUS to VERIFYING, append evidence to WORKLOG, and stop. Do not start WP0.2.
+Work from D:\Minh\Code\judgedesk. Read AGENTS.md, guidelines.md, CONSTRAINTS.md, start-here, STATUS/latest relevant WORKLOG and efficient-execution. Confirm ownership and DONE dependencies for <WP_ID>; separately claim it before editing. Execute only its detailed-plan contract using the required skills. Keep the verified source version (currently 1.5.1) until WP10.3. Use focused RED/GREEN and mandatory edit checks, then one successful final completion command union plus required Rust/security/platform evidence. Write the report, set VERIFYING, append handoff evidence and stop for fresh independent review.
 ```
 
 After Antigravity stops at `VERIFYING`, ask Codex in a separate fresh review conversation to verify the diff/report and update `STATUS.md` to `DONE` or back to `IN_PROGRESS`/`BLOCKED` with findings.
@@ -62,15 +63,15 @@ After Antigravity stops at `VERIFYING`, ask Codex in a separate fresh review con
 - the reviewer requested fixes within the same package;
 - a command timed out and the same evidence package needs a clean rerun;
 - the conversation still has an accurate package claim and has not started rereading unchanged files or expanding scope.
+- the previous WP is independently DONE and the next authorized READY WP is separately claimed with a compact handoff in the same phase/trust boundary; refresh STATUS, source identity and changed authorities first.
 
 ### Start a new conversation when
 
-- the current WP reached `DONE` and the next WP will begin;
 - switching from implementer to independent verifier;
 - moving to a new phase or trust boundary;
 - transferring ownership between Antigravity and Codex;
 - the agent repeatedly rereads files, loses the package claim, or mixes another WP into the diff;
-- resuming after a long interruption or after the source HEAD/diff changed materially;
+- resuming after a long interruption with stale identity/context, or after source HEAD/diff changed materially;
 - performing the fresh-context adversarial review required by the project skills.
 
 Before ending an unfinished conversation, the current agent must update `STATUS.md` and append a `WORKLOG.md` entry containing the exact state, last command/result, artifacts, blocker, and next action. A new conversation must never reconstruct state from chat history alone.
@@ -126,7 +127,7 @@ Add broader verification at these boundaries:
 | A phase is about to close | Phase gate, fresh-context review, inventory/skip comparison, status reconciliation. |
 | WP10.3 version bump | All eight files together, `release:check-version` reports `1.6.0`, then full release-candidate gates. |
 
-Do not run `check:full`, desktop matrices, or performance suites after every small edit. Run the smallest focused gate during RED/GREEN, the component/package gate once the diff stabilizes, and the full/phase gates at their defined boundaries. Rerun affected evidence whenever source changes after the recorded test.
+Do not run `check:full`, desktop matrices or performance suites after every small edit. Preserve CONSTRAINTS' types/invariants/version edit and pre-build checks. Run focused RED/GREEN, then one successful final completion gate per implementer and independent verifier after the diff stabilizes. check:full's successfully executed children discharge duplicate final check:fast/server/static-parity/version commands. Required Rust/security/platform/desktop gates remain separate. Failures, interruptions and relevant source changes require reruns; “once” is not a quota. Phase gates distinguish original independent execution references from fresh integrated/live tests under efficient-execution.
 
 ## Recommended division between Antigravity and Codex
 
@@ -139,6 +140,5 @@ Do not run `check:full`, desktop matrices, or performance suites after every sma
 ## Minimal prompt for every later WP
 
 ```text
-Read AGENTS.md, docs/pure-rust-core-start-here.md, and docs/verification/pure-rust-core/STATUS.md. If <WP_ID> is READY and unclaimed, claim it in STATUS and WORKLOG. Execute only <WP_ID> from the detailed plan with its required skills and tests. Preserve unrelated dirty changes and keep all version files at 1.5.0 unless this is WP10.3. Finish the report, set the row to VERIFYING, append evidence, and stop without starting the next WP.
+Read AGENTS.md, guidelines.md, CONSTRAINTS.md, docs/pure-rust-core-start-here.md, efficient-execution and STATUS/latest relevant WORKLOG. If <WP_ID> is READY and unclaimed with dependencies DONE, claim it in STATUS and WORKLOG. Execute only its detailed-plan contract with required skills, focused tests and edit checks. Preserve unrelated dirty changes and current source version 1.5.1 until WP10.3. Freeze the candidate; run one successful completion union plus required Rust/security/platform checks. Write one report with linked evidence, set VERIFYING, append evidence, and stop for fresh independent review. Begin no next WP before DONE.
 ```
-

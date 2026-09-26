@@ -15,7 +15,7 @@ use crate::engine::runner::{run_test_case, TestCaseExecutionConfig};
 use crate::scoring::{
     calculate_problem_summary, ProblemScoringConfig, ProblemSummary, TestCaseRun,
 };
-use judgedesk_native_executor::platform::Platform;
+use crate::executor_client::ExecutorClient;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
@@ -70,7 +70,7 @@ pub struct JudgeSessionConfig {
     pub target_contestants: Vec<String>,
     pub target_problems: Vec<String>,
     pub cancel_flag: Arc<AtomicBool>,
-    pub platform: Arc<Platform>,
+    pub platform: Arc<ExecutorClient>,
 }
 
 pub async fn run_judge_session(

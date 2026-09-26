@@ -1,5 +1,6 @@
 import type { BatchJudgeResult, ProblemConfig } from "../../types";
 import { APP_VERSION } from "../../version";
+import { isCanonicalRational } from "../../../shared/rational";
 
 export const CONTEST_FORMAT = "judgedesk-contest" as const;
 export const CONTEST_FORMAT_VERSION = 1 as const;
@@ -86,6 +87,9 @@ function isJudgeResult(value: unknown): value is BatchJudgeResult {
         return false;
       }
       if (!Array.isArray(problem.testCases) || !isRecord(problem.summary)) return false;
+      if ((problem.summary.scoreExact !== undefined && !isCanonicalRational(problem.summary.scoreExact))
+        || (problem.summary.maxScoreExact !== undefined && !isCanonicalRational(problem.summary.maxScoreExact))
+        || !problem.testCases.every(test => isRecord(test) && (test.scoreExact === undefined || isCanonicalRational(test.scoreExact)))) return false;
       return typeof problem.summary.score === "number"
         && Number.isFinite(problem.summary.score)
         && typeof problem.summary.status === "string";

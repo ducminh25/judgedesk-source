@@ -989,3 +989,116 @@ Captured on Windows host baseline:
 - **Status Transition:** WP0.3 `IN_PROGRESS` -> `VERIFYING`.
 - **Next Action / Owner:** Codex independently verifies WP0.3 LOG-0046 remediation of LOG-0045-F1 and F2. Stopped for fresh independent Codex review. Do not start WP0.4, WP8, or later work.
 
+## 24. LOG-0047 Codex — fresh independent WP0.3 review — 2026-09-25
+
+### 24.1 Scope and verdict
+
+**Verdict: `IN_PROGRESS`.** This review covers WP0.3 only. Four defects below are reproducible in the current repository and prevent acceptance of the expected-result corpus. Codex did not change product code, generator, manifest, or fixtures, and did not start any later package. All probes and the copied corpus live under the marked reviewer-owned root `artifacts/wp0.3/independent-review-log0047-codex-20260925/`.
+
+The live checkout was clean before reviewer evidence and was at Windows `main` HEAD `b68242131eaf8db15990fadf1c48c8c16c45473e`, rather than LOG-0046's `d80f997cdafaf85883e7602de26c32dd355795a1` plus dirty tree. In particular, commit `12454ec` (2026-09-23 23:22 +07:00) changed `corpus.test.ts` after submission, so LOG-0046's green gates cannot establish acceptance of the current source. The manifest bytes still hash to SHA-256 `AE2A401EBF15F8B73F4A6FDD73BC7B7EC703875B2BB8424CCEA67F74E63C31C1`.
+
+### 24.2 Findings
+
+1. **LOG-0047-F1 — HIGH — live Node oracle can silently execute zero cases while the corpus suite passes.** `server/test-fixtures/corpus/corpus.test.ts:342-351` now uses `continue` whenever a toolchain is unready, without counting, reporting, or failing skipped cases. With reviewer-owned empty AppData and a fake `USERPROFILE` to prevent the suite from importing host toolchains, all six language toolchains were unready. The complete corpus suite nevertheless exited 0 with 11/11 tests passed and 0 reported skips; its named bounded case-by-case oracle test took 43.64 ms for 24 declared cases. This accepts only metadata/schema checks, not the expected compile/verdict/message/score results required by WP0.3. Evidence: `toolchain-readiness-probe.json`, `unprovisioned-fake-profile-corpus.log`, current source, and `owned-corpus-copy/`.
+2. **LOG-0047-F2 — HIGH — truncated Scratch ZIPs pass the claimed fail-closed format validation.** The production `tryExtractProjectJsonFromZip` in `server/judge/scratch-runtime.ts:30-63` returns `project.json` from a local ZIP entry without verifying the central directory, end-of-central-directory record, archive bounds, or CRC. In reviewer-owned copies of the current valid `.sb3` and `.sb2` fixtures, truncating the archive at its central directory left 1,459/1,539 and 843/923 bytes respectively. Direct calls to production `prepareIsolatedScratchScript` accepted **both** malformed archives (`accepted: true`). This refutes LOG-0046's strict fail-closed archive-validation claim, even though source staging now preserves the submitted bytes. Evidence: `scratch-malformed-probe.ts`, `scratch-malformed-probe.json`, and `scratch-malformed-owned/`.
+3. **LOG-0047-F3 — HIGH — the new exact overflow-boundary expectation is not backed by exact production arithmetic.** The manifest/generator declares that `1/3 + 1/2 + 1/6 + 9007199254740990` totals exact `9007199254740991/1`. Direct production `parseRational`/`addRational` calls on those four declared points returned `81064793292668900/9`, not the declared reduced rational. `parseRational("9007199254740993")` also returned `9007199254740992/1` because `shared/rational.ts:81-90` parses with `parseFloat`; `calculateProblemSummary` returned an inexact 9007199254740992 when summing the safe-integer boundary and 1. The validator's BigInt check is exact for *declared strings*, but cannot make the live Node scoring contract exact. A display value can round to the declared number while the internal fraction is wrong. Evidence: `rational-boundary-probe.ts`, `rational-boundary-probe.json`, `scripts/generate-wp03-corpus.ts:1063-1106`, and `shared/rational.ts`. The review did not run the full native judge for this fixture; this finding is a direct production-helper contradiction, not a claimed complete verdict trace.
+4. **LOG-0047-F4 — MEDIUM — the inventory validator repairs a missing declared fixture and then passes.** `server/test-fixtures/corpus/corpus.test.ts:803-810` calls `fs.mkdirSync(fullPath, { recursive: true })` when a declared empty directory is missing. A file-only copy of the current 114-file corpus had no `generated/edge_case_structure/tests/empty` before validation; after the complete suite passed, that directory existed and was empty. A missing fixture therefore cannot fail this gate, and verification mutates the material being verified. Evidence: `empty-directory-before.json`, `empty-directory-after.json`, and `unprovisioned-fake-profile-corpus.log`. The actual source corpus was untouched.
+
+### 24.3 Independent evidence and limits
+
+- Two independent read-only inventories were byte-identical (inventory JSON SHA-256 `535E8A78D40022CC399A25316CAF8520417F5C0B7688D576B9ED9C7826CE68F1`): 24 cases, 113 fixture files plus validator, 50 physical directories, 118 declared entries (113 regular files, 1 descriptor, 1 empty directory, 4 expected absences), 30 coverage tags, zero hash/size mismatches or orphan fixture files. Corpus aggregate SHA-256 `EA3EB34281F69F08921425A1FA315B2602D301368B5BA7BB916B233974FDBD60`; schema SHA-256 `2A8F44944D61B7554F73EF31BC02C633DA2376A4C77B5AD956F06C94BFBBDA65`.
+- The full corpus run with owned AppData and fake profile used the absolute Node 24.19.0 executable and exited 0, 11/11. A prior name-filtered test invocation failed because it filtered out suite initialization; it is **not** acceptance evidence. A separate full run that imported the real host toolchain failed a compiler temporary-file creation under the unusually long reviewer-owned path; that environmental failure is **not** counted as a WP0.3 defect. Both logs are retained for transparency.
+- Host after-audit **PASS**. Exact path/type/size/SHA-256 inventories matched before/after for ThemisV2 (17,730 files, 826 directories, aggregate `310D78174D305C39E0F5278286FEF24E7BFB1D35414820660F7DFE6C40656DC7`) and JudgeDeskExecutor (21,581 files, 1,171 directories, aggregate `D56D0EFC5A13544C8CB3D726C55ED00E35C77F78262713FF55B52BE579F828EA`). Semantic JSON, relevant process list, listening ports, Defender detections/events also matched byte-for-byte; both temp-root inventories were empty. After an additional 8-second observation, no JudgeDesk/Themis/Excel/Scratch/executor process or matching system-temp root remained; Defender antivirus, real-time, IOAV, and antispyware status were enabled. Before Defender settings were not captured, so settings equality is unverified. Evidence: `before/`, `after/`, `host-comparison.json`, `observation-after-8s.json`.
+- `check:fast`, `test:server`, `check:full`, Rust/Native Executor gates, generator `--check`, and later-phase parity were **NOT_RUN** in this review once the four reproducible WP0.3 acceptance defects established `IN_PROGRESS`. LOG-0046's results are submitter evidence for an older checkout, not independent results on this HEAD.
+
+### 24.4 Scoped remediation handoff
+
+Antigravity should make the live oracle an explicit required acceptance gate for every applicable corpus case, with visible counts/reasons for any separately authorized report-only skips. Remove fixture creation from validation and make a missing declared empty directory fail without mutation. Validate complete Scratch archives, including central-directory/EOCD consistency and payload integrity, before treating `.sb3` or `.sb2` as well formed. Reconcile the rational-boundary expected result with exact production behavior and the project rational-scoring invariant; do not preserve a green display-only comparison as proof of exact arithmetic. Rerun focused probes, required gates, and detailed before/after host audits, then return WP0.3 to `VERIFYING` for a new independent review. Preserve all historical logs and keep WP0.4, WP8, and later packages untouched.
+
+## 25. LOG-0048 Codex remediation — 2026-09-25/26 (verification ongoing)
+
+### 25.1 Authorization and preserved state
+
+Mon explicitly authorized Codex to implement, self-accept in this session (`Phiên này tự nghiệm thu`), and open WP0.4 after WP0.3 is DONE. Mon declined an additional model and kept the current review. This is a recorded exception to the usual implementer/reviewer split; same-session acceptance is not an independent fresh-conversation verdict. A fresh-context read-only subagent inspected the changes and supplied concrete regressions, which were reproduced and fixed. The checkout remains HEAD `b68242131eaf8db15990fadf1c48c8c16c45473e` plus preserved edits/evidence, without reset, stash, worktree, commit, push, or version bump. Source lockstep was already 1.5.1; historical 1.5.0 evidence remains historical.
+
+Mon paused work safely and resumed on 2026-09-26, stating nothing changed in between. The completed detailed before-host snapshot was retained. WP0.3 is still IN_PROGRESS; WP0.4 is not started.
+
+### 25.2 Corrections and remediation
+
+- **Historical F3 correction:** the old rational-boundary manifest's canonical order (`1/3, 1/2, 1/6, 9007199254740990`) did produce MAX_SAFE_INTEGER. LOG-0047's failing probe used another order; the defect is overflow/order dependence plus unsafe string parsing, not a canonical-order manifest contradiction. LOG-0047 is preserved unchanged, with this explicit correction.
+- **F1:** unavailable required toolchains now fail the corpus oracle. The unprovisioned-owned-profile regression demonstrates failure; real execution logs enumerate each workload, rather than silently passing zero executions.
+- **F2:** Scratch ZIP validation checks EOCD/central directory/local headers, counts/offsets, stored/deflated payload sizes, descriptors and CRC of every entry, not only project.json. Validation reads the staged file used by the runner. Tests reject truncated archives, stale CRC, missing descriptors and corrupt assets, and accept valid stored/deflated/descriptor archives for both sb3/sb2.
+- **F3:** string rational parsing, cross-products, reduction and terminating-decimal formatting use BigInt. JSON carriers keep safe integer components numeric and larger components as strings. Unsafe numeric integer input and nonfinite numeric presentation fail explicitly. Exact awarded scores travel through planning, standard/custom/interactive runner results, group clearing, summaries, ranking and export totals. Numeric fields remain presentation. Ranking compares cross-products; saved contest exact carriers are validated before use.
+- **F4:** verification no longer creates fixtures. Required scripts invoke read-only corpus checks without materialization. Git cannot preserve a physically empty directory, so the current corpus uses a **directory empty of testcase data**, containing only a tracked `.judgedesk-empty` marker declared and hashed in the manifest. Generator/validator require exactly that marker; missing directory/marker or additional files fail. Production discovery returns zero testcases in both ordinary/interactive modes. This supersedes the historical statement in Section 1 about physical emptiness without metadata.
+- **Additional coverage:** the 25th workload, `rational_proportional_boundary`, configures MAX_SAFE_INTEGER across three equal weights with one AC/two WA. Its expected awarded score is `9007199254740991/3`, checked against actual runner and emitted summary carriers. Checker zero-point verdicts and executor-over-message interactive priority are preserved by regressions.
+- **Compatibility:** ordinary decimal forms `.5`, `-.5`, `1.` remain accepted. Config/editor regressions cover their normalization. Display rounding uses integer arithmetic before conversion so a finite large partial score does not overflow merely through multiplication by a decimal scale.
+
+### 25.3 Interim evidence and unresolved verification
+
+Evidence root: `artifacts/wp0.3/remediation-log0048-codex-20260925/`.
+
+- Focused RED/GREEN regressions passed after remediation; their final aggregate rerun and full gates remain required.
+- A prior remediation snapshot executed 25/25 corpus workloads, 14 tests passed, zero skips. Later source edits invalidate it as final acceptance evidence.
+- First corpus attempt failed c_mle_stdio with COMPILER_TIMEOUT. The full server attempt later had 639 pass / 1 fail / 10 skips, with the same failing case. An intervening same-compiler corpus run succeeded without widened timeout or fallback. A read-only executor timing wrapper is now measuring both compiler phases; an antivirus root-cause claim is not made without evidence.
+- The detailed before AppData snapshot is complete. The after snapshot, semantic/process/port/temp comparison, delayed observation and final verdict are pending.
+
+No DONE claim is made in LOG-0048. Final evidence and disposition will be appended chronologically.
+
+## 26. LOG-0049 — frozen acceptance candidate — 2026-09-26
+
+WP0.3 is VERIFYING under Mon's explicit same-session acceptance exception. The production/corpus/generator snapshot is frozen in `artifacts/wp0.3/remediation-log0048-codex-20260925/acceptance-source-hashes.json` (30 files). No later package has started.
+
+The final negative evidence is `tamper-probes-final.log`: 18 expected rejections, comprising 15 structural selections and three live oracle group mutations. `physical-empty-probe.json` additionally proves an actually empty owned directory produces zero normal and interactive testcases; the tracked corpus marker remains metadata for Git reproducibility. Generator read-only checks passed twice.
+
+The first tamper-driver regex matched the suite parent and ran the long oracle before its driver timeout; `tamper-probes.log` retains that failure and is excluded from PASS evidence. The interrupted child had exited; `cleanup-interrupted-probe.ps1` checks three fixed owned paths, marker/containment, removes the host-toolchain junction without traversing it, rejects remaining reparse points, and records successful cleanup. The initial inline cleanup command was blocked by execution policy; the checked saved script succeeded.
+
+Core fmt/all-target clippy/locked tests passed (41 tests). Native executor first clippy failed on an existing Windows test helper using Error::new(ErrorKind::Other, ...); the equivalent Error::other(...) fixes that lint without changing runtime behavior. Native fmt/clippy/locked tests then passed (59 tests). Clippy was provisioned for the same installed Rust 1.97.1 toolchain. The final full gate is rerunning after this correction. Host after-comparison and final verdict remain pending.
+
+## 27. LOG-0050 — final acceptance — 2026-09-26
+
+### 27.1 Verdict and scope
+
+**WP0.3: DONE**, under Mon's explicit same-session self-acceptance exception. Codex implemented and accepted this package; a read-only fresh-context subagent provided adversarial findings, but this verdict is not an independent fresh-conversation acceptance. LOG-0047 F1-F4 and the subsequent concrete regressions are closed by source changes plus RED/GREEN and final production execution. LOG-0048 explicitly corrects the old canonical-order F3 assertion without rewriting history.
+
+### 27.2 Final evidence
+
+All paths below are under `artifacts/wp0.3/remediation-log0048-codex-20260925/`.
+
+| Evidence | Result |
+|---|---|
+| check-full-final.log | exit 0; check:fast; server 641 pass / 0 fail / 10 existing skips, 40 suites/651 tests; all 25 corpus workloads; static parity; version 1.5.1 |
+| test-server-final.log | standalone standard gate passed with 641 pass / 0 fail / 10 skips |
+| core-clippy-final.log, core-tests.log | fmt check and all-target clippy -D warnings passed; 41 locked tests passed |
+| executor-clippy-final.log, executor-tests.log | fmt check and all-target clippy -D warnings passed; 59 locked tests passed |
+| tamper-probes-final.log | 18 correct rejections: 15 structural selections, three live group oracle mutations |
+| physical-empty-probe.json | actually empty owned directory gives zero ordinary/interactive testcases; root removed |
+| generator-final-1.log, generator-final-2.log | read-only checks passed twice |
+| exact-score-regressions.log | 23 pass / 0 fail / 0 skip |
+| config-editor-regressions-final.log | 19 pass / 0 fail / 0 skip |
+| acceptance-source-verification.json | all 30 frozen source/test/manifest hashes unchanged |
+| inventory-first.json, inventory.json | byte-identical, SHA256 CBEC1348DE7A15B1699C955C11E548732F8305516F5A99F7503B8A2B06118A51 |
+
+Final inventory: 25 cases, 122 fixture files plus two validator files, 52 directories, 127 declared entries, one descriptor, one no-testcase directory, four expected absences, 31 coverage tags, nine source extensions. No missing/hash/size/orphan mismatch. Manifest SHA256 **08C682AB695FF5757459F6184784A601F56AE06CE9D4681787D8EC329DA825A4**, schema **2A8F44944D61B7554F73EF31BC02C633DA2376A4C77B5AD956F06C94BFBBDA65**, corpus aggregate **CA512AF3C325B70BA86A09DF74D4CB68051D7B7A5EFA9BC0FBE21F349F1DA991**.
+
+Static checker gate: Node 67/67, Rust suite including corpus, configured C++ 67/67 and Windows packaged binaries 67/67; BUILD_MANIFEST hashes verified. This does not claim a new live Themis DLL run or macOS execution.
+
+### 27.3 Host audit and cleanup
+
+AppData before/after entries and semantic JSON match exactly:
+
+| Root | Files / directories | Aggregate SHA256 |
+|---|---|---|
+| ThemisV2 | 17730 / 826 | 310D78174D305C39E0F5278286FEF24E7BFB1D35414820660F7DFE6C40656DC7 |
+| JudgeDeskExecutor | 21581 / 1171 | D56D0EFC5A13544C8CB3D726C55ED00E35C77F78262713FF55B52BE579F828EA |
+
+The initial delayed observation found one remaining outer runner AppData root from the interrupted evidence driver, in addition to its three earlier cleaned roots. All four were removed with fixed-path ownership/containment checks; the host-toolchain junction was unlinked without traversing it. Both failure and cleanup records are retained. Final eight-second observation has zero related test/product processes and zero owned roots.
+
+**Raw host `AllEqual: false` is preserved.** Windows rebooted at 2026-09-26 09:43:12 after the before snapshot, so background PID/process and listening-port records differ. Current listener owners are system/background services, with no surviving test process. `listening-port-owners.json`, `port-differences.json` and `host-runtime-facts.json` record the differences. Defender detection records are identical; the rolling event history adds nine ID5007 lifecycle/config events and expires older entries. Final protections are enabled; before-settings equality was not captured. This acceptance claims exact preservation of both audited AppData roots and no remaining test-owned resources, not identical global runtime/Defender state across reboot.
+
+### 27.4 Limits and review disposition
+
+The first corpus attempt and first full server attempt hit c_mle_stdio COMPILER_TIMEOUT. Failed logs remain. Later instrumented runs and final standard gates passed without wider compiler limits, fallback, test deletion or sandbox changes; exact transient cause is unestablished. The failed initial tamper selection/timeout is likewise excluded from PASS evidence.
+
+Review disposition: production provenance and failure paths are exercised; exact carriers are shared rather than duplicated; security admission fails closed; rational/ZIP operations have bounds; compatibility/ranking/persistence regressions pass. The Windows test-helper lint change is mechanical and covered by its existing test. This is WP0.3 baseline acceptance, not completion of the global Rust rational migration, strict Rust-vs-Node parity, macOS platform matrix or release acceptance.
+
+WP0.1/WP0.2 remain DONE; progress is 3/51. G0 remains NOT_READY. WP0.4 may now be opened under Mon's earlier request.

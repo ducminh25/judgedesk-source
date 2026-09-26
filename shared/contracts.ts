@@ -1,4 +1,6 @@
 export type TestVerdict = "AC" | "WA" | "PE" | "TLE" | "RE" | "CE" | "MLE" | "OLE" | "JE" | "FAIL" | "PARTIAL";
+import type { Rational } from "./rational.js";
+
 export type ProblemVerdict = TestVerdict | "PENDING";
 export type CompileStatus = "OK" | "CE" | "SKIPPED";
 export type SubmissionLanguage =
@@ -48,6 +50,7 @@ export interface TestCaseRun {
   executionTime: number;
   peakMemory?: number;
   score: number;
+  scoreExact?: Rational;
   checkerMessage?: string;
   inputPreview?: string;
   expectedOutputPreview?: string;
@@ -68,6 +71,8 @@ export interface ProblemResult {
     passed: number;
     score: number;
     maxScore: number;
+    scoreExact?: Rational;
+    maxScoreExact?: Rational;
     status: ProblemVerdict;
   };
 }

@@ -22,7 +22,7 @@ use crate::discovery::{
     natural_cmp, resolve_test_case_files,
 };
 use crate::engine::{run_judge_session, JudgeSessionConfig};
-use judgedesk_native_executor::platform::Platform;
+use crate::executor_client::ExecutorClient;
 
 #[derive(Clone, Debug)]
 pub struct ProfileSelection {
@@ -183,7 +183,7 @@ impl WorkbookOpener for NativeWorkbookOpener {
 #[derive(Clone)]
 pub struct AppState {
     pub cancel_flag: Arc<AtomicBool>,
-    pub platform: Arc<Platform>,
+    pub platform: Arc<ExecutorClient>,
     pub shutdown_tx: Option<tokio::sync::mpsc::Sender<()>>,
     pub toolchains: Arc<RwLock<ToolchainStore>>,
     pub directory_picker: Arc<dyn DirectoryPicker>,
@@ -195,7 +195,7 @@ impl Default for AppState {
     fn default() -> Self {
         Self {
             cancel_flag: Arc::new(AtomicBool::new(false)),
-            platform: Arc::new(Platform::initialize()),
+            platform: Arc::new(tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(crate::executor_client::ExecutorClient::spawn(std::path::Path::new("judgedesk-executor.exe")))).expect("executor")),
             shutdown_tx: None,
             toolchains: Arc::new(RwLock::new(ToolchainStore::default())),
             directory_picker: Arc::new(NativeDirectoryPicker),

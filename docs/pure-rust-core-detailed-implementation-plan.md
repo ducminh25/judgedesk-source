@@ -4,7 +4,8 @@
 > **Plan date:** 2026-09-19
 > **Repository:** `D:\Minh\Code\judgedesk`
 > **Observed base commit:** `d80f997cdafaf85883e7602de26c32dd355795a1` plus a large dirty working tree
-> **Released baseline:** `v1.5.0` (the current eight version files remain at `1.5.0` during implementation)
+> **Historical released baseline:** `v1.5.0`; current source lockstep is `1.5.1` as reconciled in STATUS/LOG-0050
+> **Execution revision:** 2026-09-26 — see `docs/pure-rust-core-efficient-execution.md`; WP contracts/dependencies/exit criteria remain intact
 > **Next release target:** `v1.6.0` (bump all eight version files together only in WP10.3, immediately before release-candidate verification)
 > **Status:** implementation handoff; this file does not assert that the migration is complete
 
@@ -89,7 +90,7 @@ Known conflict: the frontend calls `/api/batch-judge` and `/api/batch-judge/canc
 ### 2.2 Non-negotiable invariants
 
 - Keep all eight version files synchronized. Do not bump versions as part of an unrelated work package.
-- Version state is deliberate: `v1.5.0` is already released and is the compatibility/baseline version; the work in this plan targets `v1.6.0`. Until WP10.3, seeing `1.5.0` in all eight authoritative files is expected and must not be “fixed” early. WP10.3 performs one atomic eight-file bump to `1.6.0`, followed immediately by the version and release gates.
+- Version state is deliberate: historical `v1.5.0` upgrade evidence is retained; current eight-file source lockstep is `1.5.1` (STATUS/LOG-0050). Preserve the verified source version until WP10.3; never revert it to the older prose baseline. WP10.3 performs one atomic eight-file bump to `1.6.0`, followed immediately by version/release gates. This reconciliation does not itself verify a public 1.5.1 release.
 - No `@ts-ignore`, `@ts-nocheck`, skipped/deleted tests, empty error suppression, fake success response, placeholder metric, or hidden fallback.
 - Never use floating-point arithmetic for score accumulation, grouping, ranking, or checker partial points. Converting an exact result for final display is allowed only at the existing presentation boundary.
 - No compiler/runtime fallback when the selected source is unavailable or incompatible.
@@ -204,6 +205,8 @@ Every test and acceptance item must use exactly one status:
 
 “Looks correct”, “should pass”, “code inspected”, and “covered elsewhere” are not test results.
 
+For phase aggregation, add `evidenceMode: executed | reference` under the efficient-execution protocol. A reference links the original independent execution ID/verifier/log hash, exact test inventory/assertions and source/environment applicability; it is not a newly executed PASS. Missing or changed evidence requires a rerun. Live phase/security/cleanup/performance/desktop/release scenarios remain fresh executions.
+
 ### 3.5 Dependency graph and parallel-work rules
 
 The dependency graph is intentionally stricter than the phase numbering:
@@ -253,7 +256,7 @@ A work package should end in one reviewable contract and one unambiguous verdict
 - `DONE` requires the package report, required test/cleanup evidence, and independent verification.
 - `SKIPPED` requires an explicit allowance in this plan plus linked evidence; existing partial code is not enough.
 - Do not infer ownership or completion from chat history, Git timestamps, or a green aggregate test.
-- Start a fresh conversation for each new package and for independent verification. Continue the same conversation for focused debugging/fixes within the same package.
+- Independent verification uses a fresh context distinct from the implementer. Implementation may continue in the same accurate session after the previous WP is independently DONE and the next authorized READY WP is separately claimed using a compact handoff. Refresh context at a new phase/trust boundary, ownership transfer, material drift or lost scope. Continue focused debugging in the same WP. See `docs/pure-rust-core-efficient-execution.md`.
 - If the source state changes after recorded tests, invalidate and rerun affected evidence before `DONE`.
 
 ---
@@ -269,6 +272,8 @@ docs/verification/pure-rust-core/<work-package-id>-<short-name>.md
 ```
 
 The report must contain:
+
+Use one canonical report; append attributable implementer/reviewer result sections and link immutable artifacts rather than copying logs into STATUS/WORKLOG. Keep all fields below; documentation-only WPs record non-applicable runtime rows as NOT_RUN with a scope reason. Compact tables may cover multiple independently asserted scenarios without omitting rows.
 
 ```markdown
 # <WP ID> — <name>
@@ -369,7 +374,7 @@ For parity, stress, performance, and release-candidate gates, also emit JSON usi
   },
   "runtime": {
     "backend": "node|rust",
-    "appVersion": "1.5.0",
+    "appVersion": "1.5.1",
     "releasedBaseline": "1.5.0",
     "targetRelease": "1.6.0",
     "executorMode": "windows-lpac-job|macos-seatbelt|unavailable",
@@ -649,7 +654,7 @@ Define structured log events with request/job/run correlation IDs, backend/app/b
 
 ### Phase 1 gate
 
-Run sequentially:
+Run the required command coverage sequentially. A successful final check:full already executes check:fast and test:server; do not repeat those children on the identical candidate merely because they appear below. Rust/security coverage remains additional, with fmt/all-target clippy also required for touched native/Tauri crates. Fresh integrated sandbox/lifecycle/drain checks and independent phase acceptance remain mandatory.
 
 ```powershell
 npm run check:fast
@@ -1056,11 +1061,10 @@ SSH can verify source identity, compilation, unit/integration/security tests, ex
 
 Use an exact commit or source archive and verify SHA-256 on both ends. Do not overwrite `/Users/mac/Code/judgedesk` or `/Users/mac/Code/judgedesk-source` when dirty. Use an isolated path under `/tmp` or a dedicated worktree.
 
-Minimum SSH commands after relevant implementation stabilizes:
+Minimum SSH coverage after relevant implementation stabilizes (one successful final check:full includes its child checks; add the distinct Rust/platform rows):
 
 ```bash
-npm run check:fast
-npm run test:server
+npm run check:full
 cargo fmt --check --manifest-path crates/judgedesk-core/Cargo.toml
 cargo clippy --locked --manifest-path crates/judgedesk-core/Cargo.toml --all-targets -- -D warnings
 cargo test --locked --manifest-path crates/judgedesk-core/Cargo.toml -- --test-threads=1
@@ -1099,7 +1103,7 @@ Phase 10 has two separate release milestones. Milestone A makes Rust the default
 
 Required inputs:
 
-- All prior phase reports marked READY.
+- All prior phase gates independently DONE and their required reports accepted.
 - Zero open Critical/Required review findings.
 - Zero unexplained parity mismatches.
 - Current Windows/macOS security and package gates.
@@ -1115,7 +1119,7 @@ The fallback flag is temporary product policy, not permission for automatic fall
 
 ### WP10.3 — final coordinated version bump to v1.6.0
 
-Run this package only after WP10.1 and WP10.2 are READY and the implementation is otherwise release-candidate complete. Change exactly the eight authoritative version files from `1.5.0` to `1.6.0` in one reviewable change:
+Run this package only after WP10.1 and WP10.2 are DONE and the implementation is otherwise release-candidate complete. Change exactly the eight authoritative version files from the verified source lockstep (`1.5.1` currently) to `1.6.0` in one reviewable change:
 
 1. `package.json`
 2. `package-lock.json`
@@ -1128,7 +1132,7 @@ Run this package only after WP10.1 and WP10.2 are READY and the implementation i
 
 Do not bump `judgedesk-core` or any ninth file unless WP0.6 has deliberately changed the authoritative policy and its checker. Regenerate lockfiles through the correct package managers rather than hand-editing dependency data. Update release notes/changelog and expected package/update metadata in the same package.
 
-**Required tests:** `npm run release:check-version` must report exactly `1.6.0`; frontend status, Tauri/package metadata, executor identity, Core/Full manifests, clean install, upgrade from released `v1.5.0`, and rollback compatibility must all report the intended version. A partial bump is `FAIL` and blocks every later release action.
+**Required tests:** `npm run release:check-version` must report exactly `1.6.0`; frontend status, Tauri/package metadata, executor identity, Core/Full manifests, clean install, upgrade from released `v1.5.0` and the current source baseline where packaged, and rollback compatibility must all report the intended version. A partial bump is `FAIL` and blocks every later release action.
 
 ### WP10.4 — release-candidate gates
 
@@ -1157,7 +1161,7 @@ Start only after the stabilization exit review explicitly approves it. Remove th
 
 ## 16. Standard gate ladder
 
-Use the smallest relevant rung during RED/GREEN, then broaden once per package. Do not repeatedly run all gates without a new change or failure.
+Use the smallest relevant rung during RED/GREEN, preserving CONSTRAINTS' edit/pre-build floor checks. Then run one successful complete gate on the frozen final source per implementer and independent verifier. Failed, interrupted or invalidated runs require reruns; “once” is not a quota. Deduplicate final child commands only when the enclosing command actually executed them successfully. See `docs/pure-rust-core-efficient-execution.md` for evidence references, selection and audit windows.
 
 ### Focused loop
 
@@ -1170,6 +1174,8 @@ cargo test --locked --manifest-path crates/judgedesk-core/Cargo.toml <test_name>
 ```
 
 ### Fast edit gate
+
+Preserve the required edit/pre-build types/invariants/version floor checks. Apply equivalent fmt/all-target clippy to each touched Rust runtime crate; examples below use core. Completion children may be deduplicated only after a successful final enclosing command.
 
 ```powershell
 npm run check:fast
@@ -1198,10 +1204,9 @@ npm run test:windows-single-instance
 
 ```powershell
 npm run check:full
-npm run release:check-version
 ```
 
-At the observed baseline, `check:full` covers the Node/TypeScript floor, server tests, and version check; it does not replace Rust core fmt/clippy/tests, security gates, platform tests, parity, or desktop verification. WP0.5 must add a documented `check:rust`-style gate and make the required CI/package-completion path invoke it. Until that change lands, agents must run the explicit Rust commands above and may not treat `check:full` alone as completion.
+At the 2026-09-26 source, `check:full` runs check:fast, test:server, static Themis checker parity and release:check-version. Do not repeat those child commands merely to fill separate report rows; link their successful outputs in the complete gate. It does not replace Rust core fmt/all-target clippy/full locked tests, security/platform gates, strict Node/Rust parity, live DLL oracle where required or desktop verification. Re-read package.json when composition changes. WP0.5 must add a documented Rust gate and make the required CI/package-completion path invoke it. Until then, run applicable explicit Rust commands and never treat check:full alone as completion.
 
 After the scripts exist, the release-candidate ladder also includes the dedicated Rust desktop/backend identity command, packaged Core/Full tests, Node/Rust parity (through Milestone A), and the platform-specific commands from Phase 9. A script name is not evidence: its captured output must show the expected backend/build identity, inventory, skips, and cleanup.
 

@@ -7,10 +7,15 @@ import { listRegisteredLanguageProfiles } from "../server/languages/registry.js"
 import { isCurrentReleaseToolchainKind } from "../server/toolchains/release-scope.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const corpusRoot = path.join(repoRoot, "server", "test-fixtures", "corpus");
+const corpusRoot = process.env.CORPUS_ROOT_OVERRIDE
+  ? path.resolve(process.env.CORPUS_ROOT_OVERRIDE)
+  : path.join(repoRoot, "server", "test-fixtures", "corpus");
 const staticDir = path.join(corpusRoot, "static");
 const generatedDir = path.join(corpusRoot, "generated");
-const manifestPath = path.join(repoRoot, "docs", "verification", "pure-rust-core", "corpus-manifest.json");
+const manifestPath = process.env.CORPUS_MANIFEST_OVERRIDE
+  ? path.resolve(process.env.CORPUS_MANIFEST_OVERRIDE)
+  : path.join(repoRoot, "docs", "verification", "pure-rust-core", "corpus-manifest.json");
+const EMPTY_DIRECTORY_MARKER = ".judgedesk-empty";
 
 // Derive production release profile-to-extension mappings
 const RELEASE_PROFILE_EXTENSIONS = new Map<string, Set<string>>();
@@ -168,10 +173,20 @@ function addCase(c: CorpusCase, builder: (dir: string) => void): void {
   }
 
   for (const f of c.files) {
-    if (f.expectedAbsence || f.emptyDirectory) {
+    if (f.expectedAbsence) {
       continue;
     }
     const filePath = path.join(dir, f.path);
+    if (f.emptyDirectory) {
+      if (!fs.existsSync(filePath) || !fs.statSync(filePath).isDirectory()) {
+        throw new Error(`Missing declared empty testcase directory: ${filePath}`);
+      }
+      const entries = fs.readdirSync(filePath);
+      if (entries.length !== 1 || entries[0] !== EMPTY_DIRECTORY_MARKER) {
+        throw new Error(`Declared empty testcase directory has unexpected entries: ${filePath}`);
+      }
+      continue;
+    }
     if (!fs.existsSync(filePath)) {
       if (!process.argv.includes("--check")) {
         throw new Error(`Missing expected file during generation: ${filePath}`);
@@ -590,12 +605,13 @@ addCase({
     { path: "Config.cfg", role: "config" },
     { path: "solution.py", role: "source" },
     { path: "tests/empty", role: "folder", emptyDirectory: true },
+    { path: "tests/empty/.judgedesk-empty", role: "structure-marker" },
     { path: "virtual-structure.json", role: "descriptor" }
   ]
 }, (dir) => {
   write(dir, "Config.cfg", JSON.stringify({ isInteractive: true, interactor: "missing.cpp", useStdIO: true }));
   write(dir, "solution.py", "pass\n");
-  fs.mkdirSync(path.join(dir, "tests/empty"), { recursive: true });
+  write(dir, "tests/empty/.judgedesk-empty", "No testcase inputs or outputs belong in this directory.\n");
   write(dir, "virtual-structure.json", JSON.stringify({
     kind: "case_collision_and_long_path",
     virtualFiles: [
@@ -1185,6 +1201,42 @@ else:
   write(dir, "tests/04.out", "7\n");
   write(dir, "tests/05.in", "3\n");
   write(dir, "tests/05.out", "3\n");
+});
+
+// Proportional allocation must retain its fraction before final numeric display.
+addCase({
+  id: "rational_proportional_boundary",
+  tags: ["python", "rational", "partial", "boundary"],
+  languageProfileId: "python-cpython312",
+  extension: "py",
+  platforms: ["all"],
+  ioMode: "stdio",
+  fixtureRoot: "generated/rational_proportional_boundary",
+  expectedCompileOutcome: "SUCCESS",
+  expectedProblemVerdict: "PARTIAL",
+  expectedMaxScore: { numerator: "9007199254740991", denominator: "1", display: 9007199254740991 },
+  expectedScore: { numerator: "9007199254740991", denominator: "3", display: 9007199254740991 / 3 },
+  provenance: "Production totalScore allocation: three equal weights, one AC and two WA, preserving MAX_SAFE_INTEGER/3 through runner and summary.",
+  tests: [
+    { name: "01", verdict: "AC", checkerMessage: "single line", score: { numerator: "9007199254740991", denominator: "3", display: 9007199254740991 / 3 } },
+    { name: "02", verdict: "WA", checkerMessage: null, score: { numerator: "0", denominator: "1", display: 0 } },
+    { name: "03", verdict: "WA", checkerMessage: null, score: { numerator: "0", denominator: "1", display: 0 } },
+  ],
+  files: [
+    { path: "Config.cfg", role: "config" },
+    { path: "solution.py", role: "source" },
+    ...["01", "02", "03"].flatMap(name => [
+      { path: `tests/${name}.in`, role: "input" },
+      { path: `tests/${name}.out`, role: "answer" },
+    ]),
+  ],
+}, dir => {
+  write(dir, "Config.cfg", JSON.stringify({ useStdIO: true, totalScore: "9007199254740991", defaultScore: 1 }));
+  write(dir, "solution.py", "print(input())\n");
+  for (const name of ["01", "02", "03"]) {
+    write(dir, `tests/${name}.in`, "1\n");
+    write(dir, `tests/${name}.out`, name === "01" ? "1\n" : "2\n");
+  }
 });
 
 cases.sort((a, b) => a.id.localeCompare(b.id));

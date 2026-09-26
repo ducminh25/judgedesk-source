@@ -1,24 +1,24 @@
 # Pure Rust Core v1.6.0 — Shared Status
 
 > **Authoritative current-state ledger:** all agents must read and update this file.
-> **Released baseline:** `v1.5.0`
+> **Released/source baseline:** `v1.5.1` (eight-file source lockstep; historical WP0.1/WP0.2 evidence used v1.5.0)
 > **Development target:** `v1.6.0`
-> **Last reconciled:** 2026-09-23T20:30:00+07:00 by Antigravity (LOG-0046)
-> **Observed source:** Windows HEAD `d80f997cdafaf85883e7602de26c32dd355795a1` plus the recorded dirty tree; current macOS saved checkouts are different and dirty, so no macOS source-parity result is implied.
+> **Last reconciled:** 2026-09-26T11:35:42+07:00 by Codex (LOG-0053)
+> **Observed source:** Windows `main` HEAD `b68242131eaf8db15990fadf1c48c8c16c45473e` plus preserved LOG-0047 evidence and Codex WP0.3 remediation. No macOS source-parity result is implied.
 
 ## Current control state
 
 | Field | Value |
 |---|---|
-| Current implementation package | `WP0.3` — `VERIFYING`, LOG-0045-F1 and F2 remediated, awaiting fresh independent Codex review |
-| Next permitted package | None; verify WP0.3 and await independent review; do not start WP0.4 or any later package |
+| Current implementation package | `WP0.4` — `IN_PROGRESS`, proposed executor-boundary ADR and opening report (LOG-0051) |
+| Next permitted package | Finish WP0.4 within its boundary; no later package has been started |
 | Current phase | Phase 0 — contract/baseline freeze |
-| Package progress | `2 / 51 DONE` |
+| Package progress | `3 / 51 DONE` |
 | Phase gates | `0 / 11 DONE` |
-| Version files | Expected to remain synchronized at `1.5.0` until WP10.3 |
-| Last required action | Codex independent verification of WP0.3 LOG-0046 remediation |
+| Version files | Preserve observed eight-file lockstep `1.5.1`; no migration version bump until WP10.3 |
+| Last required action | Antigravity claims the authorized WP0.4 handoff in LOG-0053 and applies LOG-0052 efficient execution; fresh Codex independently verifies after submission |
 
-Existing partial Rust code does not make a work package `DONE`. Only the report, required test evidence, cleanup evidence, and independent verification can do that.
+Existing partial Rust code does not make a work package `DONE`. Required reports, test and cleanup evidence must be accepted. WP0.3 has a bounded Mon-authorized same-session acceptance exception (LOG-0048–0050); the normal independent-review protocol remains the default for later packages.
 
 ## Planning and coordination artifacts
 
@@ -27,6 +27,7 @@ Existing partial Rust code does not make a work package `DONE`. Only the report,
 | Baseline gap audit | `DONE` | Codex | `docs/pure-rust-core-next-steps-audit.md` |
 | Detailed implementation/test plan | `DONE` | Codex | `docs/pure-rust-core-detailed-implementation-plan.md` |
 | Antigravity protocol handoff | `DONE` | Codex | `docs/pure-rust-core-antigravity-handoff.md` |
+| Efficient execution revision | `DOCUMENTED` | Codex, fresh-context text review | `docs/pure-rust-core-efficient-execution.md`, `plan-streamlining-review.md`, LOG-0052; no runtime/automation implementation |
 | Verification root and ledger | `DONE` | Codex | `docs/verification/pure-rust-core/STATUS.md`, `WORKLOG.md` |
 
 ## Execution ledger
@@ -35,8 +36,8 @@ Existing partial Rust code does not make a work package `DONE`. Only the report,
 |---|---|---|---|---|---|---|
 | WP0.1 | Workspace and environment snapshot | None | `DONE` | Antigravity implementation; Codex independent verification / 2026-09-19T23:26:41+07:00 | NO | `docs/verification/pure-rust-core/wp0.1-workspace-snapshot.md` + `artifacts/wp0.1/` |
 | WP0.2 | API and stream contract inventory | WP0.1 | `DONE` | Codex final closure / D:\Minh\Code\judgedesk / 2026-09-21T20:13:16+07:00 | NO | `docs/verification/pure-rust-core/wp0.2-api-stream-contract.md`, `wp0.2-final-closure.md`, `LOG-0032` |
-| WP0.3 | Corpus and expected-result manifest | WP0.2 | `VERIFYING` | Antigravity LOG-0046 remediation / D:\Minh\Code\judgedesk / 2026-09-23T20:30:00+07:00 | NO | `docs/verification/pure-rust-core/wp0.3-corpus-expected-results.md`, `LOG-0046` |
-| WP0.4 | Executor architecture ADR | WP0.1 | `READY` | - | NO | - |
+| WP0.3 | Corpus and expected-result manifest | WP0.2 | `DONE` | Codex same-session acceptance explicitly authorized by Mon / D:\Minh\Code\judgedesk / LOG-0050 | NO | `docs/verification/pure-rust-core/wp0.3-corpus-expected-results.md` Section 27, `LOG-0050` |
+| WP0.4 | Executor architecture ADR | WP0.1 | `IN_PROGRESS` | Antigravity authorized handoff, awaiting new-session claim / D:\Minh\Code\judgedesk / LOG-0053; Codex initial draft LOG-0051 | NO | `docs/adr/0001-rust-core-executor-boundary.md` PROPOSED; `wp0.4-executor-boundary.md`; `prompts/wp0.4-antigravity-implement.md`, `prompts/wp0.4-codex-verify.md` |
 | WP0.5 | Rust gates, CI, expected-skip policy | WP0.1 | `READY` | - | NO | - |
 | WP0.6 | Version/build identity/lockfile policy | WP0.1 | `READY` | - | NO | - |
 | WP0.7 | Minimal Rust server decomposition | WP0.1, WP0.2 | `READY` | - | NO | - |
@@ -105,25 +106,28 @@ Existing partial Rust code does not make a work package `DONE`. Only the report,
 The current owner replaces this block whenever work is handed off. Preserve prior history in WORKLOG.
 
 ```yaml
-work_package: WP0.3
-owner: Antigravity remediation owner
-tool: Antigravity
+work_package: WP0.4
+owner: Antigravity (claimed for implementation)
+tool: Antigravity (implementer); fresh Codex (independent verifier after VERIFYING)
 workspace: D:\Minh\Code\judgedesk
-branch_or_head: d80f997cdafaf85883e7602de26c32dd355795a1-plus-preserved-dirty-tree
+branch_or_head: b68242131eaf8db15990fadf1c48c8c16c45473e-plus-preserved-remediation
 status: IN_PROGRESS
-last_command: Codex direct Scratch source-to-runner probe; generator check three times; independent inventory; focused corpus; 17 tamper probes; check:fast; Rust core and Native Executor fmt/clippy/test; test:server; check:full; release:check-version; detailed before/after host snapshots
-last_result: LOG-0045 IN_PROGRESS. Full gates and host-state comparison pass. All three Scratch fixtures still select the same generated echo AST rather than their declared source bytes; exact rational overflow boundary is absent and the static validator accepts a rounded unsafe integer.
-report: docs/verification/pure-rust-core/wp0.3-corpus-expected-results.md
+last_command: git status; git rev-parse HEAD
+last_result: LOG-0054 Antigravity claimed WP0.4; verified dirty working tree and HEAD b68242131eaf8db15990fadf1c48c8c16c45473e
+report: docs/verification/pure-rust-core/wp0.4-executor-boundary.md
 artifacts:
-  - docs/verification/pure-rust-core/artifacts/wp0.3/independent-review-log0045-codex-20260923/before/
-  - docs/verification/pure-rust-core/artifacts/wp0.3/independent-review-log0045-codex-20260923/after/
-  - docs/verification/pure-rust-core/artifacts/wp0.3/independent-review-log0045-codex-20260923/scratch-source-probe.json
-  - docs/verification/pure-rust-core/artifacts/wp0.3/independent-review-log0045-codex-20260923/host-comparison.json
+  - docs/adr/0001-rust-core-executor-boundary.md
+  - docs/verification/pure-rust-core/wp0.4-executor-boundary.md
+  - docs/verification/pure-rust-core/wp0.3-corpus-expected-results.md (prerequisite acceptance Section 27)
+  - docs/pure-rust-core-efficient-execution.md
+  - docs/verification/pure-rust-core/plan-streamlining-review.md
+  - docs/verification/pure-rust-core/prompts/wp0.4-antigravity-implement.md
+  - docs/verification/pure-rust-core/prompts/wp0.4-codex-verify.md
 findings:
-  - LOG-0045-F1 HIGH: Scratch runner still selects source-independent echo AST for all three declared Scratch fixtures.
-  - LOG-0045-F2 MEDIUM: unsafe rational integer rounds silently in static validation and no overflow-boundary workload exists.
-blocker: none; findings are actionable in repository
-next_action: Antigravity remediates only LOG-0045-F1 and F2, verifies actual Scratch source execution and exact rational boundaries, then resubmits VERIFYING
-updated_at: 2026-09-23T13:55:00+07:00
+  - current Node uses executor IPC; partial Rust core still reaches Platform in process
+  - parent/generation identity and unreachable-alternative tests remain required; proposed ADR is not accepted
+blocker: none for bounded WP0.4 work; exit evidence not yet implemented
+next_action: Antigravity resolves ADR open items, proves selected boundary with RED/GREEN, submits VERIFYING and stops for fresh Codex review
+updated_at: 2026-09-26T11:51:00+07:00
 ```
 

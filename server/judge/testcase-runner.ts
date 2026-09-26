@@ -20,7 +20,8 @@ import {
 } from "../jobs.js";
 import type { NormalizedProblemConfig, SubmissionLanguage, TestCaseRun } from "../types.js";
 import type { CompiledChecker, CompiledInteractor } from "./compiler.js";
-import { parsePartialScore, prepareNativeChecker, runCustomChecker } from "./custom-checker-runner.js";
+import { parsePartialAward, prepareNativeChecker, runCustomChecker } from "./custom-checker-runner.js";
+import { compareRational as compareScore, createRational, multiplyRational, parseRational, rationalToRoundedNumber, type Rational } from "../../shared/rational.js";
 import { prepareIsolatedPythonScript } from "./python-runtime.js";
 import {
   buildCheckerExecutorRunSpec,
@@ -52,6 +53,7 @@ interface TestCaseRunnerOptions {
   pythonCommand: string;
   timeLimitMs: number;
   score: number;
+  scoreExact?: Rational;
   config: NormalizedProblemConfig;
   checker: CompiledChecker | undefined;
   interactor?: CompiledInteractor;
@@ -61,6 +63,11 @@ interface TestCaseRunnerOptions {
 
 const MAX_OUTPUT_SIZE = 16 * 1024 * 1024;
 const MAX_STDERR_PREVIEW = 256 * 1024;
+
+export function resolveInteractiveAward(maximum: Rational, scoreMultiplier: number | undefined, message: string, transcript: string): Rational {
+  if (scoreMultiplier !== undefined) return multiplyRational(maximum, parseRational(scoreMultiplier));
+  return parsePartialAward(message, transcript, maximum) ?? createRational(0);
+}
 
 export async function runTestCase(options: TestCaseRunnerOptions): Promise<TestCaseRun> {
   if (options.config.isInteractive) {
@@ -171,6 +178,7 @@ export async function runTestCase(options: TestCaseRunnerOptions): Promise<TestC
         actualOutputPath,
         expectedOutputPath: options.expectedOutputPath,
         maxScore: options.score,
+        maxScoreExact: options.scoreExact,
         jobId: options.jobId,
         problemName: options.problemName,
         inputFileName: options.config.inputFile,
@@ -187,6 +195,7 @@ export async function runTestCase(options: TestCaseRunnerOptions): Promise<TestC
         stdout,
         checked.message,
         result,
+        checked.scoreExact,
       );
     } finally {
       fs.rmSync(actualOutputPath, { force: true });
@@ -296,6 +305,7 @@ function createResult(
   actualOutput: string,
   checkerMessage?: string,
   executorResult?: ExecutorRunResult,
+  awardedScoreExact?: Rational,
 ): TestCaseRun {
   return {
     name: options.testName,
@@ -303,6 +313,10 @@ function createResult(
     executionTime: Math.round(executionTime),
     peakMemory,
     score,
+    ...(options.scoreExact === undefined ? {} : {
+      scoreExact: status === "AC" ? options.scoreExact
+        : status === "PARTIAL" ? (awardedScoreExact ?? parseRational(score)) : createRational(0),
+    }),
     checkerMessage,
     errorDetail,
     expectedOutputPreview: options.expectedOutputPreview,
@@ -431,6 +445,7 @@ async function executeInteractiveTestCase(
 
     let status: TestCaseRun["status"] = "JE";
     let score = 0;
+    let awardedScoreExact: Rational | undefined;
     const executionTime = result.executionTimeMs;
     const peakMemoryKb = result.peakMemoryBytes ? Math.ceil(result.peakMemoryBytes / 1024) : undefined;
     const trimmedStderr = interactorStderr.trim();
@@ -457,12 +472,13 @@ async function executeInteractiveTestCase(
       score = 0;
     } else if (result.verdict === "PARTIAL") {
       status = "PARTIAL";
-      if (result.scoreMultiplier !== undefined) {
-        score = Math.round(options.score * result.scoreMultiplier * 100) / 100;
-      } else {
-        const parsed = parsePartialScore(interactorStderr, transcript, options.score);
-        score = parsed !== null ? Math.round(options.score * parsed * 100) / 100 : 0;
+      const maximum = options.scoreExact ?? parseRational(options.score);
+      awardedScoreExact = resolveInteractiveAward(maximum, result.scoreMultiplier, interactorStderr, transcript);
+      if (compareScore(awardedScoreExact, createRational(0)) < 0 || compareScore(awardedScoreExact, maximum) > 0) {
+        status = "JE";
+        awardedScoreExact = createRational(0);
       }
+      score = rationalToRoundedNumber(awardedScoreExact, 2);
     } else {
       status = "JE";
       score = 0;
@@ -478,6 +494,7 @@ async function executeInteractiveTestCase(
       transcript || interactorStderr || "",
       checkerMessage,
       result.submissionResult,
+      awardedScoreExact,
     );
   } finally {
     detachExecutorRun(options.jobId, runId);

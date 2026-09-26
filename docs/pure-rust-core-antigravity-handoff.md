@@ -1,6 +1,6 @@
 # Antigravity Handoff Guide — JudgeDesk Pure Rust Core v1.6.0
 
-> **Released baseline:** `v1.5.0`
+> **Historical released baseline:** `v1.5.0`; current source lockstep `1.5.1` (STATUS/LOG-0050)
 > **Development target:** `v1.6.0`
 > **Model:** Gemini 3.8 Flash High
 > **Primary plan:** `docs/pure-rust-core-detailed-implementation-plan.md`
@@ -13,19 +13,19 @@ For day-to-day navigation, begin with `docs/pure-rust-core-start-here.md`. Curre
 
 - `v1.5.0` is already released. It is the compatibility and upgrade baseline.
 - Current implementation work targets `v1.6.0`.
-- During implementation, the eight authoritative version files intentionally remain synchronized at `1.5.0`.
+- During implementation, preserve the current verified eight-file source lockstep (`1.5.1` now); do not revert it to the historical 1.5.0 prose baseline.
 - Do not change any version early.
 - Only WP10.3 may change all eight files together to `1.6.0`, immediately before release-candidate verification.
 - A partial bump, an early bump, or a ninth version file added without an approved policy change is a failure.
 
 ## 2. Recommended operating model
 
-Use one fresh Antigravity conversation per work package. Do not ask one default-agent turn to implement the entire migration.
+Use one bounded claim per work package. An accurate implementation conversation may continue to the next authorized READY WP only after independent DONE and a separate compact claim, within the same phase/trust boundary. Fresh context remains required for independent verification, ownership transfer, new phase/trust boundary, material drift or lost scope. Do not ask one default-agent turn to implement the entire migration. Follow `docs/pure-rust-core-efficient-execution.md` for scheduling/evidence reuse.
 
 Recommended sequence:
 
-1. Run WP0.1 alone to refresh source/environment identity.
-2. Run WP0.2 and WP0.3 sequentially because they own canonical contract fixtures.
+1. Read current STATUS and accepted reports; WP0.1–WP0.3 are DONE as of LOG-0051. Refresh source/environment identity without replaying those packages.
+2. Respect canonical contract/corpus ownership and reuse their accepted immutable fixtures; changed references invalidate affected evidence.
 3. Run WP0.4, WP0.5, and WP0.6 as separate work packages. They may be researched in parallel only when agents do not edit shared files.
 4. Run WP0.7 before broad edits to the Rust route surface.
 5. Follow the dependency graph in Section 3.5 of the detailed plan.
@@ -85,7 +85,7 @@ Flag guidance:
 | `--output-format stream-json` | Use for long implementation/test runs | Preserves progress, tool events, usage, and terminal status as NDJSON. |
 | `--output-format json` | Use for short read-only review jobs | Produces one final machine-readable envelope. |
 | `--print-timeout 60m` or `90m` | Set explicitly | The documented default is five minutes, too short for Rust builds and desktop gates. An outer CI timeout must still terminate descendants and preserve logs. |
-| `--continue` | Use only to continue the same work package | Avoid carrying a large stale context into a new package. |
+| `--continue` | Same WP, or next separately authorized/claimed READY WP after independent DONE within the same phase/trust boundary | Refresh mutable STATUS, actual source identity and changed authorities; start fresh on material drift or role/phase changes. |
 | `--conversation <id>` | Use to resume a specifically recorded interrupted package | Safer than accidentally continuing the most recent unrelated session. |
 | `--sandbox` | Use for read-only review or packages whose commands fit the terminal sandbox | Some JudgeDesk OS-sandbox, desktop, packaging, and SSH tests may require capabilities it blocks. Record when it is intentionally omitted. |
 | `--dangerously-skip-permissions` | Do not use in the current dirty checkout | It approves every tool call. Prefer scoped permission rules. Consider it only in a disposable isolated worktree with a fully trusted prompt and no release credentials. |
@@ -111,7 +111,7 @@ Repository and version context:
 - Workspace: D:\Minh\Code\judgedesk
 - v1.5.0 is already released and is the compatibility/upgrade baseline.
 - Current work targets v1.6.0.
-- Keep all eight authoritative version files synchronized at 1.5.0 throughout implementation.
+- Keep the verified eight-file source lockstep (currently 1.5.1) throughout implementation; do not revert to historical 1.5.0.
 - Do not bump any version. Only WP10.3 may bump all eight files together to 1.6.0 immediately before release-candidate verification.
 - The working tree may contain user changes. Preserve them. Never reset, checkout over, clean, reformat, or normalize unrelated paths.
 
@@ -124,6 +124,7 @@ Mandatory first reads, in this order:
 6. CONSTRAINTS.md
 7. docs/pure-rust-core-antigravity-handoff.md
 8. docs/pure-rust-core-detailed-implementation-plan.md, especially <WP_ID>, Sections 2-4, dependency graph, gate ladder, and failure triage
+   Read docs/pure-rust-core-efficient-execution.md for deduplicated completion commands and evidence references.
 9. docs/pure-rust-core-next-steps-audit.md only when its baseline/gap evidence is relevant
 10. The project skills required by AGENTS.md for this package
 11. Current implementation and tests named by the package; do not rely only on prose
@@ -132,7 +133,7 @@ Before editing:
 - Confirm <WP_ID> is READY and unclaimed. Claim it in STATUS.md and append the claim to WORKLOG.md. If another owner already holds it, do not edit overlapping files.
 - Capture git rev-parse HEAD, git status --short, relevant tool versions, processes/ports/roots, and prerequisite report verdicts.
 - State one falsifiable package claim, its trust boundaries, primary files, shared files, rollback point, and focused test command.
-- Confirm dependencies are READY. If a required dependency is not READY, produce a BLOCKED report with evidence and continue only work that is truly independent.
+- Confirm dependencies are DONE. If a required dependency is not DONE, do not start dependent implementation; record the prerequisite and continue only authorized work that is truly independent.
 - Reconcile documentation with current frontend consumers, Node reference behavior, shared contracts, and tests. Record conflicts; do not silently choose.
 
 Implementation rules:
@@ -145,11 +146,11 @@ Implementation rules:
 - Do not commit, push, tag, publish, sign, deploy, or modify release credentials.
 
 Verification and output:
-- Run the focused test, directly affected component gates, npm run check:fast, and every package-specific gate listed in the plan.
+- Run focused RED/GREEN and mandatory edit/pre-build floor checks, then one successful final completion command union per frozen candidate. check:full already runs its listed child checks; do not repeat identical successful final children. Required Rust/security/platform/package checks remain mandatory. Failed, interrupted or invalidated runs require rerun with original logs preserved.
 - Treat missing release-supported runtimes, new skips, orphan processes, locked roots, backend ambiguity, or unverified GUI behavior as blocking evidence, not PASS.
 - For Windows GUI checks, use the required Computer Use protocol and capture stable screenshots/logs.
 - The Mac is reachable as judgedesk-mac over SSH. Use an isolated exact source commit/archive and verify SHA-256 on both ends. SSH results cannot count as macOS GUI PASS.
-- Write docs/verification/pure-rust-core/<work-package-id>-<short-name>.md using the exact template in Section 4.
+- Write one canonical docs/verification/pure-rust-core/<work-package-id>-<short-name>.md retaining every Section 4 field, with compact tables and immutable artifact links rather than copied logs. Independent verdict attribution remains explicit.
 - Produce machine-readable JSON when Section 4.2 requires it.
 - Perform a fresh-context adversarial review of the final diff and resolve or record every finding.
 - Set the package to VERIFYING in STATUS.md and append a handoff entry to WORKLOG.md. Do not self-start the next WP.
@@ -167,13 +168,13 @@ Do not claim completion from code inspection, a green aggregate with hidden skip
 
 ## 6. First prompt to send
 
-Start with WP0.1 so Antigravity refreshes the source identity instead of treating the 2026-09-19 audit as current forever:
+Read current STATUS rather than reusing the historical WP0.1 startup prompt. Refresh actual source/environment identity and the authorized current package:
 
 ```text
-Read AGENTS.md, docs/pure-rust-core-start-here.md, and docs/verification/pure-rust-core/STATUS.md first. Claim exactly WP0.1 in STATUS and append the claim to WORKLOG. Then execute WP0.1 from docs/pure-rust-core-detailed-implementation-plan.md. This is an evidence package: do not implement product behavior and do not bump versions. Verify and state that v1.5.0 is the released baseline, v1.6.0 is the development target, and the current eight-file 1.5.0 lockstep is expected until WP10.3. Finish the report, set WP0.1 to VERIFYING, append the evidence handoff to WORKLOG, and stop without starting WP0.2.
+Read AGENTS.md, guidelines.md, CONSTRAINTS.md, start-here, efficient-execution and STATUS/latest relevant WORKLOG. Work only on the authorized current <WP_ID>, confirming its owner and DONE dependencies. Preserve the saved dirty checkout and source version 1.5.1. Use focused RED/GREEN plus edit checks, freeze the candidate and execute one successful completion union plus required Rust/security/platform checks. Write one report with linked logs, set VERIFYING, append handoff and stop for fresh independent review. Do not replay accepted WP0.1–WP0.3 or start another package while VERIFYING.
 ```
 
-After WP0.1 is accepted, start a fresh conversation for WP0.2 using the generic prompt. Use `/boost` only when a package’s concurrency/security complexity justifies the extra verification cost.
+After each independent DONE, use the generic compact next-package handoff. Continue accurate implementation context only under the lifecycle rules above. Use `/boost` only when concurrency/security complexity justifies its cost. WP0.3's same-session acceptance exception is bounded to that package.
 
 ## 7. Steering prompts
 

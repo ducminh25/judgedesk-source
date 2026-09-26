@@ -27,6 +27,15 @@ const workspace = {
   judgeResult: null,
 };
 
+test("loaded judging results reject forged exact-score carriers", () => {
+  const manifest = buildContestManifest(workspace);
+  for (const scoreExact of [{ n: "bad", d: 1 }, { n: 1, d: 0 }, { n: 2, d: 4 }, { n: "1".repeat(1025), d: 1 }]) {
+    assert.throws(() => validateContestManifest({ ...manifest, workspace: { ...workspace, judgeResult: {
+      success: true, contestants: [{ contestantName: "Alice", problems: [{ problemName: "A", compileStatus: "OK", testCases: [], summary: { score: 1, status: "AC", scoreExact } }] }],
+    } } }), /judg|result/i);
+  }
+});
+
 test("buildContestManifest creates a portable versioned manifest", () => {
   const now = new Date("2026-07-19T01:02:03.000Z");
   const manifest = buildContestManifest(workspace, undefined, now);

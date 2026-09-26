@@ -73,7 +73,7 @@ export default function ScoringLogModal({
               test: test.name,
               status: test.status,
               time: `${(test.executionTime / 1000).toFixed(3)} ${t("scoringLog.seconds")}`,
-              score: formatScore(test.score),
+              score: formatScore(test.scoreExact ?? test.score),
               result:
                 test.checkerMessage ||
                 test.errorDetail ||

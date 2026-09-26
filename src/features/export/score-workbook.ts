@@ -5,7 +5,7 @@ import {
   addRational,
   createRational,
   parseRational,
-  rationalToNumber,
+  rationalToRoundedNumber,
 } from "../../../shared/rational";
 
 export interface ScoreWorkbookLabels {
@@ -213,10 +213,10 @@ function buildSummaryRows(
       } else {
         hasResult = true;
         row[problemName] = roundScore(problem.summary.score);
-        totalScoreRat = addRational(totalScoreRat, parseRational(problem.summary.score));
+        totalScoreRat = addRational(totalScoreRat, parseRational(problem.summary.scoreExact ?? problem.summary.score));
       }
     }
-    row[labels.total] = hasResult ? Math.round(rationalToNumber(totalScoreRat) * 100) / 100 : null;
+    row[labels.total] = hasResult ? rationalToRoundedNumber(totalScoreRat, 2) : null;
     return row;
   });
 }
@@ -242,7 +242,7 @@ function buildDetailRows(
         return orderA - orderB;
       });
     const contestantTotalRat = problems.reduce(
-      (total, problem) => addRational(total, parseRational(problem.summary.score)),
+      (total, problem) => addRational(total, parseRational(problem.summary.scoreExact ?? problem.summary.score)),
       createRational(0)
     );
     rows.push({
@@ -250,7 +250,7 @@ function buildDetailRows(
       [labels.problem]: "",
       [labels.test]: "",
       [labels.score]: problems.length > 0
-        ? Math.round(rationalToNumber(contestantTotalRat) * 100) / 100
+        ? rationalToRoundedNumber(contestantTotalRat, 2)
         : null,
       [labels.time]: "",
       [labels.results]: ""
@@ -312,5 +312,5 @@ function emptyContestant(contestantName: string): ContestantResult {
 
 function roundScore(score: number): number {
   const r = parseRational(score);
-  return Math.round(rationalToNumber(r) * 100) / 100;
+  return rationalToRoundedNumber(r, 2);
 }
