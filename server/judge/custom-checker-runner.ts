@@ -14,10 +14,12 @@ import type { TestVerdict } from "../types.js";
 import type { ResolvedToolchain } from "../toolchains/types.js";
 import { buildCheckerExecutorRunSpec } from "./execution-request.js";
 import { prepareIsolatedPythonScript } from "./python-runtime.js";
+import { compareRational as compareScore, createRational, divideRational, multiplyRational, parseRational, rationalToNumber, rationalToRoundedNumber, type Rational } from "../../shared/rational.js";
 
 export interface CustomCheckerResult {
   status: TestVerdict;
   score: number;
+  scoreExact?: Rational;
   message: string;
 }
 
@@ -30,6 +32,7 @@ export interface RunCustomCheckerOptions {
   actualOutputPath: string;
   expectedOutputPath: string;
   maxScore: number;
+  maxScoreExact?: Rational;
   jobId?: string;
   problemName?: string;
   inputFileName?: string;
@@ -40,18 +43,34 @@ const CHECKER_TIMEOUT_MS = 5_000;
 const CHECKER_MEMORY_BYTES = 256 * 1024 * 1024;
 
 export function parsePartialScore(message: string, stdout: string, maxScore: number): number | null {
+  const maximum = parseRational(maxScore);
+  const multiplier = parsePartialMultiplier(message, stdout, maximum);
+  return multiplier === null ? null : rationalToNumber(multiplier);
+}
+
+export function parsePartialAward(message: string, stdout: string, maximum: Rational): Rational | null {
+  const multiplier = parsePartialMultiplier(message, stdout, maximum);
+  return multiplier === null ? null : multiplyRational(multiplier, maximum);
+}
+
+function parsePartialMultiplier(message: string, stdout: string, maximum: Rational): Rational | null {
+  const toMultiplier = (value: Rational): Rational | null => compareScore(value, createRational(1)) <= 0
+    ? value : BigInt(maximum.n) === 0n ? null : divideRational(value, maximum);
   const match = message.match(/result\s*=\s*([0-9.]+)/i)
     || message.match(/points\s*([0-9.]+)/i)
     || message.match(/score\s*:\s*([0-9.]+)/i);
   if (match) {
-    const value = parseFloat(match[1]);
-    if (!Number.isNaN(value) && value >= 0) return value <= 1 ? value : value / maxScore;
+    if (/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(match[1])) {
+      const value = parseRational(match[1]);
+      return toMultiplier(value);
+    }
   }
   const lines = stdout.trim().split("\n").map((line) => line.trim()).filter(Boolean);
   if (lines.length === 0) return null;
-  const value = parseFloat(lines[lines.length - 1]);
-  if (Number.isNaN(value) || value < 0) return null;
-  return value <= 1 ? value : value / maxScore;
+  const text = lines[lines.length - 1];
+  if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(text)) return null;
+  const value = parseRational(text);
+  return toMultiplier(value);
 }
 
 export async function runCustomChecker(options: RunCustomCheckerOptions): Promise<CustomCheckerResult> {
@@ -160,6 +179,7 @@ export async function runCustomChecker(options: RunCustomCheckerOptions): Promis
       message,
       stdout,
       options.maxScore,
+      options.maxScoreExact,
     );
   } finally {
     detachExecutorRun(options.jobId, runId);
@@ -172,7 +192,10 @@ export function checkerResultFromExit(
   message: string,
   stdout: string,
   maxScore: number,
+  maxScoreExact?: Rational,
 ): CustomCheckerResult {
+  const maximum = maxScoreExact ?? parseRational(maxScore);
+  const exactField = (award: Rational) => maxScoreExact === undefined ? {} : { scoreExact: award };
   if (exitCode === 0) {
     const stdoutLines = stdout
       .split(/\r?\n/)
@@ -181,22 +204,25 @@ export function checkerResultFromExit(
     if (stdoutLines.length > 0) {
       const lastLine = stdoutLines[stdoutLines.length - 1];
       if (/^[+-]?\d+(?:\.\d+)?$/.test(lastLine)) {
-        const rawScore = parseFloat(lastLine);
-        if (!Number.isNaN(rawScore) && rawScore >= 0) {
-          const multiplier = rawScore <= 1.0 ? rawScore : (maxScore > 0 ? rawScore / maxScore : 0);
-          const clampedMultiplier = Math.max(0, Math.min(1, multiplier));
-          const actualScore = Math.round(clampedMultiplier * maxScore * 10_000) / 10_000;
-          const status = clampedMultiplier === 1 ? "AC" : clampedMultiplier === 0 ? "WA" : "PARTIAL";
+        const rawScore = parseRational(lastLine);
+        if (compareScore(rawScore, createRational(0)) >= 0) {
+          const rawMultiplier = compareScore(rawScore, createRational(1)) <= 0 ? rawScore
+            : BigInt(maximum.n) === 0n ? createRational(0) : divideRational(rawScore, maximum);
+          const multiplier = compareScore(rawMultiplier, createRational(1)) > 0 ? createRational(1) : rawMultiplier;
+          const award = multiplyRational(multiplier, maximum);
+          const actualScore = rationalToRoundedNumber(award, 4);
+          const status = compareScore(multiplier, createRational(1)) === 0 ? "AC" : BigInt(multiplier.n) === 0n ? "WA" : "PARTIAL";
           const feedbackMessage = stdoutLines.length > 1 ? stdoutLines.slice(0, -1).join("\n") : message;
           return {
             status,
             score: actualScore,
+            ...exactField(award),
             message: feedbackMessage || (status === "AC" ? "OK" : "Checker returned score"),
           };
         }
       }
     }
-    return { status: "AC", score: maxScore, message };
+    return { status: "AC", score: maxScore, message, ...exactField(maximum) };
   }
   if (exitCode === 1) return { status: "WA", score: 0, message };
   if (exitCode === 2) return { status: "PE", score: 0, message };
@@ -207,13 +233,15 @@ export function checkerResultFromExit(
       message: message || `Checker exited with code ${exitCode}.`,
     };
   }
-  const multiplier = parsePartialScore(message, stdout, maxScore);
-  if (multiplier === null || multiplier < 0 || multiplier > 1) {
+  const multiplier = parsePartialMultiplier(message, stdout, maximum);
+  if (multiplier === null || compareScore(multiplier, createRational(0)) < 0 || compareScore(multiplier, createRational(1)) > 0) {
     return { status: "JE", score: 0, message: message || "Checker returned an invalid partial score." };
   }
+  const award = multiplyRational(multiplier, maximum);
   return {
-    status: multiplier === 1 ? "AC" : multiplier === 0 ? "WA" : "PARTIAL",
-    score: Math.round(multiplier * maxScore * 10_000) / 10_000,
+    status: compareScore(multiplier, createRational(1)) === 0 ? "AC" : BigInt(multiplier.n) === 0n ? "WA" : "PARTIAL",
+    score: rationalToRoundedNumber(award, 4),
+    ...exactField(award),
     message,
   };
 }

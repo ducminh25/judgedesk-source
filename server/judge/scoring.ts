@@ -47,10 +47,10 @@ export function calculateProblemSummary({
 
   const passed = testCases.filter((test) => test.status === "AC").length;
   const scoreRat = testCases.reduce(
-    (total, test) => addRational(total, parseRational(test.score)),
+    (total, test) => addRational(total, parseRational(test.scoreExact ?? test.score)),
     createRational(0)
   );
-  let score = rationalToNumber(scoreRat);
+  const score = rationalToNumber(scoreRat);
   const status = calculateProblemStatus(compileStatus, testCases);
   const polygonConfig = config.polygonConfig;
   const hasConfiguredPolygonPoints = testDirectories.some(
@@ -85,15 +85,16 @@ export function calculateProblemSummary({
     }
   }
 
-  score = roundDisplayScore(score);
-  const maxScore = roundDisplayScore(rationalToNumber(maxScoreRat));
+  const maxScore = rationalToNumber(maxScoreRat);
+  const hasExactAwards = testCases.some(test => test.scoreExact !== undefined);
 
   return {
     total: testCases.length,
     passed,
     score,
     maxScore,
-    status
+    status,
+    ...(hasExactAwards ? { scoreExact: scoreRat, maxScoreExact: maxScoreRat } : {}),
   };
 }
 
@@ -117,6 +118,7 @@ function applyGroupScoring(testCases: TestCaseRun[], polygonConfig?: PolygonScor
     for (const test of groupResult.tests) {
       if (!dependenciesPassed || (groupResult.config.policy === "COMPLETE_GROUP" && !groupResult.allAccepted)) {
         test.score = 0;
+        if (test.scoreExact !== undefined) test.scoreExact = createRational(0);
       }
     }
   }
@@ -133,9 +135,4 @@ function calculateProblemStatus(
   if (failedTests.length === testCases.length) return failedTests[0].status;
   if (failedTests.length > 0) return "PARTIAL";
   return "AC";
-}
-
-function roundDisplayScore(score: number): number {
-  const r = parseRational(score);
-  return rationalToNumber(r);
 }

@@ -122,7 +122,7 @@ export function distributeTotalScore(
     return config;
   }
   const totalRational = parseRational(totalScoreInput);
-  if (totalRational.n <= 0) return config;
+  if (BigInt(totalRational.n) <= 0n) return config;
 
   const currentPoints = testNames.map((name) =>
     parseRational(config.tests[name]?.points ?? 1)

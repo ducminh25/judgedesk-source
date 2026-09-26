@@ -293,10 +293,7 @@ mod tests {
                 ])
                 .status()?;
             if !status.success() {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "mklink /J failed",
-                ));
+                return Err(std::io::Error::other("mklink /J failed"));
             }
             Ok(())
         })

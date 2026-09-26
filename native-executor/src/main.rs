@@ -24,6 +24,11 @@ fn main() {
         std::process::exit(exit_code);
     }
 
+    if std::env::var("JUDGEDESK_EXECUTOR_TOKEN").is_err() {
+        eprintln!("Missing executor token");
+        std::process::exit(1);
+    }
+
     match std::env::args().nth(1).as_deref() {
         #[cfg(target_os = "macos")]
         Some("--test-process-identity") => {

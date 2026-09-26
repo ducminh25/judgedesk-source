@@ -507,7 +507,7 @@ const ScoreboardRow = memo(function ScoreboardRow({
         let displayText: string | number = "-";
         let colorClass = "text-text-muted";
         if (problem) {
-          displayText = formatScore(problem.summary.score);
+          displayText = formatScore(problem.summary.scoreExact ?? problem.summary.score);
           if (problem.compileStatus === "SKIPPED" && problem.compileError === "not_found") {
             displayText = t("scoreboard.notFound");
             colorClass = "text-text-muted bg-surface-hover";

@@ -61,6 +61,7 @@ export interface PlannedTestCase {
   inputIsText: boolean;
   expectedOutputPreview: string;
   score: number;
+  scoreExact: Rational;
   timeLimitMs: number;
 }
 
@@ -350,6 +351,7 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
              pythonCommand: language === "python" ? executablePath : "",
              timeLimitMs: plannedTestCase.timeLimitMs,
              score: plannedTestCase.score,
+             scoreExact: plannedTestCase.scoreExact,
              config: probConf,
              checker: compiledCheckers[`${problemName}_${checkerType}`],
              interactor: compiledInteractor,
@@ -404,34 +406,34 @@ export function planProblemTestCases(
     timeLimitMs: testCaseTimeLimitMs(config, files.name),
   }));
   const totalWeight = weighted.reduce((total, testCase) => addRational(total, testCase.weight), createRational(0));
-  return weighted.map(({ weight, ...testCase }) => ({
-    ...testCase,
-    score: testCaseScore(config, weight, totalWeight),
-  }));
+  return weighted.map(({ weight, ...testCase }) => {
+    const scoreExact = testCaseScore(config, weight, totalWeight);
+    return { ...testCase, scoreExact, score: rationalToNumber(scoreExact) };
+  });
 }
 
-function testCaseWeight(config: NormalizedProblemConfig, testName: string): Rational {
+export function testCaseWeight(config: NormalizedProblemConfig, testName: string): Rational {
   const polygonTest = config.polygonConfig?.tests?.[testName];
   if (polygonTest?.points !== undefined) return parseRational(polygonTest.points);
   if (config.testScores[testName] !== undefined) return parseRational(config.testScores[testName]);
   return config.defaultScore !== undefined ? parseRational(config.defaultScore) : createRational(1);
 }
 
-function testCaseScore(
+export function testCaseScore(
   config: NormalizedProblemConfig,
   weight: Rational,
   totalWeight: Rational,
-): number {
+): Rational {
   if (config.polygonConfig.enableGroups || config.totalScore === null || config.totalScore === undefined || config.totalScore === "") {
-    return rationalToNumber(weight);
+    return weight;
   }
   const totalScoreRat = parseRational(config.totalScore);
-  if (totalWeight.n === 0) return 0;
+  if (BigInt(totalWeight.n) === 0n) return createRational(0);
   const scoreRat = divideRational(
     multiplyRational(weight, totalScoreRat),
     totalWeight
   );
-  return rationalToNumber(scoreRat);
+  return scoreRat;
 }
 
 function testCaseTimeLimitMs(config: NormalizedProblemConfig, testName: string): number {

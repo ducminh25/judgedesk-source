@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { BatchJudgeResult } from "../../types.js";
+import { parseRational } from "../../../shared/rational.js";
 import {
   hasAnyContestantScore,
   indexProblemResults,
@@ -10,6 +11,14 @@ import {
 } from "./scoreboard-model.js";
 
 describe("scoreboard-model", () => {
+  it("ranks unequal exact scores even when their numeric displays are equal", () => {
+    const result: BatchJudgeResult = { success: true, contestants: [
+      { contestantName: "Amy", problems: [{ problemName: "A", language: "python", compileStatus: "OK", testCases: [], summary: { total: 1, passed: 1, maxScore: 1, score: 3002399751580330.5, scoreExact: parseRational("9007199254740991/3"), status: "AC" } }] },
+      { contestantName: "Zed", problems: [{ problemName: "A", language: "python", compileStatus: "OK", testCases: [], summary: { total: 1, passed: 1, maxScore: 1, score: 3002399751580330.5, scoreExact: parseRational("6004799503160661/2"), status: "AC" } }] },
+    ] };
+    assert.deepEqual(sortContestants(["Amy", "Zed"], "score_desc", result, ["A"], { A: true }), ["Zed", "Amy"]);
+    assert.deepEqual(sortContestants(["Amy", "Zed"], "score_asc", result, ["A"], { A: true }), ["Amy", "Zed"]);
+  });
   const sampleResult: BatchJudgeResult = {
     success: true,
     contestants: [

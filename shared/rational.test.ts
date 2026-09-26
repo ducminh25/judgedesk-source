@@ -11,6 +11,7 @@ import {
   multiplyRational,
   parseRational,
   rationalToNumber,
+  toCanonicalPointValue,
 } from "./rational.js";
 
 test("gcd calculates greatest common divisor", () => {
@@ -39,6 +40,43 @@ test("parseRational parses integers, decimals, fractions and IEEE float epsilons
   // Floating point precision epsilon snapping
   assert.deepEqual(parseRational(2.99999999999999), { n: 3, d: 1 });
   assert.deepEqual(parseRational(3.499999999999987), { n: 7, d: 2 });
+});
+
+test("string integers beyond the safe Number range retain their exact value", () => {
+  assert.deepEqual(parseRational("9007199254740993"), { n: "9007199254740993", d: 1 });
+  assert.throws(() => parseRational(9007199254740993), /Unsafe numeric score/);
+  assert.throws(() => parseRational("1".repeat(1025)), /Rational text too long/);
+});
+
+test("fraction accumulation at the safe-integer boundary is order independent", () => {
+  const orders = [
+    ["1/3", "1/2", "1/6", "9007199254740990"],
+    ["9007199254740990", "1/3", "1/2", "1/6"],
+  ];
+  for (const values of orders) {
+    const sum = values.reduce((total, value) => addRational(total, parseRational(value)), createRational(0));
+    assert.deepEqual(sum, { n: 9007199254740991, d: 1 });
+  }
+});
+
+test("decimal strings are parsed exactly before arithmetic", () => {
+  const sum = addRational(parseRational("0.1"), parseRational("0.2"));
+  assert.deepEqual(sum, { n: 3, d: 10 });
+  assert.deepEqual(parseRational("1.25e-2"), { n: 1, d: 80 });
+  assert.deepEqual(parseRational(".5"), { n: 1, d: 2 });
+  assert.deepEqual(parseRational("-.5"), { n: -1, d: 2 });
+  assert.deepEqual(parseRational("1."), { n: 1, d: 1 });
+  assert.deepEqual(parseRational(".5e-2"), { n: 1, d: 200 });
+});
+
+test("formatting and config serialization keep large terminating fractions exact", () => {
+  const value = parseRational("9007199254740993/2");
+  assert.equal(formatRational(value), "4503599627370496.5");
+  assert.equal(toCanonicalPointValue(value), "4503599627370496.5");
+});
+
+test("numeric presentation rejects nonfinite magnitudes", () => {
+  assert.throws(() => rationalToNumber(parseRational("1e1000")), /presentation.*range/i);
 });
 
 test("fraction operations work accurately without floating point drift", () => {

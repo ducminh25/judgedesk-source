@@ -7,7 +7,7 @@ use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 
-use judgedesk_native_executor::platform::{ActiveRuns, Platform};
+use crate::executor_client::ExecutorClient;
 use judgedesk_native_executor::protocol::{
     LocalToolchainGrant, LocalToolchainIsolation, RunLimits, RunReason, RunRole, RunSpec,
     ToolchainGrantRole,
@@ -86,7 +86,7 @@ fn get_probe_source(kind: &str) -> (&'static str, &'static str) {
 
 pub async fn diagnose_language_profile(
     profile_id: &str,
-    platform: &Platform,
+    platform: &crate::executor_client::ExecutorClient,
     preferred_mode: Option<&str>,
     preferred_path: Option<&str>,
 ) -> ToolchainDiagnosticResult {
@@ -136,7 +136,7 @@ pub async fn diagnose_language_profile(
     // 3. Workspace setup
     let count = DIAGNOSTIC_COUNTER.fetch_add(1, Ordering::Relaxed);
     let workspace_id = format!("diag_{}_{}", std::process::id(), count);
-    let workspaces_root = platform.root().join("workspaces");
+    let workspaces_root = &platform.root().join("workspaces");
     let workspace_dir = workspaces_root.join(&workspace_id);
 
     if let Err(e) = fs::create_dir_all(&workspace_dir) {
@@ -436,7 +436,7 @@ pub async fn diagnose_language_profile(
 
             if let (Some(pkg_root), Some(receipt)) = (&toolchain.package_root, receipt) {
                 match super::discovery::ensure_cached_managed_toolchain(
-                    platform.root(),
+                    &platform.root(),
                     pkg_root,
                     &receipt,
                 ) {
@@ -561,7 +561,7 @@ pub async fn diagnose_language_profile(
 
             if let (Some(pkg_root), Some(receipt)) = (&toolchain.package_root, receipt) {
                 match super::discovery::ensure_cached_managed_toolchain(
-                    platform.root(),
+                    &platform.root(),
                     pkg_root,
                     &receipt,
                 ) {
@@ -745,7 +745,7 @@ pub async fn diagnose_language_profile(
 
             if let (Some(pkg_root), Some(receipt)) = (&toolchain.package_root, receipt) {
                 match super::discovery::ensure_cached_managed_toolchain(
-                    platform.root(),
+                    &platform.root(),
                     pkg_root,
                     &receipt,
                 ) {
@@ -876,7 +876,7 @@ pub async fn diagnose_language_profile(
         }
     };
 
-    let validated = match validate_run(platform.root(), &spec) {
+    let validated = match validate_run(&platform.root(), &spec) {
         Ok(v) => v,
         Err(err) => {
             let _ = fs::remove_dir_all(&workspace_dir);
@@ -896,8 +896,7 @@ pub async fn diagnose_language_profile(
         }
     };
 
-    let active_runs: ActiveRuns = Arc::new(Mutex::new(HashMap::new()));
-    let run_result = platform.run(&spec, &validated, &active_runs);
+    let run_result = platform.run_sync(Box::new(spec.clone())).expect("run");
 
     let stdout = if stdout_path.is_file() {
         fs::read_to_string(&stdout_path).unwrap_or_default()

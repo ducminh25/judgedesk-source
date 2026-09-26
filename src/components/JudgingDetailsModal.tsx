@@ -118,8 +118,8 @@ export default function JudgingDetailsModal({
             <span className="text-text-muted text-2xs font-mono tabular-nums mt-0.5">
               {t("judgingDetails.problem")}: {data.problemName} |{" "}
               {t("judgingDetails.overall")}: {data.summary.status} |{" "}
-              {t("judgingDetails.score")}: {formatScore(data.summary.score)}/
-              {formatScore(data.summary.maxScore)} |{" "}
+              {t("judgingDetails.score")}: {formatScore(data.summary.scoreExact ?? data.summary.score)}/
+              {formatScore(data.summary.maxScoreExact ?? data.summary.maxScore)} |{" "}
               {t("judgingDetails.passedTests")}: {data.summary.passed}/{data.summary.total}
             </span>
           </div>
@@ -193,7 +193,7 @@ export default function JudgingDetailsModal({
                       )}
                       <span className="text-text-muted font-bold text-[10px] tabular-nums">
                         {t("judgingDetails.score")}:{" "}
-                        {formatScore(Number(tc.score))}
+                        {formatScore(tc.scoreExact ?? tc.score)}
                       </span>
                       <div
                         className={`flex items-center gap-1.5 font-bold text-[10px] uppercase tracking-wider w-24 ${dspl.col}`}

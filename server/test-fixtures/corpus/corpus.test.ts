@@ -45,6 +45,7 @@ import {
   type CompiledInteractor,
 } from "../../judge/compiler.js";
 import { runTestCase } from "../../judge/testcase-runner.js";
+import { testCaseScore, testCaseWeight } from "../../judge/judge-session.js";
 import { prepareIsolatedScratchScript } from "../../judge/scratch-runtime.js";
 import { resolveToolchain } from "../../toolchains/resolver.js";
 import { executorClient } from "../../executor/client.js";
@@ -311,6 +312,7 @@ describe("WP0.3 Corpus Manifest Validation", () => {
 
     try {
       for (const c of manifest.cases) {
+        console.log(`[corpus-oracle] executing ${c.id}`);
         const caseRoot = path.join(corpusRoot, c.fixtureRoot);
 
         // 1. Resolve problem configuration through production resolver
@@ -344,11 +346,7 @@ describe("WP0.3 Corpus Manifest Validation", () => {
         assert.ok(registered !== null, `Registered profile missing for extension .${c.extension}`);
         const toolchainKind = registered.toolchainKind as ToolchainKind;
         const toolchain = resolveToolchain(toolchainKind);
-        if (!toolchain.ready) {
-          // When running in an environment without provisioned toolchains (such as CI source verification),
-          // skip live execution of this fixture while preserving all schema, manifest, and contract gates.
-          continue;
-        }
+        assert.ok(toolchain.ready, `Required ${toolchainKind} toolchain is unavailable for corpus case ${c.id}`);
 
 
         const toolchainsMap: Record<string, typeof toolchain> = { [toolchainKind]: toolchain };
@@ -402,8 +400,10 @@ describe("WP0.3 Corpus Manifest Validation", () => {
           const probeWorkspace = {
             path: probeWorkspacePath,
             stage(src: string, dest: string) {
-              fs.mkdirSync(path.dirname(path.join(this.path, dest)), { recursive: true });
-              fs.copyFileSync(src, path.join(this.path, dest));
+              const destination = path.join(this.path, dest);
+              fs.mkdirSync(path.dirname(destination), { recursive: true });
+              fs.copyFileSync(src, destination);
+              return destination;
             },
           };
           const scratchLaunch = await prepareIsolatedScratchScript(
@@ -456,6 +456,7 @@ describe("WP0.3 Corpus Manifest Validation", () => {
 
         // 6. Testcase execution through production testcase-runner
         const testRuns: TestCaseRun[] = [];
+        const totalWeight = c.tests.reduce((total, test) => addRational(total, testCaseWeight(resolvedConfig, test.name)), createRational(0));
         for (const t of c.tests) {
           if (compileStatus === "OK") {
             const inputRelative = `tests/${t.name}.in`;
@@ -467,12 +468,7 @@ describe("WP0.3 Corpus Manifest Validation", () => {
               ? fs.readFileSync(outputPath, "utf8")
               : (resolvedConfig.isInteractive ? "[Interactive]" : "");
 
-            const polygonPoints = resolvedConfig.polygonConfig?.tests?.[t.name]?.points;
-            const configuredTestWeight = polygonPoints !== undefined
-              ? rationalToNumber(parseRational(polygonPoints))
-              : (resolvedConfig.testScores[t.name] !== undefined
-                  ? rationalToNumber(parseRational(resolvedConfig.testScores[t.name]))
-                  : (resolvedConfig.defaultScore !== undefined ? rationalToNumber(parseRational(resolvedConfig.defaultScore)) : 1));
+            const scoreExact = testCaseScore(resolvedConfig, testCaseWeight(resolvedConfig, t.name), totalWeight);
 
             const runRes = await runTestCase({
               contestant: "oracle_tester",
@@ -489,7 +485,8 @@ describe("WP0.3 Corpus Manifest Validation", () => {
               tempDirectory: tempRoot,
               pythonCommand: language === "python" ? executablePath : "",
               timeLimitMs: 2000,
-              score: configuredTestWeight,
+              score: rationalToNumber(scoreExact),
+              scoreExact,
               config: resolvedConfig,
               checker: compiledChecker,
               interactor: compiledInteractor,
@@ -525,7 +522,8 @@ describe("WP0.3 Corpus Manifest Validation", () => {
           const t = c.tests[i];
           const run = testRuns[i];
           if (run) {
-            const runRat = parseRational(run.score);
+            assert.ok(run.scoreExact, `Exact awarded score is missing on ${c.id} test ${t.name}`);
+            const runRat = parseRational(run.scoreExact);
             assert.strictEqual(
               String(runRat.n),
               t.score.numerator,
@@ -546,10 +544,13 @@ describe("WP0.3 Corpus Manifest Validation", () => {
 
         assert.strictEqual(summary.status, c.expectedProblemVerdict, `Problem summary status mismatch on ${c.id}`);
 
-        const observedSummaryScoreRat = testRuns.reduce(
-          (total, run) => addRational(total, parseRational(run.score)),
+        const testcaseTotalRat = testRuns.reduce(
+          (total, run) => addRational(total, parseRational(run.scoreExact)),
           createRational(0),
         );
+        if (testRuns.length > 0) assert.ok(summary.scoreExact, `Summary exact score is missing on ${c.id}`);
+        const observedSummaryScoreRat = parseRational(summary.scoreExact ?? summary.score);
+        assert.deepStrictEqual(observedSummaryScoreRat, testcaseTotalRat, `Summary exact score differs from awarded testcase total on ${c.id}`);
         assert.strictEqual(
           String(observedSummaryScoreRat.n),
           c.expectedScore.numerator,
@@ -566,7 +567,7 @@ describe("WP0.3 Corpus Manifest Validation", () => {
           `Problem summary score display mismatch on ${c.id}`
         );
 
-        const observedMaxScoreRat = parseRational(summary.maxScore);
+        const observedMaxScoreRat = parseRational(summary.maxScoreExact ?? summary.maxScore);
         assert.strictEqual(
           String(observedMaxScoreRat.n),
           c.expectedMaxScore.numerator,
@@ -631,7 +632,7 @@ describe("WP0.3 Corpus Manifest Validation", () => {
             );
 
             const groupScoreRat = groupData.tests.reduce(
-              (total, run) => addRational(total, parseRational(run.score)),
+              (total, run) => addRational(total, parseRational(run.scoreExact)),
               createRational(0),
             );
             assert.strictEqual(
@@ -651,6 +652,7 @@ describe("WP0.3 Corpus Manifest Validation", () => {
             );
           }
         }
+        console.log(`[corpus-oracle] verified ${c.id}: ${summary.status}, ${testRuns.length} testcase results`);
       }
     } finally {
       await executorClient.shutdown();
@@ -801,14 +803,11 @@ describe("WP0.3 Corpus Manifest Validation", () => {
         }
 
         if (f.emptyDirectory) {
-          if (!fs.existsSync(fullPath)) {
-            fs.mkdirSync(fullPath, { recursive: true });
-          }
           assert.ok(fs.existsSync(fullPath), `Empty directory ${fullPath} does not exist`);
           const stat = fs.statSync(fullPath);
           assert.ok(stat.isDirectory(), `${fullPath} is not a directory`);
           const entries = fs.readdirSync(fullPath);
-          assert.strictEqual(entries.length, 0, `Directory ${fullPath} is not empty`);
+          assert.deepStrictEqual(entries, [".judgedesk-empty"], `Directory ${fullPath} contains testcase files or unexpected metadata`);
           continue;
         }
 

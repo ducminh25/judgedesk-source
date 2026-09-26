@@ -445,6 +445,12 @@
           "role": "folder"
         },
         {
+          "path": "tests/empty/.judgedesk-empty",
+          "role": "structure-marker",
+          "sha256": "97cacf53e10a88d07cd7de0bb72cc164fe5f6a901f296a111d49a2bec30fdc21",
+          "size": 56
+        },
+        {
           "path": "virtual-structure.json",
           "role": "descriptor",
           "sha256": "cb71a9dc70644be2801f3c907793f1d48bbd1ac685a162db4d46f5961c7d3c82",
@@ -1411,6 +1417,117 @@
             "numerator": "9007199254740990"
           },
           "verdict": "AC"
+        }
+      ]
+    },
+    {
+      "expectedCompileOutcome": "SUCCESS",
+      "expectedMaxScore": {
+        "denominator": "1",
+        "display": 9007199254740991,
+        "numerator": "9007199254740991"
+      },
+      "expectedProblemVerdict": "PARTIAL",
+      "expectedScore": {
+        "denominator": "3",
+        "display": 3002399751580330.5,
+        "numerator": "9007199254740991"
+      },
+      "extension": "py",
+      "files": [
+        {
+          "path": "Config.cfg",
+          "role": "config",
+          "sha256": "e0bbdf2176f1cbb236f672edc93b09de11d9c9449ecc62e491e6f4d443f295d0",
+          "size": 66
+        },
+        {
+          "path": "solution.py",
+          "role": "source",
+          "sha256": "689469c7cc406e8b591437c527cb14f4b52b76512c371df4e5aa4ef16d10bbf1",
+          "size": 15
+        },
+        {
+          "path": "tests/01.in",
+          "role": "input",
+          "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+          "size": 2
+        },
+        {
+          "path": "tests/01.out",
+          "role": "answer",
+          "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+          "size": 2
+        },
+        {
+          "path": "tests/02.in",
+          "role": "input",
+          "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+          "size": 2
+        },
+        {
+          "path": "tests/02.out",
+          "role": "answer",
+          "sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3",
+          "size": 2
+        },
+        {
+          "path": "tests/03.in",
+          "role": "input",
+          "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+          "size": 2
+        },
+        {
+          "path": "tests/03.out",
+          "role": "answer",
+          "sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3",
+          "size": 2
+        }
+      ],
+      "fixtureRoot": "generated/rational_proportional_boundary",
+      "id": "rational_proportional_boundary",
+      "ioMode": "stdio",
+      "languageProfileId": "python-cpython312",
+      "platforms": [
+        "all"
+      ],
+      "provenance": "Production totalScore allocation: three equal weights, one AC and two WA, preserving MAX_SAFE_INTEGER/3 through runner and summary.",
+      "tags": [
+        "python",
+        "rational",
+        "partial",
+        "boundary"
+      ],
+      "tests": [
+        {
+          "checkerMessage": "single line",
+          "name": "01",
+          "score": {
+            "denominator": "3",
+            "display": 3002399751580330.5,
+            "numerator": "9007199254740991"
+          },
+          "verdict": "AC"
+        },
+        {
+          "checkerMessage": null,
+          "name": "02",
+          "score": {
+            "denominator": "1",
+            "display": 0,
+            "numerator": "0"
+          },
+          "verdict": "WA"
+        },
+        {
+          "checkerMessage": null,
+          "name": "03",
+          "score": {
+            "denominator": "1",
+            "display": 0,
+            "numerator": "0"
+          },
+          "verdict": "WA"
         }
       ]
     },

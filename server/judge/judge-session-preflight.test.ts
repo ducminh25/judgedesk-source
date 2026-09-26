@@ -105,6 +105,7 @@ test("session testcase plan preserves score, time, order, and preview semantics"
   const planned = planProblemTestCases(root, config);
   assert.deepEqual(planned.map(testCase => testCase.files.name), ["2", "10"]);
   assert.deepEqual(planned.map(testCase => testCase.score), [1.25, 8.75]);
+  assert.deepEqual(planned.map(testCase => testCase.scoreExact), [{ n: 5, d: 4 }, { n: 35, d: 4 }]);
   assert.deepEqual(planned.map(testCase => testCase.timeLimitMs), [1_000, 2_000]);
   assert.equal(planned[0].inputIsText, true);
   assert.equal(planned[0].expectedOutputPreview, `${"x".repeat(500)}...`);

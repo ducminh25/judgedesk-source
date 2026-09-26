@@ -1,5 +1,5 @@
 use crate::checkers::{run_standard_checker, CheckerVerdict};
-use judgedesk_native_executor::platform::{ActiveRuns, Platform};
+use crate::executor_client::ExecutorClient;
 use judgedesk_native_executor::protocol::{RunLimits, RunReason, RunRole, RunSpec};
 use judgedesk_native_executor::request_validation::validate_run;
 use std::collections::{BTreeMap, HashMap};
@@ -41,7 +41,7 @@ pub struct TestCaseExecutionConfig<'a> {
     pub checker_type: &'a str,
     pub custom_checker_path: Option<&'a Path>,
     pub workspace_dir: &'a Path,
-    pub platform: &'a Platform,
+    pub platform: &'a ExecutorClient,
 }
 
 pub fn run_test_case(config: TestCaseExecutionConfig) -> TestRunOutput {
@@ -129,8 +129,7 @@ pub fn run_test_case(config: TestCaseExecutionConfig) -> TestRunOutput {
         },
     };
 
-    let active_runs: ActiveRuns = Arc::new(Mutex::new(HashMap::new()));
-    let validated = match validate_run(config.platform.root(), &spec) {
+    let validated = match validate_run(config.platform.root().as_path(), &spec) {
         Ok(v) => v,
         Err(err) => {
             let _ = fs::remove_dir_all(&workspace_dir);
@@ -147,7 +146,7 @@ pub fn run_test_case(config: TestCaseExecutionConfig) -> TestRunOutput {
         }
     };
 
-    let run_result = config.platform.run(&spec, &validated, &active_runs);
+    let run_result = config.platform.run_sync(Box::new(spec)).expect("run");
 
     let execution_time_ms = if matches!(run_result.reason, RunReason::WallTimeLimit) {
         config.time_limit_ms

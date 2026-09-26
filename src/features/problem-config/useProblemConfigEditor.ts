@@ -84,7 +84,7 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
             const distributed = distributeTotalScore(loaded, loadedTotalScore, details.map(d => d.name));
             Object.assign(loaded.tests, distributed.tests);
           }
-        } else if (details.length > 0 && currentSum.n > 0) {
+        } else if (details.length > 0 && BigInt(currentSum.n) > 0n) {
           resolvedTotalScore = formatRational(currentSum);
         }
         setPolygonConfig(loaded);

@@ -16,6 +16,13 @@ import {
   writeStoredProblemConfig,
 } from "./problem-config-repository.js";
 
+test("problem config retains supported decimal score spellings", () => {
+  const config = normalizeProblemConfig("SUM", { defaultScore: ".5", totalScore: "1.", testScores: { "01": ".5" } });
+  assert.equal(config.defaultScore, "0.5");
+  assert.equal(config.totalScore, 1);
+  assert.equal(config.testScores["01"], "0.5");
+});
+
 test("problem config defaults use the problem name and safe grading defaults", () => {
   assert.deepEqual(createDefaultProblemConfig("SUM"), {
     useStdIO: false,

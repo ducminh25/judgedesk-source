@@ -42,6 +42,13 @@ test("supports fraction points in test edits", () => {
   assert.equal(batchResult.tests["02"].points, "5/3");
 });
 
+test("score edits retain decimal forms without integer or fractional part", () => {
+  for (const [input, expected] of [[".5", 0.5], ["1.", 1]] as const) {
+    const result = applyTestEdit(baseConfig(), { type: "points", testName: "01", x: 0, y: 0 }, input, new Set());
+    assert.equal(result.tests["01"].points, expected);
+  }
+});
+
 test("group edits create a default group and can remove the assignment", () => {
   const assigned = applyTestEdit(
     baseConfig(),
