@@ -137,14 +137,15 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
     ...toolchainRequirements.submissions,
     ...toolchainRequirements.checkers,
   ]);
-  if (nativeCompilerKindsToPrewarm(nativePrewarmRequirements).length > 0) {
+  const nativePrewarmKinds = nativeCompilerKindsToPrewarm(nativePrewarmRequirements);
+  if (nativePrewarmKinds.length > 0) {
     sendEvent("progress", {
       contestant: "",
       problem: "",
       action: "progress.verifyingEnvironment",
       percent: 0,
     });
-    await ensureJudgePrewarmReady(pinnedToolchains.cpp, tempDir, jobId);
+    await ensureJudgePrewarmReady(pinnedToolchains.cpp, tempDir, jobId, undefined, nativePrewarmKinds);
   }
   sendEvent("progress", {
     contestant: "",
