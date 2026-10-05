@@ -310,6 +310,10 @@ describe("WP0.3 Corpus Manifest Validation", () => {
     }
     process.env.THEMIS_APP_DATA_DIR = testAppData;
 
+    if (process.env.CORPUS_ROOT_OVERRIDE && !linkedToolchains) {
+      assert.fail("No release toolchain is provisioned in owned corpus environment");
+    }
+
     try {
       for (const c of manifest.cases) {
         console.log(`[corpus-oracle] executing ${c.id}`);
