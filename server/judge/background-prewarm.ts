@@ -109,11 +109,15 @@ export interface PrewarmDependencies {
   compileSubmission?: typeof compileSubmission;
 }
 
-let prewarmPromise: Promise<PrewarmOutcome> | null = null;
+type NativeCompilerKind = Extract<ToolchainKind, "cpp" | "c">;
+const prewarmPromises = new Map<NativeCompilerKind, Promise<PrewarmOutcome>>();
+let prewarmQueue: Promise<void> = Promise.resolve();
 
 export async function executeJudgePrewarm(
   dependencies?: PrewarmDependencies,
+  kinds: readonly NativeCompilerKind[] = ["cpp"],
 ): Promise<PrewarmOutcome> {
+  if (kinds.length === 0) return { status: "completed" };
   const waitDiscovery = dependencies?.waitForToolchainDiscovery ?? waitForToolchainDiscovery;
   const resolveToolchain = dependencies?.resolveNativeProtectedToolchain ?? resolveNativeProtectedToolchain;
   const ensurePch = dependencies?.ensureUniversalCppPch ?? ensureUniversalCppPch;
@@ -133,17 +137,17 @@ export async function executeJudgePrewarm(
     return { status: "deferred", reason: "EXECUTOR_NOT_READY" };
   }
 
-  const cpp = resolveToolchain("cpp");
-  const c = resolveToolchain("c");
-  if (!cpp.ready && !c.ready) {
+  const cpp = kinds.includes("cpp") ? resolveToolchain("cpp") : undefined;
+  const c = kinds.includes("c") ? resolveToolchain("c") : undefined;
+  if (!cpp?.ready && !c?.ready) {
     console.warn("[Judge Pre-warm] No native C/C++ toolchain is ready, deferring pre-warm.");
     return { status: "deferred", reason: "CPP_TOOLCHAIN_NOT_READY" };
   }
 
-  const cppEligible = isPrewarmToolchainEligible("cpp", cpp);
-  const cEligible = isPrewarmToolchainEligible("c", c);
+  const cppEligible = cpp && isPrewarmToolchainEligible("cpp", cpp);
+  const cEligible = c && isPrewarmToolchainEligible("c", c);
 
-  if (cppEligible) {
+  if (cpp && cppEligible) {
     // Universal Step: Ensure bits/stdc++.h PCH is generated and cached for C++.
     await ensurePch(cpp);
 
@@ -208,7 +212,7 @@ export async function executeJudgePrewarm(
     }
   }
 
-  if (cEligible) {
+  if (c && cEligible) {
     if (c.source === "managed") {
       await prepareManagedToolchainComponent("c", c, c.packageComponentId, "compiler");
     }
@@ -234,14 +238,35 @@ export async function executeJudgePrewarm(
   return { status: "completed" };
 }
 
-export function startBackgroundJudgePrewarm(
+export async function startBackgroundJudgePrewarm(
   force = false,
   dependencies?: PrewarmDependencies,
+  kinds: readonly NativeCompilerKind[] = ["cpp"],
 ): Promise<PrewarmOutcome> {
-  if (!prewarmPromise || force) {
-    prewarmPromise = executeJudgePrewarm(dependencies);
+  // Toolchain refresh invalidates every kind, including on-demand C probes.
+  if (force) prewarmPromises.clear();
+  const pending = kinds.map((kind) => {
+    let promise = prewarmPromises.get(kind);
+    if (!promise) {
+      // Keep native compiler probes sequential and within the memory budget.
+      promise = prewarmQueue.then(() => executeJudgePrewarm(dependencies, [kind]));
+      // The original promise retains its error for callers and lifecycle drain.
+      prewarmQueue = promise.then(() => undefined, () => undefined);
+      prewarmPromises.set(kind, promise);
+    }
+    return promise;
+  });
+  // Retain ownership of all probes until they finish, even when one fails.
+  const outcomes = await Promise.allSettled(pending);
+  for (const outcome of outcomes) {
+    if (outcome.status === "rejected") throw outcome.reason;
   }
-  return prewarmPromise;
+  for (const outcome of outcomes) {
+    if (outcome.status === "fulfilled" && outcome.value.status === "deferred") {
+      return outcome.value;
+    }
+  }
+  return { status: "completed" };
 }
 
 export async function ensureJudgePrewarmReady(
@@ -249,12 +274,14 @@ export async function ensureJudgePrewarmReady(
   tempDirectory?: string,
   jobId?: string,
   dependencies?: PrewarmDependencies,
+  kinds: readonly NativeCompilerKind[] = ["cpp"],
 ): Promise<void> {
-  const active = startBackgroundJudgePrewarm(false, dependencies);
+  const active = startBackgroundJudgePrewarm(false, dependencies, kinds);
   await active;
 
   if (
-    cppToolchain
+    kinds.includes("cpp")
+    && cppToolchain
     && cppToolchain.provenance === "certified-local"
     && tempDirectory
   ) {
@@ -263,5 +290,6 @@ export async function ensureJudgePrewarmReady(
 }
 
 export function resetJudgePrewarmStateForTests(): void {
-  prewarmPromise = null;
+  prewarmPromises.clear();
+  prewarmQueue = Promise.resolve();
 }
