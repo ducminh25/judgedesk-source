@@ -63,6 +63,341 @@ async fn http_request(
 
 mod common;
 
+fn urlencode(s: &str) -> String {
+    let mut out = String::new();
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.' || b == b'~' {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{:02X}", b));
+        }
+    }
+    out
+}
+
+async fn start_discovery_test_server(
+    environment: &common::OwnedTestEnvironment,
+) -> (u16, tokio::task::JoinHandle<()>) {
+    let state = environment.with_isolated_roots(|| {
+        AppState::new(Arc::new(
+            judgedesk_core::executor_client::ExecutorClient::unavailable("discovery route test"),
+        ))
+    });
+    let (addr, server_task) = start_embedded_server_with_state(0, state)
+        .await
+        .expect("start discovery test server");
+    (addr.port(), server_task)
+}
+
+#[tokio::test]
+async fn test_flat_problem_routes_ignore_auxiliary_directories() {
+    let environment = common::OwnedTestEnvironment::new();
+    let problem_dir = environment.root().join("SUM");
+    fs::create_dir_all(problem_dir.join("__pycache__")).unwrap();
+    fs::create_dir_all(problem_dir.join("docs")).unwrap();
+    fs::write(problem_dir.join("1.inp"), "3 4\n").unwrap();
+    fs::write(problem_dir.join("1.out"), "7\n").unwrap();
+    fs::write(problem_dir.join("checker.cpp"), "// checker").unwrap();
+    fs::write(problem_dir.join("interactor.py"), "# interactor").unwrap();
+    let (port, server_task) = start_discovery_test_server(&environment).await;
+
+    let (status, body) = http_request(
+        port,
+        "GET",
+        &format!(
+            "/api/fetch-problems?path={}",
+            urlencode(&problem_dir.to_string_lossy())
+        ),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, 200);
+    let response: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(response["data"], serde_json::json!(["SUM"]));
+    assert_eq!(
+        response["customCheckers"]["SUM"],
+        serde_json::json!(["checker.cpp", "interactor.py"])
+    );
+    assert_eq!(
+        response["interactors"]["SUM"],
+        serde_json::json!(["interactor.py"])
+    );
+    server_task.abort();
+}
+
+#[tokio::test]
+async fn test_flat_problem_routes_discover_interactive_input_only_root() {
+    let environment = common::OwnedTestEnvironment::new();
+    let problem_dir = environment.root().join("INTERACTIVE");
+    fs::create_dir_all(&problem_dir).unwrap();
+    fs::write(problem_dir.join("1.in"), "5\n").unwrap();
+    fs::write(problem_dir.join("Config.cfg"), r#"{"isInteractive":true}"#).unwrap();
+    let (port, server_task) = start_discovery_test_server(&environment).await;
+
+    let (status, body) = http_request(
+        port,
+        "GET",
+        &format!(
+            "/api/fetch-problems?path={}",
+            urlencode(&problem_dir.to_string_lossy())
+        ),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, 200);
+    let response: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(response["data"], serde_json::json!(["INTERACTIVE"]));
+    server_task.abort();
+}
+
+async fn assert_interactive_discovery_routes(config_name: Option<&str>, query_flag: bool) {
+    let environment = common::OwnedTestEnvironment::new();
+    let problem_dir = environment.root().join("INPUT_ONLY");
+    fs::create_dir_all(problem_dir.join("INPUT_ONLY").join("docs")).unwrap();
+    fs::write(problem_dir.join("1.inp"), "5\n").unwrap();
+    if let Some(name) = config_name {
+        fs::write(problem_dir.join(name), r#"{"isInteractive":true}"#).unwrap();
+    }
+    let (port, server_task) = start_discovery_test_server(&environment).await;
+    let synthetic_path = urlencode(&problem_dir.join("INPUT_ONLY").to_string_lossy());
+    let query = if query_flag {
+        "&isInteractive=true"
+    } else {
+        ""
+    };
+    let mut responses = Vec::new();
+    for route in ["fetch-tests", "fetch-polygon-tests"] {
+        let (status, body) = http_request(
+            port,
+            "GET",
+            &format!("/api/{route}?path={synthetic_path}&problem=INPUT_ONLY{query}"),
+            None,
+            None,
+        )
+        .await;
+        let response: serde_json::Value = serde_json::from_str(&body).unwrap();
+        responses.push((status, response));
+    }
+    assert_eq!(
+        responses,
+        vec![
+            (200, serde_json::json!({ "success": true, "data": ["1"] })),
+            (
+                200,
+                serde_json::json!({
+                    "success": true,
+                    "data": [{ "name": "1", "preview": "5\n", "size": 2 }]
+                })
+            ),
+        ]
+    );
+    server_task.abort();
+}
+
+#[tokio::test]
+async fn test_flat_problem_routes_use_saved_cfg_interactive_mode() {
+    assert_interactive_discovery_routes(Some("Config.cfg"), false).await;
+}
+
+#[tokio::test]
+async fn test_flat_problem_routes_use_saved_json_interactive_mode() {
+    assert_interactive_discovery_routes(Some("config.json"), false).await;
+}
+
+#[tokio::test]
+async fn test_flat_problem_routes_use_requested_interactive_mode() {
+    assert_interactive_discovery_routes(None, true).await;
+}
+
+#[tokio::test]
+async fn test_flat_problem_routes_resolve_synthetic_test_path() {
+    let environment = common::OwnedTestEnvironment::new();
+    let problem_dir = environment.root().join("SUM");
+    fs::create_dir_all(&problem_dir).unwrap();
+    fs::write(problem_dir.join("2.inp"), "3 4\n").unwrap();
+    fs::write(problem_dir.join("2.out"), "7\n").unwrap();
+    let (port, server_task) = start_discovery_test_server(&environment).await;
+
+    let (status, body) = http_request(
+        port,
+        "GET",
+        &format!(
+            "/api/fetch-tests?path={}",
+            urlencode(&problem_dir.join("sum").to_string_lossy())
+        ),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, 200);
+    let response: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(response["data"], serde_json::json!(["2"]));
+
+    let (status, body) = http_request(
+        port,
+        "GET",
+        &format!(
+            "/api/fetch-polygon-tests?path={}&problem=SUM",
+            urlencode(&problem_dir.join("sum").to_string_lossy())
+        ),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, 200);
+    let response: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        response["data"],
+        serde_json::json!([{ "name": "2", "preview": "3 4\n", "size": 4 }])
+    );
+    server_task.abort();
+}
+
+#[tokio::test]
+async fn test_flat_problem_routes_read_config_from_synthetic_path() {
+    let environment = common::OwnedTestEnvironment::new();
+    let problem_dir = environment.root().join("SUM");
+    fs::create_dir_all(problem_dir.join("SUM").join("docs")).unwrap();
+    fs::write(problem_dir.join("1.inp"), "3 4\n").unwrap();
+    fs::write(problem_dir.join("1.out"), "7\n").unwrap();
+    let config = serde_json::json!({ "timeLimit": 1500, "memoryLimit": 256 });
+    fs::write(
+        problem_dir.join("Config.cfg"),
+        serde_json::to_vec(&config).unwrap(),
+    )
+    .unwrap();
+    let (port, server_task) = start_discovery_test_server(&environment).await;
+
+    let (status, body) = http_request(
+        port,
+        "GET",
+        &format!(
+            "/api/polygon-config?path={}",
+            urlencode(&problem_dir.join("SUM").to_string_lossy())
+        ),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, 200);
+    let response: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(response["data"], config);
+    server_task.abort();
+}
+
+#[tokio::test]
+async fn test_flat_problem_routes_write_config_to_synthetic_path() {
+    let environment = common::OwnedTestEnvironment::new();
+    let problem_dir = environment.root().join("SUM");
+    fs::create_dir_all(problem_dir.join("SUM").join("docs")).unwrap();
+    fs::write(problem_dir.join("1.inp"), "3 4\n").unwrap();
+    fs::write(problem_dir.join("1.out"), "7\n").unwrap();
+    let config = serde_json::json!({ "timeLimit": 1500, "memoryLimit": 256 });
+    let payload = serde_json::to_vec(&serde_json::json!({
+        "path": problem_dir.join("SUM"),
+        "config": config,
+    }))
+    .unwrap();
+    let (port, server_task) = start_discovery_test_server(&environment).await;
+
+    let (status, body) = http_request(
+        port,
+        "POST",
+        "/api/polygon-config",
+        Some(&payload),
+        Some("application/json"),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let stored: serde_json::Value =
+        serde_json::from_slice(&fs::read(problem_dir.join("Config.cfg")).unwrap()).unwrap();
+    assert_eq!(stored, config);
+    assert!(!problem_dir.join("SUM").join("Config.cfg").exists());
+    assert!(!problem_dir.join("Config.cfg.tmp").exists());
+
+    let unrelated_path = problem_dir.join("missing");
+    let (status, body) = http_request(
+        port,
+        "GET",
+        &format!(
+            "/api/polygon-config?path={}",
+            urlencode(&unrelated_path.to_string_lossy())
+        ),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, 200);
+    let response: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert!(response["data"].is_null());
+    let unrelated_payload = serde_json::to_vec(&serde_json::json!({
+        "path": unrelated_path,
+        "config": { "timeLimit": 9999 },
+    }))
+    .unwrap();
+    let (status, _) = http_request(
+        port,
+        "POST",
+        "/api/polygon-config",
+        Some(&unrelated_payload),
+        Some("application/json"),
+    )
+    .await;
+    assert_eq!(status, 500);
+    let stored: serde_json::Value =
+        serde_json::from_slice(&fs::read(problem_dir.join("Config.cfg")).unwrap()).unwrap();
+    assert_eq!(stored, config);
+    server_task.abort();
+}
+
+#[tokio::test]
+async fn test_flat_problem_routes_preview_selected_layout_and_reject_missing_child() {
+    let environment = common::OwnedTestEnvironment::new();
+    let problem_dir = environment.root().join("SUM");
+    fs::create_dir_all(problem_dir.join("1")).unwrap();
+    fs::write(problem_dir.join("1").join("sum.inp"), "legacy input\n").unwrap();
+    fs::write(problem_dir.join("1").join("sum.out"), "legacy output\n").unwrap();
+    fs::write(problem_dir.join("1.inp"), "flat input\n").unwrap();
+    fs::write(problem_dir.join("1.out"), "flat output\n").unwrap();
+    fs::write(problem_dir.join("2.inp"), "second input\n").unwrap();
+    fs::write(problem_dir.join("2.out"), "second output\n").unwrap();
+    let (port, server_task) = start_discovery_test_server(&environment).await;
+
+    let (status, body) = http_request(
+        port,
+        "GET",
+        &format!(
+            "/api/fetch-polygon-tests?path={}&problem=SUM",
+            urlencode(&problem_dir.to_string_lossy())
+        ),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, 200);
+    let response: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(
+        response["data"],
+        serde_json::json!([{ "name": "1", "preview": "legacy input\n", "size": 13 }])
+    );
+
+    let (status, _) = http_request(
+        port,
+        "GET",
+        &format!(
+            "/api/fetch-polygon-tests?path={}&problem=SUM",
+            urlencode(&problem_dir.join("missing").to_string_lossy())
+        ),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, 404);
+    server_task.abort();
+}
+
 #[tokio::test]
 async fn test_embedded_axum_server_full_suite() {
     let _test_environment = common::OwnedTestEnvironment::new();
@@ -256,18 +591,6 @@ int main() {
 "#,
     )
     .unwrap();
-
-    fn urlencode(s: &str) -> String {
-        let mut out = String::new();
-        for b in s.bytes() {
-            if b.is_ascii_alphanumeric() || b == b'-' || b == b'_' || b == b'.' || b == b'~' {
-                out.push(b as char);
-            } else {
-                out.push_str(&format!("%{:02X}", b));
-            }
-        }
-        out
-    }
 
     // 5. Test discovery endpoints
     let enc_thisinh = urlencode(&thisinh_dir.to_string_lossy());

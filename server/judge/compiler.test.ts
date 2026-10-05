@@ -44,6 +44,7 @@ const [{ executorClient }, {
   buildCompilerEnvironment,
   buildCustomCheckerCompilerArgs,
   buildCompilerPhases,
+  remainingCompilerTimeMs,
   buildSubmissionCompilerArgs,
   compileSubmission,
   CHECKER_COMPILE_MEMORY_LIMIT_BYTES,
@@ -51,9 +52,11 @@ const [{ executorClient }, {
   COMPILE_TIMEOUT_MS,
   findGccIncludeDirectories,
   MAX_GENERATED_FILE_BYTES,
+  requiresManagedCCompilerWarmup,
   resolveChecker,
   resolveDarwinCompatibilityHeader,
   runCompilerWithLimits,
+  runCompilerPipelineWithLimits,
   stagedCompilerName,
 }, { runCustomChecker }] = await Promise.all([
   import("../executor/client.js"),
@@ -205,6 +208,66 @@ test("submission and custom-checker compiler limits are explicit", () => {
   assert.equal(MAX_GENERATED_FILE_BYTES, 32 * 1024 * 1024);
   assert.equal(CHECKER_COMPILE_TIMEOUT_MS, 60_000);
   assert.equal(CHECKER_COMPILE_MEMORY_LIMIT_BYTES, 768 * 1024 * 1024);
+});
+
+test("split compiler budget excludes owned preparation but charges native process time", () => {
+  const result = {
+    securitySetupTimeUs: 120_000_000,
+    resultCollectionTimeUs: 3_000_000,
+    wallTimeUs: 750_001,
+  };
+  assert.equal(remainingCompilerTimeMs(COMPILE_TIMEOUT_MS, result), 14_249);
+  assert.throws(() => remainingCompilerTimeMs(15_000, { ...result, wallTimeUs: 15_000_000 }), /COMPILER_TIMEOUT/);
+  for (const wallTimeUs of [-1, NaN, Infinity]) {
+    assert.throws(() => remainingCompilerTimeMs(15_000, { ...result, wallTimeUs }), /COMPILER_TIMING_INVALID/);
+  }
+});
+
+test("compiler pipeline retains the process budget after slow owned preparation", async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-pipeline-budget-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const output = path.join(root, "program.out");
+  const budgets: number[] = [];
+  await runCompilerPipelineWithLimits(
+    "owned-compiler", ["source.c", "-o", output], root, output, undefined,
+    { timeoutMs: 200, maxGeneratedFileBytes: 1024 }, "c", {}, undefined,
+    async (_compiler, _args, _cwd, _output, _job, limits) => {
+      budgets.push(limits?.timeoutMs ?? 0);
+      if (budgets.length === 1) await new Promise((resolve) => setTimeout(resolve, 250));
+      return {
+        runId: "owned-phase", reason: "exited", exitCode: 0,
+        securitySetupTimeUs: 250_000, wallTimeUs: 50_000,
+        resultCollectionTimeUs: 0, stdoutBytes: 0, stderrBytes: 0,
+      };
+    },
+  );
+  assert.deepEqual(budgets,
+    process.platform === "win32" || process.platform === "darwin" ? [200, 150] : [200]);
+});
+
+test("managed C direct compilation requires a Windows warm-up without widening submission limits", () => {
+  const managedC = {
+    kind: "c" as const,
+    source: "managed" as const,
+    ready: true,
+  };
+
+  assert.equal(requiresManagedCCompilerWarmup("win32", "c", managedC), true);
+  assert.equal(requiresManagedCCompilerWarmup("darwin", "c", managedC), false);
+  assert.equal(
+    requiresManagedCCompilerWarmup("win32", "cpp", {
+      ...managedC,
+      kind: "cpp",
+    }),
+    false,
+  );
+  assert.equal(
+    requiresManagedCCompilerWarmup("win32", "c", {
+      ...managedC,
+      source: "custom",
+    }),
+    false,
+  );
 });
 
 test("compiler watchdog terminates a stuck compiler", { skip: fakeCompilerHarnessSkip }, async (t) => {

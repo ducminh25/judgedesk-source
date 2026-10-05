@@ -725,6 +725,10 @@ mod imp {
     impl AnchorExitWatcher {
         pub fn new(expected: ProcessIdentity) -> io::Result<Self> {
             require_group_leader(&expected)?;
+            Self::register_owned(expected)
+        }
+
+        fn register_owned(expected: ProcessIdentity) -> io::Result<Self> {
             require_identity_match(&expected)?;
             let already_exited = waitid_exit_unreaped(expected.pid).map_err(|error| {
                 contextual(
@@ -816,6 +820,39 @@ mod imp {
 
         pub fn poll_exit_unreaped(&mut self) -> io::Result<bool> {
             self.wait_once(Duration::ZERO)
+        }
+
+        pub(crate) fn terminate_for_paired_cleanup(&mut self) -> io::Result<()> {
+            require_group_leader(&self.expected)?;
+            self.require_owned_unreaped(&self.expected)?;
+            if !self.poll_exit_unreaped()? {
+                #[cfg(test)]
+                tests::run_paired_cleanup_after_live_poll_hook();
+                if let Err(error) = require_identity_match(&self.expected) {
+                    // Darwin can stop exposing an identity once the child becomes a
+                    // zombie. Only our still-owned waitable child can establish that
+                    // terminal transition; an identity error alone grants no signal.
+                    self.require_owned_unreaped(&self.expected)?;
+                    if self.poll_exit_unreaped()? {
+                        return Ok(());
+                    }
+                    return Err(error);
+                }
+                loop {
+                    if unsafe { libc::kill(self.expected.pid, libc::SIGKILL) } == 0 {
+                        break;
+                    }
+                    let error = io::Error::last_os_error();
+                    if error.raw_os_error() == Some(libc::ESRCH) {
+                        break;
+                    }
+                    if error.kind() != io::ErrorKind::Interrupted {
+                        return Err(error);
+                    }
+                }
+                self.require_owned_unreaped(&self.expected)?;
+            }
+            self.wait_for_exit_unreaped(DrainOptions::default(), |_| {})
         }
 
         pub fn wait_for_exit_unreaped(
@@ -990,6 +1027,103 @@ mod imp {
         }
     }
 
+    /// Separate paired-only capability. Construct only after source-bound enrollment has
+    /// authenticated the trusted inert member and supervisor, while the guardian owns S.
+    /// Ordinary AnchorExitWatcher::new remains leader-only. The child never voluntarily
+    /// leaves its initial group; a terminal unreaped child preserves that membership.
+    #[derive(Debug)]
+    pub(crate) struct PairedMemberPin {
+        watcher: AnchorExitWatcher,
+        group: ProcessIdentity,
+    }
+
+    impl PairedMemberPin {
+        pub(crate) fn new(member: ProcessIdentity, group: ProcessIdentity) -> io::Result<Self> {
+            crate::guardian_protocol::validate_target_identity(&member, &group)?;
+            require_identity_match(&group)?;
+            let watcher = AnchorExitWatcher::register_owned(member)?;
+            require_identity_match(&group)?;
+            Ok(Self { watcher, group })
+        }
+
+        pub(crate) fn identity(&self) -> ProcessIdentity {
+            self.watcher.identity()
+        }
+
+        pub(crate) fn poll_exit_unreaped(&mut self) -> io::Result<bool> {
+            self.watcher.require_owned_unreaped(&self.identity())?;
+            self.watcher.poll_exit_unreaped()
+        }
+
+        pub(crate) fn signal_group(&self, signal: i32) -> io::Result<GroupSignalOutcome> {
+            if signal != libc::SIGSTOP && signal != libc::SIGKILL {
+                return Err(invalid("paired member authority permits only STOP/KILL"));
+            }
+            #[cfg(test)]
+            tests::set_paired_member_signal_check_phase(false);
+            self.require_owned_member_identity()?;
+            let outcome = signal_process_group(self.group.pgid, signal)?;
+            #[cfg(test)]
+            tests::set_paired_member_signal_check_phase(true);
+            self.require_owned_member_identity()?;
+            Ok(outcome)
+        }
+
+        fn require_owned_member_identity(&self) -> io::Result<()> {
+            self.watcher.require_owned_unreaped(&self.identity())?;
+            if !waitid_exit_unreaped(self.identity().pid)? {
+                #[cfg(test)]
+                tests::run_paired_member_after_live_poll_hook();
+                if let Err(error) = require_identity_match(&self.identity()) {
+                    // A live owned child can become a zombie during libproc sampling.
+                    // Its unconsumed wait status still pins this exact enrolled group.
+                    self.watcher.require_owned_unreaped(&self.identity())?;
+                    if !waitid_exit_unreaped(self.identity().pid)? {
+                        return Err(error);
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        pub(crate) fn reap_after_quiescence(
+            &mut self,
+            other_trusted: &[ProcessIdentity],
+        ) -> io::Result<ReapedAnchor> {
+            if !self.poll_exit_unreaped()? {
+                return Err(io::Error::new(
+                    io::ErrorKind::WouldBlock,
+                    "paired member is still live",
+                ));
+            }
+            for trusted in other_trusted {
+                trusted.validate()?;
+                if *trusted != self.group {
+                    return Err(invalid(
+                        "only enrolled supervisor can be another trusted pin",
+                    ));
+                }
+            }
+            for _ in 0..2 {
+                self.watcher.require_exit_unreaped()?;
+                let snapshot = inventory_live_process_group(self.group.pgid)?;
+                // Quiescence excludes terminal trusted pins, never any live process.
+                if !snapshot.members.is_empty()
+                    || snapshot.zombie_pids.iter().any(|pid| {
+                        *pid != self.identity().pid
+                            && !other_trusted.iter().any(|trusted| trusted.pid == *pid)
+                    })
+                {
+                    return Err(io::Error::new(
+                        io::ErrorKind::WouldBlock,
+                        "paired group has unreaped untrusted members",
+                    ));
+                }
+            }
+            self.watcher.reap()
+        }
+    }
+
     /// Stops and kills the whole process group while an exited direct-child anchor remains
     /// unreaped, then reaps that anchor only after two bounded empty inventories.
     ///
@@ -1068,9 +1202,6 @@ mod imp {
                     &detail,
                     &mut on_stall,
                 );
-                if started.elapsed() >= Duration::from_millis(500) {
-                    break;
-                }
                 thread::sleep(options.poll_interval);
                 continue;
             }
@@ -1163,11 +1294,7 @@ mod imp {
             .reap()
             .map_err(|error| contextual(error, "reap anchored supervisor"))?;
         let mut final_empty_observations = 0_u8;
-        let final_deadline = started + Duration::from_millis(500);
         loop {
-            if Instant::now() >= final_deadline {
-                return Ok(reaped);
-            }
             match list_process_group_pids(anchor.pgid) {
                 Ok(final_pids) if final_pids.is_empty() => {
                     final_empty_observations = final_empty_observations.saturating_add(1);
@@ -1228,6 +1355,13 @@ mod imp {
         let outcome = signal_process_group(watcher.identity().pgid, signal)?;
         watcher.require_exit_unreaped()?;
         Ok(outcome)
+    }
+
+    pub(crate) fn signal_exited_anchor_group(
+        watcher: &AnchorExitWatcher,
+        signal: i32,
+    ) -> io::Result<GroupSignalOutcome> {
+        signal_group_under_unreaped_anchor(watcher, signal)
     }
 
     fn require_anchored_group_signal(watcher: &AnchorExitWatcher, signal: i32) -> io::Result<()> {
@@ -1360,7 +1494,10 @@ mod imp {
                         format!("waitid returned PID {observed_pid}, expected {pid}"),
                     ));
                 }
-                return Ok(true);
+                return Ok(matches!(
+                    info.si_code,
+                    libc::CLD_EXITED | libc::CLD_KILLED | libc::CLD_DUMPED
+                ));
             }
             let error = io::Error::last_os_error();
             if error.kind() != io::ErrorKind::Interrupted {
@@ -1500,6 +1637,231 @@ mod imp {
         use std::os::unix::process::CommandExt;
         use std::process::Command;
 
+        type PairedMemberPollHook = Option<(bool, Box<dyn FnOnce()>)>;
+
+        thread_local! {
+            static PAIRED_CLEANUP_AFTER_LIVE_POLL_HOOK:
+                std::cell::RefCell<Option<Box<dyn FnOnce()>>> =
+                const { std::cell::RefCell::new(None) };
+            static PAIRED_MEMBER_AFTER_LIVE_POLL_HOOK:
+                std::cell::RefCell<PairedMemberPollHook> =
+                const { std::cell::RefCell::new(None) };
+            static PAIRED_MEMBER_SIGNAL_POST_CHECK: std::cell::Cell<bool> =
+                const { std::cell::Cell::new(false) };
+        }
+
+        pub(super) fn set_paired_member_signal_check_phase(post_signal: bool) {
+            PAIRED_MEMBER_SIGNAL_POST_CHECK.with(|phase| phase.set(post_signal));
+        }
+
+        pub(super) fn run_paired_member_after_live_poll_hook() {
+            let hook = PAIRED_MEMBER_AFTER_LIVE_POLL_HOOK.with(|slot| {
+                let mut slot = slot.borrow_mut();
+                let (post_signal, _) = slot.as_ref()?;
+                if *post_signal != PAIRED_MEMBER_SIGNAL_POST_CHECK.with(|phase| phase.get()) {
+                    return None;
+                }
+                slot.take().map(|(_, hook)| hook)
+            });
+            if let Some(hook) = hook {
+                hook();
+            }
+        }
+
+        struct TestPairedMemberHookReset;
+
+        impl Drop for TestPairedMemberHookReset {
+            fn drop(&mut self) {
+                PAIRED_MEMBER_AFTER_LIVE_POLL_HOOK.with(|slot| {
+                    drop(slot.borrow_mut().take());
+                });
+            }
+        }
+
+        #[test]
+        fn paired_member_stop_accepts_owned_exit_before_signal_identity_sample() {
+            run_paired_member_signal_terminal_race(false);
+        }
+
+        #[test]
+        fn paired_member_stop_accepts_owned_exit_before_post_signal_identity_sample() {
+            run_paired_member_signal_terminal_race(true);
+        }
+
+        fn run_paired_member_signal_terminal_race(post_signal: bool) {
+            let mut family = TestPairedFamily::new();
+            let (sentinel, _sentinel_cleanup) = spawn_test_group_leader();
+            let descendant = read_process_identity(family.descendant_pid)
+                .expect("read harmless descendant before terminal signal race");
+            let mut pin = PairedMemberPin::new(family.member, family.group)
+                .expect("register exact owned paired member");
+            let member = family.member;
+            let hook_observed = std::rc::Rc::new(std::cell::Cell::new(false));
+            let hook_observed_in_callback = std::rc::Rc::clone(&hook_observed);
+            let _hook_reset = TestPairedMemberHookReset;
+            PAIRED_MEMBER_AFTER_LIVE_POLL_HOOK.with(|slot| {
+                assert!(slot.borrow().is_none(), "member race hook must be isolated");
+                *slot.borrow_mut() = Some((
+                    post_signal,
+                    Box::new(move || {
+                        hook_observed_in_callback.set(true);
+                        // Even after the group's STOP, this exact owned direct child can
+                        // become terminal. Keep its wait status pinned through the identity gap.
+                        assert_eq!(unsafe { libc::kill(member.pid, libc::SIGKILL) }, 0);
+                        assert!(wait_for_condition(
+                            Duration::from_secs(2),
+                            Duration::from_millis(1),
+                            || waitid_exit_unreaped(member.pid),
+                        )
+                        .expect("observe actual member exit without reaping"));
+                        assert!(
+                            require_identity_match(&member).is_err(),
+                            "terminal libproc lookup gap must be exercised"
+                        );
+                    }),
+                ));
+            });
+
+            assert_eq!(
+                pin.signal_group(libc::SIGSTOP)
+                    .expect("owned terminal transition must preserve group STOP authority"),
+                GroupSignalOutcome::Sent
+            );
+            assert!(hook_observed.get(),
+                "selected live-to-terminal seam must execute: post_signal={post_signal}, member_wait={:?}, member_status={:?}",
+                waitid_exit_unreaped(member.pid), read_verified_process_status(&member));
+            assert!(waitid_exit_unreaped(member.pid).expect("member wait status remains owned"));
+            assert!(
+                wait_for_condition(Duration::from_secs(2), Duration::from_millis(1), || {
+                    match require_process_stopped(&descendant) {
+                        Ok(()) => Ok(true),
+                        Err(error) if error.kind() == io::ErrorKind::WouldBlock => Ok(false),
+                        Err(error) => Err(error),
+                    }
+                })
+                .expect("original group's live descendant actually stopped")
+            );
+            assert_ne!(
+                read_verified_process_status(&sentinel).expect("sentinel status"),
+                libc::SSTOP
+            );
+            assert_eq!(
+                pin.signal_group(libc::SIGKILL)
+                    .expect("kill original pinned group"),
+                GroupSignalOutcome::Sent
+            );
+            assert!(
+                wait_for_condition(Duration::from_secs(5), Duration::from_millis(1), || {
+                    let snapshot = inventory_live_process_group(family.group.pgid)?;
+                    Ok(snapshot.members.is_empty()
+                        && snapshot
+                            .zombie_pids
+                            .iter()
+                            .all(|pid| *pid == member.pid || *pid == family.group.pid))
+                })
+                .expect("untrusted descendants physically disappear before credit")
+            );
+            assert!(pin
+                .poll_exit_unreaped()
+                .expect("observe retained paired member exit"));
+            let reaped = pin
+                .reap_after_quiescence(&[family.group])
+                .expect("reap only exact trusted member after quiescence");
+            family.member_cleanup.disarm_after_reap();
+            assert!(!reaped.status.success());
+            assert!(
+                pin.signal_group(libc::SIGKILL).is_err(),
+                "consumed member wait status must revoke signal authority"
+            );
+            let mut status = 0;
+            assert_eq!(
+                unsafe { libc::waitpid(family.group.pid, &mut status, 0) },
+                family.group.pid
+            );
+            family.group_cleanup.disarm_after_reap();
+            assert!(inventory_process_group(family.group.pgid)
+                .expect("final group inventory")
+                .is_empty());
+            assert_eq!(
+                verify_process_identity(&sentinel).expect("unrelated sentinel survived"),
+                IdentityVerification::Matches
+            );
+        }
+
+        pub(super) fn run_paired_cleanup_after_live_poll_hook() {
+            let hook = PAIRED_CLEANUP_AFTER_LIVE_POLL_HOOK.with(|slot| slot.borrow_mut().take());
+            if let Some(hook) = hook {
+                hook();
+            }
+        }
+
+        struct TestPairedCleanupHookReset;
+
+        impl Drop for TestPairedCleanupHookReset {
+            fn drop(&mut self) {
+                PAIRED_CLEANUP_AFTER_LIVE_POLL_HOOK.with(|slot| {
+                    drop(slot.borrow_mut().take());
+                });
+            }
+        }
+
+        #[test]
+        fn paired_cleanup_accepts_owned_exit_between_live_poll_and_identity_sample() {
+            let (anchor, mut cleanup) = spawn_test_group_leader();
+            let (sentinel, _sentinel_cleanup) = spawn_test_group_leader();
+            let mut watcher = AnchorExitWatcher::new(anchor).expect("watch owned cleanup anchor");
+            let hook_observed = std::rc::Rc::new(std::cell::Cell::new(false));
+            let hook_observed_in_callback = std::rc::Rc::clone(&hook_observed);
+            let _hook_reset = TestPairedCleanupHookReset;
+            PAIRED_CLEANUP_AFTER_LIVE_POLL_HOOK.with(|slot| {
+                assert!(
+                    slot.borrow().is_none(),
+                    "cleanup race hook must be isolated"
+                );
+                *slot.borrow_mut() = Some(Box::new(move || {
+                    hook_observed_in_callback.set(true);
+                    // S was just observed live by the real method. This test owns its
+                    // unreaped direct-child wait status, so this exact test child is pinned.
+                    assert_eq!(unsafe { libc::kill(anchor.pid, libc::SIGKILL) }, 0);
+                    assert!(wait_for_condition(
+                        Duration::from_secs(2),
+                        Duration::from_millis(1),
+                        || waitid_exit_unreaped(anchor.pid),
+                    )
+                    .expect("force actual terminal child without consuming its wait status"));
+                    assert!(
+                        require_identity_match(&anchor).is_err(),
+                        "Darwin zombie identity sample must reproduce the terminal lookup gap"
+                    );
+                }));
+            });
+
+            watcher
+                .terminate_for_paired_cleanup()
+                .expect("owned terminal transition must continue deferred cleanup");
+            assert!(
+                hook_observed.get(),
+                "test must exercise the live-to-terminal seam"
+            );
+            assert!(waitid_exit_unreaped(anchor.pid).expect("cleanup retains the owned exit pin"));
+            assert_eq!(
+                verify_process_identity(&sentinel).expect("unrelated sentinel identity"),
+                IdentityVerification::Matches
+            );
+            assert_ne!(
+                read_verified_process_status(&sentinel).expect("unrelated sentinel status"),
+                libc::SSTOP
+            );
+            let reaped =
+                stop_kill_anchor_group_and_reap(&mut watcher, DrainOptions::default(), |_| {})
+                    .expect("complete owned terminal drain before releasing the group lease");
+            cleanup.disarm_after_reap();
+            assert!(!reaped.status.success());
+            assert!(inventory_process_group(anchor.pgid)
+                .expect("terminal drain inventory")
+                .is_empty());
+        }
+
         #[test]
         fn proc_listpids_zero_with_errno_is_never_an_empty_inventory() {
             assert_eq!(
@@ -1624,6 +1986,7 @@ mod imp {
 
         #[test]
         fn live_inventory_classifies_an_unreaped_zombie() {
+            let descriptor_limit = test_child_descriptor_limit();
             let anchor_pid = unsafe { libc::fork() };
             assert!(
                 anchor_pid >= 0,
@@ -1631,6 +1994,7 @@ mod imp {
                 io::Error::last_os_error()
             );
             if anchor_pid == 0 {
+                child_close_ambient_fds(descriptor_limit, &[]);
                 if unsafe { libc::setpgid(0, 0) } != 0 {
                     unsafe { libc::_exit(101) };
                 }
@@ -1639,6 +2003,7 @@ mod imp {
                     unsafe { libc::_exit(102) };
                 }
                 if descendant_pid == 0 {
+                    child_close_ambient_fds(descriptor_limit, &[]);
                     unsafe {
                         libc::pause();
                         libc::_exit(103);
@@ -1691,6 +2056,7 @@ mod imp {
             let ready = pipe_pair();
             let go = pipe_pair();
             let report = pipe_pair();
+            let descriptor_limit = test_child_descriptor_limit();
             let anchor_pid = unsafe { libc::fork() };
             assert!(
                 anchor_pid >= 0,
@@ -1698,9 +2064,7 @@ mod imp {
                 io::Error::last_os_error()
             );
             if anchor_pid == 0 {
-                child_close_fd(ready.read);
-                child_close_fd(go.write);
-                child_close_fd(report.read);
+                child_close_ambient_fds(descriptor_limit, &[ready.write, go.read, report.write]);
                 if unsafe { libc::setpgid(0, 0) } != 0 {
                     unsafe { libc::_exit(121) };
                 }
@@ -1715,11 +2079,13 @@ mod imp {
                     unsafe { libc::_exit(124) };
                 }
                 if descendant_pid == 0 {
+                    child_close_ambient_fds(descriptor_limit, &[report.write]);
                     let zombie_pid = unsafe { libc::fork() };
                     if zombie_pid < 0 {
                         unsafe { libc::_exit(125) };
                     }
                     if zombie_pid == 0 {
+                        child_close_ambient_fds(descriptor_limit, &[]);
                         unsafe { libc::_exit(0) };
                     }
 
@@ -1838,6 +2204,7 @@ mod imp {
             let ready = pipe_pair();
             let exit_command = pipe_pair();
             let protocol = pipe_pair();
+            let descriptor_limit = test_child_descriptor_limit();
             let anchor_pid = unsafe { libc::fork() };
             assert!(
                 anchor_pid >= 0,
@@ -1845,9 +2212,10 @@ mod imp {
                 io::Error::last_os_error()
             );
             if anchor_pid == 0 {
-                child_close_fd(ready.read);
-                child_close_fd(exit_command.write);
-                child_close_fd(protocol.read);
+                child_close_ambient_fds(
+                    descriptor_limit,
+                    &[ready.write, exit_command.read, protocol.write],
+                );
                 if unsafe { libc::setpgid(0, 0) } != 0 {
                     unsafe { libc::_exit(111) };
                 }
@@ -1856,9 +2224,7 @@ mod imp {
                     unsafe { libc::_exit(112) };
                 }
                 if descendant_pid == 0 {
-                    child_close_fd(ready.write);
-                    child_close_fd(exit_command.read);
-                    child_close_fd(protocol.write);
+                    child_close_ambient_fds(descriptor_limit, &[]);
                     let delay = libc::timespec {
                         tv_sec: 30,
                         tv_nsec: 0,
@@ -1942,6 +2308,522 @@ mod imp {
             }
         }
 
+        #[test]
+        fn paired_member_pin_rejects_nonchild_reaped_and_mismatched_identities() {
+            let mut family = TestPairedFamily::new();
+            assert!(
+                AnchorExitWatcher::new(family.member).is_err(),
+                "ordinary anchor ownership must still require a group leader"
+            );
+            let descendant = read_process_identity(family.descendant_pid)
+                .expect("read non-child descendant identity");
+            assert!(
+                PairedMemberPin::new(descendant, family.group).is_err(),
+                "group membership alone is not direct-child ownership"
+            );
+            let stale_member = ProcessIdentity {
+                start_abstime: family.member.start_abstime.saturating_add(1),
+                ..family.member
+            };
+            assert!(PairedMemberPin::new(stale_member, family.group).is_err());
+            let stale_group = ProcessIdentity {
+                start_abstime: family.group.start_abstime.saturating_add(1),
+                ..family.group
+            };
+            assert!(PairedMemberPin::new(family.member, stale_group).is_err());
+            let (other_group, _other_cleanup) = spawn_test_group_leader();
+            assert!(
+                PairedMemberPin::new(family.member, other_group).is_err(),
+                "an owned member must belong to the authenticated supervisor group"
+            );
+
+            let mut pin = PairedMemberPin::new(family.member, family.group)
+                .expect("register member before intentional external reap");
+            family.exit_member();
+            let mut status = 0;
+            assert_eq!(
+                unsafe { libc::waitpid(family.member.pid, &mut status, 0) },
+                family.member.pid
+            );
+            family.member_cleanup.disarm_after_reap();
+            assert!(
+                PairedMemberPin::new(family.member, family.group).is_err(),
+                "a reaped member cannot pin a numeric process group"
+            );
+            assert!(
+                pin.signal_group(libc::SIGKILL).is_err(),
+                "an externally consumed wait status must revoke an existing pin"
+            );
+            assert!(pin.poll_exit_unreaped().is_err());
+            assert!(pin.reap_after_quiescence(&[]).is_err());
+        }
+
+        #[test]
+        fn paired_member_pin_keeps_group_authority_after_supervisor_is_reaped() {
+            let mut family = TestPairedFamily::new();
+            let (sentinel, _sentinel_cleanup) = spawn_test_group_leader();
+            let descendant = read_process_identity(family.descendant_pid)
+                .expect("read paired grandchild identity");
+            let mut pin = PairedMemberPin::new(family.member, family.group)
+                .expect("register owned nonleader while supervisor identity is live");
+            assert!(
+                pin.reap_after_quiescence(&[]).is_err(),
+                "a live member and live descendant cannot yield quiescence credit"
+            );
+
+            family.exit_member();
+            assert!(
+                wait_for_condition(Duration::from_secs(2), Duration::from_millis(1), || pin
+                    .poll_exit_unreaped())
+                .expect("observe paired member exit")
+            );
+            assert_eq!(unsafe { libc::kill(family.group.pid, libc::SIGKILL) }, 0);
+            let mut status = 0;
+            assert_eq!(
+                unsafe { libc::waitpid(family.group.pid, &mut status, 0) },
+                family.group.pid
+            );
+            family.group_cleanup.disarm_after_reap();
+            assert!(waitid_exit_unreaped(family.member.pid).expect("member remains pinned"));
+            assert!(inventory_live_process_group(family.group.pgid)
+                .expect("inventory supervisor-less group")
+                .members
+                .contains(&descendant));
+            assert!(
+                pin.reap_after_quiescence(&[]).is_err(),
+                "supervisor death cannot turn a surviving grandchild into empty proof"
+            );
+
+            assert_eq!(
+                pin.signal_group(libc::SIGSTOP)
+                    .expect("stop through member pin"),
+                GroupSignalOutcome::Sent
+            );
+            assert!(
+                wait_for_condition(Duration::from_secs(2), Duration::from_millis(1), || {
+                    match require_process_stopped(&descendant) {
+                        Ok(()) => Ok(true),
+                        Err(error) if error.kind() == io::ErrorKind::WouldBlock => Ok(false),
+                        Err(error) => Err(error),
+                    }
+                })
+                .expect("grandchild actually stopped")
+            );
+            assert_ne!(
+                read_verified_process_status(&sentinel).expect("sentinel status"),
+                libc::SSTOP,
+                "whole-group STOP touched the unrelated sentinel"
+            );
+            assert_eq!(
+                pin.signal_group(libc::SIGKILL)
+                    .expect("kill through member pin"),
+                GroupSignalOutcome::Sent
+            );
+            assert!(
+                wait_for_condition(Duration::from_secs(5), Duration::from_millis(1), || {
+                    let snapshot = inventory_live_process_group(family.group.pgid)?;
+                    Ok(snapshot.members.is_empty()
+                        && snapshot
+                            .zombie_pids
+                            .iter()
+                            .all(|pid| *pid == family.member.pid))
+                })
+                .expect("wait for physical quiescence except retained trusted member")
+            );
+            let reaped = pin
+                .reap_after_quiescence(&[])
+                .expect("reap only after quiescence");
+            family.member_cleanup.disarm_after_reap();
+            assert_eq!(reaped.status.code(), Some(41));
+            assert!(inventory_process_group(family.group.pgid)
+                .expect("final group inventory")
+                .is_empty());
+            assert_eq!(
+                verify_process_identity(&sentinel).expect("sentinel survived"),
+                IdentityVerification::Matches
+            );
+            assert!(
+                pin.signal_group(libc::SIGKILL).is_err(),
+                "a consumed member pin must never authorize later numeric signalling"
+            );
+        }
+
+        #[test]
+        fn paired_member_pin_reaps_only_after_untrusted_members_disappear() {
+            let mut family = TestPairedFamily::new();
+            let mut pin = PairedMemberPin::new(family.member, family.group)
+                .expect("register paired member before supervisor death");
+            family.exit_member();
+            assert!(
+                wait_for_condition(Duration::from_secs(2), Duration::from_millis(1), || pin
+                    .poll_exit_unreaped())
+                .expect("observe paired member exit")
+            );
+            assert!(
+                pin.reap_after_quiescence(&[family.group]).is_err(),
+                "excluding another exact trusted identity must not exclude its grandchild"
+            );
+            pin.signal_group(libc::SIGSTOP)
+                .expect("freeze original group");
+            pin.signal_group(libc::SIGKILL)
+                .expect("kill original group");
+            assert!(
+                wait_for_condition(Duration::from_secs(5), Duration::from_millis(1), || {
+                    let snapshot = inventory_live_process_group(family.group.pgid)?;
+                    Ok(snapshot.members.is_empty()
+                        && snapshot
+                            .zombie_pids
+                            .iter()
+                            .all(|pid| *pid == family.member.pid || *pid == family.group.pid))
+                })
+                .expect("untrusted grandchild physically disappears")
+            );
+            assert!(waitid_exit_unreaped(family.group.pid).expect("supervisor still pinned"));
+            let reaped = pin
+                .reap_after_quiescence(&[family.group])
+                .expect("other exact trusted zombie may retain the same group lease");
+            family.member_cleanup.disarm_after_reap();
+            assert_eq!(reaped.status.code(), Some(41));
+            let mut status = 0;
+            assert_eq!(
+                unsafe { libc::waitpid(family.group.pid, &mut status, 0) },
+                family.group.pid
+            );
+            family.group_cleanup.disarm_after_reap();
+            assert!(inventory_process_group(family.group.pgid)
+                .expect("final paired inventory")
+                .is_empty());
+        }
+
+        #[test]
+        fn paired_member_zombie_only_group_signal_denied_but_quiescent_reap_succeeds() {
+            let mut family = TestPairedFamily::new();
+            let (sentinel, _sentinel_cleanup) = spawn_test_group_leader();
+            let mut pin = PairedMemberPin::new(family.member, family.group)
+                .expect("register member while supervisor and target are live");
+            family.exit_member();
+            assert!(
+                wait_for_condition(Duration::from_secs(2), Duration::from_millis(1), || pin
+                    .poll_exit_unreaped())
+                .expect("observe terminal member without reaping")
+            );
+            assert_eq!(
+                pin.signal_group(libc::SIGKILL)
+                    .expect("kill original group while supervisor and descendant remain live"),
+                GroupSignalOutcome::Sent
+            );
+            let mut status = 0;
+            assert_eq!(
+                unsafe { libc::waitpid(family.group.pid, &mut status, 0) },
+                family.group.pid
+            );
+            family.group_cleanup.disarm_after_reap();
+            assert!(
+                wait_for_condition(Duration::from_secs(5), Duration::from_millis(1), || {
+                    let snapshot = inventory_live_process_group(family.group.pgid)?;
+                    Ok(snapshot.members.is_empty()
+                        && snapshot.zombie_pids == vec![family.member.pid])
+                })
+                .expect("physical kernel group contains only retained owned member zombie")
+            );
+
+            // Darwin may retain the group row for A while refusing group signals because
+            // no live member can receive them. This error is evidence for controller-side
+            // inventory corroboration, never authority to reinterpret arbitrary EPERM.
+            assert_eq!(
+                pin.signal_group(libc::SIGSTOP)
+                    .expect_err("Darwin STOP against this zombie-only group is denied")
+                    .raw_os_error(),
+                Some(libc::EPERM)
+            );
+            assert!(
+                waitid_exit_unreaped(family.member.pid).expect("signal failure retains owned pin")
+            );
+            let reaped = pin
+                .reap_after_quiescence(&[])
+                .expect("independent physical quiescence permits trusted member reap");
+            family.member_cleanup.disarm_after_reap();
+            assert_eq!(reaped.status.code(), Some(41));
+            assert!(inventory_process_group(family.group.pgid)
+                .expect("final physical inventory")
+                .is_empty());
+            assert_eq!(
+                verify_process_identity(&sentinel).expect("unrelated sentinel survives"),
+                IdentityVerification::Matches
+            );
+            assert_ne!(
+                read_verified_process_status(&sentinel).expect("unrelated sentinel status"),
+                libc::SSTOP
+            );
+        }
+
+        #[test]
+        fn anchored_drain_retains_pin_until_external_reaper_removes_long_lived_zombie() {
+            let (anchor, mut cleanup) = spawn_test_group_leader();
+            let mut watcher = AnchorExitWatcher::new(anchor).expect("watch held zombie group");
+            let mut reaper = TestExternalZombieReaper::new(anchor.pgid);
+            assert_eq!(unsafe { libc::kill(anchor.pid, libc::SIGKILL) }, 0);
+            watcher
+                .wait_for_exit_unreaped(DrainOptions::default(), |_| {})
+                .expect("observe owned leader exit");
+            assert!(inventory_live_process_group(anchor.pgid)
+                .expect("held zombie inventory")
+                .zombie_pids
+                .contains(&reaper.zombie_pid));
+
+            let mut released_after_pin_proof = false;
+            let reaped = stop_kill_anchor_group_and_reap(
+                &mut watcher,
+                DrainOptions {
+                    poll_interval: Duration::from_millis(1),
+                    stall_interval: Duration::from_millis(25),
+                },
+                |stall| {
+                    if !released_after_pin_proof && stall.elapsed >= Duration::from_millis(1_200) {
+                        assert!(
+                            waitid_exit_unreaped(anchor.pid).expect("probe retained leader"),
+                            "drain reaped its authority before physical empty proof"
+                        );
+                        assert!(inventory_live_process_group(anchor.pgid)
+                            .expect("inventory held zombie before release")
+                            .zombie_pids
+                            .contains(&reaper.zombie_pid));
+                        reaper.release();
+                        released_after_pin_proof = true;
+                    }
+                },
+            )
+            .expect("drain after external reaper release");
+            cleanup.disarm_after_reap();
+            assert!(
+                released_after_pin_proof,
+                "drain silently returned success at its old 500ms zombie timeout"
+            );
+            assert!(!reaped.status.success());
+            assert!(inventory_process_group(anchor.pgid)
+                .expect("physically empty group")
+                .is_empty());
+        }
+
+        fn spawn_test_group_leader() -> (ProcessIdentity, TestAnchorCleanup) {
+            let child = Command::new("/bin/sleep")
+                .arg("30")
+                .process_group(0)
+                .spawn()
+                .expect("spawn harmless test group leader");
+            let pid = child.id() as i32;
+            // Own teardown before identity sampling, including failure during setup.
+            let mut cleanup = TestAnchorCleanup::new(ProcessIdentity {
+                pid,
+                pgid: pid,
+                start_abstime: 0,
+            });
+            cleanup.owned_child = Some(child);
+            let identity = read_process_identity(pid).expect("read test group leader identity");
+            cleanup.identity = Some(identity);
+            (identity, cleanup)
+        }
+
+        fn test_child_descriptor_limit() -> i32 {
+            let mut limit: libc::rlimit = unsafe { std::mem::zeroed() };
+            assert_eq!(
+                unsafe { libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit) },
+                0
+            );
+            let maximum = if limit.rlim_cur == libc::RLIM_INFINITY {
+                let maximum = unsafe { libc::sysconf(libc::_SC_OPEN_MAX) };
+                assert!(maximum > 0, "read finite descriptor bound before fork");
+                maximum as libc::rlim_t
+            } else {
+                limit.rlim_cur
+            };
+            i32::try_from(maximum).expect("test descriptor bound fits a raw descriptor")
+        }
+
+        fn child_close_ambient_fds(limit: i32, preserved: &[i32]) {
+            // Other tests run concurrently. A fork must not retain their protocol writers:
+            // surviving descendants would suppress EOF after the actual writers close.
+            // The bound is prepared before fork; this child path only invokes raw close.
+            for descriptor in 0..limit {
+                if !preserved.contains(&descriptor) {
+                    unsafe {
+                        libc::close(descriptor);
+                    }
+                }
+            }
+        }
+
+        struct TestPairedFamily {
+            group: ProcessIdentity,
+            member: ProcessIdentity,
+            descendant_pid: i32,
+            group_cleanup: TestAnchorCleanup,
+            member_cleanup: TestAnchorCleanup,
+            exit_write: Option<File>,
+        }
+
+        impl TestPairedFamily {
+            fn new() -> Self {
+                let (group, group_cleanup) = spawn_test_group_leader();
+                let ready = pipe_pair();
+                let exit = pipe_pair();
+                let descriptor_limit = test_child_descriptor_limit();
+                let member_pid = unsafe { libc::fork() };
+                assert!(member_pid >= 0, "fork harmless paired member");
+                if member_pid == 0 {
+                    child_close_ambient_fds(descriptor_limit, &[ready.write, exit.read]);
+                    if unsafe { libc::setpgid(0, group.pgid) } != 0 {
+                        unsafe { libc::_exit(141) };
+                    }
+                    let descendant = unsafe { libc::fork() };
+                    if descendant < 0 {
+                        unsafe { libc::_exit(142) };
+                    }
+                    if descendant == 0 {
+                        child_close_ambient_fds(descriptor_limit, &[]);
+                        unsafe {
+                            libc::pause();
+                            libc::_exit(0);
+                        }
+                    }
+                    child_write_exact(ready.write, &descendant.to_ne_bytes(), 143);
+                    child_close_fd(ready.write);
+                    let mut command = [0];
+                    child_read_exact(exit.read, &mut command, 144);
+                    child_close_fd(exit.read);
+                    unsafe { libc::_exit(41) };
+                }
+                close_fd(ready.write);
+                close_fd(exit.read);
+                // SAFETY: ownership of this descriptor is transferred exactly once.
+                let exit_write = unsafe { File::from_raw_fd(exit.write) };
+                let mut member_cleanup = TestAnchorCleanup::new(ProcessIdentity {
+                    pid: member_pid,
+                    pgid: group.pgid,
+                    start_abstime: 0,
+                });
+                let mut pid_bytes = [0; std::mem::size_of::<i32>()];
+                read_exact(ready.read, &mut pid_bytes);
+                close_fd(ready.read);
+                let member =
+                    read_process_identity(member_pid).expect("read paired member identity");
+                member_cleanup.identity = Some(member);
+                Self {
+                    group,
+                    member,
+                    descendant_pid: i32::from_ne_bytes(pid_bytes),
+                    group_cleanup,
+                    member_cleanup,
+                    exit_write: Some(exit_write),
+                }
+            }
+
+            fn exit_member(&mut self) {
+                let mut command = self
+                    .exit_write
+                    .take()
+                    .expect("member exit command used once");
+                std::io::Write::write_all(&mut command, &[1]).expect("command member exit");
+            }
+        }
+
+        struct TestExternalZombieReaper {
+            pid: i32,
+            zombie_pid: i32,
+            release_write: Option<File>,
+        }
+
+        impl TestExternalZombieReaper {
+            fn new(group: i32) -> Self {
+                let ready = pipe_pair();
+                let release = pipe_pair();
+                let descriptor_limit = test_child_descriptor_limit();
+                let pid = unsafe { libc::fork() };
+                assert!(pid >= 0, "fork external zombie reaper");
+                if pid == 0 {
+                    child_close_ambient_fds(descriptor_limit, &[ready.write, release.read]);
+                    if unsafe { libc::setpgid(0, 0) } != 0 {
+                        unsafe { libc::_exit(151) };
+                    }
+                    let zombie = unsafe { libc::fork() };
+                    if zombie < 0 {
+                        unsafe { libc::_exit(152) };
+                    }
+                    if zombie == 0 {
+                        child_close_ambient_fds(descriptor_limit, &[]);
+                        if unsafe { libc::setpgid(0, group) } != 0 {
+                            unsafe { libc::_exit(153) };
+                        }
+                        unsafe { libc::_exit(0) };
+                    }
+                    let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+                    if unsafe {
+                        libc::waitid(
+                            libc::P_PID,
+                            zombie as libc::id_t,
+                            &mut info,
+                            libc::WEXITED | libc::WNOWAIT,
+                        )
+                    } != 0
+                    {
+                        unsafe { libc::_exit(154) };
+                    }
+                    child_write_exact(ready.write, &zombie.to_ne_bytes(), 155);
+                    child_close_fd(ready.write);
+                    // Eventual reap is independent of assertions or drain completion. A failed
+                    // assertion also closes the pipe, making POLLHUP release the held zombie.
+                    let mut poll = libc::pollfd {
+                        fd: release.read,
+                        events: libc::POLLIN,
+                        revents: 0,
+                    };
+                    unsafe {
+                        libc::poll(&mut poll, 1, 5_000);
+                    }
+                    child_close_fd(release.read);
+                    let mut status = 0;
+                    if unsafe { libc::waitpid(zombie, &mut status, 0) } != zombie {
+                        unsafe { libc::_exit(156) };
+                    }
+                    unsafe { libc::_exit(0) };
+                }
+                close_fd(ready.write);
+                close_fd(release.read);
+                // SAFETY: ownership of this descriptor is transferred exactly once.
+                let release_write = unsafe { File::from_raw_fd(release.write) };
+                let mut reaper = Self {
+                    pid,
+                    zombie_pid: 0,
+                    release_write: Some(release_write),
+                };
+                let mut pid_bytes = [0; std::mem::size_of::<i32>()];
+                read_exact(ready.read, &mut pid_bytes);
+                close_fd(ready.read);
+                reaper.zombie_pid = i32::from_ne_bytes(pid_bytes);
+                reaper
+            }
+
+            fn release(&mut self) {
+                // Closing, rather than writing, remains safe if a failing test outlives the
+                // bounded reaper timer: no SIGPIPE can terminate the test process.
+                drop(self.release_write.take());
+            }
+        }
+
+        impl Drop for TestExternalZombieReaper {
+            fn drop(&mut self) {
+                self.release();
+                loop {
+                    if unsafe { libc::waitpid(self.pid, std::ptr::null_mut(), 0) } == self.pid {
+                        break;
+                    }
+                    if io::Error::last_os_error().kind() != io::ErrorKind::Interrupted {
+                        break;
+                    }
+                }
+            }
+        }
+
         fn wait_for_stopped_descendants(
             identity: &ProcessIdentity,
             liveness: &LiveAnchorProtocolLiveness<'_>,
@@ -1970,6 +2852,7 @@ mod imp {
             let ready = pipe_pair();
             let go = pipe_pair();
             let descendant = pipe_pair();
+            let descriptor_limit = test_child_descriptor_limit();
             let anchor_pid = unsafe { libc::fork() };
             assert!(
                 anchor_pid >= 0,
@@ -1977,9 +2860,10 @@ mod imp {
                 io::Error::last_os_error()
             );
             if anchor_pid == 0 {
-                child_close_fd(ready.read);
-                child_close_fd(go.write);
-                child_close_fd(descendant.read);
+                child_close_ambient_fds(
+                    descriptor_limit,
+                    &[ready.write, go.read, descendant.write],
+                );
                 if unsafe { libc::setpgid(0, 0) } != 0 {
                     unsafe { libc::_exit(101) };
                 }
@@ -1994,6 +2878,7 @@ mod imp {
                     unsafe { libc::_exit(104) };
                 }
                 if descendant_pid == 0 {
+                    child_close_ambient_fds(descriptor_limit, &[descendant.write]);
                     let pid = unsafe { libc::getpid() }.to_ne_bytes();
                     child_write_exact(descendant.write, &pid, 105);
                     child_close_fd(descendant.write);
@@ -2196,23 +3081,31 @@ mod imp {
 
         struct TestAnchorCleanup {
             identity: Option<ProcessIdentity>,
+            owned_child: Option<std::process::Child>,
         }
 
         impl TestAnchorCleanup {
             fn new(identity: ProcessIdentity) -> Self {
                 Self {
                     identity: Some(identity),
+                    owned_child: None,
                 }
             }
 
             fn disarm_after_reap(&mut self) {
                 self.identity = None;
+                // The watcher or explicit waitpid already consumed this child's wait status.
+                drop(self.owned_child.take());
             }
         }
 
         impl Drop for TestAnchorCleanup {
             fn drop(&mut self) {
                 let Some(identity) = self.identity.take() else {
+                    if let Some(mut child) = self.owned_child.take() {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                    }
                     return;
                 };
                 // This cleanup never verifies then signals a free numeric PGID. A successful
@@ -2358,3 +3251,5 @@ pub use imp::{
     verify_live_anchor_descendants_stopped, verify_process_identity, AnchorExitWatcher,
     LiveAnchorProtocolLiveness,
 };
+#[cfg(target_os = "macos")]
+pub(crate) use imp::{signal_exited_anchor_group, PairedMemberPin};

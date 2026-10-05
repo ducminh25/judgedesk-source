@@ -6,7 +6,12 @@ import {
   readStoredProblemConfig,
   writeStoredProblemConfig
 } from "../problems/problem-config-repository.js";
-import { listTestDirectories, resolveTestCaseFiles } from "../judge/testcase-discovery.js";
+import {
+  discoverTestCases,
+  isFlatTestDirectory,
+  listTestDirectories,
+  resolveProblemDirectoryPath,
+} from "../judge/testcase-discovery.js";
 
 export function registerProblemRoutes(app: Express): void {
   app.get("/api/fetch-contestants", (req, res) => {
@@ -40,13 +45,15 @@ export function registerProblemRoutes(app: Express): void {
       if (!fs.statSync(resolved).isDirectory()) {
         return res.status(400).json({ success: false, code: "NOT_A_DIRECTORY", message: "Path is not a directory" });
       }
-      const dirs = fs.readdirSync(resolved).filter((dir) => fs.statSync(path.join(resolved, dir)).isDirectory());
+      const directProblem = isFlatTestDirectory(resolved);
+      const dirs = directProblem ? [path.basename(resolved)]
+        : fs.readdirSync(resolved).filter((dir) => fs.statSync(path.join(resolved, dir)).isDirectory());
       dirs.sort(naturalSort);
 
       const customCheckers: Record<string, string[]> = {};
       const interactors: Record<string, string[]> = {};
       for (const dir of dirs) {
-        const problemPath = path.join(resolved, dir);
+        const problemPath = directProblem ? resolved : path.join(resolved, dir);
         customCheckers[dir] = discoverCustomCheckers(problemPath);
         interactors[dir] = discoverInteractors(problemPath);
       }
@@ -62,7 +69,7 @@ export function registerProblemRoutes(app: Express): void {
     const dirPath = req.query.path as string;
     if (!dirPath) return res.status(400).json({ success: false, code: "PATH_REQUIRED", message: "Path required" });
     try {
-      const resolved = path.resolve(dirPath);
+      const resolved = resolveProblemDirectoryPath(dirPath);
       if (!fs.existsSync(resolved)) {
         return res.status(404).json({ success: false, code: "DIRECTORY_NOT_FOUND", message: "Directory not found" });
       }
@@ -87,7 +94,7 @@ export function registerProblemRoutes(app: Express): void {
     }
 
     try {
-      const resolved = path.resolve(dirPath);
+      const resolved = resolveProblemDirectoryPath(dirPath);
       if (!fs.existsSync(resolved)) {
         return res.status(404).json({ success: false, code: "DIRECTORY_NOT_FOUND", message: "Directory not found" });
       }
@@ -97,11 +104,10 @@ export function registerProblemRoutes(app: Express): void {
 
       const storedConfig = readStoredProblemConfig(resolved);
       const isInteractive = Boolean(storedConfig?.isInteractive || req.query.isInteractive === "true");
-      const dirs = listTestDirectories(resolved, isInteractive);
+      const tests = discoverTestCases(resolved, isInteractive);
 
-      const result = dirs.map((dir) => {
-        const testFiles = resolveTestCaseFiles(resolved, dir, isInteractive);
-        if (!testFiles) return { name: dir, preview: "", size: 0 };
+      const result = tests.map((testFiles) => {
+        const dir = testFiles.name;
         const inputPath = testFiles.inputPath;
 
         const size = fs.statSync(inputPath).size;
@@ -127,7 +133,8 @@ export function registerProblemRoutes(app: Express): void {
     const dirPath = req.query.path as string;
     if (!dirPath) return res.status(400).json({ success: false, code: "PATH_REQUIRED", message: "Path required" });
     try {
-      return res.json({ success: true, data: readStoredProblemConfig(dirPath) });
+      const resolved = resolveProblemDirectoryPath(dirPath);
+      return res.json({ success: true, data: readStoredProblemConfig(resolved) });
     } catch (error: any) {
       const code = error?.code || "CONFIG_READ_ERROR";
       return res.status(500).json({ success: false, code, message: "Failed to read problem configuration" });
@@ -141,7 +148,8 @@ export function registerProblemRoutes(app: Express): void {
       return res.status(400).json({ success: false, code: "PARAMS_REQUIRED", message: "Path and config required" });
     }
     try {
-      writeStoredProblemConfig(dirPath, config);
+      const resolved = resolveProblemDirectoryPath(dirPath);
+      writeStoredProblemConfig(resolved, config);
       return res.json({ success: true });
     } catch (error: any) {
       const code = error?.code || "CONFIG_WRITE_ERROR";

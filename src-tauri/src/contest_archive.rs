@@ -178,6 +178,30 @@ fn replace_archive(temp_path: &Path, destination: &Path) -> Result<(), String> {
     }
 }
 
+fn tests_archive_prefix(source: &Path, manifest: &Value) -> Result<String, String> {
+    let Some(problems) = manifest["workspace"]["problems"].as_array() else {
+        return Ok("problems".to_string());
+    };
+    let [problem] = problems.as_slice() else {
+        return Ok("problems".to_string());
+    };
+    let Some(problem_name) = problem.as_str() else {
+        return Ok("problems".to_string());
+    };
+    let resolve_problem = judgedesk_core::discovery::create_problem_directory_resolver(source);
+    if !resolve_problem(problem_name).is_some_and(|problem| problem.path == source) {
+        return Ok("problems".to_string());
+    }
+
+    // A directly selected problem needs its name restored below the archive's
+    // fixed problems root so its submissions and saved configuration still match.
+    if problem_name.contains(['/', '\\']) {
+        return Err("Contest problem name is not a safe directory name".to_string());
+    }
+    let safe_name = portable_relative_path(Path::new(problem_name))?;
+    Ok(format!("problems/{safe_name}"))
+}
+
 fn save_contest_archive_impl(
     destination: &Path,
     contestants_path: Option<&Path>,
@@ -185,7 +209,7 @@ fn save_contest_archive_impl(
     manifest_json: &str,
 ) -> Result<(), String> {
     validate_archive_extension(destination)?;
-    validate_manifest(manifest_json)?;
+    let manifest = validate_manifest(manifest_json)?;
     if contestants_path.is_some_and(|path| !path.is_dir())
         || tests_path.is_some_and(|path| !path.is_dir())
     {
@@ -230,7 +254,8 @@ fn save_contest_archive_impl(
                 .map_err(|error| error.to_string())?;
         }
         if let Some(path) = tests_path {
-            add_directory_tree(&mut writer, path, "problems", &excluded_paths)?;
+            let prefix = tests_archive_prefix(path, &manifest)?;
+            add_directory_tree(&mut writer, path, &prefix, &excluded_paths)?;
         } else {
             writer
                 .add_directory(
@@ -451,6 +476,90 @@ mod tests {
             fs::read_to_string(extracted_problems.join("A").join("test01").join("A.out")).unwrap(),
             "3\n"
         );
+
+        let _ = fs::remove_dir_all(root);
+        cleanup_contest_workspaces();
+    }
+
+    #[test]
+    fn contest_archive_preserves_direct_problem_folder_identity_and_flat_tests() {
+        let _guard = ARCHIVE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        cleanup_contest_workspaces();
+        let root = test_directory("flat-archive-test");
+        let problem = root.join("SUM");
+        fs::create_dir_all(problem.join("docs")).unwrap();
+        for (file, content) in [
+            ("test1.inp", "1 2\n"),
+            ("test1.out", "3\n"),
+            ("test2.in", "3 4\n"),
+            ("test2.ans", "7\n"),
+            ("Config.cfg", r#"{"totalScore":"10","defaultScore":"1"}"#),
+        ] {
+            fs::write(problem.join(file), content).unwrap();
+        }
+        let destination = root.join("flat.judgedesk");
+        let manifest = json!({
+            "format": FORMAT_NAME,
+            "formatVersion": FORMAT_VERSION,
+            "workspace": {
+                "problems": ["SUM"],
+                "problemConfigs": { "SUM": { "totalScore": "10" } },
+                "selectedProblems": { "SUM": false }
+            }
+        });
+
+        save_contest_archive_impl(&destination, None, Some(&problem), &manifest.to_string())
+            .unwrap();
+        let opened = open_contest_archive_impl(&destination).unwrap();
+        let extracted_problems = PathBuf::from(opened["testsPath"].as_str().unwrap());
+        let extracted_problem = extracted_problems.join("SUM");
+        assert!(extracted_problem.is_dir());
+        assert_eq!(fs::read_dir(&extracted_problems).unwrap().count(), 1);
+        assert_eq!(
+            fs::read_to_string(extracted_problem.join("test1.inp")).unwrap(),
+            "1 2\n"
+        );
+        assert_eq!(
+            fs::read_to_string(extracted_problem.join("test2.ans")).unwrap(),
+            "7\n"
+        );
+        assert!(extracted_problem.join("Config.cfg").is_file());
+        assert!(extracted_problem.join("docs").is_dir());
+        assert_eq!(opened["manifest"], manifest);
+
+        let _ = fs::remove_dir_all(root);
+        cleanup_contest_workspaces();
+    }
+
+    #[test]
+    fn contest_archive_keeps_parent_root_with_same_name_as_its_only_problem() {
+        let _guard = ARCHIVE_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        cleanup_contest_workspaces();
+        let root = test_directory("same-name-parent-archive-test");
+        let problems = root.join("SUM");
+        fs::create_dir_all(problems.join("SUM")).unwrap();
+        fs::write(problems.join("SUM").join("test1.inp"), "42\n").unwrap();
+        fs::write(problems.join("SUM").join("test1.out"), "42\n").unwrap();
+        let destination = root.join("parent.judgedesk");
+        let manifest = json!({
+            "format": FORMAT_NAME,
+            "formatVersion": FORMAT_VERSION,
+            "workspace": { "problems": ["SUM"] }
+        });
+
+        save_contest_archive_impl(&destination, None, Some(&problems), &manifest.to_string())
+            .unwrap();
+        let opened = open_contest_archive_impl(&destination).unwrap();
+        let extracted_problems = PathBuf::from(opened["testsPath"].as_str().unwrap());
+        assert_eq!(
+            fs::read_to_string(extracted_problems.join("SUM").join("test1.inp")).unwrap(),
+            "42\n"
+        );
+        assert!(!extracted_problems.join("SUM").join("SUM").exists());
 
         let _ = fs::remove_dir_all(root);
         cleanup_contest_workspaces();

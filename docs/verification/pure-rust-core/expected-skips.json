@@ -1,0 +1,554 @@
+{
+  "schemaVersion": 1,
+  "skips": [
+    {
+      "policyId": "installer-win32-symlink-privilege",
+      "observedIdentity": "installer links or copies compiler binaries to binDirectory",
+      "sourcePath": "server/toolchains/installer.test.ts",
+      "sourceFingerprint": "ce754f043080b572c2c0f061c0688b166fc6e0753a67c99da7d1189536e93b9d",
+      "runner": "node:test",
+      "suite": "server/toolchains/installer.test.ts",
+      "targets": [
+        {
+          "os": "win32",
+          "arch": "x64",
+          "profile": null,
+          "sourceMode": null
+        }
+      ],
+      "owner": "Antigravity",
+      "prerequisitePredicateId": "win32_unprivileged_symlinks_missing",
+      "expiresOn": "2026-12-31T00:00:00Z",
+      "removalPredicateId": "win32_unprivileged_symlinks_supported",
+      "justification": "On standard Windows hosts, unprivileged symlink creation requires elevated SeCreateSymbolicLinkPrivilege or Developer Mode."
+    },
+    {
+      "policyId": "installer-tools-win32-symlink-privilege",
+      "observedIdentity": "installer links or copies tools to toolsDirectory",
+      "sourcePath": "server/toolchains/installer.test.ts",
+      "sourceFingerprint": "ce754f043080b572c2c0f061c0688b166fc6e0753a67c99da7d1189536e93b9d",
+      "runner": "node:test",
+      "suite": "server/toolchains/installer.test.ts",
+      "targets": [
+        {
+          "os": "win32",
+          "arch": "x64",
+          "profile": null,
+          "sourceMode": null
+        }
+      ],
+      "owner": "Antigravity",
+      "prerequisitePredicateId": "win32_unprivileged_symlinks_missing",
+      "expiresOn": "2026-12-31T00:00:00Z",
+      "removalPredicateId": "win32_unprivileged_symlinks_supported",
+      "justification": "Creating symlinks to tools requires elevated privileges on Windows without developer mode."
+    },
+    {
+      "policyId": "snapshot-win32-symlink-elevation",
+      "observedIdentity": "creates a toolchain snapshot with exact version resolution",
+      "sourcePath": "server/toolchains/snapshot.test.ts",
+      "sourceFingerprint": "ced55a3b91927a65a8250cf7a8dd461f710eff48eb147c305a65a16ad0f719f5",
+      "runner": "node:test",
+      "suite": "server/toolchains/snapshot.test.ts",
+      "targets": [
+        {
+          "os": "win32",
+          "arch": "x64",
+          "profile": null,
+          "sourceMode": null
+        }
+      ],
+      "owner": "Antigravity",
+      "prerequisitePredicateId": "win32_unprivileged_symlinks_missing",
+      "expiresOn": "2026-12-31T00:00:00Z",
+      "removalPredicateId": "win32_unprivileged_symlinks_supported",
+      "justification": "Creating symlinks in snapshot directory requires elevation on Windows."
+    },
+    {
+      "policyId": "workspace-win32-dir-alias-privilege",
+      "observedIdentity": "creating a directory alias requires additional privileges",
+      "sourcePath": "server/executor/workspace.test.ts",
+      "sourceFingerprint": "77268d231d9dda015136bb8c81b5eb5cecd0253aaef50309944dc2159a0d88cd",
+      "runner": "node:test",
+      "suite": "server/executor/workspace.test.ts",
+      "targets": [
+        {
+          "os": "win32",
+          "arch": "x64",
+          "profile": null,
+          "sourceMode": null
+        }
+      ],
+      "owner": "Antigravity",
+      "prerequisitePredicateId": "win32_unprivileged_symlinks_missing",
+      "expiresOn": "2026-12-31T00:00:00Z",
+      "removalPredicateId": "win32_unprivileged_symlinks_supported",
+      "justification": "Directory junction/symlink creation in test environment requires additional OS privileges."
+    },
+    {
+      "policyId": "workspace-win32-file-symlink-privilege",
+      "observedIdentity": "creating file symlinks requires additional privileges",
+      "sourcePath": "server/executor/workspace.test.ts",
+      "sourceFingerprint": "77268d231d9dda015136bb8c81b5eb5cecd0253aaef50309944dc2159a0d88cd",
+      "runner": "node:test",
+      "suite": "server/executor/workspace.test.ts",
+      "targets": [
+        {
+          "os": "win32",
+          "arch": "x64",
+          "profile": null,
+          "sourceMode": null
+        }
+      ],
+      "owner": "Antigravity",
+      "prerequisitePredicateId": "win32_unprivileged_symlinks_missing",
+      "expiresOn": "2026-12-31T00:00:00Z",
+      "removalPredicateId": "win32_unprivileged_symlinks_supported",
+      "justification": "Creating file symlinks in unprivileged test harness on Windows is unsupported by OS."
+    },
+    {
+      "policyId": "workspace-win32-file-symlink-privilege-2",
+      "observedIdentity": "creating file symlinks requires additional privileges (nested)",
+      "sourcePath": "server/executor/workspace.test.ts",
+      "sourceFingerprint": "77268d231d9dda015136bb8c81b5eb5cecd0253aaef50309944dc2159a0d88cd",
+      "runner": "node:test",
+      "suite": "server/executor/workspace.test.ts",
+      "targets": [
+        {
+          "os": "win32",
+          "arch": "x64",
+          "profile": null,
+          "sourceMode": null
+        }
+      ],
+      "owner": "Antigravity",
+      "prerequisitePredicateId": "win32_unprivileged_symlinks_missing",
+      "expiresOn": "2026-12-31T00:00:00Z",
+      "removalPredicateId": "win32_unprivileged_symlinks_supported",
+      "justification": "Second file symlink containment test in workspace suite requires elevated privileges."
+    },
+    {
+      "policyId": "python-unmanaged-runtime-not-installed",
+      "observedIdentity": "No supported unmanaged Python runtime is installed on this test host.",
+      "sourcePath": "server/judge/python-submission.test.ts",
+      "sourceFingerprint": "d36c0a8956ae2dacb2afa68fb65fe59feee9e4d9a223675ebd1923f6944eb910",
+      "runner": "node:test",
+      "suite": "server/judge/python-submission.test.ts",
+      "targets": [
+        {
+          "os": "win32",
+          "arch": "x64",
+          "profile": "python",
+          "sourceMode": "local"
+        }
+      ],
+      "owner": "Antigravity",
+      "prerequisitePredicateId": "no_unmanaged_python_detected",
+      "expiresOn": "2026-12-31T00:00:00Z",
+      "removalPredicateId": "unmanaged_python_certified",
+      "justification": "System Python is not certified as an unmanaged submission runtime; managed Python is authoritative."
+    },
+    {
+      "policyId": "python-unmanaged-posix-system-python",
+      "observedIdentity": "diagnoses unmanaged system Python 3 on POSIX",
+      "sourcePath": "server/judge/python-submission.test.ts",
+      "sourceFingerprint": "d36c0a8956ae2dacb2afa68fb65fe59feee9e4d9a223675ebd1923f6944eb910",
+      "runner": "node:test",
+      "suite": "server/judge/python-submission.test.ts",
+      "targets": [
+        {
+          "os": "win32",
+          "arch": "x64",
+          "profile": "python",
+          "sourceMode": "local"
+        }
+      ],
+      "owner": "Antigravity",
+      "prerequisitePredicateId": "is_win32",
+      "expiresOn": "2026-12-31T00:00:00Z",
+      "removalPredicateId": "is_not_win32",
+      "justification": "POSIX system Python discovery test is intentionally excluded on Windows."
+    },
+    {
+      "policyId": "python-unmanaged-macos-homebrew",
+      "observedIdentity": "diagnoses unmanaged Homebrew Python 3 on macOS",
+      "sourcePath": "server/judge/python-submission.test.ts",
+      "sourceFingerprint": "d36c0a8956ae2dacb2afa68fb65fe59feee9e4d9a223675ebd1923f6944eb910",
+      "runner": "node:test",
+      "suite": "server/judge/python-submission.test.ts",
+      "targets": [
+        {
+          "os": "win32",
+          "arch": "x64",
+          "profile": "python",
+          "sourceMode": "local"
+        }
+      ],
+      "owner": "Antigravity",
+      "prerequisitePredicateId": "is_win32",
+      "expiresOn": "2026-12-31T00:00:00Z",
+      "removalPredicateId": "is_not_win32",
+      "justification": "macOS Homebrew Python discovery test is intentionally excluded on Windows."
+    },
+    {
+      "policyId": "api-contracts-node-golden-win32-baseline",
+      "observedIdentity": "Golden fixtures in server/test-fixtures/api-contracts are captured for the Windows x64 Node reference baseline",
+      "sourcePath": "server/api-contracts.test.ts",
+      "sourceFingerprint": "aebbef062ce6d3345a06767acd7bb6d3773c48bcbdb8ff2a21ecca89cc67977b",
+      "runner": "node:test",
+      "suite": "server/api-contracts.test.ts",
+      "targets": [
+        {
+          "os": "darwin",
+          "arch": "arm64",
+          "profile": null,
+          "sourceMode": null
+        }
+      ],
+      "owner": "Antigravity",
+      "prerequisitePredicateId": "is_not_win32",
+      "expiresOn": "2026-12-31T00:00:00Z",
+      "removalPredicateId": "is_win32",
+      "justification": "API contract golden fixtures were captured specifically on the Windows reference baseline."
+    },
+    {
+      "policyId": "compiler-watchdog-fake-harness-posix-only",
+      "observedIdentity": "compiler watchdog terminates a stuck compiler",
+      "sourcePath": "server/judge/compiler.test.ts",
+      "sourceFingerprint": "802fb3e4ca60d0ec6058292c14be1ccb345a0c2b6ae1243cddb1317d3bad119c",
+      "runner": "node:test",
+      "suite": "server/judge/compiler.test.ts",
+      "targets": [
+        {
+          "os": "win32",
+          "arch": "x64",
+          "profile": null,
+          "sourceMode": null
+        }
+      ],
+      "owner": "Antigravity",
+      "prerequisitePredicateId": "is_win32",
+      "expiresOn": "2026-12-31T00:00:00Z",
+      "removalPredicateId": "is_not_win32",
+      "justification": "Fake compiler watchdog harness uses POSIX sleep scripts not executable on Windows directly."
+    },
+    {
+      "policyId": "compiler-oversized-fake-harness-posix-only",
+      "observedIdentity": "compiler rejects and removes an oversized generated file",
+      "sourcePath": "server/judge/compiler.test.ts",
+      "sourceFingerprint": "802fb3e4ca60d0ec6058292c14be1ccb345a0c2b6ae1243cddb1317d3bad119c",
+      "runner": "node:test",
+      "suite": "server/judge/compiler.test.ts",
+      "targets": [
+        {
+          "os": "win32",
+          "arch": "x64",
+          "profile": null,
+          "sourceMode": null
+        }
+      ],
+      "owner": "Antigravity",
+      "prerequisitePredicateId": "is_win32",
+      "expiresOn": "2026-12-31T00:00:00Z",
+      "removalPredicateId": "is_not_win32",
+      "justification": "Fake compiler oversized payload generation harness requires POSIX sh commands."
+    },
+    {
+      "policyId": "package-store-win32-only-package-test",
+      "observedIdentity": "downloads and verifies Windows x64 release package",
+      "sourcePath": "server/toolchains/package-store.test.ts",
+      "sourceFingerprint": "5428bd8de0b958b032bdfcf73a50096cbbf65aaf5bfef0fd45c3357870c7a35b",
+      "runner": "node:test",
+      "suite": "server/toolchains/package-store.test.ts",
+      "targets": [
+        {
+          "os": "darwin",
+          "arch": "arm64",
+          "profile": null,
+          "sourceMode": null
+        }
+      ],
+      "owner": "Antigravity",
+      "prerequisitePredicateId": "is_not_win32",
+      "expiresOn": "2026-12-31T00:00:00Z",
+      "removalPredicateId": "is_win32",
+      "justification": "Windows toolchain package extraction test only executes on Windows hosts."
+    },
+    {
+      "policyId": "toolchain-routes-unsupported-cpp-mock",
+      "observedIdentity": "handles unsupported profile gracefully",
+      "sourcePath": "server/routes/toolchain-routes.test.ts",
+      "sourceFingerprint": "100f5519ad6cc6cfd2d0d86e90dd21c2e066443f567587477462707686064477",
+      "runner": "node:test",
+      "suite": "server/routes/toolchain-routes.test.ts",
+      "targets": [
+        {
+          "os": "win32",
+          "arch": "x64",
+          "profile": "cpp",
+          "sourceMode": "local"
+        }
+      ],
+      "owner": "Antigravity",
+      "prerequisitePredicateId": "current_host_supports_cpp",
+      "expiresOn": "2026-12-31T00:00:00Z",
+      "removalPredicateId": "current_host_unsupported_cpp",
+      "justification": "Mock unsupported profile test skips when host environment supports C++."
+    },
+    {
+      "policyId": "toolchain-routes-win32-local-certification",
+      "observedIdentity": "Windows local certification is intentionally host-specific",
+      "sourcePath": "server/routes/toolchain-routes.test.ts",
+      "sourceFingerprint": "100f5519ad6cc6cfd2d0d86e90dd21c2e066443f567587477462707686064477",
+      "runner": "node:test",
+      "suite": "server/routes/toolchain-routes.test.ts",
+      "targets": [
+        {
+          "os": "darwin",
+          "arch": "arm64",
+          "profile": null,
+          "sourceMode": null
+        }
+      ],
+      "owner": "Antigravity",
+      "prerequisitePredicateId": "is_not_win32",
+      "expiresOn": "2026-12-31T00:00:00Z",
+      "removalPredicateId": "is_win32",
+      "justification": "Windows local toolchain certification routes are host-specific to Windows."
+    },
+    {
+      "policyId": "storage-v2-mock-when-managed-present",
+      "observedIdentity": "preserves existing state when managed package already installed",
+      "sourcePath": "server/toolchains/storage-v2.test.ts",
+      "sourceFingerprint": "0b0fd8a99a2ec50d5aa0e39a7e6e0e6648b39a2c1bb5bd9086c286412f53c1dd",
+      "runner": "node:test",
+      "suite": "server/toolchains/storage-v2.test.ts",
+      "targets": [
+        {
+          "os": "win32",
+          "arch": "x64",
+          "profile": null,
+          "sourceMode": null
+        }
+      ],
+      "owner": "Antigravity",
+      "prerequisitePredicateId": "host_has_stable_managed_package",
+      "expiresOn": "2026-12-31T00:00:00Z",
+      "removalPredicateId": "host_lacks_stable_managed_package",
+      "justification": "Storage v2 fallback test skips when stable managed package is already installed on the host."
+    },
+    {
+      "policyId": "prepare-toolchain-gate-root-unsupported-host-mock",
+      "observedIdentity": "prepare-toolchain-gate-root skips mock when host is supported",
+      "sourcePath": "scripts/prepare-toolchain-gate-root.test.ts",
+      "sourceFingerprint": "06c243604cf6b909adbe83ca4bc3b04a0109276c9198926ca5379fb1f81aa319",
+      "runner": "node:test",
+      "suite": "scripts/prepare-toolchain-gate-root.test.ts",
+      "targets": [
+        {
+          "os": "win32",
+          "arch": "x64",
+          "profile": null,
+          "sourceMode": null
+        }
+      ],
+      "owner": "Antigravity",
+      "prerequisitePredicateId": "is_supported_toolchain_host",
+      "expiresOn": "2026-12-31T00:00:00Z",
+      "removalPredicateId": "is_unsupported_toolchain_host",
+      "justification": "Gate root preparation fallback mocks are skipped when running on supported toolchain host."
+    },
+    {
+      "policyId": "toolchains-gate-c-submission-real-toolchains",
+      "observedIdentity": "c-submission real toolchains gate",
+      "sourcePath": "server/judge/c-submission.gate.test.ts",
+      "sourceFingerprint": "8a9b21267bf8d97a00ff1b539d095849d24e4c20bb7c3804e5f7311f66fa4786",
+      "runner": "node:test",
+      "suite": "server/judge/c-submission.gate.test.ts",
+      "targets": [
+        {
+          "os": "any",
+          "arch": "any",
+          "profile": "c",
+          "sourceMode": "managed"
+        }
+      ],
+      "owner": "Antigravity",
+      "prerequisitePredicateId": "env_real_toolchain_gates_unset",
+      "expiresOn": "2026-12-31T00:00:00Z",
+      "removalPredicateId": "env_real_toolchain_gates_set",
+      "justification": "Heavy gate test requires JUDGEDESK_REAL_TOOLCHAIN_GATES=1 opt-in in toolchain publishing workflow."
+    },
+    {
+      "policyId": "toolchains-gate-custom-checker-real-toolchains",
+      "observedIdentity": "custom-checker real toolchains gate",
+      "sourcePath": "server/judge/custom-checker.gate.test.ts",
+      "sourceFingerprint": "98890b3779b176c8a0aaaa7c7bd97a747b1fc88985d0ae38d450dd8a12858950",
+      "runner": "node:test",
+      "suite": "server/judge/custom-checker.gate.test.ts",
+      "targets": [
+        {
+          "os": "any",
+          "arch": "any",
+          "profile": "cpp",
+          "sourceMode": "managed"
+        }
+      ],
+      "owner": "Antigravity",
+      "prerequisitePredicateId": "env_real_toolchain_gates_unset",
+      "expiresOn": "2026-12-31T00:00:00Z",
+      "removalPredicateId": "env_real_toolchain_gates_set",
+      "justification": "Custom checker packaging gate runs conditionally when real toolchain environment is staged."
+    },
+    {
+      "policyId": "toolchains-gate-multi-language-real-toolchains",
+      "observedIdentity": "multi-language real toolchains gate",
+      "sourcePath": "server/judge/multi-language.gate.test.ts",
+      "sourceFingerprint": "4dca4023b1ce929b01bb1139b9ba40b2c6f59e19a5e05b2b5b26170ee892571e",
+      "runner": "node:test",
+      "suite": "server/judge/multi-language.gate.test.ts",
+      "targets": [
+        {
+          "os": "any",
+          "arch": "any",
+          "profile": null,
+          "sourceMode": "managed"
+        }
+      ],
+      "owner": "Antigravity",
+      "prerequisitePredicateId": "env_real_toolchain_gates_unset",
+      "expiresOn": "2026-12-31T00:00:00Z",
+      "removalPredicateId": "env_real_toolchain_gates_set",
+      "justification": "Multi-language packaging gate requires JUDGEDESK_REAL_TOOLCHAIN_GATES=1."
+    },
+    {
+      "policyId": "macos-run-guardian-darwin-only",
+      "observedIdentity": "macos run guardian integration gate",
+      "sourcePath": "server/executor-tests/macos-run-guardian.integration.test.ts",
+      "sourceFingerprint": "885acbfb30e64119fdd5009b57ec2072fb80009e6137859c0f8fb8c24506e33f",
+      "runner": "node:test",
+      "suite": "server/executor-tests/macos-run-guardian.integration.test.ts",
+      "targets": [
+        {
+          "os": "win32",
+          "arch": "x64",
+          "profile": null,
+          "sourceMode": null
+        }
+      ],
+      "owner": "Antigravity",
+      "prerequisitePredicateId": "is_not_darwin",
+      "expiresOn": "2026-12-31T00:00:00Z",
+      "removalPredicateId": "is_darwin",
+      "justification": "macOS process run guardian requires Darwin Apple Silicon launch and Seatbelt environment."
+    },
+    {
+      "policyId": "security-integration-win32-python-child-sandbox",
+      "observedIdentity": "win32 python child sandbox probe",
+      "sourcePath": "server/executor-tests/security.integration.test.ts",
+      "sourceFingerprint": "91e7671594232031037f6e6b5514a971179718005ebc9c536007327477edc5d0",
+      "runner": "node:test",
+      "suite": "server/executor-tests/security.integration.test.ts",
+      "targets": [
+        {
+          "os": "darwin",
+          "arch": "arm64",
+          "profile": "python",
+          "sourceMode": "managed"
+        }
+      ],
+      "owner": "Antigravity",
+      "prerequisitePredicateId": "is_not_win32",
+      "expiresOn": "2026-12-31T00:00:00Z",
+      "removalPredicateId": "is_win32",
+      "justification": "Windows LPAC child process sandbox test is only executed on Windows."
+    },
+    {
+      "policyId": "security-integration-darwin-python-child-sandbox",
+      "observedIdentity": "darwin python child sandbox probe",
+      "sourcePath": "server/executor-tests/security.integration.test.ts",
+      "sourceFingerprint": "91e7671594232031037f6e6b5514a971179718005ebc9c536007327477edc5d0",
+      "runner": "node:test",
+      "suite": "server/executor-tests/security.integration.test.ts",
+      "targets": [
+        {
+          "os": "win32",
+          "arch": "x64",
+          "profile": "python",
+          "sourceMode": "managed"
+        }
+      ],
+      "owner": "Antigravity",
+      "prerequisitePredicateId": "is_not_darwin",
+      "expiresOn": "2026-12-31T00:00:00Z",
+      "removalPredicateId": "is_darwin",
+      "justification": "Darwin Seatbelt child process sandbox test is only executed on macOS."
+    },
+    {
+      "policyId": "tauri-guard-child-process-helper",
+      "observedIdentity": "startup_guard::tests::guard_child_process",
+      "sourcePath": "src-tauri/src/startup_guard.rs",
+      "sourceFingerprint": "5186b631530a98d944eab5afc225d9342a786dcd6d9599a9277a515c80e7edbf",
+      "runner": "cargo:test",
+      "suite": "src-tauri::startup_guard",
+      "targets": [
+        {
+          "os": "any",
+          "arch": "any",
+          "profile": null,
+          "sourceMode": null
+        }
+      ],
+      "owner": "Antigravity",
+      "prerequisitePredicateId": "invoked_by_parent_harness_only",
+      "expiresOn": "2026-12-31T00:00:00Z",
+      "removalPredicateId": "is_standalone_test",
+      "justification": "Subprocess helper binary spawned exclusively by the parent guard test harness.",
+      "isSubprocessHelper": true
+    },
+    {
+      "policyId": "tauri-job-owner-process-helper",
+      "observedIdentity": "startup_guard::tests::job_owner_process",
+      "sourcePath": "src-tauri/src/startup_guard.rs",
+      "sourceFingerprint": "5186b631530a98d944eab5afc225d9342a786dcd6d9599a9277a515c80e7edbf",
+      "runner": "cargo:test",
+      "suite": "src-tauri::startup_guard",
+      "targets": [
+        {
+          "os": "win32",
+          "arch": "x64",
+          "profile": null,
+          "sourceMode": null
+        }
+      ],
+      "owner": "Antigravity",
+      "prerequisitePredicateId": "invoked_by_parent_harness_only",
+      "expiresOn": "2026-12-31T00:00:00Z",
+      "removalPredicateId": "is_standalone_test",
+      "justification": "Subprocess helper spawned exclusively by the Windows process-tree test harness.",
+      "isSubprocessHelper": true
+    },
+    {
+      "policyId": "tauri-job-descendant-process-helper",
+      "observedIdentity": "startup_guard::tests::job_descendant_process",
+      "sourcePath": "src-tauri/src/startup_guard.rs",
+      "sourceFingerprint": "5186b631530a98d944eab5afc225d9342a786dcd6d9599a9277a515c80e7edbf",
+      "runner": "cargo:test",
+      "suite": "src-tauri::startup_guard",
+      "targets": [
+        {
+          "os": "win32",
+          "arch": "x64",
+          "profile": null,
+          "sourceMode": null
+        }
+      ],
+      "owner": "Antigravity",
+      "prerequisitePredicateId": "invoked_by_parent_harness_only",
+      "expiresOn": "2026-12-31T00:00:00Z",
+      "removalPredicateId": "is_standalone_test",
+      "justification": "Subprocess helper spawned exclusively by the Windows process-tree test harness.",
+      "isSubprocessHelper": true
+    }
+  ]
+}

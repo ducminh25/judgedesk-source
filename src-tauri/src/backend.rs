@@ -208,6 +208,43 @@ fn backend_log_path(app: &App) -> Option<PathBuf> {
         .map(|directory| directory.join("backend.log"))
 }
 
+fn application_tree_guard(
+    app: &App,
+) -> Result<judgedesk_core::executor_client::TreeGuardContract, Box<dyn std::error::Error>> {
+    let (path, generation) = app
+        .state::<InstanceCoordinator>()
+        .backend_tree_environment()
+        .ok_or_else(|| std::io::Error::other("application process-tree guard is unavailable"))?;
+    Ok(judgedesk_core::executor_client::TreeGuardContract::new(
+        path, generation,
+    )?)
+}
+
+fn launch_embedded_backend(
+    port: u16,
+    guard: judgedesk_core::executor_client::TreeGuardContract,
+    log_path: Option<&Path>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let identity = judgedesk_core::build_metadata::startup_log()?;
+    if let Some(path) = log_path {
+        append_log(path, &identity);
+    }
+    tauri::async_runtime::spawn(async move {
+        match judgedesk_core::server::start_embedded_server_with_tree_guard(port, guard).await {
+            Ok((addr, _task)) => {
+                println!(
+                    "[Tauri Shell] Pure Rust Native Core running directly on port {}",
+                    addr.port()
+                );
+            }
+            Err(error) => {
+                eprintln!("[Tauri Shell] Failed to start native embedded server: {error}");
+            }
+        }
+    });
+    Ok(())
+}
+
 pub fn spawn(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     let port = get_free_port().unwrap_or(3000);
     let resource_dir = app.path().resource_dir()?;
@@ -227,19 +264,7 @@ pub fn spawn(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
 
     if use_pure_rust {
         println!("[Tauri Shell] Launching Pure Rust Native Core embedded server on port {port}");
-        tauri::async_runtime::spawn(async move {
-            match judgedesk_core::server::start_embedded_server(port).await {
-                Ok((addr, _task)) => {
-                    println!(
-                        "[Tauri Shell] Pure Rust Native Core running directly on port {}",
-                        addr.port()
-                    );
-                }
-                Err(err) => {
-                    eprintln!("[Tauri Shell] Failed to start native embedded server: {err}");
-                }
-            }
-        });
+        launch_embedded_backend(port, application_tree_guard(app)?, log_path.as_deref())?;
         {
             let backend = app.state::<BackendSidecar>();
             let mut state = backend.state.lock().unwrap();
@@ -253,19 +278,7 @@ pub fn spawn(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         Ok(command) => command,
         Err(error) => {
             println!("[Tauri Shell] Sidecar server unavailable ({error}); launching Pure Rust Native Core embedded server on port {port}");
-            tauri::async_runtime::spawn(async move {
-                match judgedesk_core::server::start_embedded_server(port).await {
-                    Ok((addr, _task)) => {
-                        println!(
-                            "[Tauri Shell] Pure Rust Native Core running directly on port {}",
-                            addr.port()
-                        );
-                    }
-                    Err(err) => {
-                        eprintln!("[Tauri Shell] Failed to start native embedded server: {err}");
-                    }
-                }
-            });
+            launch_embedded_backend(port, application_tree_guard(app)?, log_path.as_deref())?;
             {
                 let backend = app.state::<BackendSidecar>();
                 let mut state = backend.state.lock().unwrap();
@@ -301,19 +314,7 @@ pub fn spawn(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
             if let Some(path) = log_path.as_deref() {
                 append_log(path, &message);
             }
-            tauri::async_runtime::spawn(async move {
-                match judgedesk_core::server::start_embedded_server(port).await {
-                    Ok((addr, _task)) => {
-                        println!(
-                            "[Tauri Shell] Pure Rust Native Core running directly on port {}",
-                            addr.port()
-                        );
-                    }
-                    Err(err) => {
-                        eprintln!("[Tauri Shell] Failed to start native embedded server: {err}");
-                    }
-                }
-            });
+            launch_embedded_backend(port, application_tree_guard(app)?, log_path.as_deref())?;
             {
                 let backend = app.state::<BackendSidecar>();
                 let mut state = backend.state.lock().unwrap();

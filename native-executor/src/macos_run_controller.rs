@@ -183,12 +183,17 @@ fn invalid(message: impl Into<String>) -> io::Error {
 mod imp {
     use super::{invalid, EventSource, ExecutorRunState};
     use crate::fault_trace::{FaultTrace, FaultTraceEvent};
+    use crate::guardian_io::{FrameRead, FrameReader};
     use crate::guardian_protocol::{
-        generate_nonce, read_authenticated_frame, write_authenticated_frame, CleanupCause,
-        FrameIdentity, GuardianCommand, GuardianEvent, ProcessIdentity, SupervisorDirectCommand,
-        SupervisorEvent,
+        generate_nonce, write_authenticated_frame, CleanupCause, FrameIdentity, GuardianCommand,
+        GuardianEvent, ProcessIdentity, SupervisorDirectCommand, SupervisorEvent,
     };
-    use crate::macos_run_guardian::{spawn_run_guardian, GuardianChild, SpawnedRunGuardian};
+    use crate::macos_interactive::PairControl;
+    use crate::macos_run_guardian::{
+        spawn_pair_member, spawn_run_guardian_with_failure, GuardianChild, SpawnedPairMember,
+        SpawnedRunGuardian,
+    };
+    use crate::macos_stdio::{send_stdio, TargetStdio};
     use crate::platform::{ActiveRuns, Cancellation};
     use crate::protocol::{RunReason, RunResult, RunSpec};
     use crate::tree_guard::{self, ProcessTreeGuard};
@@ -231,6 +236,13 @@ mod imp {
         DirectFallback,
     }
 
+    pub(crate) struct PairedRun {
+        pub control: Arc<PairControl>,
+        pub side: usize,
+        pub stdio: Option<TargetStdio>,
+        pub peer_process_count: u32,
+    }
+
     struct RunController<'a> {
         root: PathBuf,
         spec: &'a RunSpec,
@@ -251,6 +263,14 @@ mod imp {
         direct_result: Option<RunResult>,
         diagnostic: Option<String>,
         group_proven: bool,
+        paired: Option<PairedRun>,
+        stdio_ready: bool,
+        guardian_reader: FrameReader,
+        direct_reader: FrameReader,
+        reported_stdout: u64,
+        pair_member: Option<SpawnedPairMember>,
+        pair_pin: Option<crate::macos_process::PairedMemberPin>,
+        pair_pin_released: bool,
     }
 
     pub fn run_with_guardian(
@@ -258,11 +278,32 @@ mod imp {
         spec: &RunSpec,
         active: &ActiveRuns,
     ) -> Result<RunResult, String> {
+        run_with_guardian_options(root, spec, active, None)
+    }
+
+    pub(crate) fn run_with_guardian_paired(
+        root: &Path,
+        spec: &RunSpec,
+        active: &ActiveRuns,
+        paired: PairedRun,
+    ) -> Result<RunResult, String> {
+        let control = Arc::clone(&paired.control);
+        let side = paired.side;
+        let result = run_with_guardian_options(root, spec, active, Some(paired));
+        if result.is_err() {
+            control.abort(side, CleanupCause::LaunchFailed);
+        }
+        result
+    }
+
+    fn run_with_guardian_options(
+        root: &Path,
+        spec: &RunSpec,
+        active: &ActiveRuns,
+        paired: Option<PairedRun>,
+    ) -> Result<RunResult, String> {
         let generation_guard = tree_guard::acquire_from_environment()
-            .map_err(|error| format!("acquire per-run executor generation guard: {error}"))?
-            .ok_or_else(|| {
-                "guarded macOS run requires an independent executor generation guard".to_string()
-            })?;
+            .map_err(|error| format!("acquire per-run executor generation guard: {error}"))?;
         let generation = std::env::var(tree_guard::GENERATION_ENV)
             .map_err(|_| "guarded macOS run generation is missing".to_string())?;
         let identity = FrameIdentity::new(
@@ -272,15 +313,20 @@ mod imp {
         )
         .map_err(|error| format!("create guardian identity: {error}"))?;
         let trace = FaultTrace::from_environment(&identity.generation)?;
-        let spawned = spawn_run_guardian(root, &identity)
-            .map_err(|error| format!("spawn per-run guardian: {error}"))?;
+        let spawned = spawn_run_guardian_with_failure(root, &identity, || {
+            if let Some(pair) = &paired {
+                pair.control.abort(pair.side, CleanupCause::LaunchFailed);
+            }
+        })
+        .map_err(|error| format!("spawn per-run guardian: {error}"))?;
         let run_guard = Arc::new(generation_guard);
         let cancellation = Arc::new(RunCancellation {
             cancelled: AtomicBool::new(false),
             _generation_guard: Arc::clone(&run_guard),
         });
-        let mut controller = RunController::new(root, spec, active, spawned, trace, cancellation)
-            .map_err(|error| format!("initialize run controller: {error}"))?;
+        let mut controller =
+            RunController::new(root, spec, active, spawned, trace, cancellation, paired)
+                .map_err(|error| format!("initialize run controller: {error}"))?;
         // Keep an executor-owned shared guard even before the active cancellation record is
         // committed. If startup becomes uncertain, fail_closed consumes this stack frame.
         let _run_guard = run_guard;
@@ -297,6 +343,7 @@ mod imp {
             spawned: SpawnedRunGuardian,
             trace: Option<FaultTrace>,
             cancellation: Arc<RunCancellation>,
+            paired: Option<PairedRun>,
         ) -> io::Result<Self> {
             let SpawnedRunGuardian {
                 identity,
@@ -307,8 +354,23 @@ mod imp {
             } = spawned;
             if let Err(error) = protect_stream_from_sigpipe(&control)
                 .and_then(|_| protect_stream_from_sigpipe(&direct))
+                .and_then(|_| control.set_read_timeout(Some(Duration::from_millis(2))))
+                .and_then(|_| direct.set_read_timeout(Some(Duration::from_millis(2))))
+                .and_then(|_| control.set_write_timeout(Some(Duration::from_secs(2))))
+                .and_then(|_| direct.set_write_timeout(Some(Duration::from_secs(2))))
             {
-                let _ = child.terminate_and_wait(GUARDIAN_TERMINATION_TIMEOUT);
+                if let Some(pair) = &paired {
+                    pair.control.abort(pair.side, CleanupCause::LaunchFailed);
+                }
+                if !matches!(
+                    child.terminate_and_wait(GUARDIAN_TERMINATION_TIMEOUT),
+                    Ok(Some(_))
+                ) {
+                    eprintln!("JUDGEDESK_MACOS_RUN_CONTAINMENT_UNCERTAIN controller initialization could not reap guardian; retaining generation guard");
+                    loop {
+                        std::thread::sleep(Duration::from_secs(10));
+                    }
+                }
                 return Err(error);
             }
             Ok(Self {
@@ -331,13 +393,27 @@ mod imp {
                 direct_result: None,
                 diagnostic: None,
                 group_proven: false,
+                paired,
+                stdio_ready: false,
+                guardian_reader: FrameReader::new(),
+                direct_reader: FrameReader::new(),
+                reported_stdout: 0,
+                pair_member: None,
+                pair_pin: None,
+                pair_pin_released: false,
             })
         }
 
         fn run_inner(&mut self) -> io::Result<RunResult> {
-            if let Err(error) =
-                self.send_guardian(&GuardianCommand::start(&self.identity, self.spec.clone()))
-            {
+            let start = match &self.paired {
+                Some(pair) => GuardianCommand::start_paired(
+                    &self.identity,
+                    self.spec.clone(),
+                    pair.peer_process_count,
+                ),
+                None => GuardianCommand::start(&self.identity, self.spec.clone()),
+            };
+            if let Err(error) = self.send_guardian(&start) {
                 self.request_cleanup(
                     None,
                     CleanupCause::InternalError,
@@ -363,6 +439,144 @@ mod imp {
                 return self.preferred_cleanup();
             }
             let anchor = self.state.anchor()?;
+            if self.paired.is_some() {
+                self.pair_member = Some(spawn_pair_member(&self.identity, anchor)?);
+                let member = self
+                    .pair_member
+                    .as_ref()
+                    .ok_or_else(|| invalid("paired member spawn missing"))?
+                    .identity;
+                self.send_guardian(&GuardianCommand::register_pair_pin(
+                    &self.identity,
+                    anchor,
+                    member,
+                ))?;
+                let enrollment_deadline = checked_deadline(HANDSHAKE_TIMEOUT)?;
+                while self.pair_pin.is_none() {
+                    if self.check_pair_cancellation()? || Instant::now() >= enrollment_deadline {
+                        self.request_cleanup(
+                            Some(anchor),
+                            CleanupCause::LaunchFailed,
+                            "paired member enrollment did not complete",
+                        )?;
+                        return self.preferred_cleanup();
+                    }
+                    match self.next_input()? {
+                        ControllerInput::Guardian(event) => {
+                            self.handle_precommit_guardian(event)?
+                        }
+                        ControllerInput::Direct(event) => self.handle_precommit_direct(event)?,
+                        ControllerInput::Tick => {}
+                        _ => {
+                            return self.handle_guardian_loss(
+                                "paired member enrollment authority disappeared",
+                            )
+                        }
+                    }
+                    if self.state.cleanup_cause().is_some() {
+                        return self.preferred_cleanup();
+                    }
+                }
+                let target = self
+                    .paired
+                    .as_mut()
+                    .and_then(|pair| pair.stdio.take())
+                    .ok_or_else(|| invalid("interactive target descriptors are missing"))?;
+                self.send_direct(&SupervisorDirectCommand::install_paired_stdio(
+                    &self.identity,
+                    anchor,
+                    Some(member),
+                ))?;
+                send_stdio(&self.direct, target)?;
+                let deadline = checked_deadline(HANDSHAKE_TIMEOUT)?;
+                while !self.stdio_ready {
+                    if self.check_pair_cancellation()? || Instant::now() >= deadline {
+                        self.request_cleanup(
+                            Some(anchor),
+                            CleanupCause::LaunchFailed,
+                            "interactive stdio installation did not complete",
+                        )?;
+                        return self.preferred_cleanup();
+                    }
+                    match self.next_input()? {
+                        ControllerInput::Direct(event) => self.handle_precommit_direct(event)?,
+                        ControllerInput::Guardian(event) => {
+                            self.handle_precommit_guardian(event)?
+                        }
+                        ControllerInput::Tick => {}
+                        _ => {
+                            self.request_cleanup(
+                                Some(anchor),
+                                CleanupCause::LaunchFailed,
+                                "interactive ownership channel closed",
+                            )?;
+                            return self.preferred_cleanup();
+                        }
+                    }
+                    if self.state.cleanup_cause().is_some() {
+                        return self.preferred_cleanup();
+                    }
+                }
+                if let Some(pair) = &self.paired {
+                    let both_ready = pair.control.mark_ready(pair.side)?;
+                    let fault_pause = crate::fault_trace::InteractiveFaultPause::from_environment(
+                        self.trace.is_some(),
+                    )
+                    .map_err(io::Error::other)?;
+                    if fault_pause
+                        == Some(crate::fault_trace::InteractiveFaultPause::SecondConfigure)
+                    {
+                        self.emit_trace(
+                            FaultTraceEvent::InteractiveParticipantEnrolled,
+                            None,
+                            anchor,
+                        )
+                        .map_err(io::Error::other)?;
+                    }
+                    if both_ready
+                        && fault_pause
+                            == Some(crate::fault_trace::InteractiveFaultPause::PairCommit)
+                    {
+                        self.emit_trace(FaultTraceEvent::InteractivePairEnrolled, None, anchor)
+                            .map_err(io::Error::other)?;
+                    }
+                }
+                while !self
+                    .paired
+                    .as_ref()
+                    .is_some_and(|pair| pair.control.may_release())
+                {
+                    if self.check_pair_cancellation()? {
+                        return self.preferred_cleanup();
+                    }
+                    if Instant::now() >= deadline {
+                        self.request_cleanup(
+                            Some(anchor),
+                            CleanupCause::LaunchFailed,
+                            "interactive peer did not become ready",
+                        )?;
+                        return self.preferred_cleanup();
+                    }
+                    match self.next_input()? {
+                        ControllerInput::Direct(event) => self.handle_precommit_direct(event)?,
+                        ControllerInput::Guardian(event) => {
+                            self.handle_precommit_guardian(event)?
+                        }
+                        ControllerInput::Tick => {}
+                        _ => {
+                            self.request_cleanup(
+                                Some(anchor),
+                                CleanupCause::LaunchFailed,
+                                "interactive ownership channel closed before release",
+                            )?;
+                            return self.preferred_cleanup();
+                        }
+                    }
+                }
+            }
+            if self.check_pair_cancellation()? {
+                return self.preferred_cleanup();
+            }
             if let Err(error) = self.emit_trace(
                 FaultTraceEvent::ExecutorActiveCommitted,
                 Some(self.guardian_identity),
@@ -414,6 +628,9 @@ mod imp {
         fn wait_for_handshake(&mut self) -> io::Result<StageOutcome> {
             let deadline = checked_deadline(HANDSHAKE_TIMEOUT)?;
             loop {
+                if self.check_pair_cancellation()? {
+                    return Ok(StageOutcome::PreferredCleanup);
+                }
                 if self.state.cleanup_cause().is_some() {
                     return Ok(StageOutcome::PreferredCleanup);
                 }
@@ -472,6 +689,9 @@ mod imp {
 
         fn wait_for_cleanup_trigger(&mut self) -> io::Result<StageOutcome> {
             loop {
+                if self.check_pair_cancellation()? {
+                    return Ok(StageOutcome::PreferredCleanup);
+                }
                 if self.cancellation.cancelled.load(Ordering::Acquire) {
                     self.request_cleanup(
                         self.state.anchor,
@@ -527,6 +747,25 @@ mod imp {
 
         fn handle_precommit_guardian(&mut self, event: GuardianEvent) -> io::Result<()> {
             match event {
+                GuardianEvent::PairPinRegistered { anchor, member, .. } => {
+                    self.state.require_anchor(anchor)?;
+                    let expected = self
+                        .pair_member
+                        .as_ref()
+                        .ok_or_else(|| invalid("unexpected paired member grant"))?
+                        .identity;
+                    crate::guardian_protocol::authenticate_process_identity(&member, &expected)?;
+                    if self.pair_pin.is_some() || self.guardian_child.try_wait()?.is_some() {
+                        return Err(invalid("paired member grant has no live owned guardian"));
+                    }
+                    crate::guardian_protocol::authenticate_process_identity(
+                        &self.guardian_identity,
+                        &crate::macos_process::read_process_identity(self.guardian_child.pid())?,
+                    )?;
+                    self.pair_pin =
+                        Some(crate::macos_process::PairedMemberPin::new(member, anchor)?);
+                    Ok(())
+                }
                 GuardianEvent::Started { anchor, .. } => self.state.record_guardian_started(anchor),
                 GuardianEvent::CleanupRequested { anchor, cause, .. } => self.request_cleanup(
                     Some(anchor),
@@ -547,6 +786,20 @@ mod imp {
 
         fn handle_precommit_direct(&mut self, event: SupervisorEvent) -> io::Result<()> {
             match event {
+                SupervisorEvent::StdioReady { anchor, .. } => {
+                    self.state.require_anchor(anchor)?;
+                    if self.paired.is_none()
+                        || self.stdio_ready
+                        || self
+                            .paired
+                            .as_ref()
+                            .is_some_and(|pair| pair.stdio.is_some())
+                    {
+                        return Err(invalid("unexpected interactive stdio acknowledgement"));
+                    }
+                    self.stdio_ready = true;
+                    Ok(())
+                }
                 SupervisorEvent::Registered { anchor, .. } => {
                     self.state.record_direct_registered(anchor)
                 }
@@ -625,6 +878,17 @@ mod imp {
         }
 
         fn preferred_cleanup(&mut self) -> io::Result<RunResult> {
+            if self.paired.is_some() && self.pair_pin.is_none() && !self.state.committed {
+                if let Some(member) = &mut self.pair_member {
+                    if member
+                        .child
+                        .terminate_and_wait(GUARDIAN_TERMINATION_TIMEOUT)?
+                        .is_none()
+                    {
+                        return self.fail_closed("cannot retire pre-grant owned member");
+                    }
+                }
+            }
             let cause = self
                 .state
                 .cleanup_cause()
@@ -709,6 +973,23 @@ mod imp {
 
         fn handle_cleanup_guardian(&mut self, event: GuardianEvent) -> io::Result<()> {
             match event {
+                GuardianEvent::PairQuiescent { anchor, member, .. } => {
+                    self.state.require_anchor(anchor)?;
+                    let pin = self
+                        .pair_pin
+                        .as_mut()
+                        .ok_or_else(|| invalid("quiescent grant lacks owned member pin"))?;
+                    crate::guardian_protocol::authenticate_process_identity(
+                        &member,
+                        &pin.identity(),
+                    )?;
+                    if self.pair_pin_released {
+                        return Err(invalid("duplicate paired quiescent grant"));
+                    }
+                    pin.reap_after_quiescence(&[anchor])?;
+                    self.pair_pin_released = true;
+                    Ok(())
+                }
                 GuardianEvent::Started { anchor, .. } if !self.state.guardian_started => {
                     self.state.record_guardian_started(anchor)
                 }
@@ -775,6 +1056,11 @@ mod imp {
         }
 
         fn finish_preferred_result(&mut self) -> io::Result<RunResult> {
+            if self.pair_pin.is_some() && !self.pair_pin_released {
+                return Err(invalid(
+                    "guardian result arrived before paired owned pin release proof",
+                ));
+            }
             let result = self
                 .guardian_result
                 .take()
@@ -789,6 +1075,10 @@ mod imp {
         }
 
         fn handle_guardian_loss_inner(&mut self, reason: &str) -> io::Result<RunResult> {
+            if let Some(pair) = &self.paired {
+                pair.control
+                    .abort(pair.side, CleanupCause::GuardianDisconnected);
+            }
             self.append_diagnostic(format!("executor observed guardian loss: {reason}"));
             self.state.request_cleanup(
                 self.state.anchor,
@@ -820,7 +1110,90 @@ mod imp {
                 ));
             }
 
-            // Once a supervisor anchor has existed, the executor cannot safely signal its
+            if self.paired.is_some() {
+                let anchor = self.state.anchor()?;
+                self.emit_trace(FaultTraceEvent::ExecutorFallbackDrainStarted, None, anchor)
+                    .map_err(io::Error::other)?;
+                if let Some(pin) = &mut self.pair_pin {
+                    if !self.pair_pin_released {
+                        for signal in [libc::SIGSTOP, libc::SIGKILL] {
+                            if let Err(signal_error) = pin.signal_group(signal) {
+                                // Darwin can reject a signal to a group containing only our
+                                // terminal owned member. The error itself grants no drain
+                                // proof: independently require physical quiescence before
+                                // consuming that member's wait status.
+                                match pin.reap_after_quiescence(&[]) {
+                                    Ok(_) => {
+                                        self.pair_pin_released = true;
+                                        break;
+                                    }
+                                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                                        return Err(signal_error);
+                                    }
+                                    Err(error) => {
+                                        return Err(io::Error::new(
+                                            error.kind(),
+                                            format!("paired group signal failed: {signal_error}; quiescence failed: {error}"),
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                        while !self.pair_pin_released {
+                            match pin.reap_after_quiescence(&[]) {
+                                Ok(_) => {
+                                    self.pair_pin_released = true;
+                                    break;
+                                }
+                                Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                                    std::thread::sleep(Duration::from_millis(2))
+                                }
+                                Err(error) => return Err(error),
+                            }
+                        }
+                    }
+                } else {
+                    if self.state.committed {
+                        return Err(invalid("committed pair lost its member pin"));
+                    }
+                    if let Some(member) = &mut self.pair_member {
+                        let _ = member.control.shutdown(std::net::Shutdown::Both);
+                        if member
+                            .child
+                            .terminate_and_wait(GUARDIAN_TERMINATION_TIMEOUT)?
+                            .is_none()
+                        {
+                            return Err(invalid("precommit member retirement did not finish"));
+                        }
+                    }
+                    // No commit was ever sent before enrollment. Only the trusted supervisor
+                    // can remain; closing both source-bound controllers lets it retire without
+                    // untrusted release. This branch grants no numeric group authority.
+                    self.direct.shutdown(std::net::Shutdown::Both)?;
+                    self.direct_open = false;
+                }
+                let mut observations = 0_u8;
+                while observations < 2 {
+                    let snapshot = crate::macos_process::inventory_live_process_group(anchor.pgid)?;
+                    if snapshot.members.is_empty() && snapshot.zombie_pids.is_empty() {
+                        observations += 1;
+                    } else {
+                        observations = 0;
+                        std::thread::sleep(Duration::from_millis(2));
+                    }
+                }
+                self.group_proven = true;
+                self.emit_trace(FaultTraceEvent::GroupDrained, None, anchor)
+                    .map_err(io::Error::other)?;
+                let result = crate::platform::failure(
+                    self.spec,
+                    RunReason::InternalError,
+                    format!("paired guardian lost; owned containment drained: {reason}"),
+                );
+                return self.finish_after_group_proof(result);
+            }
+
+            // Once a single-run supervisor anchor has existed, the executor cannot safely signal its
             // numeric PID or PGID after the guardian dies. The executor is not the supervisor's
             // direct parent, the direct socket is not a pidfd, and launchd may reap an orphan
             // between identity verification and kill(2). Retain the active record and generation
@@ -910,6 +1283,9 @@ mod imp {
                     Err(io::Error::new(error.kind(), message))
                 }
                 Err(error) => {
+                    if let Some(pair) = &self.paired {
+                        pair.control.abort(pair.side, CleanupCause::InternalError);
+                    }
                     self.append_diagnostic(format!("controller state machine failed: {error}"));
                     if let Err(cleanup_error) = self
                         .state
@@ -934,6 +1310,7 @@ mod imp {
         }
 
         fn next_input(&mut self) -> io::Result<ControllerInput> {
+            self.report_pipe_progress()?;
             let ready = poll_controller_streams(
                 self.guardian_open.then_some(&self.guardian_control),
                 self.direct_open.then_some(&self.direct),
@@ -942,13 +1319,13 @@ mod imp {
             // Consume authenticated channel data before observing child exit. This preserves
             // a final Prepared frame that was already queued when the guardian became a zombie.
             if ready.guardian {
-                let event = read_authenticated_frame::<_, GuardianEvent>(
-                    &mut &self.guardian_control,
-                    &self.identity,
-                )?;
+                let event = self
+                    .guardian_reader
+                    .receive::<_, GuardianEvent>(&mut &self.guardian_control, &self.identity)?;
                 return Ok(match event {
-                    Some(event) => ControllerInput::Guardian(event),
-                    None => {
+                    FrameRead::Frame(event) => ControllerInput::Guardian(event),
+                    FrameRead::Pending => ControllerInput::Tick,
+                    FrameRead::Eof => {
                         self.guardian_open = false;
                         if self.guardian_result.is_some() {
                             // Prepared is queued before the guardian drops its only executor
@@ -966,13 +1343,13 @@ mod imp {
                 });
             }
             if ready.direct {
-                let event = read_authenticated_frame::<_, SupervisorEvent>(
-                    &mut &self.direct,
-                    &self.identity,
-                )?;
+                let event = self
+                    .direct_reader
+                    .receive::<_, SupervisorEvent>(&mut &self.direct, &self.identity)?;
                 return Ok(match event {
-                    Some(event) => ControllerInput::Direct(event),
-                    None => {
+                    FrameRead::Frame(event) => ControllerInput::Direct(event),
+                    FrameRead::Pending => ControllerInput::Tick,
+                    FrameRead::Eof => {
                         self.direct_open = false;
                         ControllerInput::DirectEof
                     }
@@ -1023,8 +1400,62 @@ mod imp {
             diagnostic: impl Into<String>,
         ) -> io::Result<()> {
             self.state.request_cleanup(anchor, cause)?;
+            if cause != CleanupCause::TargetExited {
+                if let Some(pair) = &self.paired {
+                    pair.control.abort(pair.side, cause);
+                }
+            }
             self.append_diagnostic(diagnostic);
+            self.report_pipe_progress()?;
             Ok(())
+        }
+
+        fn report_pipe_progress(&mut self) -> io::Result<()> {
+            if self.state.target.is_none()
+                || !self.direct_open
+                || self.direct_result.is_some()
+                || self.guardian_result.is_some()
+            {
+                return Ok(());
+            }
+            let bytes = self
+                .paired
+                .as_ref()
+                .map(|pair| pair.control.stdout_bytes(pair.side))
+                .unwrap_or(0);
+            if bytes > self.reported_stdout {
+                self.send_direct(&SupervisorDirectCommand::output_progress(
+                    &self.identity,
+                    self.state.anchor()?,
+                    bytes,
+                ))?;
+                self.reported_stdout = bytes;
+            }
+            Ok(())
+        }
+
+        fn check_pair_cancellation(&mut self) -> io::Result<bool> {
+            let cause = self
+                .paired
+                .as_ref()
+                .and_then(|pair| pair.control.cleanup_cause(pair.side));
+            if let Some(cause) = cause {
+                self.request_cleanup(
+                    self.state.anchor,
+                    cause,
+                    "interactive pair cleanup requested",
+                )?;
+                return Ok(true);
+            }
+            if self.cancellation.cancelled.load(Ordering::Acquire) {
+                self.request_cleanup(
+                    self.state.anchor,
+                    CleanupCause::Cancelled,
+                    "run cancellation requested",
+                )?;
+                return Ok(true);
+            }
+            Ok(false)
         }
 
         fn insert_active_record(&mut self) -> Result<(), String> {
@@ -1173,6 +1604,9 @@ mod imp {
         }
 
         fn fail_closed<T>(&mut self, diagnostic: &str) -> io::Result<T> {
+            if let Some(pair) = &self.paired {
+                pair.control.abort(pair.side, CleanupCause::InternalError);
+            }
             self.append_diagnostic(diagnostic);
             eprintln!(
                 "JUDGEDESK_MACOS_RUN_CONTAINMENT_UNCERTAIN runId={}; retaining active record and generation guard: {}",
@@ -1288,6 +1722,8 @@ mod imp {
 
 #[cfg(target_os = "macos")]
 pub use imp::run_with_guardian;
+#[cfg(target_os = "macos")]
+pub(crate) use imp::{run_with_guardian_paired, PairedRun};
 
 #[cfg(not(target_os = "macos"))]
 pub fn run_with_guardian(

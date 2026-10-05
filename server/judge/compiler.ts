@@ -55,6 +55,7 @@ import {
   buildManagedPascalSupportArgs,
   buildNativeCompilationRecipe,
   isNativeCompiledLanguage,
+  NATIVE_COMPILATION_TIMEOUT_MS,
   resolveJavaSubmissionStaging,
 } from "./language-adapters.js";
 import type { PreparedSubmissionProgram } from "./prepared-program.js";
@@ -62,7 +63,7 @@ import { getPchDirectoryForToolchain } from "./universal-pch.js";
 
 declare const __JUDGEDESK_TESTLIB__: string;
 
-export const COMPILE_TIMEOUT_MS = 15_000;
+export const COMPILE_TIMEOUT_MS = NATIVE_COMPILATION_TIMEOUT_MS;
 export const MAX_GENERATED_FILE_BYTES = 32 * 1024 * 1024;
 const MAX_COMPILER_DIAGNOSTIC_BYTES = 256 * 1024;
 const gccProgramDirectoryCache = new Map<string, string>();
@@ -99,6 +100,11 @@ const DEFAULT_COMPILE_LIMITS: CompileLimits = {
   timeoutMs: COMPILE_TIMEOUT_MS,
   maxGeneratedFileBytes: MAX_GENERATED_FILE_BYTES,
 };
+
+// This compiles JudgeDesk-owned source before the first managed-C submission.
+// Student code retains COMPILE_TIMEOUT_MS in the subsequent production call.
+const MANAGED_C_COMPILER_WARMUP_TIMEOUT_MS = 60_000;
+const managedCCompilerWarmups = new Map<string, Promise<void>>();
 
 interface CompileSubmissionOptions {
   language: SubmissionLanguage;
@@ -256,6 +262,9 @@ export async function compileSubmission(options: CompileSubmissionOptions): Prom
       throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
     }
     const compilerPath = toolchain.executionPath || toolchain.executablePath;
+    if (requiresManagedCCompilerWarmup(process.platform, language, toolchain)) {
+      await ensureManagedCCompilerWarmup(toolchain, compilerPath);
+    }
     const limits = {
       timeoutMs: recipe.timeoutMs,
       maxGeneratedFileBytes: recipe.maxGeneratedFileBytes,
@@ -775,6 +784,75 @@ export function isWindowsNativeCompilerExecutionReady(
     && !!toolchain.certifiedRoles.includes("checker");
 }
 
+export function requiresManagedCCompilerWarmup(
+  platform: NodeJS.Platform,
+  language: SubmissionLanguage,
+  toolchain: Pick<ResolvedToolchain, "kind" | "source" | "ready">,
+): boolean {
+  return platform === "win32"
+    && language === "c"
+    && toolchain.kind === "c"
+    && toolchain.source === "managed"
+    && toolchain.ready;
+}
+
+async function ensureManagedCCompilerWarmup(
+  toolchain: ResolvedToolchain,
+  compilerPath: string,
+): Promise<void> {
+  const key = [
+    toolchain.packageDigest ?? toolchain.version,
+    compilerPath,
+  ].join(":");
+  let pending = managedCCompilerWarmups.get(key);
+  if (!pending) {
+    pending = warmManagedCCompiler(toolchain, compilerPath);
+    managedCCompilerWarmups.set(key, pending);
+    void pending.catch(() => {
+      if (managedCCompilerWarmups.get(key) === pending) {
+        managedCCompilerWarmups.delete(key);
+      }
+    });
+  }
+  await pending;
+}
+
+async function warmManagedCCompiler(
+  toolchain: ResolvedToolchain,
+  compilerPath: string,
+): Promise<void> {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-managed-c-warmup-"));
+  const sourcePath = path.join(directory, "warmup.c");
+  const outputPath = path.join(directory, "warmup.out");
+  fs.writeFileSync(sourcePath, "int main(void) { return 0; }\n", "utf8");
+  try {
+    const recipe = buildNativeCompilationRecipe(
+      "c",
+      os.platform(),
+      sourcePath,
+      outputPath,
+    );
+    await runCompilerPipelineWithLimits(
+      compilerPath,
+      recipe.args,
+      directory,
+      outputPath,
+      undefined,
+      {
+        timeoutMs: MANAGED_C_COMPILER_WARMUP_TIMEOUT_MS,
+        maxGeneratedFileBytes: recipe.maxGeneratedFileBytes,
+        maxWorkspaceWriteBytes: recipe.maxWorkspaceWriteBytes,
+        maxCreatedFiles: recipe.maxCreatedFiles,
+      },
+      "c",
+      recipe.environment,
+      toolchain,
+    );
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+}
+
 export function buildSubmissionCompilerArgs(
   platform: NodeJS.Platform,
   sourcePath: string,
@@ -801,7 +879,7 @@ export async function runCompilerWithLimits(
   kind: ToolchainKind = "cpp",
   adapterEnvironment: Readonly<Record<string, string>> = {},
   pinnedToolchain?: Readonly<ResolvedToolchain>,
-): Promise<void> {
+): Promise<ExecutorRunResult> {
   const workspace = await createExecutorWorkspace();
   const runId = `compile_${crypto.randomUUID().replaceAll("-", "_")}`;
   try {
@@ -895,6 +973,7 @@ export async function runCompilerWithLimits(
     if (!fs.existsSync(stagedOutput)) throw new Error(diagnostics.trim() || "Compilation did not produce an output file.");
     if (fs.statSync(stagedOutput).size > limits.maxGeneratedFileBytes) throw new Error("GENERATED_FILE_TOO_LARGE");
     fs.copyFileSync(stagedOutput, outputPath);
+    return result;
   } finally {
     detachExecutorRun(jobId, runId);
     workspace.dispose();
@@ -911,9 +990,10 @@ export async function runCompilerPipelineWithLimits(
   kind: Extract<ToolchainKind, "cpp" | "c"> = "cpp",
   adapterEnvironment: Readonly<Record<string, string>> = {},
   pinnedToolchain?: Readonly<ResolvedToolchain>,
+  runPhase: typeof runCompilerWithLimits = runCompilerWithLimits,
 ): Promise<void> {
   if (process.platform !== "darwin" && process.platform !== "win32") {
-    await runCompilerWithLimits(
+    await runPhase(
       compilerPath,
       args,
       cwd,
@@ -929,9 +1009,8 @@ export async function runCompilerPipelineWithLimits(
 
   const objectPath = `${outputPath}.${crypto.randomUUID().slice(0, 8)}.o`;
   const phases = buildCompilerPhases(args, outputPath, objectPath);
-  const started = process.hrtime.bigint();
   try {
-    await runCompilerWithLimits(
+    const compilation = await runPhase(
       compilerPath,
       phases.compile,
       cwd,
@@ -942,9 +1021,8 @@ export async function runCompilerPipelineWithLimits(
       adapterEnvironment,
       pinnedToolchain,
     );
-    const elapsed = elapsedMs(started);
-    const remaining = Math.max(1, limits.timeoutMs - Math.ceil(elapsed));
-    await runCompilerWithLimits(
+    const remaining = remainingCompilerTimeMs(limits.timeoutMs, compilation);
+    await runPhase(
       compilerPath,
       phases.link,
       cwd,
@@ -958,6 +1036,20 @@ export async function runCompilerPipelineWithLimits(
   } finally {
     fs.rmSync(objectPath, { force: true });
   }
+}
+
+export function remainingCompilerTimeMs(
+  timeoutMs: number,
+  result: Pick<ExecutorRunResult, "wallTimeUs">,
+): number {
+  if (!Number.isSafeInteger(result.wallTimeUs) || result.wallTimeUs < 0) {
+    throw new Error("COMPILER_TIMING_INVALID");
+  }
+  // Import, staging and sandbox setup operate on owned inputs. Only native
+  // compiler process time consumes the shared frontend/linker watchdog.
+  const remaining = timeoutMs - Math.ceil(result.wallTimeUs / 1_000);
+  if (remaining <= 0) throw new Error("COMPILER_TIMEOUT");
+  return remaining;
 }
 
 export function buildCompilerPhases(

@@ -102,6 +102,28 @@ Simplification has a failure mode: over-simplification. Watch for these traps:
 
 Default to simplifying recently modified code. Avoid drive-by refactors of unrelated code unless explicitly asked to broaden scope. Unscoped simplification creates noise in diffs and risks unintended regressions.
 
+### 6. The Implementation Decision Ladder (Look Before You Write)
+
+Before writing new helper functions, types, formatting logic, or adding dependencies, stop at the first rung that satisfies the requirement:
+
+```
+1. Does this need to exist at all? (YAGNI)
+   → Speculative feature or premature generalization? Skip it.
+2. Already in this codebase? (Reuse over Rewrite)
+   → Search `shared/`, `server/judge/`, `src/utils/`, or `native-executor/`.
+   → Reuse existing primitives.
+   → Respect tier boundaries: cross-tier logic belongs in `shared/`; never leak desktop/server internals into the UI.
+3. Language Standard Library / Platform Built-in?
+   → Node.js built-ins (`node:fs/promises`, `node:path`, `node:crypto`)
+   → Web standard APIs (`URL`, `URLSearchParams`, `crypto.randomUUID()`, `structuredClone`)
+   → Native browser elements (`<input type="date">`, `<dialog>`) instead of heavy external UI widgets
+   → Rust `std` library (`std::fs`, `std::path`, `std::sync`, etc.)
+4. Already-installed dependency in workspace?
+   → Use existing packages in `package.json` or crates in `Cargo.toml`. Never add a new dependency without explicit approval.
+   → Never hand-roll insecure ad-hoc security or sandbox primitives to avoid a crate.
+5. Only then: Write the cleanest, minimal code that works.
+```
+
 ## The Simplification Process
 
 ### Step 1: Understand Before Touching (Chesterton's Fence)

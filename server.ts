@@ -14,6 +14,7 @@ import { startInitialToolchainDiscovery } from "./server/toolchains/discovery.js
 import { startBackgroundJudgePrewarm } from "./server/judge/background-prewarm.js";
 import { migrateLegacyExecutionPolicy } from "./server/toolchains/migration.js";
 import { serverLifecycle } from "./server/platform/server-lifecycle.js";
+import { BUILD_METADATA } from "./server/build-metadata.js";
 
 startParentWatchdog(process.env.JUDGEDESK_PARENT_PID, async () => {
   console.error("[Tauri Shell] Parent process ended; shutting down backend sidecars.");
@@ -113,6 +114,7 @@ async function startServer() {
   }
 
   app.listen(SERVER_PORT, "127.0.0.1", () => {
+    console.log(`JUDGEDESK_BUILD_IDENTITY=${JSON.stringify(BUILD_METADATA)}`);
     console.log(`[Online Judge Server] Live on http://127.0.0.1:${SERVER_PORT}`);
     console.log(`[Performance] Backend ready in ${(performance.now() - serverStartupStarted).toFixed(1)} ms`);
   });

@@ -8,7 +8,13 @@ use std::path::PathBuf;
 
 pub const MACOS_RUN_GUARDIAN_ARGUMENT: &str = "--judgedesk-macos-run-guardian";
 pub const MACOS_RUN_SUPERVISOR_ARGUMENT: &str = "--judgedesk-macos-run-supervisor";
-pub const GUARDIAN_PROTOCOL_MAGIC: &str = "JUDGEDESK_RUN_GUARDIAN/2";
+pub const MACOS_PAIR_MEMBER_ARGUMENT: &str = "--judgedesk-macos-pair-member";
+pub const PAIRED_SUPERVISOR_ENV: &str = "JUDGEDESK_PAIRED_SUPERVISOR";
+pub const PAIR_MEMBER_GROUP_ENV: &str = "JUDGEDESK_PAIR_MEMBER_GROUP";
+pub const GUARDIAN_PROTOCOL_MAGIC: &str = concat!(
+    "JUDGEDESK_RUN_GUARDIAN/3/",
+    env!("JUDGEDESK_NATIVE_BUILD_FINGERPRINT")
+);
 
 pub const GUARDIAN_TOKEN_ENV: &str = "JUDGEDESK_RUN_GUARDIAN_TOKEN";
 pub const GUARDIAN_GENERATION_ENV: &str = "JUDGEDESK_RUN_GUARDIAN_GENERATION";
@@ -143,6 +149,16 @@ pub enum CleanupCause {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "type", deny_unknown_fields)]
 pub enum GuardianCommand {
+    #[serde(rename = "guardian_register_pair_pin")]
+    RegisterPairPin {
+        protocol: String,
+        token: String,
+        generation: String,
+        #[serde(rename = "runId")]
+        run_id: String,
+        anchor: ProcessIdentity,
+        member: ProcessIdentity,
+    },
     #[serde(rename = "guardian_start")]
     Start {
         protocol: String,
@@ -151,6 +167,8 @@ pub enum GuardianCommand {
         #[serde(rename = "runId")]
         run_id: String,
         spec: Box<RunSpec>,
+        #[serde(default, rename = "peerProcessCount")]
+        peer_process_count: u32,
     },
     #[serde(rename = "guardian_commit")]
     Commit {
@@ -173,7 +191,26 @@ pub enum GuardianCommand {
 }
 
 impl GuardianCommand {
+    pub fn register_pair_pin(
+        identity: &FrameIdentity,
+        anchor: ProcessIdentity,
+        member: ProcessIdentity,
+    ) -> Self {
+        let identity = identity.clone();
+        Self::RegisterPairPin {
+            protocol: identity.protocol,
+            token: identity.token,
+            generation: identity.generation,
+            run_id: identity.run_id,
+            anchor,
+            member,
+        }
+    }
     pub fn start(identity: &FrameIdentity, spec: RunSpec) -> Self {
+        Self::start_paired(identity, spec, 0)
+    }
+
+    pub fn start_paired(identity: &FrameIdentity, spec: RunSpec, peer_process_count: u32) -> Self {
         let identity = identity.clone();
         Self::Start {
             protocol: identity.protocol,
@@ -181,6 +218,7 @@ impl GuardianCommand {
             generation: identity.generation,
             run_id: identity.run_id,
             spec: Box::new(spec),
+            peer_process_count,
         }
     }
 
@@ -209,6 +247,7 @@ impl GuardianCommand {
     pub const fn kind(&self) -> &'static str {
         match self {
             Self::Start { .. } => "guardian_start",
+            Self::RegisterPairPin { .. } => "guardian_register_pair_pin",
             Self::Commit { .. } => "guardian_commit",
             Self::Cancel { .. } => "guardian_cancel",
         }
@@ -224,6 +263,26 @@ impl fmt::Debug for GuardianCommand {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "type", deny_unknown_fields)]
 pub enum GuardianEvent {
+    #[serde(rename = "guardian_pair_pin_registered")]
+    PairPinRegistered {
+        protocol: String,
+        token: String,
+        generation: String,
+        #[serde(rename = "runId")]
+        run_id: String,
+        anchor: ProcessIdentity,
+        member: ProcessIdentity,
+    },
+    #[serde(rename = "guardian_pair_quiescent")]
+    PairQuiescent {
+        protocol: String,
+        token: String,
+        generation: String,
+        #[serde(rename = "runId")]
+        run_id: String,
+        anchor: ProcessIdentity,
+        member: ProcessIdentity,
+    },
     #[serde(rename = "guardian_ready")]
     Ready {
         protocol: String,
@@ -285,6 +344,36 @@ pub enum GuardianEvent {
 }
 
 impl GuardianEvent {
+    pub fn pair_pin_registered(
+        identity: &FrameIdentity,
+        anchor: ProcessIdentity,
+        member: ProcessIdentity,
+    ) -> Self {
+        let identity = identity.clone();
+        Self::PairPinRegistered {
+            protocol: identity.protocol,
+            token: identity.token,
+            generation: identity.generation,
+            run_id: identity.run_id,
+            anchor,
+            member,
+        }
+    }
+    pub fn pair_quiescent(
+        identity: &FrameIdentity,
+        anchor: ProcessIdentity,
+        member: ProcessIdentity,
+    ) -> Self {
+        let identity = identity.clone();
+        Self::PairQuiescent {
+            protocol: identity.protocol,
+            token: identity.token,
+            generation: identity.generation,
+            run_id: identity.run_id,
+            anchor,
+            member,
+        }
+    }
     pub fn ready(identity: &FrameIdentity, guardian: ProcessIdentity) -> Self {
         let identity = identity.clone();
         Self::Ready {
@@ -370,6 +459,8 @@ impl GuardianEvent {
     pub const fn kind(&self) -> &'static str {
         match self {
             Self::Ready { .. } => "guardian_ready",
+            Self::PairPinRegistered { .. } => "guardian_pair_pin_registered",
+            Self::PairQuiescent { .. } => "guardian_pair_quiescent",
             Self::Started { .. } => "guardian_started",
             Self::TargetStarted { .. } => "guardian_target_started",
             Self::CleanupRequested { .. } => "guardian_cleanup_requested",
@@ -511,6 +602,28 @@ impl fmt::Debug for SupervisorGuardianCommand {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "type", deny_unknown_fields)]
 pub enum SupervisorDirectCommand {
+    #[serde(rename = "supervisor_direct_output_progress")]
+    OutputProgress {
+        protocol: String,
+        token: String,
+        generation: String,
+        #[serde(rename = "runId")]
+        run_id: String,
+        anchor: ProcessIdentity,
+        #[serde(rename = "stdoutBytes")]
+        stdout_bytes: u64,
+    },
+    #[serde(rename = "supervisor_direct_install_stdio")]
+    InstallStdio {
+        protocol: String,
+        token: String,
+        generation: String,
+        #[serde(rename = "runId")]
+        run_id: String,
+        anchor: ProcessIdentity,
+        #[serde(default, rename = "pairMember")]
+        pair_member: Option<ProcessIdentity>,
+    },
     #[serde(rename = "supervisor_direct_commit")]
     Commit {
         protocol: String,
@@ -533,6 +646,42 @@ pub enum SupervisorDirectCommand {
 }
 
 impl SupervisorDirectCommand {
+    pub fn output_progress(
+        identity: &FrameIdentity,
+        anchor: ProcessIdentity,
+        stdout_bytes: u64,
+    ) -> Self {
+        let identity = identity.clone();
+        Self::OutputProgress {
+            protocol: identity.protocol,
+            token: identity.token,
+            generation: identity.generation,
+            run_id: identity.run_id,
+            anchor,
+            stdout_bytes,
+        }
+    }
+
+    pub fn install_stdio(identity: &FrameIdentity, anchor: ProcessIdentity) -> Self {
+        Self::install_paired_stdio(identity, anchor, None)
+    }
+
+    pub fn install_paired_stdio(
+        identity: &FrameIdentity,
+        anchor: ProcessIdentity,
+        pair_member: Option<ProcessIdentity>,
+    ) -> Self {
+        let identity = identity.clone();
+        Self::InstallStdio {
+            protocol: identity.protocol,
+            token: identity.token,
+            generation: identity.generation,
+            run_id: identity.run_id,
+            anchor,
+            pair_member,
+        }
+    }
+
     pub fn commit(identity: &FrameIdentity, anchor: ProcessIdentity) -> Self {
         let identity = identity.clone();
         Self::Commit {
@@ -558,6 +707,8 @@ impl SupervisorDirectCommand {
 
     pub const fn kind(&self) -> &'static str {
         match self {
+            Self::OutputProgress { .. } => "supervisor_direct_output_progress",
+            Self::InstallStdio { .. } => "supervisor_direct_install_stdio",
             Self::Commit { .. } => "supervisor_direct_commit",
             Self::Cleanup { .. } => "supervisor_direct_cleanup",
         }
@@ -573,6 +724,15 @@ impl fmt::Debug for SupervisorDirectCommand {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "type", deny_unknown_fields)]
 pub enum SupervisorEvent {
+    #[serde(rename = "supervisor_stdio_ready")]
+    StdioReady {
+        protocol: String,
+        token: String,
+        generation: String,
+        #[serde(rename = "runId")]
+        run_id: String,
+        anchor: ProcessIdentity,
+    },
     #[serde(rename = "supervisor_registered")]
     Registered {
         protocol: String,
@@ -635,6 +795,17 @@ pub enum SupervisorEvent {
 }
 
 impl SupervisorEvent {
+    pub fn stdio_ready(identity: &FrameIdentity, anchor: ProcessIdentity) -> Self {
+        let identity = identity.clone();
+        Self::StdioReady {
+            protocol: identity.protocol,
+            token: identity.token,
+            generation: identity.generation,
+            run_id: identity.run_id,
+            anchor,
+        }
+    }
+
     pub fn registered(identity: &FrameIdentity, anchor: ProcessIdentity) -> Self {
         let identity = identity.clone();
         Self::Registered {
@@ -721,6 +892,7 @@ impl SupervisorEvent {
 
     pub const fn kind(&self) -> &'static str {
         match self {
+            Self::StdioReady { .. } => "supervisor_stdio_ready",
             Self::Registered { .. } => "supervisor_registered",
             Self::Ready { .. } => "supervisor_ready",
             Self::TargetStarted { .. } => "supervisor_target_started",
@@ -779,11 +951,13 @@ macro_rules! authenticated_accessors {
     };
 }
 
-authenticated_accessors!(GuardianCommand, [Start, Commit, Cancel]);
+authenticated_accessors!(GuardianCommand, [Start, Commit, Cancel, RegisterPairPin]);
 authenticated_accessors!(
     GuardianEvent,
     [
         Ready,
+        PairPinRegistered,
+        PairQuiescent,
         Started,
         TargetStarted,
         CleanupRequested,
@@ -792,10 +966,14 @@ authenticated_accessors!(
     ]
 );
 authenticated_accessors!(SupervisorGuardianCommand, [Configure, Go, Cleanup]);
-authenticated_accessors!(SupervisorDirectCommand, [Commit, Cleanup]);
+authenticated_accessors!(
+    SupervisorDirectCommand,
+    [OutputProgress, InstallStdio, Commit, Cleanup]
+);
 authenticated_accessors!(
     SupervisorEvent,
     [
+        StdioReady,
         Registered,
         Ready,
         TargetStarted,
@@ -816,8 +994,24 @@ fn validate_payload(frame: &impl PayloadValidation) -> io::Result<()> {
 impl PayloadValidation for GuardianCommand {
     fn validate_payload_inner(&self) -> io::Result<()> {
         match self {
-            Self::Start { run_id, spec, .. } => validate_result_run_id(&spec.run_id, run_id),
+            Self::Start {
+                run_id,
+                spec,
+                peer_process_count,
+                ..
+            } => {
+                validate_result_run_id(&spec.run_id, run_id)?;
+                if *peer_process_count > 32 {
+                    return Err(invalid_data(
+                        "guardian paired peer process reserve exceeds 32",
+                    ));
+                }
+                Ok(())
+            }
             Self::Commit { anchor, .. } => validate_supervisor_anchor(anchor),
+            Self::RegisterPairPin { anchor, member, .. } => {
+                validate_target_identity(member, anchor)
+            }
             Self::Cancel { .. } => Ok(()),
         }
     }
@@ -827,6 +1021,10 @@ impl PayloadValidation for GuardianEvent {
     fn validate_payload_inner(&self) -> io::Result<()> {
         match self {
             Self::Ready { guardian, .. } => guardian.validate(),
+            Self::PairPinRegistered { anchor, member, .. }
+            | Self::PairQuiescent { anchor, member, .. } => {
+                validate_target_identity(member, anchor)
+            }
             Self::Started { anchor, .. } | Self::CleanupRequested { anchor, .. } => {
                 validate_supervisor_anchor(anchor)
             }
@@ -859,8 +1057,19 @@ impl PayloadValidation for SupervisorGuardianCommand {
 impl PayloadValidation for SupervisorDirectCommand {
     fn validate_payload_inner(&self) -> io::Result<()> {
         match self {
-            Self::Commit { anchor, .. } | Self::Cleanup { anchor, .. } => {
-                validate_supervisor_anchor(anchor)
+            Self::OutputProgress { anchor, .. }
+            | Self::Commit { anchor, .. }
+            | Self::Cleanup { anchor, .. } => validate_supervisor_anchor(anchor),
+            Self::InstallStdio {
+                anchor,
+                pair_member,
+                ..
+            } => {
+                validate_supervisor_anchor(anchor)?;
+                if let Some(member) = pair_member {
+                    validate_target_identity(member, anchor)?;
+                }
+                Ok(())
             }
         }
     }
@@ -869,7 +1078,8 @@ impl PayloadValidation for SupervisorDirectCommand {
 impl PayloadValidation for SupervisorEvent {
     fn validate_payload_inner(&self) -> io::Result<()> {
         match self {
-            Self::Registered { anchor, .. }
+            Self::StdioReady { anchor, .. }
+            | Self::Registered { anchor, .. }
             | Self::Ready { anchor, .. }
             | Self::CleanupRequested { anchor, .. } => validate_supervisor_anchor(anchor),
             Self::TargetStarted { anchor, target, .. } => validate_target_identity(target, anchor),
@@ -932,6 +1142,8 @@ pub struct SupervisorLaunchState {
     anchor: Option<ProcessIdentity>,
     registered: bool,
     ready: bool,
+    stdio_installed: bool,
+    native_pipe_stdout_bytes: u64,
     direct_commit: bool,
     guardian_go: bool,
     target: Option<ProcessIdentity>,
@@ -969,6 +1181,52 @@ impl SupervisorLaunchState {
         }
         self.direct_commit = true;
         Ok(())
+    }
+
+    pub fn record_stdio_installed(&mut self, anchor: ProcessIdentity) -> io::Result<()> {
+        self.require_ready_anchor(&anchor)?;
+        if !self.may_install_stdio() {
+            return Err(invalid_data(
+                "duplicate or out-of-order supervisor stdio installation",
+            ));
+        }
+        self.stdio_installed = true;
+        Ok(())
+    }
+
+    pub fn record_output_progress(
+        &mut self,
+        anchor: ProcessIdentity,
+        stdout_bytes: u64,
+    ) -> io::Result<()> {
+        self.require_ready_anchor(&anchor)?;
+        if !self.stdio_installed
+            || !self.direct_commit
+            || !self.guardian_go
+            || self.target.is_none()
+            || self.prepared
+        {
+            return Err(invalid_data(
+                "pipe output progress arrived outside a started stdio target",
+            ));
+        }
+        if stdout_bytes < self.native_pipe_stdout_bytes {
+            return Err(invalid_data("pipe output progress decreased"));
+        }
+        self.native_pipe_stdout_bytes = stdout_bytes;
+        Ok(())
+    }
+
+    pub const fn stdio_installed(&self) -> bool {
+        self.stdio_installed
+    }
+
+    pub const fn native_pipe_stdout_bytes(&self) -> Option<u64> {
+        if self.stdio_installed {
+            Some(self.native_pipe_stdout_bytes)
+        } else {
+            None
+        }
     }
 
     pub fn record_guardian_go(&mut self, anchor: ProcessIdentity) -> io::Result<()> {
@@ -1016,6 +1274,21 @@ impl SupervisorLaunchState {
             && self.ready
             && self.direct_commit
             && self.guardian_go
+            && self.target.is_none()
+            && !self.cleanup.is_requested()
+            && !self.prepared
+    }
+
+    pub const fn may_retire_precommit(&self) -> bool {
+        !self.direct_commit && !self.guardian_go && self.target.is_none()
+    }
+
+    pub const fn may_install_stdio(&self) -> bool {
+        self.registered
+            && self.ready
+            && !self.stdio_installed
+            && !self.direct_commit
+            && !self.guardian_go
             && self.target.is_none()
             && !self.cleanup.is_requested()
             && !self.prepared
@@ -1459,6 +1732,109 @@ mod tests {
     }
 
     #[test]
+    fn paired_pin_frames_bind_member_group_and_protocol_identity() {
+        let expected = identity();
+        let group = anchor();
+        let mut member = target();
+        member.pgid = group.pgid;
+        authenticated_round_trip(&GuardianCommand::register_pair_pin(
+            &expected, group, member,
+        ));
+        authenticated_round_trip(&GuardianEvent::pair_pin_registered(
+            &expected, group, member,
+        ));
+        authenticated_round_trip(&GuardianEvent::pair_quiescent(&expected, group, member));
+        for invalid in [
+            group,
+            ProcessIdentity {
+                pgid: group.pgid + 1,
+                ..member
+            },
+            ProcessIdentity {
+                start_abstime: 0,
+                ..member
+            },
+        ] {
+            assert!(write_authenticated_frame(
+                &mut Vec::new(),
+                &GuardianCommand::register_pair_pin(&expected, group, invalid),
+                &expected
+            )
+            .is_err());
+            assert!(write_authenticated_frame(
+                &mut Vec::new(),
+                &GuardianEvent::pair_quiescent(&expected, group, invalid),
+                &expected
+            )
+            .is_err());
+        }
+        let mut stale = expected.clone();
+        stale.generation = "f".repeat(NONCE_HEX_BYTES);
+        assert!(write_authenticated_frame(
+            &mut Vec::new(),
+            &GuardianEvent::pair_pin_registered(&stale, group, member),
+            &expected
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn paired_start_authenticates_bounded_peer_process_reserve_and_defaults_to_zero() {
+        let expected = identity();
+        for reserve in [0, 1, 32] {
+            let frame = GuardianCommand::start_paired(&expected, sample_run_spec(), reserve);
+            authenticated_round_trip(&frame);
+            let value = serde_json::to_value(&frame).expect("serialize paired start");
+            assert_eq!(value["peerProcessCount"], reserve);
+            assert_eq!(
+                value["spec"]["limits"]["processCount"], 1,
+                "peer reserve must not alter the target group limit"
+            );
+        }
+        assert!(authenticate_frame(
+            &GuardianCommand::start_paired(&expected, sample_run_spec(), 33),
+            &expected
+        )
+        .is_err());
+        assert!(authenticate_frame(
+            &GuardianCommand::start_paired(&expected, sample_run_spec(), u32::MAX),
+            &expected
+        )
+        .is_err());
+        let ordinary = GuardianCommand::start(&expected, sample_run_spec());
+        assert!(matches!(
+            ordinary,
+            GuardianCommand::Start {
+                peer_process_count: 0,
+                ..
+            }
+        ));
+        let mut legacy = serde_json::to_value(&ordinary).expect("serialize ordinary start");
+        legacy
+            .as_object_mut()
+            .expect("start object")
+            .remove("peerProcessCount");
+        let decoded: GuardianCommand =
+            serde_json::from_value(legacy).expect("decode default-zero reserve");
+        assert!(matches!(
+            decoded,
+            GuardianCommand::Start {
+                peer_process_count: 0,
+                ..
+            }
+        ));
+        let stale = FrameIdentity {
+            token: "f".repeat(NONCE_HEX_BYTES),
+            ..expected.clone()
+        };
+        assert!(authenticate_frame(
+            &GuardianCommand::start_paired(&stale, sample_run_spec(), 1),
+            &expected
+        )
+        .is_err());
+    }
+
+    #[test]
     fn launcher_monitor_limits_are_strict_and_round_trip_without_policy_validation() {
         let spec = sample_launcher_spec();
         let value = serde_json::to_value(&spec).expect("serialize launcher spec");
@@ -1586,6 +1962,269 @@ mod tests {
             .expect("start target in supervisor group");
         assert!(!state.may_fork_target());
         assert_eq!(state.target(), Some(target()));
+    }
+
+    #[test]
+    fn stdio_installation_frames_round_trip_and_reject_stale_authentication() {
+        let expected = identity();
+        let command = SupervisorDirectCommand::install_stdio(&expected, anchor());
+        let event = SupervisorEvent::stdio_ready(&expected, anchor());
+        authenticated_round_trip(&command);
+        authenticated_round_trip(&event);
+        assert_eq!(command.kind(), "supervisor_direct_install_stdio");
+        assert_eq!(event.kind(), "supervisor_stdio_ready");
+        assert!(!format!("{command:?}").contains(TOKEN));
+        assert!(!format!("{event:?}").contains(TOKEN));
+        for stale in [
+            FrameIdentity {
+                protocol: "stale".into(),
+                ..expected.clone()
+            },
+            FrameIdentity {
+                token: "f".repeat(NONCE_HEX_BYTES),
+                ..expected.clone()
+            },
+            FrameIdentity {
+                generation: "f".repeat(NONCE_HEX_BYTES),
+                ..expected.clone()
+            },
+            FrameIdentity {
+                run_id: "another_run".into(),
+                ..expected.clone()
+            },
+        ] {
+            assert!(authenticate_frame(
+                &SupervisorDirectCommand::install_stdio(&stale, anchor()),
+                &expected
+            )
+            .is_err());
+            assert!(
+                authenticate_frame(&SupervisorEvent::stdio_ready(&stale, anchor()), &expected)
+                    .is_err()
+            );
+        }
+        let bytes = encoded(&command);
+        assert!(read_authenticated_frame::<_, SupervisorGuardianCommand>(
+            &mut Cursor::new(&bytes),
+            &expected
+        )
+        .is_err());
+        assert!(read_authenticated_frame::<_, GuardianCommand>(
+            &mut Cursor::new(&bytes),
+            &expected
+        )
+        .is_err());
+        assert!(read_authenticated_frame::<_, GuardianEvent>(
+            &mut Cursor::new(encoded(&event)),
+            &expected
+        )
+        .is_err());
+        let non_anchor = ProcessIdentity {
+            pgid: 99,
+            ..anchor()
+        };
+        assert!(authenticate_frame(
+            &SupervisorDirectCommand::install_stdio(&expected, non_anchor),
+            &expected
+        )
+        .is_err());
+        assert!(authenticate_frame(
+            &SupervisorEvent::stdio_ready(&expected, non_anchor),
+            &expected
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn stdio_installation_requires_ready_exact_anchor_and_is_one_shot() {
+        let mut state = SupervisorLaunchState::default();
+        assert!(!state.may_install_stdio());
+        assert!(state.record_stdio_installed(anchor()).is_err());
+        state
+            .record_registered(anchor())
+            .expect("register supervisor");
+        assert!(!state.may_install_stdio());
+        assert!(state.record_stdio_installed(anchor()).is_err());
+        state.record_ready(anchor()).expect("ready supervisor");
+        assert!(state.may_install_stdio());
+        let stale_anchor = ProcessIdentity {
+            start_abstime: anchor().start_abstime + 1,
+            ..anchor()
+        };
+        assert!(state.record_stdio_installed(stale_anchor).is_err());
+        assert!(
+            state.may_install_stdio(),
+            "a rejected stale anchor must not consume installation"
+        );
+        state
+            .record_stdio_installed(anchor())
+            .expect("install stdio once");
+        assert!(!state.may_install_stdio());
+        assert!(state.record_stdio_installed(anchor()).is_err());
+        assert!(
+            !state.may_fork_target(),
+            "stdio does not grant launch authority"
+        );
+        state.record_direct_commit(anchor()).expect("direct commit");
+        state.record_guardian_go(anchor()).expect("guardian GO");
+        assert!(state.may_fork_target());
+    }
+
+    #[test]
+    fn output_progress_round_trips_only_on_the_authenticated_direct_command_channel() {
+        let expected = identity();
+        let frame = SupervisorDirectCommand::output_progress(&expected, anchor(), u64::MAX);
+        authenticated_round_trip(&frame);
+        assert_eq!(frame.kind(), "supervisor_direct_output_progress");
+        let value = serde_json::to_value(&frame).expect("serialize pipe progress");
+        assert_eq!(value["stdoutBytes"], u64::MAX);
+        let bytes = encoded(&frame);
+        assert!(read_authenticated_frame::<_, SupervisorGuardianCommand>(
+            &mut Cursor::new(&bytes),
+            &expected
+        )
+        .is_err());
+        assert!(read_authenticated_frame::<_, GuardianCommand>(
+            &mut Cursor::new(&bytes),
+            &expected
+        )
+        .is_err());
+        let stale = FrameIdentity {
+            token: "f".repeat(NONCE_HEX_BYTES),
+            ..expected.clone()
+        };
+        assert!(authenticate_frame(
+            &SupervisorDirectCommand::output_progress(&stale, anchor(), 1),
+            &expected
+        )
+        .is_err());
+        let non_anchor = ProcessIdentity {
+            pgid: 99,
+            ..anchor()
+        };
+        assert!(authenticate_frame(
+            &SupervisorDirectCommand::output_progress(&expected, non_anchor, 1),
+            &expected
+        )
+        .is_err());
+        assert!(!format!("{frame:?}").contains(TOKEN));
+    }
+
+    #[test]
+    fn pipe_output_progress_requires_installed_started_target_and_remains_monotonic_through_cleanup(
+    ) {
+        let mut state = SupervisorLaunchState::default();
+        assert!(!state.stdio_installed());
+        assert_eq!(state.native_pipe_stdout_bytes(), None);
+        assert!(state.record_output_progress(anchor(), 1).is_err());
+        state.record_registered(anchor()).expect("registered");
+        state.record_ready(anchor()).expect("ready");
+        state.record_stdio_installed(anchor()).expect("installed");
+        assert!(state.stdio_installed());
+        assert_eq!(state.native_pipe_stdout_bytes(), Some(0));
+        assert!(state.record_output_progress(anchor(), 1).is_err());
+        state.record_direct_commit(anchor()).expect("direct commit");
+        assert!(state.record_output_progress(anchor(), 1).is_err());
+        state.record_guardian_go(anchor()).expect("guardian GO");
+        assert!(
+            state.record_output_progress(anchor(), 1).is_err(),
+            "counter cannot precede target start"
+        );
+        state
+            .record_target_started(target())
+            .expect("target started");
+        let wrong = ProcessIdentity {
+            start_abstime: anchor().start_abstime + 1,
+            ..anchor()
+        };
+        assert!(state.record_output_progress(wrong, 1).is_err());
+        assert_eq!(state.native_pipe_stdout_bytes(), Some(0));
+        state
+            .record_output_progress(anchor(), 7)
+            .expect("initial progress");
+        state
+            .record_output_progress(anchor(), 7)
+            .expect("equal progress is idempotent");
+        assert!(state.record_output_progress(anchor(), 6).is_err());
+        assert_eq!(state.native_pipe_stdout_bytes(), Some(7));
+        state.request_cleanup(CleanupCause::TargetExited);
+        state
+            .record_output_progress(anchor(), 9)
+            .expect("final cleanup progress");
+        state.record_prepared().expect("prepared final result");
+        assert!(state.record_output_progress(anchor(), 10).is_err());
+        assert_eq!(state.native_pipe_stdout_bytes(), Some(9));
+        let mut ordinary = ready_state();
+        ordinary
+            .record_target_started(target())
+            .expect("ordinary target started");
+        assert!(
+            ordinary.record_output_progress(anchor(), 1).is_err(),
+            "ordinary redirected output has no pipe counter"
+        );
+        assert_eq!(ordinary.native_pipe_stdout_bytes(), None);
+    }
+
+    #[test]
+    fn stdio_installation_is_rejected_after_either_commit_target_or_cleanup() {
+        for transition in 0..5 {
+            let mut state = SupervisorLaunchState::default();
+            state
+                .record_registered(anchor())
+                .expect("register supervisor");
+            state.record_ready(anchor()).expect("ready supervisor");
+            match transition {
+                0 => state.record_direct_commit(anchor()).expect("direct commit"),
+                1 => state.record_guardian_go(anchor()).expect("guardian GO"),
+                2 => {
+                    state.record_direct_commit(anchor()).expect("direct commit");
+                    state.record_guardian_go(anchor()).expect("guardian GO");
+                    state
+                        .record_target_started(target())
+                        .expect("target started");
+                }
+                3 => {
+                    state.request_cleanup(CleanupCause::Cancelled);
+                }
+                _ => {
+                    state.request_cleanup(CleanupCause::Cancelled);
+                    state.record_prepared().expect("prepared final result");
+                }
+            }
+            assert!(
+                !state.may_install_stdio(),
+                "late installation after transition {transition}"
+            );
+            assert!(state.record_stdio_installed(anchor()).is_err());
+        }
+    }
+
+    #[test]
+    fn paired_retirement_requires_no_commit_or_target_release() {
+        for transition in 0..4 {
+            let mut state = SupervisorLaunchState::default();
+            state.record_registered(anchor()).expect("registered");
+            state.record_ready(anchor()).expect("ready");
+            match transition {
+                1 => state.record_direct_commit(anchor()).expect("direct commit"),
+                2 => state.record_guardian_go(anchor()).expect("guardian GO"),
+                3 => {
+                    state.record_direct_commit(anchor()).expect("direct commit");
+                    state.record_guardian_go(anchor()).expect("guardian GO");
+                    state
+                        .record_target_started(target())
+                        .expect("target released");
+                }
+                _ => {}
+            }
+            assert_eq!(state.may_retire_precommit(), transition == 0);
+            state.request_cleanup(CleanupCause::ExecutorDisconnected);
+            assert_eq!(
+                state.may_retire_precommit(),
+                transition == 0,
+                "cleanup must never erase an earlier release authority"
+            );
+        }
     }
 
     #[test]

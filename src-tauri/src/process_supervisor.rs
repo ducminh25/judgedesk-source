@@ -17,7 +17,7 @@ mod windows {
     use fs4::{FileExt, TryLockError};
     use std::ffi::OsStr;
     use std::fs::{File, OpenOptions};
-    use std::io::{self, BufRead, BufReader, Read, Write};
+    use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom, Write};
     use std::os::windows::ffi::OsStrExt;
     use std::os::windows::io::AsRawHandle;
     use std::path::{Path, PathBuf};
@@ -41,7 +41,8 @@ mod windows {
         OpenProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE,
     };
 
-    const TREE_LOCK_FILE: &str = "process-tree.lock";
+    const TREE_LOCK_FILE: &str = "process-tree.owner.lock";
+    const TREE_GUARD_FILE: &str = "process-tree.guard";
     const SUPERVISOR_TOKEN_ENV: &str = "JUDGEDESK_SUPERVISOR_TOKEN";
     const SUPERVISOR_DIRECTORY_ENV: &str = "JUDGEDESK_SUPERVISOR_DIRECTORY";
     const SUPERVISOR_JOB_NONCE_ENV: &str = "JUDGEDESK_SUPERVISOR_JOB_NONCE";
@@ -79,10 +80,13 @@ mod windows {
         job: BackendJob,
         supervisor: Mutex<Option<SupervisorProcess>>,
         failed: Arc<AtomicBool>,
+        generation_path: Option<PathBuf>,
+        generation: Option<String>,
     }
 
     struct ProvisionalTreeLock {
         _file: File,
+        guard_path: PathBuf,
     }
 
     impl BackendJob {
@@ -238,7 +242,12 @@ mod windows {
             let deadline = Instant::now() + timeout;
             loop {
                 match FileExt::try_lock(&file) {
-                    Ok(()) => return Ok(Self { _file: file }),
+                    Ok(()) => {
+                        return Ok(Self {
+                            _file: file,
+                            guard_path: directory.join(TREE_GUARD_FILE),
+                        });
+                    }
                     Err(TryLockError::WouldBlock) if Instant::now() < deadline => {
                         thread::sleep(Duration::from_millis(10));
                     }
@@ -259,6 +268,19 @@ mod windows {
         fn release(self) {
             drop(self);
         }
+
+        fn write_generation(&mut self, generation: &str) -> io::Result<()> {
+            validate_nonce(generation, "process-tree generation")?;
+            let contents = judgedesk_native_executor::tree_guard::generation_contents(generation);
+            let mut guard = OpenOptions::new()
+                .create(true)
+                .truncate(true)
+                .write(true)
+                .open(&self.guard_path)?;
+            guard.seek(SeekFrom::Start(0))?;
+            guard.write_all(contents.as_bytes())?;
+            guard.sync_all()
+        }
     }
 
     impl BackendTreeGuard {
@@ -268,7 +290,8 @@ mod windows {
             startup_token: &str,
         ) -> io::Result<Self> {
             validate_nonce(startup_token, "supervisor startup token")?;
-            let provisional = ProvisionalTreeLock::acquire(directory, TREE_RECOVERY_TIMEOUT)?;
+            let mut provisional = ProvisionalTreeLock::acquire(directory, TREE_RECOVERY_TIMEOUT)?;
+            provisional.write_generation(job_nonce)?;
             let job = BackendJob::create(job_nonce)?;
             let failed = Arc::new(AtomicBool::new(false));
             let supervisor = SupervisorProcess::spawn(
@@ -283,6 +306,8 @@ mod windows {
                 job,
                 supervisor: Mutex::new(Some(supervisor)),
                 failed,
+                generation_path: Some(directory.join(TREE_GUARD_FILE)),
+                generation: Some(job_nonce.to_owned()),
             })
         }
 
@@ -293,11 +318,16 @@ mod windows {
                 job,
                 supervisor: Mutex::new(None),
                 failed: Arc::new(AtomicBool::new(false)),
+                generation_path: None,
+                generation: None,
             })
         }
 
         pub(super) fn runtime_environment(&self) -> Option<(PathBuf, String)> {
-            None
+            Some((
+                self.generation_path.as_ref()?.clone(),
+                self.generation.as_ref()?.clone(),
+            ))
         }
 
         pub(super) fn assign_backend(&self, process_id: u32) -> io::Result<()> {
@@ -743,6 +773,79 @@ mod windows {
             return Some(64);
         }
         Some(if supervisor_main().is_ok() { 0 } else { 70 })
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::{ProvisionalTreeLock, TREE_GUARD_FILE, TREE_LOCK_FILE};
+        use fs4::FileExt;
+        use judgedesk_native_executor::tree_guard::generation_contents;
+        use std::fs::{self, OpenOptions};
+        use std::os::windows::io::AsRawHandle;
+        use std::sync::atomic::{AtomicU64, Ordering};
+        use std::time::Duration;
+        use windows_sys::Win32::Storage::FileSystem::{
+            LockFileEx, UnlockFileEx, LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY,
+        };
+
+        static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
+        const GENERATION: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+        #[test]
+        fn provisional_tree_lock_publishes_the_runtime_guard_contract() {
+            let suffix = NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed);
+            let directory = std::env::temp_dir().join(format!(
+                "judgedesk-process-supervisor-test-{}-{suffix}",
+                std::process::id()
+            ));
+            fs::create_dir(&directory).expect("create test directory");
+            let mut lock = ProvisionalTreeLock::acquire(&directory, Duration::from_secs(1))
+                .expect("acquire provisional lock");
+            lock.write_generation(GENERATION)
+                .expect("write runtime guard contract");
+            lock.release();
+
+            assert_eq!(
+                fs::read_to_string(directory.join(TREE_GUARD_FILE)).expect("read runtime guard"),
+                generation_contents(GENERATION)
+            );
+
+            let owner = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(directory.join(TREE_LOCK_FILE))
+                .expect("open supervisor owner lock");
+            owner.try_lock().expect("lock supervisor owner barrier");
+            let guard = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(directory.join(TREE_GUARD_FILE))
+                .expect("open executor generation guard");
+            // SAFETY: `guard` owns a valid handle for the complete synchronous byte-range lock.
+            let mut overlapped = unsafe { std::mem::zeroed() };
+            // SAFETY: the handle, one-byte range, and zeroed OVERLAPPED are valid for LockFileEx.
+            let locked = unsafe {
+                LockFileEx(
+                    guard.as_raw_handle() as _,
+                    LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY,
+                    0,
+                    1,
+                    0,
+                    &mut overlapped,
+                )
+            } != 0;
+            assert!(
+                locked,
+                "executor guard must not conflict with supervisor owner barrier"
+            );
+            // SAFETY: unlock uses the identical live handle, byte range, and OVERLAPPED value.
+            unsafe {
+                UnlockFileEx(guard.as_raw_handle() as _, 0, 1, 0, &mut overlapped);
+            }
+            FileExt::unlock(&owner).expect("unlock supervisor owner barrier");
+
+            fs::remove_dir_all(directory).expect("remove test directory");
+        }
     }
 }
 

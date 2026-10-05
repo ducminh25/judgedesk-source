@@ -1,1249 +1,1085 @@
-# JudgeDesk Pure Rust Core — Detailed Implementation and Verification Plan
+# JudgeDesk Rust core — proposed complete implementation plan
 
-> **Audience:** Antigravity and future coding agents implementing the migration
-> **Plan date:** 2026-09-19
-> **Repository:** `D:\Minh\Code\judgedesk`
-> **Observed base commit:** `d80f997cdafaf85883e7602de26c32dd355795a1` plus a large dirty working tree
-> **Historical released baseline:** `v1.5.0`; current source lockstep is `1.5.1` as reconciled in STATUS/LOG-0050
-> **Execution revision:** 2026-09-26 — see `docs/pure-rust-core-efficient-execution.md`; WP contracts/dependencies/exit criteria remain intact
-> **Next release target:** `v1.6.0` (bump all eight version files together only in WP10.3, immediately before release-candidate verification)
-> **Status:** implementation handoff; this file does not assert that the migration is complete
+> Re-audit: 2026-10-01/02. **PROPOSED ROADMAP — adoption outstanding; implementation not authorized by this rewrite.**
+> Repository: `D:\Minh\Code\judgedesk`. Current source: HEAD `8bc8ac9a2161a7468b633c421185d039c97e5a68` plus preserved dirty inputs; all eight application version files read as `1.5.1`.
+> Accepted implementation: WP0.1–WP0.5 only. WP0.6 IN_PROGRESS; WP5.4 NOT_READY; no phase gate DONE. This file never changes those verdicts.
+> Current limited adoption, 2026-10-02: N0 was directly authorized and claimed IN_PROGRESS; only N0 → WP0.6 ordering is adopted. Other roadmap changes remain proposed. See the continuation boundary below and live STATUS.
 
-This plan is intentionally self-contained. Before changing code, still re-read the current `AGENTS.md`, `guidelines.md`, `CONSTRAINTS.md`, and applicable skills because they may have changed since this plan was written.
+The end product is a compatible, fail-closed Rust backend on Windows x64 and macOS arm64. React retains its product behavior; Tauri owns desktop/window/archive/update coordination; Rust core replaces Node's HTTP/domain/orchestration responsibilities; the out-of-process native executor owns untrusted OS execution and guardians. Deployment may embed core in Tauri, but the four responsibility/trust tiers remain distinct. [ADR 0001](adr/0001-rust-core-executor-boundary.md) is accepted in LOG-0069: private framed IPC, out-of-process execution, exclusive executor-owner lease and generation guards through native drain. Historical proposed/in-progress ADR sections do not override its final accepted section.
 
-The evidence behind this plan is recorded in:
+Node stays the default until authorized WP10.2. Milestone A deliberately switches default with packaged explicit Node rollback. Stabilization precedes separately authorized Milestone B decommission. Retain six production languages, existing source/role/platform obligations, exact rational awards/ranking, no compiler fallback, zero-network strict isolation, owned resources/atomic persistence, UI/API compatibility, Core/Full editions and separate release/publication authorization. Application identifier, data directory and MSI UpgradeCode remain unchanged. Compiled Rust is still inspectable; memory/startup/IP claims require evidence.
 
-- `docs/pure-rust-core-migration-plan.md`: original migration architecture and roadmap.
-- `docs/pure-rust-core-next-steps-audit.md`: verified gaps, commands already run, Windows Computer Use evidence, and macOS SSH evidence.
-- `docs/PRD.md`, `docs/TRD.md`, `docs/APP_FLOW.md`, `docs/BACKEND_SCHEMA.md`, and `docs/UI_UX_DESIGN.md`: product and platform expectations. When these disagree with running code, resolve the disagreement explicitly as described below.
+## Evidence and authority at this checkpoint
 
----
+Read [AGENTS](../AGENTS.md), [guidelines](../guidelines.md), [CONSTRAINTS](../CONSTRAINTS.md), [STATUS](verification/pure-rust-core/STATUS.md) and latest relevant [WORKLOG](verification/pure-rust-core/WORKLOG.md) first. Direct human instructions outrank this proposal. Apply applicable TDD/doubt/debugging/security/review/performance/shipping skills when future implementation is authorized. Never amend those three authority files to facilitate this workflow.
 
-## 1. Mission, outcome, and reasons
+The [audit](verification/pure-rust-core/plan-rewrite-audit-20261001.md), [proposed mapped ledger](verification/pure-rust-core/proposed-ledger-20261001.md) and [machine-readable DAG](verification/pure-rust-core/proposed-roadmap-20261001.json) accompany this plan. Before-images are retained in the planning artifact directory. Historical WP reports, prompts, artifacts and append-only history remain retrievable.
 
-### 1.1 Product outcome
+Historical diagnostic archive: 3,177 regular members; 78,238,397 bytes; SHA256 `3B100EE59C20936D24CA173F882969DAB7ABB970C026E9AF8B294142B2F95B8A`. Its hash/size and current versions were freshly read for planning; this is neither a future repaired source nor a new runtime PASS.
 
-Replace the Node.js SEA judging backend with an embedded Rust core without changing how JudgeDesk behaves for teachers and contest operators. The final desktop app must retain:
+[LOG-0091 continuation](verification/pure-rust-core/artifacts/wp0.6/remediator-log0091-continuation-codex-20261001/remediation.md) records Windows full PASS (706 total, 696 pass, 0 fail, 10 existing skips), live Mac full FAIL (706 total, 697 pass, 1 fail, 8 existing skips), nine Rust steps and fast/floor PASS on both hosts. Mac static parity/version separately passed after the full enclosure stopped at server failure. Both-host protected-state and delayed cleanup PASS are historical execution references. The sole current required Mac failure is unchanged `cpp_interactor` AC → JE because `native-executor/src/platform/mod.rs:114–116` rejects Mac interactive execution. The feature identity repair is remediator-verified; fresh independent WP0.6 acceptance is NOT_RUN. Earlier Windows fixture/compiler-prefix, Unicode extraction and cleanup problems are resolved and retained as history, not current blockers.
 
-- The existing React user interface, shortcuts, state transitions, localization, error presentation, and scoreboard behavior.
-- Exact contest discovery, Themis compatibility, problem configuration, compiler selection, verdict, rational score, ranking, archive, Excel export, OSD, update, and lifecycle behavior.
-- Zero-network execution and fail-closed filesystem/process/resource containment for untrusted submissions, custom checkers, and interactors.
-- Six production languages: C++, C, Python, Pascal, Java, and Scratch.
-- Windows x64 and macOS Apple Silicon behavior, with differences only where the product explicitly defines a platform-specific policy.
-- A deliberate rollback route during rollout, without silently selecting an incomplete backend.
+Current source inspection finds: Node default intent with implicit Rust fallback still in Tauri; discarded embedded serve task/readiness gaps; permissive core CORS; folder path script interpolation; direct PATH compilation/custom-checker execution; incomplete Java/Scratch batch adapters, job/global-cancel/config/event behavior; f64/saturating rational paths; in-memory/fixed-success package/OSD routes; ResourceOnly diagnostic choices. These are future contracts, not new executed defects or accepted features. Current Node exact carrier improvements from WP0.3 and IPC ownership from WP0.4 must be reused.
 
-### 1.2 Engineering outcome
+## Why the graph changes
 
-The migration is complete only when the Rust backend:
+The old effective cycle was: WP0.6 full Mac acceptance → existing interactive AC oracle → native Mac interactive implementation placed inside WP5.4 → WP3.2/WP4.3/WP5.1 and prior gates → G0 → WP0.6. The blanket “no later feature while a required gate fails” rule made that cycle operational even though the ledger's declared edges omitted the native requirement.
 
-1. Implements every production API and state mutation used by the frontend.
-2. Uses the same normalized contracts and exact rational scoring rules as the Node backend.
-3. Routes all untrusted execution through the native executor with the correct role and isolation policy.
-4. Passes contract, unit, integration, security, stress, parity, desktop, packaging, and cross-platform gates.
-5. Has measured performance that meets the documented budget without weakening correctness or isolation.
-6. Becomes the default only after an explicit cutover work package and remains reversible during the defined stabilization window.
+**Selected proposal:** introduce N0, a native Mac interactive baseline package with separate independent acceptance. It uses accepted foundations and the existing Node/IPC caller, with no dependency on accepted WP0.6 or future Rust orchestration. N0 may inspect/build the unaccepted identity candidate as input; that does not accept its identity contract. WP0.6 resumes only after N0 acceptance. Full gates remain required for both; extra completion cycles are an explicit cost of separating the security change from identity acceptance. N0 does not make WP5.4 DONE.
 
-### 1.3 Why this ordering matters
+The earlier [within-WP0.6 amendment](verification/pure-rust-core/wp0.6-blocker-next-step-proposal.md) and draft pair remain an unselected historical option. This dedicated package does not activate those prompts. Without future adoption and explicit N0 scope/ordering authorization, the prior human instruction to leave the blocker pending remains in force.
 
-Universal PCH and boot-time improvements are valuable, but they optimize a pipeline that currently has correctness and trust-boundary gaps. The order is therefore:
+Other repairs: move pure WP5.1/WP5.2 before consumers; move config normalization WP4.1 before compiler/session integration; move WP1.4 after real compiler/runtime/lease prerequisites; extract native six-language capability closure as N1 before adapters; define G3 as execution-component acceptance and G4 as actual batch acceptance; move WP8 harness/comparison/mismatch construction early while G8 retains complete strict parity; perform domain extraction once with WP2.1 evidence closure; retain all release/GUI/rollback gates.
 
-```text
-contract capture
-  -> close unsafe execution and fallback paths
-  -> real toolchain state and compiler pipeline
-  -> session/config/scoring/checker/interactor parity
-  -> remaining product services
-  -> PCH and performance
-  -> dual-backend parity
-  -> desktop/platform/package validation
-  -> controlled cutover
+## Dependency DAG and entry artifacts
+
+```mermaid
+flowchart TD
+  A[Accepted WP0.1-WP0.5] --> N0[N0 Mac native baseline]
+  N0 --> ID[WP0.6 identity acceptance]
+  ID --> DEC[WP0.7 decomposition]
+  DEC --> G0[ G0 foundations ]
+  G0 --> SAFE[Phase 1 shell auth paths capabilities logs]
+  SAFE --> G1[ G1 safety ]
+  G0 --> EXACT[WP5.1 exact scores and WP5.2 checkers]
+  G1 --> CFG[WP4.1 config and Phase 2 disk/source services]
+  EXACT --> CFG
+  CFG --> G2[ G2 disk/config ]
+  G2 --> N1[N1 strict native runtime roles]
+  N1 --> COMP[WP3.1 compiler then WP3.3 leases then WP3.2 adapters]
+  COMP --> CHECK[WP1.4 contained checker]
+  CHECK --> G3[ G3 protected components ]
+  EXACT --> G3
+  G3 --> JOB[WP4.2 admission then WP4.3 drain then WP4.4 stream and WP4.5 metadata]
+  JOB --> G4[ G4 real batch ]
+  G4 --> SEM[WP5.3 custom and WP5.4 interactive integration]
+  N0 --> SEM
+  SEM --> G5[ G5 judge semantics ]
+  G5 --> PROD[WP6 OSD routes archive export update]
+  PROD --> G6[ G6 all production services ]
+  G1 --> HAR[WP8.1 harness then WP8.2 comparison then WP8.3 mismatch]
+  EXACT --> HAR
+  G6 --> PERF[WP7 baseline PCH prewarm]
+  PERF --> G7[ G7 measured budgets ]
+  G6 --> G8[ G8 full strict parity ]
+  G7 --> G8
+  HAR --> G8
+  G8 --> UI[V9 Windows and Mac automated plus actual Mac GUI]
+  UI --> G9[ G9 desktop/platform ]
+  G9 --> CUT[WP10.1 readiness then WP10.2 authorized cutover]
+  CUT --> VER[WP10.3 eight-file 1.6.0 then WP10.4 release candidate]
+  VER --> STAB[WP10.5 authorized rollout/stabilization]
+  STAB --> REMOVE[WP10.6 separately authorized Node removal]
+  REMOVE --> G10[ G10 decommissioned architecture ]
 ```
 
-This sequence prevents a fast but behaviorally incorrect or insecure Rust core from becoming harder to replace later.
+This diagram groups nodes; the JSON and each task's exact entry list define all edges. Every edge records the upstream output and downstream use. Accepted prerequisites are required, not merely existing code. Proposed stage numbers give a suggested topological schedule; existing IDs remain searchable and need not run in numeric order. All 51 old implementation IDs, four validation IDs and 11 gates are mapped. N0/N1 are new proposed IDs, with no runtime state granted.
 
-The migration may raise the cost of casual source extraction compared with shipping a Node SEA, but compiled Rust is still reversible and inspectable. Treat IP resistance as a packaging benefit, never as a security boundary. Likewise, lower memory use and faster startup are hypotheses until WP7.1 produces comparable measurements from packaged builds.
+### Early prerequisite/capability catalog
 
----
+At adoption/intake, assign one researcher to produce a read-only catalog in the first authorized package report: Windows x64 and live Mac arm64 availability; Node 24.19.0/npm 11.17.0/Rust 1.97.1 and required fmt/clippy; Windows VS/WebView2 and Mac Xcode/SDK; Cargo lock owners; exact staged executors/helpers; signed manifests/resources; registry revision and every release profile/source/role; current native interactive/strict-runtime gaps; early WP1.3 native dialog GUI access and later full V9.4 tester; package/signing/update prerequisites; benchmark hardware/definitions; stabilization/release owners. Provisioning is a separate approved action where needed. Before WP2.3, identify the vetted Rust/system signature-verification provider; current Rust source has no manifest Ed25519 verifier, so any necessary new dependency/provider needs a concrete separate approval before implementation. The catalog schedules missing capabilities early and distinguishes NOT_RUN from actual unavailability; it neither certifies a toolchain nor marks an unfinished package DONE.
 
-## 2. Authority, invariants, and contract resolution
+Native missing capability → N0 or a named N1 subdivision. Core source resolution → WP2.6/2.7. Compiler orchestration → WP3.1. Job drain → WP4.3. Complete interactive scores/events → WP5.4. Early native-dialog GUI evidence → WP1.3; final full product GUI → V9.4. No gate may require an outcome that only a later implementation supplies. Mandatory regression/full gates test current reference behavior; discovering another such native baseline gap requires a concrete upstream scope decision, not a skip.
 
-### 2.1 Authority order
+## Contract inherited by every task below
 
-Use this precedence when sources disagree:
+Each task's entry list, file boundary, ordered steps, falsifying cases, outputs, expected results and command codes below **include all of this contract**. A task is not just its heading.
 
-1. `AGENTS.md` and `CONSTRAINTS.md` for process and quality-floor rules.
-2. Security and data invariants in `guidelines.md`, native-executor validation, and platform sandbox tests.
-3. Current frontend consumers, shared TypeScript contracts, and the production Node implementation for observable runtime behavior.
-4. Product requirements in PRD/UI documents for intended user-visible behavior.
-5. Architecture/API prose documents and the original migration plan.
+- **Entry and owner:** roadmap adoption plus direct implementation authorization for that package; actual live READY/unowned claim or explicit ownership transfer; listed dependencies independently DONE with applicable artifacts; current source/status/toolchain/capability intake. One remediator owns overlapping production files/tests/goldens; one fresh independent reviewer owns acceptance. Accepted WP0.1–0.5 are retained, not reopened by this plan. Research can proceed read-only on unavailable prerequisites; dependent implementation cannot.
+- **Environment:** code acceptance uses Windows x64 and live Mac arm64, matching source bytes and actual launched targets. Use existing locked packages; no new npm/crate dependency, version/policy/protocol/sandbox expansion without explicit scoped approval. Missing required host/runtime is BLOCKED and prevents acceptance. Documentation/evidence-only tasks use D and record runtime NOT_RUN; existing reports' historical limits remain.
+- **Scope and subdivisions:** audit actual React → Node/core → Tauri → executor callers before edits; search existing shared/domain primitives. Modify only named responsibility and directly supporting tests; new routes/profiles/features/authority changes stop for a concrete scope decision. Substantial work is split into independently reviewable behavioral slices, normally 100–300 production lines; large inherent OS/lifecycle changes require a staged design rather than hidden expansion. Intermediate code remains fail-closed. Shared contracts belong in shared/protocol/domain interfaces, not cross-tier ad hoc imports.
+- **RED/GREEN:** first state a falsifiable observable claim derived from the acceptance text, then run selected real tests proving the named failure. Preserve original RED; rerun the same assertion for GREEN before refactoring. Validate selection/inventory/no unexpected skips. Already-fixed historical defect uses retained RED plus applicable live characterization, not a fabricated new failure. Component tests do not claim integrated route execution.
+- **Outputs:** future authorized code/API contract and executable tests/fixtures; one canonical `docs/verification/pure-rust-core/<id>-<name>.md`; immutable unique `artifacts/<id>/<round>/` with raw failed/successful logs, owned diff/before inputs, source/build/environment/command/coverage manifests and compact handoff. Add exact Node/frontend golden changes only under a documented canonical contract decision. No fake result or metric.
+- **Resource contract:** for HTTP/disk/native tasks, record canonical owned roots/markers/owner outside attacker control, selected PIDs/start identities/containers, ports/handles/leases and protected-state baseline before first stateful operation. Cancel/crash/disconnect/deadline closes admission, cancels reservations and both native participants where relevant, kills/drains whole owned tree, waits for close/reap/container-empty, releases handles/ports/leases, then removes only verified owned descendants. Unproven drain retains ownership and fails closed; another run cannot start beside uncertain descendants. Harness logger/assertion/outer-timeout failures receive the same tree termination/drain scrutiny. Pure tasks declare no runtime resources; owned mutant fixture directories still require safe disposal.
+- **Protected-state/host audit:** fully hash protected ThemisV2 and JudgeDeskExecutor contents plus type/link/semantic inventory before/after each uninterrupted role-owned stateful window; record processes/listeners/temp/Defender or Mac equivalents separately. Per-scenario cleanup plus final immediate and delayed 5–15 s observation must prove zero owned process/root/handle leaks and port rebind. No global host kill/arbitrary deletion. Raw ambient/reboot/service/rolling-query changes remain truthful; never force global equality. New baseline cannot erase interrupted-window damage.
+- **Protected-state incident recovery:** pin original protected roots independently of private runtime environment before stateful work; changing TMPDIR must not change which original roots the audit observes. Retain original FAIL and immutable pre-incident evidence. Safely isolated in-scope source work/focused tests may continue after harness guards, but VERIFYING requires evidence-based closure: exact current/original inventory, trusted original restoration bytes, direct authorization for concrete protected-path operations, verified restoration/attribution and a fresh linked final audit window. No post-mutation rebaseline, cache wipe or preservation waiver. Follow the [N0 recovery clarification](verification/pure-rust-core/n0-plan-conflict-resolution-20261002.md).
+- **Security ordering:** verify *the new production execution caller* rejects unsafe requests and fails closed on missing sandbox/partial startup with harmless probes before any hostile fixture. Toolchain certification/native unit health alone is insufficient. Hostile/destructive fixtures require verified disposable roots, no-link/no-follow staging, strict zero-network OS policies and a harness proven to terminate/drain descendants. ResourceOnly cannot satisfy untrusted submission/checker/interactor readiness.
+- **Acceptance:** remediator passes focused/component and final command union, writes all matrix/results/provenance/cleanup, freezes candidate and claims ready for review → VERIFYING. Reviewer independently inspects and runs critical falsifying preconditions, then its own successful final union and distinct required checks on the frozen candidate. A green aggregate with missing coverage/new skips/orphan/unknown binary is rejected. Neither remediator nor planning reviewer grants DONE. Phase gate aggregates accepted evidence plus fresh integrations, never silently inherits remediator execution.
+- **Failure, rollback and next eligibility:** retain failure; classify owning layer; fix within same authorized scope only. Unrelated native/shared-prerequisite failure suspends dependent work and requires explicitly authorized upstream repair, then new freeze/revalidation. No later-feature opportunism. Rollback before cutover restores only attributable owned diff/files or disposes candidate roots while preserving prior dirty state; use atomic journals for disk mutations and retain known-good selected state. No git reset/stash/clean. Runtime tests on rolled-back state must be rerun as needed. After independent DONE, only nodes whose complete entry lists are DONE may be considered, and each still needs implementation authorization. VERIFYING freezes production/test/script inputs and transfers acceptance ownership.
 
-Do not silently choose one source. Record each conflict in the work-package report with:
+## Acceptance matrix and commands
 
-- the conflicting sources;
-- the behavior currently shipped by Node;
-- the proposed canonical behavior;
-- tests proving the chosen contract;
-- documentation updated in the same work package.
+The supported release profiles come from `server/languages/registry.ts` and `server/toolchains/release-scope.ts` (observed registry revision 6), not from every experimental schema. Build a row for **each declared supported combination**, and a refusal row for unsupported combinations. Preserve all six languages; do not pretend every source mode is supported by Scratch or local Python submission policy.
 
-Known conflict: the frontend calls `/api/batch-judge` and `/api/batch-judge/cancel` and consumes JSON-line events named `metadata`, `progress`, `problem_completed`, `done`, and `error`. Some prose refers to `/api/judge/session`, traditional SSE names, `job_start`, `test_progress`, or `job_complete`. Do not implement those prose-only names unless a deliberate contract migration is approved and both backends/frontend are updated together.
-
-### 2.2 Non-negotiable invariants
-
-- Keep all eight version files synchronized. Do not bump versions as part of an unrelated work package.
-- Version state is deliberate: historical `v1.5.0` upgrade evidence is retained; current eight-file source lockstep is `1.5.1` (STATUS/LOG-0050). Preserve the verified source version until WP10.3; never revert it to the older prose baseline. WP10.3 performs one atomic eight-file bump to `1.6.0`, followed immediately by version/release gates. This reconciliation does not itself verify a public 1.5.1 release.
-- No `@ts-ignore`, `@ts-nocheck`, skipped/deleted tests, empty error suppression, fake success response, placeholder metric, or hidden fallback.
-- Never use floating-point arithmetic for score accumulation, grouping, ranking, or checker partial points. Converting an exact result for final display is allowed only at the existing presentation boundary.
-- No compiler/runtime fallback when the selected source is unavailable or incompatible.
-- All persistent writes use same-directory temporary files, flush where required, and atomic rename/replace semantics.
-- All untrusted code runs through an explicit native-executor role. A process timeout must kill and drain the whole process tree.
-- `ResourceOnly` does not satisfy the release sandbox contract for untrusted submissions, Scratch projects, custom checkers, or interactors because it does not prove zero-network and workspace-only filesystem access. A language/source/role combination that cannot run under strict isolation is release-unavailable; a documented exception cannot be counted as `PASS`.
-- Do not widen CORS, filesystem roots, sandbox capabilities, network access, process/thread limits, or path allowances to make a test pass.
-- Preserve managed-Python semantics: managed Python may be submission-ready; system/auto Python remains checker-only unless it passes the explicit product certification policy.
-- Preserve Reload semantics: existing checked and unchecked choices remain; newly discovered contestants/problems default to selected.
-- Preserve Node as the default until the cutover work package passes. A missing/broken Node sidecar is a visible startup failure during this period, not permission to launch incomplete Rust behavior.
-
-### 2.3 Current implementation facts that must be reverified
-
-The following were verified on 2026-09-19 and may drift:
-
-- Node full gate passed: 532 pass, 10 pre-existing skips, 0 fail.
-- Windows Rust core tests passed 36; native executor passed 54; Tauri passed 14 with 3 ignored.
-- Windows embedded Rust desktop started and reported `windows-lpac-job`. C++ self-test showed real values: compile 2926 ms, run 60 ms, memory 1976 KB.
-- macOS ARM64 native executor passed 76 tests from an exact transferred source archive.
-- macOS Rust core passed 35 then failed C++ diagnostics with `iostream file not found`. Host `/usr/bin/clang++` and `xcrun clang++` compiled a smoke program; the saved C++ local path selected Xcode `clang`, not `clang++`.
-- Rust server/toolchain/session implementations contain partial and fake-success paths described in `pure-rust-core-next-steps-audit.md`.
-
-Treat these as baseline evidence, not current truth. Re-run the Phase 0 snapshot before implementation.
-
-### 2.3.1 Current hotspot map for incoming agents
-
-This is a navigation aid, not a substitute for re-reading current code:
-
-| Area | Current implementation/reference | Why it matters next |
-|---|---|---|
-| Frontend HTTP wrapper | `src/api.ts` | Canonical header/error behavior and place to deliver HTTP authorization safely. |
-| Judge streaming consumer | `src/features/judging/useJudgeSession.ts` | Uses streaming `fetch`/`ReadableStream` for `/api/batch-judge`; its actual event names/order outrank stale SSE prose. |
-| Node judge contract | `server/judge/batch-judge-route.ts`, `server/judge/` | Observable rollback/reference behavior for admission, cancellation, events, scoring, checkers, and metadata. |
-| Tauri backend selection | `src-tauri/src/backend.rs` | Contains opt-in/default/fallback decisions and embedded-server lifecycle ownership. |
-| Rust route surface | `crates/judgedesk-core/src/server/mod.rs` | Large mixed-domain router with status/toolchain/OSD success paths; decompose before broad edits. |
-| Rust server startup | `crates/judgedesk-core/src/server/mod.rs::start_embedded_server` | Currently spawns serving work; WP1.1 must make readiness and late failure supervised. |
-| Toolchain discovery/resolution | `crates/judgedesk-core/src/toolchains/discovery.rs` | Current PATH/managed/local behavior and direct probes; replace assumptions with exact persisted resolution. |
-| Toolchain diagnostics | `crates/judgedesk-core/src/toolchains/diagnostics.rs` | Mixes direct commands and native-executor calls; currently uses `ResourceOnly` for some local runtimes. |
-| Compiler/session/runner | `crates/judgedesk-core/src/engine/compiler.rs`, `session.rs`, `runner.rs` | Incomplete compile/judge/checker path, config fallback, direct process execution, score and lifecycle work. |
-| Executor protocol/platform | `native-executor/src/` | Existing framed IPC, role validation, Windows LPAC/Job and macOS Seatbelt boundary to preserve or deliberately supersede. |
-| Frontend capability consumers | `src/App.tsx`, `src/features/toolchains/`, `src/features/osd/` | Must render truthful unavailable state and retain current workflows/shortcuts. |
-| Exact scoring/export reference | `server/judge/scoring.ts`, `src/features/export/score-workbook.ts` | Rational arithmetic and workbook compatibility source of truth. |
-
-Do not mechanically port every direct `Command` occurrence: first classify it as trusted host discovery, protected compiler/runtime/checker execution, or native desktop shell/open behavior. Untrusted execution must cross the selected executor boundary; trusted discovery still needs argument safety, bounds, timeout, and redaction.
-
-### 2.4 Architecture decision that must stand before compiler work
-
-The current code mixes two executor models: `judgedesk-core` links the native-executor crate and calls `Platform` directly, while packaged JudgeDesk still ships the separate `judgedesk-executor` binary used by Node. Do not let both models become production paths accidentally.
-
-**Provisional recommended decision:** keep the native executor out of process and communicate through the existing framed IPC protocol. This preserves process/panic containment, guardian ownership, independent fail-closed termination, and the rollback backend’s established security boundary. Shared Rust crates may hold protocol types and validation logic, but Tauri/core must not call the platform runner directly in production.
-
-WP0.4 must confirm or replace this decision with an ADR covering:
-
-- crash and panic containment;
-- guardian/tree-guard ownership and initialization exactly once;
-- cancellation, drain, shutdown, and updater handoff;
-- executor cache/workspace ownership;
-- duplicate initialization and shared-state races;
-- binary packaging, architecture/signature, and rollback compatibility;
-- attack surface and what happens when core or executor exits unexpectedly.
-
-Whichever path is selected, prove the other path is unreachable in production builds except where the explicit Node rollback mode needs the packaged executor.
-
----
-
-## 3. Agent operating protocol
-
-### 3.1 Before every work package
-
-1. Read `docs/pure-rust-core-start-here.md`, `docs/verification/pure-rust-core/STATUS.md`, and the latest relevant `WORKLOG.md` entries. Confirm the package is `READY`, dependencies are `DONE`, and no other owner holds it.
-2. Claim the package in `STATUS.md` and append the claim to `WORKLOG.md` before editing. Record agent/tool, workspace/branch/HEAD, timestamp, primary/shared files, and report path.
-3. Read this plan and the package-specific files listed below.
-4. Read the applicable skills from `.agents/skills/`:
-   - logic or behavior: `test-driven-development` and `doubt-driven-development`;
-   - failures: `debugging-and-error-recovery`;
-   - executor, paths, IPC, HTTP boundary, toolchains: `security-and-hardening`;
-   - performance/PCH: `performance-optimization`;
-   - gates: `constraint-driven-development`;
-   - completion: `code-review-and-quality`.
-5. Capture `git status --short`, `git rev-parse HEAD`, tool versions, and relevant environment variables. The current working tree is dirty; do not overwrite or normalize unrelated changes.
-6. State one reviewable claim for the package. Example: “An invalid `local_path` selection returns an unavailable result and never resolves a PATH compiler.”
-7. Write the smallest test that disproves the claim under current code. Run it and preserve the RED output.
-8. Implement only enough to make the test pass. Refactor after GREEN.
-9. Run an adversarial review of the diff and the package contract before broad gates.
-10. When implementation evidence is complete, update the row to `VERIFYING`, append a WORKLOG handoff, and stop. An independent agent moves it to `DONE` or returns it to `IN_PROGRESS`/`BLOCKED`.
-
-### 3.2 Change sizing and sequencing
-
-- Target one behavioral contract per change, normally about 100–300 changed lines plus tests.
-- Split files approaching 1,000 lines before adding unrelated responsibilities. `crates/judgedesk-core/src/server/mod.rs` should be decomposed by route/domain rather than growing further.
-- Keep refactoring separate from behavior changes when practical.
-- Do not implement later packages while the current package has a reproducible failing gate.
-- Do not delete apparent dead code without listing it and obtaining the user's direction, as required by the review skill.
-
-### 3.3 Test isolation rules
-
-- Run native-executor, Rust core, desktop, and security gates sequentially when they share `%TEMP%/JudgeDeskExecutor`, AppData, ports, or compiler caches. Parallel runs previously produced an `os error 32` cache-lock failure.
-- Give each Node/Rust parity run distinct ports, executor roots, workspaces, preferences, toolchain snapshots, logs, and output directories.
-- Never run performance comparisons concurrently. Run alternating sequential trials under comparable idle conditions.
-- Destructive or adversarial security fixtures may run only after their sandbox caller path is verified fail-closed. Use dedicated disposable roots and assert they remain inside those roots.
-- A timeout in the test harness must terminate descendants and report whether drain succeeded. Do not simply stop awaiting a child.
-
-### 3.4 Status vocabulary
-
-Every test and acceptance item must use exactly one status:
-
-- `PASS`: command or scenario executed and all asserted requirements passed.
-- `FAIL`: executed and produced a product or test failure.
-- `BLOCKED`: could not execute because of a named external prerequisite; include evidence and a next action.
-- `NOT_RUN`: intentionally not executed; include the reason. Inspection is never `PASS`.
-- `INCONCLUSIVE`: executed, but environmental interference or incomplete evidence prevents a verdict; include a clean rerun plan.
-
-“Looks correct”, “should pass”, “code inspected”, and “covered elsewhere” are not test results.
-
-For phase aggregation, add `evidenceMode: executed | reference` under the efficient-execution protocol. A reference links the original independent execution ID/verifier/log hash, exact test inventory/assertions and source/environment applicability; it is not a newly executed PASS. Missing or changed evidence requires a rerun. Live phase/security/cleanup/performance/desktop/release scenarios remain fresh executions.
-
-### 3.5 Dependency graph and parallel-work rules
-
-The dependency graph is intentionally stricter than the phase numbering:
-
-```text
-WP0.1 baseline
-  -> WP0.2 contract matrix -> WP0.3 corpus
-  -> WP0.4 executor ADR
-  -> WP0.5 gates/skip policy
-  -> WP0.6 version/build identity policy
-  -> WP0.7 minimal server decomposition
-
-WP0.4 + WP0.7
-  -> WP1.1 startup/lifecycle
-  -> WP1.2 HTTP authorization
-  -> WP1.3 folder picker
-  -> WP1.5 capability truthfulness
-  -> WP1.6 workspace/path containment
-  -> WP1.7 observability
-
-WP0.4 + WP1.6 -> WP1.4 checker containment
-WP1.* -> WP2.* -> WP3.* -> WP4.* -> WP5.* -> WP6.*
-WP3.* + WP5.* -> WP7.*
-WP0.2 + WP0.3 + WP6.* -> WP8.* -> WP9.* -> WP10.*
-```
-
-| Work | May run in parallel with | Must serialize with / reason |
-|---|---|---|
-| Contract fixtures | ADR and CI script design | Frontend contract changes; one canonical fixture owner |
-| Windows CI | macOS CI on an isolated source hash | Shared Windows executor/cache/AppData tests |
-| Independent language adapters | Documentation and fixture preparation | `registry.rs`, shared compiler/session code, profile fixtures |
-| UI scenario authoring | Backend unit tests | Live desktop runs sharing ports/AppData/workspaces |
-| Package-store fixture generation | Pure parser tests | Install/uninstall/recovery tests sharing package roots |
-| Performance analysis | Documentation | Any build, test, indexer, prewarm, or benchmark using the same host |
-
-Agents editing `crates/judgedesk-core/src/server/mod.rs`, session/job registries, toolchain registry/preferences, executor protocol, or shared golden fixtures must use one owner at a time. Before parallel work starts, assign file ownership and the merge order in the verification report.
-
-### 3.6 Work-package size rule
-
-A work package should end in one reviewable contract and one unambiguous verdict. If implementation exceeds roughly 300 changed production lines, spans more than one trust boundary, or requires unrelated fixtures, split it before coding. The subdivisions below are minimum boundaries; agents may make them smaller, but may not recombine them merely to reduce the number of reports.
-
-### 3.7 Shared progress and handoff ledger
-
-`docs/verification/pure-rust-core/STATUS.md` is the mutable current-state source of truth. `WORKLOG.md` is append-only history. Every Antigravity/Codex conversation must leave these files accurate before it ends, including interrupted or blocked work.
-
-- One owner per work package and one owner for overlapping shared files.
-- `DONE` requires the package report, required test/cleanup evidence, and independent verification.
-- `SKIPPED` requires an explicit allowance in this plan plus linked evidence; existing partial code is not enough.
-- Do not infer ownership or completion from chat history, Git timestamps, or a green aggregate test.
-- Independent verification uses a fresh context distinct from the implementer. Implementation may continue in the same accurate session after the previous WP is independently DONE and the next authorized READY WP is separately claimed using a compact handoff. Refresh context at a new phase/trust boundary, ownership transfer, material drift or lost scope. Continue focused debugging in the same WP. See `docs/pure-rust-core-efficient-execution.md`.
-- If the source state changes after recorded tests, invalidate and rerun affected evidence before `DONE`.
-
----
-
-## 4. Verification evidence and output standard
-
-### 4.1 Required work-package report
-
-Each work package must produce a Markdown report under:
-
-```text
-docs/verification/pure-rust-core/<work-package-id>-<short-name>.md
-```
-
-The report must contain:
-
-Use one canonical report; append attributable implementer/reviewer result sections and link immutable artifacts rather than copying logs into STATUS/WORKLOG. Keep all fields below; documentation-only WPs record non-applicable runtime rows as NOT_RUN with a scope reason. Compact tables may cover multiple independently asserted scenarios without omitting rows.
-
-```markdown
-# <WP ID> — <name>
-
-## Scope
-- Claim:
-- STATUS/WORKLOG claim event:
-- Dependencies satisfied:
-- User-visible behavior:
-- Trust boundaries touched:
-- Primary files owned/changed:
-- Shared files/fixtures and assigned owner:
-- Explicitly out of scope:
-- Rollback point and rollback procedure:
-- Focused verification command:
-
-## Source identity
-- Commit before:
-- Commit/diff after:
-- Dirty paths before:
-- OS / architecture:
-- Node / npm / Rust versions:
-- Rust core mode and feature flags:
-
-## Contract decisions
-| Decision | Node behavior | Rust behavior before | Required behavior | Evidence |
-|---|---|---|---|---|
-
-## TDD evidence
-### RED
-- Test name and command:
-- Expected failure:
-- Actual failure excerpt:
-
-### GREEN
-- Same focused command:
-- Result:
-
-### REFACTOR
-- Structural change:
-- Verification after refactor:
-
-## Automated test results
-| ID | Layer | Command | Start/end | Duration | Status | Passed | Failed | Skipped | Log/artifact |
-|---|---|---|---|---|---|---:|---:|---:|---|
-
-## Manual / Computer Use results
-| Scenario | Backend | Data set | Steps | Expected | Observed | Status | Screenshot/log |
-|---|---|---|---|---|---|---|---|
-
-## Cross-platform results
-| Scenario | Windows x64 | macOS arm64 | Parity verdict |
-|---|---|---|---|
-
-## Security and cleanup
-- Processes remaining:
-- Ports remaining:
-- Temporary roots created/removed:
-- External files touched:
-- Sandbox/network/path assertions:
-
-## Review
-- Correctness:
-- Architecture:
-- Security:
-- Performance:
-- Maintainability:
-- Adversarial findings and disposition:
-
-## Known limitations
-- PASS/FAIL/BLOCKED/NOT_RUN items only.
-
-## Final package verdict
-- READY / NOT READY
-- Next permitted work package:
-- Rollback verified: PASS / FAIL / NOT_RUN with reason
-- STATUS/WORKLOG updated and independent verifier assigned:
-```
-
-### 4.2 Machine-readable run record
-
-For parity, stress, performance, and release-candidate gates, also emit JSON using this shape:
-
-```json
-{
-  "schemaVersion": 1,
-  "workPackage": "WPx.y",
-  "source": {
-    "commit": "<40-hex>",
-    "dirty": true,
-    "sourceArchiveSha256": null
-  },
-  "host": {
-    "os": "windows|macos",
-    "version": "...",
-    "arch": "x86_64|arm64",
-    "hostnameAlias": "local|judgedesk-mac"
-  },
-  "runtime": {
-    "backend": "node|rust",
-    "appVersion": "1.5.1",
-    "releasedBaseline": "1.5.0",
-    "targetRelease": "1.6.0",
-    "executorMode": "windows-lpac-job|macos-seatbelt|unavailable",
-    "toolchainSnapshot": {}
-  },
-  "command": ["program", "arg1"],
-  "environmentAllowlist": {},
-  "startedAt": "ISO-8601",
-  "finishedAt": "ISO-8601",
-  "durationMs": 0,
-  "status": "PASS|FAIL|BLOCKED|NOT_RUN|INCONCLUSIVE",
-  "counts": { "passed": 0, "failed": 0, "skipped": 0 },
-  "failures": [],
-  "artifacts": [
-    { "path": "...", "sha256": "...", "bytes": 0 }
-  ]
-}
-```
-
-Do not include secrets, raw private paths in user-facing UI evidence, source submissions in reports, bootstrap tokens, or updater signing keys.
-
-### 4.3 Standard command-output rules
-
-For every command:
-
-- Capture the complete log to a uniquely named file.
-- Report the exact command, cwd, environment allowlist, exit code, elapsed time, pass/fail/skip counts, and final 20–50 meaningful lines.
-- Hash durable test artifacts and cross-machine source archives with SHA-256.
-- If a command is killed by an outer timeout, record `INCONCLUSIVE` unless the test explicitly asserts a product timeout and drain behavior.
-- List every skipped/ignored test by name and reason. A green process with new or unexplained skips is not accepted.
-- Compare test inventory before/after. Deleted or undiscovered tests block the package.
-- Maintain `docs/verification/pure-rust-core/expected-skips.json` with test ID, OS, exact prerequisite, owner, expiry/removal condition, and whether the case belongs to a release-supported profile. A missing compiler/runtime may justify `BLOCKED` during development, but a skipped real-judge test for a release-supported profile blocks release.
-- For language diagnostics, emit one independently named result per release profile and selected source mode. An aggregate “toolchains passed” test is supplementary and must not hide an unattempted compiler/runtime.
-
----
-
-## 5. Phase 0 — freeze the observable contract and reproduce the baseline
-
-### WP0.1 — workspace and environment snapshot
-
-**Goal:** establish a reproducible starting point without altering the dirty tree.
-
-**Why:** later agents must distinguish their changes from existing work and environment-dependent failures.
-
-**Actions:**
-
-1. Record Git HEAD, status, diff summary, untracked files, relevant config hashes, and version lockstep.
-2. Record Node/npm/Rust/Tauri versions and Windows/macOS OS/architecture.
-3. Inventory active JudgeDesk/Node/executor processes and ports before tests.
-4. Record paths and hashes of installed managed-toolchain receipts, without copying large toolchains into the report.
-5. On macOS, do not use either dirty checkout directly. Use an isolated checkout at a named commit, or an exact source archive that excludes build outputs and has matching sender/receiver SHA-256.
-
-**Tests:**
-
-```powershell
-npm run check:fast
-npm run release:check-version
-node scripts/run-all-tests.js --dry-run
-```
-
-```bash
-git status --short
-git rev-parse HEAD
-cargo --version
-node --version
-uname -sm
-sw_vers
-```
-
-**Exit criteria:** source identity and baseline report exist; no user changes were overwritten; test inventory is recorded.
-
-### WP0.2 — API and stream contract inventory
-
-**Goal:** create one executable contract matrix for every `/api/*` endpoint used by the frontend.
-
-**Why:** prose documents and code currently disagree. Byte-compatible migration cannot be verified without a canonical request/response/event inventory.
-
-**Primary references:**
-
-- `src/api.ts` and every `apiFetch` caller.
-- `src/features/judging/useJudgeSession.ts` and result reducer.
-- `shared/contracts.ts`, `server/types.ts`, toolchain types, OSD types.
-- `server.ts`, `server/routes/`, `server/judge/batch-judge-route.ts`.
-- `crates/judgedesk-core/src/server/` after decomposition.
-
-**Actions:**
-
-1. Add a deterministic route/caller inventory script that extracts frontend literal `/api/*` callers plus Node and Rust route declarations, emits stable JSON/Markdown, and fails CI when a caller lacks a contract row or a production route is unintentionally added/removed. Dynamic path families require an explicit manifest entry.
-2. Enumerate method, path, request headers/body/query, status codes, success/error body, streaming framing, event order, persistence, concurrency gates, and frontend consumer.
-3. Capture golden Node responses for success and representative failure cases with volatile fields normalized.
-4. Add contract tests that run the same fixture against a backend adapter. Tests must initially fail for incomplete Rust routes.
-5. Include shutdown, cancellation, disconnect, malformed JSON, missing paths, Unicode paths, and oversized inputs.
-
-**Output:** `docs/verification/pure-rust-core/api-contract-matrix.md` plus sanitized golden fixtures under a test-owned directory.
-
-**Exit criteria:** every frontend-used endpoint has a contract row and at least one automated assertion; conflicts with docs are listed.
-
-### WP0.3 — corpus and expected-result manifest
-
-**Goal:** define the workloads used for Node/Rust parity.
-
-**Why:** “same results” is meaningless without fixed inputs, expected verdicts, exact scores, toolchain identities, and hashes.
-
-**Corpus requirements:**
-
-- Six languages, supported extensions, file and stdio I/O.
-- AC, WA, PE, PARTIAL, CE, RE, TLE, MLE, OLE, JE.
-- Custom C++ and Python checkers; testlib exit/message variants.
-- Interactive C++ and Python interactors, missing expected output for input-only tasks.
-- Rational decimal/fraction points, groups, dependencies, complete-group policy, overflow boundaries.
-- Unicode/long names, spaces, case collisions, missing/malformed config, empty folders.
-- Security fixtures only after Phase 1 exits.
-
-Create a manifest containing every input file hash and expected canonical output. Do not modify expected results to match a failing Rust implementation; resolve mismatches against the Node contract and product specification.
-
-### WP0.4 — executor architecture ADR
-
-**Goal:** decide and freeze the production boundary between Tauri/core and `judgedesk-executor` before compiler or runner work.
-
-**Recommended starting position:** retain the executor as an out-of-process, framed-IPC service. The ADR may choose a different model only if it provides equally strong evidence for panic/crash containment, guardian ownership, fail-closed termination, cancellation/drain, independent resource limits, and rollback compatibility.
-
-**Required output:** `docs/adr/<next-id>-rust-core-executor-boundary.md` containing:
-
-- selected and rejected models;
-- process tree and trust-boundary diagram;
-- IPC versioning, framing, authentication/parent identity, maximum frame sizes, and failure semantics;
-- exactly-once guardian/tree-guard initialization and ownership;
-- startup readiness, cancellation, crash, shutdown, updater handoff, and orphan recovery;
-- cache/workspace/package ownership and cleanup;
-- release packaging and how the temporary Node rollback path reaches the executor;
-- tests proving the unselected production path is unreachable.
-
-**Exit criteria:** ADR accepted, tests name the selected boundary, and Phase 1–5 packages no longer need to guess whether to call `Platform` in process or use the executor protocol.
-
-### WP0.5 — Rust gates, CI, and expected-skip policy
-
-**Goal:** make Rust regressions capable of failing the same required gate that agents and CI use before completion.
-
-**Actions:**
-
-1. Add locked `fmt`, all-target `clippy -D warnings`, core tests, executor tests, and Tauri tests to repository scripts/CI for relevant Windows and macOS jobs.
-2. Keep sequential execution where components share executor roots, caches, ports, or AppData.
-3. Add explicit source checks or lints for runtime `unwrap()`/`expect()` and floating-point scoring, because clippy alone does not enforce these project rules.
-4. Create and validate `expected-skips.json`; fail on new, expired, renamed, or release-blocking skips.
-5. Split the current Rust toolchain mega-diagnostic into independently reported tests per release profile so one unavailable runtime cannot short-circuit later checks.
-
-**RED evidence:** demonstrate that an intentionally failing core test, clippy warning, prohibited runtime unwrap, new skip, and missing supported runtime each fail the intended local/CI gate. Revert the intentional faults before GREEN.
-
-### WP0.6 — version, build identity, and lockfile policy
-
-**Goal:** remove ambiguity between the authoritative eight-file application version and the new core crate’s package version.
-
-**Required decision:** preserve the existing eight-file lockstep unless `AGENTS.md` and the checker are deliberately revised as a separate approved policy change. Prefer keeping `judgedesk-core`’s crate version independent while injecting the application version, build commit, target, feature set, and backend identity from Tauri/build environment into `/api/status` and logs. Define which lockfile is authoritative for workspace and packaged builds; never hardcode release metadata inside request handlers.
-
-**Tests:** version mismatch fixtures, dirty/dev build identity, reproducible packaged identity, missing injected metadata failure, and `npm run release:check-version` over the unchanged eight-file contract.
-
-### WP0.7 — minimal Rust server decomposition
-
-**Goal:** create reviewable route/domain boundaries before Phase 1 changes expand `crates/judgedesk-core/src/server/mod.rs`.
-
-Move code without changing behavior into at least `auth`, `lifecycle/status`, `workspace`, `judge`, `toolchains`, and `osd` route modules plus shared response/error helpers. First capture characterization tests, then compare existing tests and route inventory before/after. Only the smallest startup/security fix needed to make extraction safe may share this package; all other behavior changes remain in their dedicated work packages.
-
-**Exit criteria:** no route disappears, behavior/fixtures remain stable, and subsequent packages have a single domain owner instead of repeatedly editing one large module.
-
----
-
-## 6. Phase 1 — close unsafe paths and misleading backend behavior
-
-### WP1.1 — backend selection must fail explicitly
-
-**Goal:** Node remains default and Rust remains explicit opt-in until cutover, and either backend is reported ready only after it owns a listening socket and a supervised lifecycle.
-
-**Why:** `src-tauri/src/backend.rs` currently falls back to Rust when the sidecar cannot be found or spawned, exposing partial behavior without user intent.
-
-**Required behavior:**
-
-- Normal startup: launch Node and complete its authenticated startup handshake.
-- `JUDGEDESK_PURE_RUST_CORE=1`: launch embedded Rust deliberately.
-- Node missing/spawn/handshake failure without opt-in: show structured startup failure and do not launch Rust.
-- Rust binds the real loopback listener first, preferably on port `0`, and publishes its selected port only after bind and route initialization succeed.
-- Tauri retains the server task handle, shutdown sender, terminal error receiver, port, backend identity, and readiness state in managed state. A detached `tokio::spawn` is not ownership.
-- Late serve failure/crash is surfaced to the UI/supervisor, not lost after an optimistic startup result.
-- Stop waits for admission close, active-run cancellation/drain, server completion, socket release, and state clear in that order. Updater handoff uses the same supervised drain path.
-- Cutover logic is implemented only in Phase 10.
-
-**RED tests:** missing sidecar, invalid sidecar, startup timeout, wrong bootstrap frame, occupied requested port, concurrent port race, Rust opt-in, duplicate start, duplicate stop, stop during startup, late server error, backend crash, updater handoff, and restart after confirmed stop.
-
-**Verification:** Tauri focused tests; Windows manual startup cases; process/port cleanup; macOS Tauri tests via SSH. Each case asserts zero orphan process/task, released port, and truthful final state.
-
-**Exit criteria:** no implicit Rust fallback remains; startup error names cause and action; no orphan backend.
-
-### WP1.2 — HTTP origin/authentication boundary and input bounds
-
-**Goal:** match the loopback security boundary of the production backend.
-
-**Why:** Rust currently allows any CORS origin/method/header and exposes filesystem/judge mutations on localhost.
-
-**Required design work:**
-
-1. Separate the **parent startup handshake secret** used to prove the spawned backend belongs to Tauri from the **loopback HTTP authorization credential** used on every protected request. Specify generation entropy, process delivery, storage lifetime, rotation/restart behavior, comparison, and redaction for each.
-2. Define an endpoint authorization table. Default all filesystem, toolchain, judge, OSD, archive/export, and lifecycle mutations to protected. List any unauthenticated readiness endpoint with its minimal response and rationale.
-3. Define browser delivery. `fetch` may attach an authorization header; browser `EventSource` cannot. Prefer an authenticated streaming `fetch`/reader or another transport that does not put long-lived credentials in URLs, history, referrers, or logs. If a short-lived stream ticket is chosen, make it single-use, narrowly scoped, expiring, and tested.
-4. Match the approved desktop origins exactly. Define `Origin: null`, no-Origin native requests, development origins, `OPTIONS`, CSRF-style simple requests, and the precise `401` versus `403` response schema.
-5. Reject hostile origins, absent/incorrect/expired credentials, invalid methods, oversized bodies/headers/query/path, malformed JSON, and duplicate/ambiguous authorization headers.
-6. Decide whether each difference from Node is required parity or an intentional security correction. Security corrections must be applied to Node and Rust during the rollback window so selecting the backend does not select a weaker boundary.
-
-**Tests:** allowed production/development desktop origins, hostile `http://evil.invalid`, `null`/missing origin policies, preflight allow/deny, CSRF-style form/simple requests, wrong/missing/expired/replayed credential, stream reconnect, ticket reuse where applicable, oversized body/header/query/path, malformed JSON, duplicate auth header, loopback-only binding, IPv4/IPv6 policy, and log redaction.
-
-**Security output:** threat-boundary table and raw HTTP assertions. A CORS header test alone is insufficient; assert that mutations are denied.
-
-### WP1.3 — native folder selection and command-injection removal
-
-**Goal:** eliminate PowerShell string interpolation from `defaultPath`.
-
-**Why:** a filesystem path is untrusted input even when supplied by another local process.
-
-Prefer Tauri’s native dialog command/channel. If a helper process is unavoidable, pass arguments through structured OS APIs and validate/canonicalize the allowed path rather than embedding it in a script.
-
-**RED fixtures:** paths containing `'`, `;`, newline, `$()`, backtick, Unicode, spaces, UNC syntax, nonexistent roots, and excessive length. The test must prove no marker command/file is executed or created.
-
-**Manual test:** native folder dialog opens, respects a safe initial directory, cancel returns the current frontend contract, and focus returns to the app on Windows and macOS.
-
-### WP1.4 — all custom checker execution through native executor
-
-**Goal:** remove direct `std::process::Command` execution of checker binaries/scripts from Rust core.
-
-**Why:** direct execution bypasses filesystem/network/resource/process-tree containment; the current timeout stops waiting but does not prove process death.
-
-**Prerequisite:** WP1.6 has established owned workspaces and race-resistant path handling. Do not run hostile checker fixtures before that boundary exists.
-
-**Required behavior:**
-
-- Compile and execute checker with explicit executor roles and pinned checker toolchain.
-- Stage only required input/answer/output/files and problem-local headers.
-- Apply role-specific timeout, memory, output, process/thread/open-file/write limits.
-- Kill and drain the complete process tree on deadline, cancel, disconnect, or core shutdown.
-- Preserve Themis/testlib argv/stdin/message/partial-score semantics.
-- Compilation failure returns JE/FAIL according to the canonical Node contract; never choose another checker automatically.
-
-**Tests:** AC/WA/PE/PARTIAL/FAIL, infinite checker, fork/thread child, large output/write, external read, network socket, missing checker, compile error, Unicode message, cancel during checker, Python checker source policy.
-
-**Exit criteria:** repository search finds no production checker execution outside the executor boundary; security tests demonstrate process death and containment.
-
-### WP1.5 — truthful capabilities and unavailable operations
-
-**Goal:** prevent incomplete routes from claiming success and prevent the UI from advertising features that cannot work.
-
-Replace hardcoded `/api/status` capabilities, directory-name toolchain heuristics, in-memory fake install state, fixed-success OSD responses, and similar stubs with one typed capability manifest derived from the selected backend, executor mode, platform, compiled features, and verified runtime state.
-
-Each route declares `available`, a stable unavailable reason/code, and the owning component. An incomplete route returns the canonical unavailable response and performs no mutation. The frontend renders that state and disables or explains the action. A test fails if a route returns success without the expected state transition or durable evidence.
-
-**Tests:** executor unavailable, package service unavailable, OSD unavailable, unsupported language/source/role, missing compiled feature, stale capability cache, backend restart, and UI state for every unavailable reason. Contract tests assert `/api/status` identity/version/capabilities match the actual backend and build metadata from WP0.6.
-
-### WP1.6 — owned workspace and hostile-path lifecycle
-
-**Goal:** establish containment before any real submission, compiler, checker, or interactor execution.
-
-**Required design:**
-
-- Allocate unpredictable workspace IDs beneath a configured canonical root; create an ownership marker containing schema/run identity.
-- Open/validate components with no-follow and platform-appropriate reparse-point handling. Require expected file type and ownership; do not rely on one earlier `canonicalize` followed by a later path operation.
-- Stage via handles or race-resistant primitives where possible. Revalidate before destructive operations and before passing paths across IPC.
-- Reject absolute paths, `..`, alternate streams/device names, link/reparse traversal, unexpected hardlinks, control characters, and platform-confusable/case-collision conditions under the documented policy.
-- Use RAII cleanup, but clean only marked, owned roots. Cancellation, crash recovery, and startup scavenging must never recurse through an untrusted link or delete an unrelated directory.
-
-**Tests:** symlink/junction/reparse leaf and ancestor, ancestor swap between validation/use, hardlink fixtures, mount/volume boundary where supported, Windows reserved/ADS paths, Unicode normalization/case collisions, newline/control names, long paths, concurrent cleanup, cancellation at each staging step, core/executor crash, stale owned root, forged/missing ownership marker, and unrelated neighboring data. Destructive fixtures run only inside a disposable test-owned root.
-
-**Exit criteria:** all real-execution packages depend on this workspace API; no route constructs an executable workspace by string concatenation alone.
-
-### WP1.7 — structured observability and redaction
-
-**Goal:** make startup, requests, judge jobs, executor calls, cancellation, drain, and crashes diagnosable without leaking secrets or submissions.
-
-Define structured log events with request/job/run correlation IDs, backend/app/build identity, executor mode, route/result/error code, bounded durations/counts, lifecycle transition, and cancellation/drain reason. Token values, stream tickets, signing material, source contents, answer/output contents, and full unsafe user paths must never appear. Path fields use a safe label or test-owned relative identity.
-
-**Tests:** log capture for Windows development, Windows packaged Rust/Node modes, and packaged macOS paths; deliberate auth failure; compiler/checker error; cancellation; crash; updater drain. Add secret canaries and source/path canaries and fail if raw values occur. Verify log rotation/bounds and that one request/job can be reconstructed by correlation ID.
-
-### Phase 1 gate
-
-Run the required command coverage sequentially. A successful final check:full already executes check:fast and test:server; do not repeat those children on the identical candidate merely because they appear below. Rust/security coverage remains additional, with fmt/all-target clippy also required for touched native/Tauri crates. Fresh integrated sandbox/lifecycle/drain checks and independent phase acceptance remain mandatory.
-
-```powershell
-npm run check:fast
-cargo fmt --check --manifest-path crates/judgedesk-core/Cargo.toml
-cargo clippy --locked --manifest-path crates/judgedesk-core/Cargo.toml --all-targets -- -D warnings
-cargo test --locked --manifest-path crates/judgedesk-core/Cargo.toml -- --test-threads=1
-cargo test --locked --manifest-path native-executor/Cargo.toml -- --test-threads=1
-cargo test --locked --manifest-path src-tauri/Cargo.toml
-npm run test:security
-npm run test:server
-```
-
-Phase 1 is not complete if any unsafe route is merely hidden behind the opt-in flag.
-
----
-
-## 7. Phase 2 — real toolchain state and fail-closed resolution
-
-### WP2.1 — complete domain ownership after the minimal decomposition
-
-**Goal:** extend WP0.7’s reviewable boundaries only where Phase 2 needs new modules; do not perform another whole-server move.
-
-**Suggested boundaries:**
-
-```text
-server/
-  auth.rs
-  status.rs
-  workspace_routes.rs
-  problem_routes.rs
-  judge_routes.rs
-  toolchain_routes.rs
-  osd_routes.rs
-  export_routes.rs
-toolchains/
-  model.rs
-  preferences.rs
-  package_store.rs
-  resolver.rs
-  certification.rs
-  diagnostics.rs
-engine/
-  compiler.rs
-  language_adapters/
-  session.rs
-  runner.rs
-```
-
-This package is structural: preserve behavior, run existing tests before/after, and avoid mixing new toolchain semantics into the file move. Skip it when WP0.7 already produced these boundaries; record `NOT_RUN` with that evidence rather than churning files.
-
-### WP2.2 — persistent preference document and execution policy
-
-**Goal:** port revisioned, atomic persistence and recovery behavior.
-
-**Requirements:** schema/version/revision validation; per-profile selections; atomic write; corruption recovery diagnostics; concurrent update conflict handling; no path leakage; parity with Node response fields and status codes.
-
-**Tests:** first run, round-trip, restart, concurrent writes, truncated JSON, invalid mode/path, legacy migration, write/rename failure, revision mismatch, no partial file after crash simulation.
-
-### WP2.3 — package trust, manifest, and receipt model
-
-**Goal:** define verified disk truth before implementing mutation.
-
-Verify signed manifests, manifest schema/version, package/entry size and SHA-256, platform/architecture, provenance, SBOM/license metadata, tool identity, and canonical receipt format. Reject unknown key IDs/algorithms, expired/revoked policy entries where applicable, ambiguous duplicate files, and metadata that is not covered by the signature.
-
-**Tests:** valid fixture, signature/key/hash/size/platform/architecture mismatch, malformed/canonicalization ambiguity, missing provenance/license, duplicate entry, downgrade/rollback policy, and receipt tamper/restart detection.
-
-### WP2.4 — bounded extraction and atomic installation
-
-**Goal:** turn a verified local package into an owned installed tree without exposing a partial destination.
-
-Require preflight quotas, streaming byte/file-count/depth limits, link/traversal/device-file rejection, owned staging from WP1.6, per-package mutation lock, cancellation, executable/permission normalization, post-extract verification, fsync where required, and atomic publish/rollback. Unit tests use signed local fixtures; live download belongs to a separate integration gate and must use the approved network client/pinning policy.
-
-**Tests:** valid install, compressed/expanded size mismatch, zip bomb, traversal, symlink/hardlink/reparse entry, deep/file-count flood, interrupted extraction, destination collision, permission failure, cancellation at each publish phase, active-judge 409, and no partial destination.
-
-### WP2.5 — uninstall, deduplication, and crash recovery
-
-**Goal:** remove only owned packages and recover only owned stale staging.
-
-Handle selected/in-use package refusal, shared-content reference accounting if deduplication is used, idempotent retry, corrupted receipt, partial prior publish, and startup cleanup. Never recursively delete from a path derived only from package metadata.
-
-**Tests:** normal uninstall, selected/in-use 409, duplicate install, concurrent install/uninstall, stale owned staging, forged/missing marker, corrupted receipt, destination replacement race, unrelated package preservation, and cancellation/restart recovery.
-
-### WP2.6 — exact source resolver
-
-**Goal:** make `none`, `managed`, `local_path`, and `local_auto` mutually explicit.
-
-**Required matrix:**
-
-| Selected source | Available | Result |
-|---|---:|---|
-| none | any | disabled; no fallback |
-| managed | yes | exact verified managed package |
-| managed | no/invalid | unavailable; no fallback |
-| local_path | valid and certified | exact selected path/snapshot |
-| local_path | invalid/incompatible | unavailable; no fallback |
-| local_auto | certified candidate exists | deterministic chosen candidate |
-| local_auto | none certified | unavailable; no managed/system substitution |
-
-Record executable path, runtime path, source root, version, package digest, certificate, snapshot digest, and isolation mode in a pinned immutable session snapshot.
-
-### WP2.7 — macOS compiler-driver and SDK correction
-
-**Goal:** fix the observed Apple Clang diagnostic failure with a focused reproduction.
-
-**Hypotheses to test separately:** selected `clang` versus `clang++`; SDK/sysroot/environment stripped during native execution; local snapshot misses headers/resource directory; source-language override; Xcode developer-root selection.
-
-**Required RED evidence:** reproduce `iostream file not found` with the Rust diagnostic path while host `xcrun clang++` succeeds. Do not fix by copying arbitrary host directories or bypassing Seatbelt.
-
-**Success:** C and C++ diagnostics compile and execute through the production-compatible protected path on Apple Silicon; the selected driver identity is preserved; invalid `clang` for C++ is rejected or mapped only under an explicit tested policy.
-
-### Phase 2 gate
-
-- Restart persistence tests on both OSes.
-- Every **release profile × declared source mode** in the versioned profile registry. Do not fabricate four modes for profiles that intentionally support fewer modes; Scratch may be managed-only. Each unsupported combination must be absent or return one stable unavailable reason, never fall back.
-- Managed receipt and install security tests.
-- macOS core tests and C/C++ diagnostics via SSH against an exact source hash.
-- UI Toolchain Manager reflects persisted truth after app restart; it must not show `Submission ready` from directory-name heuristics.
-- Dormant or experimental registry entries such as Go, Rust, JavaScript, or C# remain undiscoverable unless a separate product change adds them to release scope with full tests. Record the registry/release-scope revision in every result.
-
----
-
-## 8. Phase 3 — protected compiler pipeline and six language adapters
-
-### WP3.1 — compiler service contract
-
-**Goal:** one compiler service is used by self-test, submission, checker, and interactor compilation with role-specific policy.
-
-**Baseline limits to preserve unless the product contract is deliberately changed:**
-
-- Submission compile timeout: 15,000 ms.
-- Generated submission binary cap: 32 MiB.
-- Custom-checker compile timeout: 60,000 ms.
-- Checker compiler memory policy: preserve Node’s current explicit value and verify it in tests.
-
-Do not copy the original plan’s obsolete 10-second/50-MB values.
-
-**Required behavior:** async orchestration, pinned executable, minimal environment, protected source/output arguments, no shell, stdout/stderr cap, complete tree kill/drain, output validation, atomic artifact publish, RAII workspace cleanup, structured CE/JE diagnostics.
-
-**Tests:** hung compiler and descendants, template/macro pressure, output oversize, diagnostic flood, missing output, wrong output type, path with space/Unicode, cancellation at spawn/compile/link/publish, crash cleanup.
-
-### WP3.2 — language adapters
-
-Implement one adapter at a time, each with focused RED/GREEN evidence:
-
-1. C++: selected GCC/Clang, flags/profile, static policy by OS, stack flags, later PCH hook.
-2. C: C11 profile and `-lm`/platform policy.
-3. Python: syntax pre-check and runtime execution; managed submission policy; checker-only local policy.
-4. Pascal: compile artifact and strict sandbox support. If the platform executor cannot provide the release isolation contract, mark the affected source/platform unavailable.
-5. Java: `javac` output tree, main-class discovery, JVM runtime, thread/process/memory policy, and strict sandbox support. Broad JVM filesystem/network access is not an accepted compatibility shortcut.
-6. Scratch: actual `.sb3/.sb2/.sb` compilation/execution path and output contract; no diagnostic-only shortcut.
-
-**Per-adapter tests:** valid program, syntax/compile error, runtime error, stdio, file I/O where supported, Unicode path, source ambiguity, wrong version, selected source unavailable, timeout, memory/output limit, cancellation, metadata identity.
-
-For every release profile × declared source × supported OS × execution role (submission, checker, or interactor where allowed), add hostile probes for network, external read/write, descendant escape, process/thread/open-file limits, and kill/drain. `ResourceOnly` results are reported as `FAIL` for release readiness. If strict isolation cannot be implemented, the combination must be unavailable with a stable reason and the UI must say so.
-
-Do not allow one language failure to skip the remaining matrix. Each adapter diagnostic is a distinct test/result row and the aggregate command reports which profiles were attempted. A supported release profile that is missing its runtime is `BLOCKED` during development and blocks the release gate.
-
-### WP3.3 — session pinning and maintenance gate
-
-Resolve every required submission/checker/interactor toolchain before execution, emit metadata from that immutable snapshot, and block toolchain mutations for the session lifetime. A changed preference during a run must affect only the next run.
-
-**Race tests:** preference change during prewarm/compile/test; uninstall during judge; rescan during judge; cancellation before/after pinning; session cleanup releases the lease exactly once.
-
-### Phase 3 gate
-
-Every release language profile must pass a real batch-judge fixture and produce the expected event/result on each platform where the release claims support. A diagnostic badge is insufficient. The gate includes the hostile role/source matrix above, the expected-skip validator, and an assertion that dormant profiles are not exposed.
-
----
-
-## 9. Phase 4 — problem configuration, session lifecycle, and stream parity
-
-### WP4.1 — normalized problem configuration
-
-**Goal:** port `resolveProblemConfig` semantics rather than inventing a new precedence.
-
-Cover stored config, request config, defaults, legacy `useStdIO`, split stdin/stdout, memory 8–1024 MiB, time bounds, test scores, Polygon groups, checker, interactor, compile profile, custom flag validation, and persisted compile snapshots.
-
-**Tests:** table-driven Node/Rust normalization on identical JSON, malformed/unknown fields, stored/request conflict, legacy files, fractions, invalid flags, missing config, Unicode filenames.
-
-### WP4.2 — admission, job identity, and registry
-
-**Goal:** accept at most the canonical number of sessions, allocate unique bounded job IDs, and make registration/removal linearizable.
-
-Port the observable behavior of `SingleJudgeSessionGate`, cancel-before-register tombstones, job lookup, and toolchain maintenance lease without yet mixing native drain logic into the registry.
-
-**Race tests:** simultaneous requests, duplicate/invalid/exhausted ID, cancel before register, register versus cancel, second cancel, maintenance versus admission, registry cleanup, and new run after clean removal.
-
-### WP4.3 — cancellation, disconnect, and native drain
-
-**Goal:** every admitted job has one cancellation owner and reaches a terminal drained state.
-
-Define state transitions for preparation, compile, testcase, checker/interactor, stream disconnect, cancel timeout, backend shutdown, crash recovery, and updater handoff. Wire them to the supervised backend lifecycle from WP1.1 and the executor boundary from WP0.4.
-
-**Race tests:** cancel during every phase, disconnect before/after terminal event, shutdown during every phase, repeated cancel, executor refusal/crash, cancellation timeout, drain completion, lease release exactly once, zero descendant/orphan, and new run only after cleanup.
-
-### WP4.4 — event writer and stream contract
-
-**Goal:** match frontend-consumed framing, event names, camelCase fields, order, flush behavior, and terminal semantics.
-
-**Required assertions:**
-
-- Initial progress and metadata order matches the canonical Node contract.
-- `problem_completed` merges into the existing reducer without frontend changes.
-- Exactly one terminal `done` or `error` policy as defined by Node.
-- Malformed/internal errors do not leak private paths or stack traces.
-- Slow/disconnected clients do not leave judging work unbounded or orphaned.
-
-Use chunk-boundary tests: multiple events per chunk, event split across chunks, multibyte UTF-8 split, blank lines, final event without extra buffering.
-
-### WP4.5 — run metadata and export compatibility
-
-Emit complete metadata for every required language/toolchain and executor. Feed Rust-produced metadata/results directly into `score-workbook.ts` tests. Verify Excel Summary and Details content and displayed sort order.
-
-### Phase 4 gate
-
-- Node/Rust API golden tests.
-- Frontend reducer and export tests with Rust fixtures.
-- Cancellation/concurrency stress loops.
-- Desktop load → judge → details → rejudge/delete → export smoke on Windows.
-
----
-
-## 10. Phase 5 — exact scoring, checkers, and interactive execution
-
-### WP5.1 — exact rational model
-
-**Goal:** remove f64 parsing/multiplication and saturating corruption from scoring paths.
-
-Use exact decimal/fraction parsing from strings/JSON lexical form, reduced numerator/denominator representation, checked overflow with explicit JE/config error, exact group/dependency arithmetic, and final presentation conversion only at the boundary required by existing UI contracts.
-
-**Property and table tests:** `1/3 + 2/3`, `0.35 * 10`, negative/zero denominator policy, large numerator/denominator, malformed strings, JSON decimal lexical preservation, partial checker multiplier, group dependencies, permutation invariance, Node/Rust canonical output.
-
-### WP5.2 — standard checker parity
-
-Map every built-in checker identifier and alias: token, line, exact/binary, integer/huge integer, floating tolerance, yes/no, Polygon names, PE distinctions, trailing whitespace/newline, NUL/binary, UTF-8 policy.
-
-Use table/property tests that exercise empty input, very large tokens/integers, signed zero/exponents/NaN/Infinity policy, invalid UTF-8, mixed line endings, embedded NUL, and bounded memory/output. Expected aliases and default checker selection belong in the canonical contract matrix.
-
-### WP5.3 — custom checker parity
-
-Custom-checker tests must cover testlib and Themis layouts, exit codes, stdout/stderr parsing, partial points, invalid scores outside the accepted range, timeout, and sandbox denial.
-
-The existing `result = 2` → `PARTIAL, 2` versus `JE, 0` discrepancy is a product contract decision. Do not bury it inside implementation. Record the selected rule and update checklist/tests together.
-
-This package depends on WP1.4 and reuses the same native-executor path; it must not create a second custom-checker runner.
-
-### WP5.4 — interactive runner
-
-**Goal:** dual protected processes with bounded bidirectional pipes and reliable teardown.
-
-**Tests:** normal exchange, contestant/interactor timeout, either-side crash, pipe close/deadlock, output flood, child process escape, cancel, input-only test, C++/Python interactor, partial/testlib verdict, no expected output, cleanup after each failure.
-
-**Exit criteria:** neither participant can outlive the run; both sides have independent roles/limits; event/result parity is documented.
-
----
-
-## 11. Phase 6 — remaining production services
-
-### WP6.1a — OSD parser and durable state
-
-Port filename/content parsing, validation, canonical contestant/problem identity, duplicate policy, durable logs/state, and bounded error reporting from Node. Test malformed/Unicode/case-colliding names, duplicates, invalid/oversized content, partial records, restart recovery, and atomic state writes.
-
-### WP6.1b — OSD watcher, debounce, and queue
-
-Port watcher semantics, stable-write/rename detection, debounce, bounded FIFO order, backpressure, and batch-judge conflict gate. Test partial file writes followed by rename, rapid duplicate events, watcher restart/overflow, queue depth limit, concurrent batch start, cancellation, inaccessible watch root, and no lost/duplicated accepted item.
-
-### WP6.1c — OSD status stream and lifecycle
-
-Port start/stop, live status/events, reconnect/replay policy, cancellation, backend shutdown, and cleanup. Test repeated start/stop, disconnect/reconnect, slow consumer, terminal error, shutdown with queued/running item, updater drain, released watcher handles, and truthful unavailable capability.
-
-### WP6.2 — workspace/problem/config routes
-
-Port discovery, natural sort, custom checker/interactor listing, test previews with bounded UTF-8-safe reads, config atomic writes, path validation, and exact error schemas. Test symlinks/reparse points, case behavior, large directories, inaccessible paths, Unicode, and races.
-
-### WP6.3 — archive/export/update/lifecycle touchpoints
-
-Rust core does not need to absorb Tauri-owned responsibilities unnecessarily. Define the ownership boundary explicitly and test the complete frontend flow. Preserve archive traversal/zip-bomb protections, Excel system-open behavior, update handoff, and single-instance lifecycle.
-
-### Phase 6 gate
-
-Every endpoint in the WP0.2 matrix is `PASS` for both backends or has an explicitly approved backend-specific ownership note. No endpoint may remain a fixed success stub.
-
----
-
-## 12. Phase 7 — Universal PCH and prewarm
-
-### WP7.1 — benchmark before optimization
-
-Measure packaged backend startup, idle memory, judge orchestration overhead, and cold/warm C++ compile time on each supported compiler/OS with PCH disabled. Record compiler path/version/hash, SDK/header identity, flags, source hash, CPU model/core count, RAM, OS/power mode, foreground/background process load, thermal state where available, cache state, and build identity.
-
-Define “idle” as ready with no active/prewarm job and after a fixed quiet interval. Use at least 3 warmups and 20 measured trials per scenario, alternate Node/Rust order for comparisons, and run no build/indexer/antivirus scan or competing test on the host. Report p50, p90, p95, minimum, maximum, failures, and raw samples. Repeat a noisy run; mark it `INCONCLUSIVE` instead of discarding inconvenient samples.
-
-The PRD currently supplies these release targets: total app + backend idle memory `<150 MiB`, per-testcase JudgeDesk orchestration overhead `<50 ms`, and warm PCH C++ compilation `<300 ms`. WP7.1 must define the exact measurement points and a startup target/regression ceiling before optimization. Until reviewers accept that measurement contract, startup claims remain `INCONCLUSIVE`; do not invent a threshold to obtain `PASS`.
-
-### WP7.2 — cache identity and atomic generation
-
-Fingerprint must cover canonical executable identity, executable metadata/hash as practical, compiler version, target, language/standard, complete relevant flags, resource directory/system headers or SDK identity, JudgeDesk PCH schema, and platform architecture.
-
-Use single-flight generation, a private staging directory, bounded compiler policy, validation compile, atomic publish, ownership marker, and stale-cache cleanup limited to owned cache entries.
-
-### WP7.3 — safe consumption and fallback
-
-PCH hit uses the same pinned compiler/profile. A missing/corrupt/incompatible PCH may fall back only to ordinary compilation with that same toolchain. Emit hit/miss/rebuild/bypass diagnostics without exposing private paths.
-
-**Tests:** cold miss, warm hit, concurrent first use, compiler/flags/SDK/header change, corrupt/truncated cache, path with spaces/Unicode, generation timeout, cancellation, restart, permissions, fallback correctness, no cross-profile reuse.
-
-### WP7.4 — background prewarm
-
-Prewarm must be low priority, cancellable, single-flight, blocked appropriately by shutdown/update/toolchain mutation, and unable to delay first judge indefinitely. Foreground judge may join a valid in-flight prewarm or use direct compile under the documented policy.
-
-### Performance acceptance
-
-- Correctness and security gates remain identical with PCH enabled/disabled.
-- Warm PCH compile p50 and p95 meet the approved `<300 ms` interpretation on the declared reference fixtures/hardware, or the package is `FAIL` until a documented product requirement change is approved.
-- Total packaged app + selected backend idle memory remains `<150 MiB` under the WP7.1 idle definition; report process-tree RSS/working-set methodology per OS.
-- JudgeDesk’s own per-testcase overhead remains `<50 ms`, measured separately from contestant execution and checker time.
-- Backend startup meets the WP7.1 approved target and does not exceed the accepted regression ceiling relative to the recorded baseline.
-- Warm compile improvement reports absolute values, percentage, p50/p90/p95, confidence/noise notes, and PCH hit rate; a single best run is not evidence.
-- Benchmark results are reproducible on Windows x64 and macOS arm64.
-
----
-
-## 13. Phase 8 — automated Node/Rust parity harness
-
-### WP8.1 — isolated sequential harness
-
-Run Node and Rust sequentially against immutable copies of the same corpus. Each backend gets its own:
-
-- port and bootstrap context;
-- executor root and workspace root;
-- preferences and toolchain snapshot;
-- result/log directory;
-- cache/PCH directory.
-
-Normalize only explicitly volatile fields: timestamps, job IDs, temp roots, and measured time/memory where tolerances are contractually allowed. Never normalize verdict, score, order, language, compiler source/version, error code, or event type.
-
-### WP8.2 — comparison dimensions
-
-Compare:
-
-- HTTP status/error code/body shape.
-- Event sequence and required fields.
-- Discovered contestants/problems/tests and order.
-- Compile status/error category.
-- Every testcase verdict, exact score, checker message category, and execution diagnostic reason.
-- Problem totals/status and final rank order.
-- Metadata/toolchain identity.
-- Persistence effects on disk.
-- Cleanup: processes, ports, workspaces, file handles.
-
-Timing/memory comparisons require documented tolerances and raw values. A faster result with a different verdict is a failure.
-
-### WP8.3 — mismatch artifact
-
-For each mismatch emit a minimal diff containing corpus case ID, backend source identity, request, normalized event/result, expected contract, and triage owner. The harness exits nonzero if any non-allowlisted mismatch remains.
-
-**Exit criteria:** 100% semantic parity over the approved corpus on Windows and macOS; zero unexplained mismatch allowlists.
-
----
-
-## 14. Phase 9 — desktop and UI/UX validation
-
-### 9.1 Windows Computer Use protocol
-
-Launch a clean desktop run with explicit backend selection. Use Computer Use only for JudgeDesk UI actions; do not automate terminals through the UI. After every UI state change, refresh the window state before using element indexes or coordinates.
-
-Before relying on UI evidence, add a dedicated `npm run test:desktop:rust` (or equivalently named documented command) that:
-
-- builds/launches the Rust desktop path without building or starting the Node server/SEA;
-- uses an isolated AppData/preferences/workspace/executor/cache root;
-- sets explicit Rust backend selection and fails unless `/api/status` reports the expected Rust backend/build identity;
-- snapshots process trees and fails if a Node process or Node server sidecar starts;
-- cleans ports, processes, and owned roots on success, failure, cancellation, and outer timeout.
-
-Keep separate packaged `Core` and `Full` desktop commands so each distribution’s included toolchains and capability manifest can be verified. Existing `npm run test:desktop` output is insufficient if its setup builds Node or permits ambiguous backend identity.
-
-For each scenario capture:
-
-- backend mode and `/api/status` health;
-- exact test data manifest/hash;
-- steps and expected state;
-- screenshot at the stable final state;
-- frontend-visible error text and relevant sanitized backend log;
-- cleanup result.
-
-### 9.2 Required desktop matrix
-
-| Area | Required scenarios |
+| Dimension | Required assertions |
 |---|---|
-| Startup | cold/warm, Node/Rust explicit modes, backend failure, unavailable executor, second instance, close/crash, no orphan |
-| Workspace | empty/missing/Unicode/space paths, 18×5 and 72×20 data, F2/F3/F5, Reload selection and score preservation |
-| Scoreboard | resize axes, scrollbar/sticky cells, 3-state sort, ties/unjudged, keyboard, context menu, double-click details, no oscillation |
-| Problem config | save/reopen, fractions/groups/dependencies, limits, I/O, checker/interactor, presets/custom flags, invalid values |
-| Toolchains | every release profile × declared source mode, unavailable/corrupt/wrong version, dormant-profile hiding, restart persistence, mutation lock, dynamic per-profile self-test metrics/errors |
-| Judge | all verdicts, all languages, progress, details, cancel phases, rejudge, delete score, error recovery |
-| Archive/export | new/open/save/save-as/dirty prompts, portable archive, Excel order/content, viewer failure |
-| OSD | start/stop, file arrival/debounce/queue, duplicate/malformed input, batch conflict, reconnect |
-| Presentation | Vietnamese/English, light/dark, tab/focus/Escape, shortcuts, overflow, loading/empty/error, Help |
-| Updates | check/error/cancel/handoff, Core/Full messaging; installation only against a packaged test build |
+| Platform/build | Windows x64, live Mac arm64; dev and packaged when build/identity/selection touched; Core/Full at package gates; target/features/backend/status/startup/NDJSON and actual executable/helper hash |
+| Source | none disabled; managed exact signature/receipt; local_path exact certified selection; local_auto deterministic certified candidate; unavailable never fallback |
+| Language/artifact | C++/C flags/profile; Python syntax/runtime and managed-submission/local-checker policy; Pascal binaries; Java class tree/main/JVM; Scratch actual sb3/sb2/sb validation and runtime |
+| Role/trust | trusted bounded host discovery separate from protected compiler handling hostile source; all untrusted submission/checker/interactor strictly executor sandboxed; native transport/guardians not UI or core platform calls |
+| Verdict/score | AC/WA/PE/PARTIAL/CE/RE/TLE/MLE/OLE/JE and FAIL where canonical; lexical exact award, groups/dependencies/totals/rank; executor reason priority; zero-point and invalid partial-score policy |
+| Bounds | actual config time min/max; 1.001 s deadline edge where relevant; 8/1024 MiB and out-of-range; binary/diagnostic/output/write/process/thread/open-file quotas; bounded parser/stream/archive |
+| Lifecycle | cancellation in staging/pinning/compile/link/run/checker/interactive; repeated/cancel-before-register; slow/disconnect; crash/EOF/protocol/generation loss; updater/parent shutdown; new admission only after drain |
+| Product | canonical endpoint/error/persistence/stream contracts; Reload, scoreboard/rejudge/delete; OSD; config; archive/workbook/update; locale/theme/keyboard/dialog/focus |
+| Evidence | every selected case actually ran; unchanged oracle; skip registry/inventory; full protected state and owned cleanup; NOT_RUN/BLOCKED explicit; independent role and immutable source/build closure |
 
-### 9.3 macOS validation over SSH
+Command codes used by each task:
 
-SSH can verify source identity, compilation, unit/integration/security tests, executor/Seatbelt behavior, process supervisor, packaged checker gates, bundle structure/signature/architecture, logs, and process cleanup.
+| Code | Exact current command coverage or required future deliverable |
+|---|---|
+| D | Read-only documentation/reference/graph/ownership checks and `git diff --check`; runtime/build/security/platform NOT_RUN. No code acceptance. |
+| F | During authorized edits `npm run check:fast` plus applicable Rust fmt/clippy. On frozen final candidate, one successful `npm run check:full` per remediator and reviewer per supported host; focused/component probes also required. |
+| S | Distinct `npm run test:security` plus new focused caller/role/path/interactive security probes; full gate's native tests do not replace this. |
+| I | `node scripts/test-build-feature-identity.mjs <fresh-absolute-evidence-dir> all` after harness/ownership/deadline review; real default/no-default/test-server/core/Tauri/Node/dev/packaged build/status mutations described by WP0.6. This script's internal spawnSync lacks a timeout; approved outer harness must terminate/drain descendants rather than assume its success path covers cancellation. |
+| M | Mac: `npm run test:macos-process-supervisor`, `npm run test:macos-packaged-checkers` where their inspected staged-artifact prerequisites apply; dedicated live guardian/Seatbelt/interactive probes as named. |
+| W | Windows: `npm run test:windows-resources`, `npm run test:windows-single-instance` when relevant; exact packaged target/prerequisites and distinct native interactive/ownership probes. |
+| O | Static `npm run test:themis-parity` is enclosed by successful F; separate Windows `npm run test:themis-oracle` verifies unchanged baseline with actual DLL/reference inputs. Never run :update-baseline to green a failing migration. |
+| P | `npm run benchmark:executor` / `npm run test:performance` cover existing executor benchmarks only. WP7 supplies complete app/compiler/overhead harness and raw sample contract; future script name recorded when implemented. |
+| G | Actual platform GUI/checklist scenarios; `npm run test:desktop` currently builds Node SEA and is not a Rust-only launch. V9.1 must supply a verified isolated Rust launch command; preparing its prompt does not create that script. |
+| R | Current `npm run build:windows:release:local`; `npm run build:macos:core:local`, `npm run build:macos:full:local`, `npm run verify:macos:local`; `npm run release:verify-public-assets -- <candidate-directory> v1.6.0` after bump. These stateful resource/network/package commands require owned staging and recorded approval scope; signing/publication authority remains separate. |
 
-Use an exact commit or source archive and verify SHA-256 on both ends. Do not overwrite `/Users/mac/Code/judgedesk` or `/Users/mac/Code/judgedesk-source` when dirty. Use an isolated path under `/tmp` or a dedicated worktree.
+`check:full` currently executes **fast → test:rust → test:server → static Themis parity → release version**, short-circuiting at failed child. Rust wrapper attempts all nine steps sequentially (fmt, locked all-target clippy -D warnings, locked tests for native/core/Tauri) and fails aggregate; tests use --no-fail-fast and native/core --test-threads=1. Server child checks Node, builds/stages executor, checks corpus read-only, discovers/runs test files and skip policy. Successful identical children discharge duplicate commands. Failed/filtered/unexecuted/differently configured children do not. All-feature/no-default tests, security, live oracle, strict backend parity, stress, resources, real GUI and actual packages are distinct.
 
-Minimum SSH coverage after relevant implementation stabilizes (one successful final check:full includes its child checks; add the distinct Rust/platform rows):
+Focused examples verified against current runner interfaces:
 
-```bash
-npm run check:full
-cargo fmt --check --manifest-path crates/judgedesk-core/Cargo.toml
-cargo clippy --locked --manifest-path crates/judgedesk-core/Cargo.toml --all-targets -- -D warnings
-cargo test --locked --manifest-path crates/judgedesk-core/Cargo.toml -- --test-threads=1
+```powershell
+node scripts/run-all-tests.js --filter=corpus --dry-run
+node scripts/run-all-tests.js --filter=corpus --test-timeout=30000
+cargo test --locked --manifest-path crates/judgedesk-core/Cargo.toml --test executor_boundary_test -- --test-threads=1
 cargo test --locked --manifest-path native-executor/Cargo.toml -- --test-threads=1
 cargo test --locked --manifest-path src-tauri/Cargo.toml
-npm run test:security
-npm run test:macos-process-supervisor
-npm run test:macos-packaged-checkers
 ```
 
-SSH cannot prove visual WKWebView layout, native dialog interaction, keyboard focus, menu behavior, DMG drag/install UX, or animation stability. Mark those `BLOCKED` pending a real macOS GUI session or a human checklist with screenshots/video and app logs. Do not report them as passed by inference from Windows.
+The first command selects files only and is not executed test evidence. Rust exact-name filters need actual fully qualified name and selection inventory. A successful F on identical inputs supplies default Rust children; separately enabled features/target builds remain distinct. `npm run test:stress` needs a verified disposable copy of `STRESS_TEST_ROOT`; record copied corpus hashes and harness drain. Do not point destructive experiments at the user's canonical stress repository.
 
-Because the current Tailscale Mac has SSH but no remote-control channel, create a release-blocking human-run artifact at `docs/verification/pure-rust-core/macos-gui-checklist.md`. It must contain:
+CI currently has separate lint/server, Windows/Mac Rust, static parity and Windows live oracle steps; release workflow and CodeMagic differ. Reconcile the exact current YAML/script union at relevant handoff, never equate a CI badge or CodeMagic package smoke to this plan's full security/GUI acceptance. Future necessary pipeline changes are named code scope, not implemented by this rewrite.
 
-- exact commit/source-archive SHA-256, bundle SHA-256, app version/build/backend identity, macOS/hardware, and isolated data-root identity;
-- numbered launch/install/upgrade/rollback, native dialog, keyboard/focus/menu, judging, Toolchain Manager, OSD, archive/export, update, close/reopen, and DMG drag/install steps;
-- expected text/state for each step and the precise PASS/FAIL/BLOCKED field the human fills in;
-- required screenshot names and one short video for focus/menu/animation-sensitive flows;
-- sanitized frontend/backend/executor log paths and a secret/path redaction check;
-- cleanup commands/checks for processes, ports, mounts, temporary roots, and restored user data;
-- tester name/date and a signed-off final verdict.
+## Provenance, freezing and scheduling
 
-Automated SSH/package results may be attached to that artifact, but cannot satisfy GUI rows. Every required GUI row without human evidence remains a release blocker; purely cosmetic exploratory rows may be marked informational only if the checklist identifies them in advance.
+Use [efficient execution](pure-rust-core-efficient-execution.md) for the full invalidation contract. Freeze source/tests/scripts/config/goldens/all governing locks, generated build inputs, signed resources, actual executables/helper outputs and recipe/feature/target/environment. Cargo native, core and Tauri owning manifests each have their governing lock; Tauri path dependency resolution belongs to its lock. Node root package-lock governs npm. Do not hand-edit locks or infer app identity from core crate version.
 
-### Phase 9 exit criteria
+Archive exact regular-member closure including required untracked source and signed distribution resource. Declare excluded build/cache/toolchain outputs and recreate them through recorded recipe; a required resource cannot disappear merely because Git ignores it. Validate SHA/size/member uniqueness/safe type/path and literal Unicode names before and after extraction, with no linked ancestors. Source archive identity is not binary provenance; validate the selected actual launched binary/helpers/architecture and build-input manifest. No target/debug or stale frozen fixture silently substitutes for repaired production source. Preserve original Windows UTC-mtime records where that existing freeze requires them; source bytes and literal names remain authoritative across OS extraction.
 
-Every matrix row has Windows evidence and an explicit macOS result. All GUI-only macOS items are either genuinely executed or visibly listed as release blockers.
+Cache reuse requires proven exact relevant input/recipe/toolchain/environment closure and trusted executable ownership/ACL/no-reparse state. No mtime/size-only proof. Any source/test/fixture/script/feature/lock/resource/environment change invalidates affected evidence; absent dependency map means broader rerun. Remediator result cannot substitute for independent reviewer execution. Pure/component evidence may be referenced at phase aggregation only with original verifier/log hash/test inventory/assertions and applicability. Fresh integrated security/lifecycle/performance/GUI/package/release checks remain fresh.
 
----
+Windows/Mac can run independently on separate hosts with verified identical source and isolated writable state. Within a host serialize stateful executor/core/security/desktop/cache/port/package suites. Performance trials use idle dedicated host and alternate sequential order. No unbounded polling, repeated immutable log reads or automatic chat/agent campaign. One canonical report, compact linked ledgers, one successful final union per role per freeze; failures/reruns preserve all evidence.
 
-## 15. Phase 10 — cutover, rollback, and stabilization
+## Stage contracts
 
-Phase 10 has two separate release milestones. Milestone A makes Rust the default while shipping an explicit Node rollback. Milestone B removes Node only after stabilization. Passing Milestone A does not authorize Node decommission.
+### Stage 0 — Accepted foundations, native baseline and stable source identity
 
-### WP10.1 — cutover readiness review
+#### WP0.1 — Accepted workspace/environment baseline
 
-Required inputs:
+**Aim/placement and entry:** Historical starting identity and preservation report. Entry: accepted historical baseline; common authorization/owner/environment criteria apply.
 
-- All prior phase gates independently DONE and their required reports accepted.
-- Zero open Critical/Required review findings.
-- Zero unexplained parity mismatches.
-- Current Windows/macOS security and package gates.
-- Measured resource/boot/compile results.
-- Updated architecture/API/user docs.
-- Rollback exercise evidence.
+**Scope/ordered work:** Existing snapshot report and artifacts only. Read accepted verdict; refresh current intake separately; do not replay the package or replace its baseline.
 
-### WP10.2 — default backend switch
+**Falsifiable claim and focused RED/GREEN:** Historical evidence; new drift is an intake finding, not a new RED. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
 
-Only now make Rust the default. Define one explicit emergency rollback flag such as `JUDGEDESK_LEGACY_NODE=1`, with tests for selection, logging, packaging availability, and no ambiguous dual-backend startup.
+**Required outputs:** Existing wp0.1-workspace-snapshot.md and immutable evidence.
 
-The fallback flag is temporary product policy, not permission for automatic fallback after a Rust startup failure. A failed default backend must surface a structured error unless the user/admin deliberately selected rollback.
+**Expected result/acceptance:** Retain DONE and original platform/environment limits.
 
-### WP10.3 — final coordinated version bump to v1.6.0
+**Checks/lifecycle/stop:** D; resource class none. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
 
-Run this package only after WP10.1 and WP10.2 are DONE and the implementation is otherwise release-candidate complete. Change exactly the eight authoritative version files from the verified source lockstep (`1.5.1` currently) to `1.6.0` in one reviewable change:
+#### WP0.2 — Accepted API/stream contract inventory
 
-1. `package.json`
-2. `package-lock.json`
-3. `src/version.ts`
-4. `src-tauri/Cargo.toml`
-5. `src-tauri/Cargo.lock`
-6. `src-tauri/tauri.conf.json`
-7. `native-executor/Cargo.toml`
-8. `native-executor/Cargo.lock`
+**Aim/placement and entry:** Baseline anchors the frontend/Node route inventory. Entry: WP0.1; common authorization/owner/environment criteria apply.
 
-Do not bump `judgedesk-core` or any ninth file unless WP0.6 has deliberately changed the authoritative policy and its checker. Regenerate lockfiles through the correct package managers rather than hand-editing dependency data. Update release notes/changelog and expected package/update metadata in the same package.
+**Scope/ordered work:** api-contract-matrix.md, api-contract-manifest.json, shared/contracts.ts and original fixtures. Reuse accepted inventory; each later task compares its actual route/caller delta and adds attributable contract tests.
 
-**Required tests:** `npm run release:check-version` must report exactly `1.6.0`; frontend status, Tauri/package metadata, executor identity, Core/Full manifests, clean install, upgrade from released `v1.5.0` and the current source baseline where packaged, and rollback compatibility must all report the intended version. A partial bump is `FAIL` and blocks every later release action.
+**Falsifiable claim and focused RED/GREEN:** Missing/dynamic/unowned routes must be detected; no prose-only event substitution. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
 
-### WP10.4 — release-candidate gates
+**Required outputs:** Accepted route matrix/goldens; additive deltas in future owning package.
 
-Run the complete current repository gates, platform gates, parity corpus, desktop matrix, package builds, artifact integrity/signature/architecture checks, clean install/upgrade/rollback, and anonymous updater/release validation applicable to the release process.
+**Expected result/acceptance:** Retain DONE; canonical batch NDJSON is metadata/progress/problem_completed/done/error, with actual Node ordering.
 
-Do not publish, move immutable tags, regenerate updater keys, or clean staging artifacts as part of this implementation plan without a separate explicit release instruction.
+**Checks/lifecycle/stop:** D; resource class none. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
 
-### WP10.5 — stabilization window
+#### WP0.3 — Accepted corpus and exact-score oracle
 
-Keep rollback packaging and diagnostics for the agreed release window. Define its minimum release/time duration and exit owner before cutover. Track Rust-vs-Node issue categories, crash/orphan reports, judge mismatches, unavailable capabilities, security boundary failures, and performance regressions. Exercise rollback from an installed packaged build, including preference/data compatibility in both directions.
+**Aim/placement and entry:** Endpoint semantics define expected case outcomes. Entry: WP0.2; common authorization/owner/environment criteria apply.
 
-### WP10.6 — Node decommission milestone
+**Scope/ordered work:** corpus-manifest.json/schema, server/test-fixtures/corpus, accepted Node exact carriers. Reuse 25 immutable cases and accepted rational/ZIP repairs; capture future fixture additions before their implementations; keep generator check read-only.
 
-Start only after the stabilization exit review explicitly approves it. Remove the Node server/SEA and rollback flag plus every distribution/build dependency that existed only for it: sidecar declarations, SEA/postject scripts, Node runtime payloads, permissions/capabilities, package hooks, updater component/size manifests, notices/licenses, process supervision, and stale documentation/tests.
+**Falsifiable claim and focused RED/GREEN:** Mutate owned copies to prove schema/hash and real semantic rejection; supported missing runtime cannot silently pass. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
 
-**Required evidence:**
+**Required outputs:** Accepted manifest, hashes, raw tamper/oracle evidence.
 
-- clean `Core` and `Full` package builds on Windows/macOS contain no Node executable/runtime/server sidecar or Node-server-only artifact;
-- package contents, signatures, architecture, notices, update manifests, install/upgrade/uninstall, and bundle-size diffs are recorded;
-- repository searches and build graph show no production Node backend entry point;
-- TypeScript frontend/build tooling that remains is classified correctly and is not confused with a shipped Node backend;
-- full Rust, parity-history regression, desktop, security, and package gates pass without the rollback component;
-- rollback after this milestone uses the documented installer/release rollback strategy rather than a hidden automatic backend fallback.
+**Expected result/acceptance:** Retain DONE and bounded historical same-session exception; no new acceptance authority.
 
----
+**Checks/lifecycle/stop:** D; resource class none. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
 
-## 16. Standard gate ladder
+#### WP0.4 — Accepted out-of-process executor boundary
 
-Use the smallest relevant rung during RED/GREEN, preserving CONSTRAINTS' edit/pre-build floor checks. Then run one successful complete gate on the frozen final source per implementer and independent verifier. Failed, interrupted or invalidated runs require reruns; “once” is not a quota. Deduplicate final child commands only when the enclosing command actually executed them successfully. See `docs/pure-rust-core-efficient-execution.md` for evidence references, selection and audit windows.
+**Aim/placement and entry:** Environment anchors OS generation/ownership proofs. Entry: WP0.1; common authorization/owner/environment criteria apply.
 
-### Focused loop
+**Scope/ordered work:** ADR 0001, executor_client.rs, native IPC/guardian/tree guards, Node client. Read accepted LOG-0069 closure rather than historical ADR proposal wording; preserve framed v1 and executor-owner lease.
 
-```powershell
-# Example TypeScript focused test
-node scripts/run-all-tests.js --filter=<stable-file-or-suite-pattern> --test-timeout=30000
+**Falsifiable claim and focused RED/GREEN:** Protocol/parent/generation refusal and native drain proofs remain required downstream. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
 
-# Example Rust focused test
-cargo test --locked --manifest-path crates/judgedesk-core/Cargo.toml <test_name> -- --exact --nocapture --test-threads=1
-```
+**Required outputs:** Accepted ADR and exact packaged/client evidence.
 
-### Fast edit gate
+**Expected result/acceptance:** Retain DONE; production core cannot call Platform or substitute a debug executor.
 
-Preserve the required edit/pre-build types/invariants/version floor checks. Apply equivalent fmt/all-target clippy to each touched Rust runtime crate; examples below use core. Completion children may be deduplicated only after a successful final enclosing command.
+**Checks/lifecycle/stop:** D; resource class none. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
 
-```powershell
-npm run check:fast
-cargo fmt --check --manifest-path crates/judgedesk-core/Cargo.toml
-cargo clippy --locked --manifest-path crates/judgedesk-core/Cargo.toml --all-targets -- -D warnings
-```
+#### WP0.5 — Accepted Rust gates and expected-skip policy
 
-### Component gates
+**Aim/placement and entry:** Baseline supplies test inventory and tool prerequisites. Entry: WP0.1; common authorization/owner/environment criteria apply.
 
-```powershell
-cargo test --locked --manifest-path crates/judgedesk-core/Cargo.toml -- --test-threads=1
-cargo test --locked --manifest-path native-executor/Cargo.toml -- --test-threads=1
-cargo test --locked --manifest-path src-tauri/Cargo.toml
-node scripts/run-all-tests.js --test-timeout=30000
-```
+**Scope/ordered work:** run-rust-gates.js, expected-skips.json, gates/CI reports. Reuse LOG-0084 acceptance; inspect today's composition; reconcile CI/CodeMagic coverage separately at release.
 
-### Security/platform gates
+**Falsifiable claim and focused RED/GREEN:** Changed gate coverage or unaccounted skip is a new finding; do not weaken the policy. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
 
-```powershell
-npm run test:security
-npm run test:windows-resources
-npm run test:windows-single-instance
-```
+**Required outputs:** Accepted nine-step gate, source scans and profile diagnostic evidence.
 
-### Package-completion gate
+**Expected result/acceptance:** Retain DONE; accepted gate implementation is distinct from all platform features being complete.
 
-```powershell
-npm run check:full
-```
+**Checks/lifecycle/stop:** D; resource class none. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
 
-At the 2026-09-26 source, `check:full` runs check:fast, test:server, static Themis checker parity and release:check-version. Do not repeat those child commands merely to fill separate report rows; link their successful outputs in the complete gate. It does not replace Rust core fmt/all-target clippy/full locked tests, security/platform gates, strict Node/Rust parity, live DLL oracle where required or desktop verification. Re-read package.json when composition changes. WP0.5 must add a documented Rust gate and make the required CI/package-completion path invoke it. Until then, run applicable explicit Rust commands and never treat check:full alone as completion.
+#### N0 — Mac native interactive baseline prerequisite
 
-After the scripts exist, the release-candidate ladder also includes the dedicated Rust desktop/backend identity command, packaged Core/Full tests, Node/Rust parity (through Milestone A), and the platform-specific commands from Phase 9. A script name is not evidence: its captured output must show the expected backend/build identity, inventory, skips, and cleanup.
+**Aim/placement and entry:** Accepted preservation, unchanged AC oracle, framed IPC ownership, and gate discipline allow native repair without Rust orchestration prerequisites. Entry: WP0.1, WP0.2, WP0.3, WP0.4, WP0.5; common authorization/owner/environment criteria apply. Direct N0 dispatch at 2026-10-02T06:15:45Z already superseded the prior Mac deferral for this bounded repair and adopted only N0 → WP0.6 ordering; WP0.6 source edits remain suspended. Do not request that same decision again or adopt the rest of the graph by implication.
 
----
+**Scope/ordered work:** native-executor/src/platform/{mod,macos}.rs; existing macos_launcher/run_controller/run_guardian, request validation and directly related native/Node tests. (1) Inventory actual Node/client/native callers, certified participant roles/sources and fixed-owned roots; prove pre-edit validator/harness refusals, not the nonexistent dual-launch behavior. (2) Preserve live cpp_interactor RED. (3) Implement bounded fail-closed dual-process launch/pipe/guardian lifecycle in separately reviewed slices using existing OS primitives. (4) On the implemented new caller, prove harmless denial and partial-start/second-launch ownership before any hostile fixture. (5) Exercise every newly reachable supported strict pair via production Node IPC and Windows regressions; freeze all affected binaries and inputs.
 
-## 17. Failure triage protocol
+**Private native transport boundary:** preserve accepted public Node/core → executor framed-v1 request/response/schema and sandbox authority. Required coordinated private launcher/controller/guardian stdio/message changes belong to N0's named native scope; they require reviewed authenticated run/generation/parent ownership, matching helper provenance and explicit mismatch/stale-peer refusal, bounded messages/descriptor lifecycle, and single-run regressions. No public arbitrary-FD capability, new grant/dependency/fallback or silent helper-version reinterpretation. The [continuation clarification](verification/pure-rust-core/n0-plan-conflict-resolution-20261002.md) distinguishes this boundary from wider protocol/policy expansion.
 
-When any gate fails:
+**Falsifiable claim and focused RED/GREEN:** Unchanged Mac cpp_interactor AC currently yields JE; add separate-side timeout/crash, second-spawn failure, cancel-before/after registration, EOF, pipe deadlock/flood and denied-path/network regressions. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
 
-1. Stop implementing later features.
-2. Preserve full logs, source identity, process list, ports, cache/root identity, and the smallest failing fixture.
-3. Classify the failing layer: frontend, API contract, core orchestration, native executor, toolchain, OS policy, test harness, or environmental contention.
-4. Reproduce in isolation. If it disappears after serializing tests, mark the original result `INCONCLUSIVE`, not fixed.
-5. Write or retain a focused regression test before changing implementation.
-6. Fix the root cause, rerun focused RED/GREEN, then the directly affected component gate, then the package gate.
-7. Record whether cleanup completed. A passing assertion with an orphan process or locked workspace is still a failure.
+**Required outputs:** New n0-native-interactive-baseline.md, role/source matrix, RED/GREEN and safety tests, complete frozen source/build manifest, both-host logs and cleanup.
 
-Known example: running executor tests and desktop simultaneously can contend on the shared executor cache and yield Windows `os error 32`. The clean diagnostic is to stop only the test processes started by the agent, verify exact process identities, then rerun sequentially. Do not weaken startup cache cleanup to hide contention.
+**Expected result/acceptance:** Both participants remain strictly isolated with independent limits; no participant/descendant survives terminal paths; AC/WA/PE/PARTIAL/TLE/MLE/RE/JE mappings and exact Node award carrier stay unchanged. Full Mac and Windows gates pass. Independent N0 DONE gives no WP5.4 or WP0.6 acceptance.
 
----
+**Current incident/continuation:** the first Mac RED's protected executor-root delta remains open. Private-TMPDIR later equality does not close it. Guard root/environment propagation and prepare exact read-only recovery inputs; continue bounded dual-launch source work/focused tests safely while restoration authorization is pending. Close attributable damage against the corrected original baseline before the final required union/VERIFYING. Use the [continuation prompt](verification/pure-rust-core/prompts/n0-continuation-20261002.md); no state promotion follows this documentation amendment.
 
-## 18. Definition of done
+**Checks/lifecycle/stop:** F S M W; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
 
-The Pure Rust migration is done only when all statements below have direct evidence:
+#### WP0.6 — Build identity/version/lockfile acceptance
 
-- Rust is behaviorally compatible with every frontend-used production endpoint.
-- All six languages judge real submissions with configured/pinned toolchains on Windows and macOS.
-- Submission, checker, interactor, and compiler process trees are contained, bounded, cancellable, drained, and cleaned.
-- Toolchain preferences/packages/certificates persist atomically and never silently fallback.
-- Config precedence, rational scoring, all checkers, interactors, OSD, export, archives, updates, and lifecycle match the approved contract.
-- Node/Rust parity corpus has zero unexplained differences.
-- PCH improves measured performance without changing compiler identity or correctness.
-- Windows desktop UI/UX matrix passes through Computer Use/manual evidence.
-- macOS automated/platform/package gates pass, and GUI-only items have real macOS evidence.
-- Full gates contain no new skips, suppressions, stubs, warnings, orphan processes, locked roots, or weakened thresholds.
-- Milestone A cutover and explicit Node rollback have both been exercised from packaged builds.
-- After the stabilization exit review, Milestone B proves shipped packages contain no Node backend/runtime/SEA/sidecar footprint and still pass clean install/upgrade/uninstall and rollback-at-installer level.
-- Documentation describes the final architecture rather than the migration’s intermediate state.
+**Aim/placement and entry:** Baseline proves version authority; independently accepted N0 removes the existing Mac full-gate prerequisite while identity remains a distinct claim. Entry: WP0.1, N0; common authorization/owner/environment criteria apply.
 
-Until Milestone A, keep Node as the default and describe Rust as an opt-in migration backend. Between Milestones A and B, describe Rust as default with a packaged legacy rollback. Call the migration fully decommissioned only after Milestone B.
+**Scope/ordered work:** core build.rs/build_support.rs/build_metadata.rs, Tauri build.rs, build-metadata/build-packaged scripts, status/stream identity tests. (1) Reconcile LOG-0090 F1 and LOG-0091 repair; do not redo unrelated fixes. (2) Verify actual compiler-selected features under forged declared/undeclared parent variables. (3) Prove development/packaged, default/no-default/real test-server, core/Tauri/Node/frontend and build-input refresh. (4) Re-freeze combined post-N0 source; rerun invalidated coverage; submit separate frozen identity handoff.
+
+**Falsifiable claim and focused RED/GREEN:** Existing original Windows and reconstructed Mac RED may be referenced with exact applicability; runtime spoof, stale cache, missing/mismatched locks and missing packaged provenance must fail using real Cargo/build/launch callers. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Updated canonical wp0.6 report with attributable new section, lock-owner matrix, metadata/target/features/backend/binary manifests and independent reviewer logs.
+
+**Expected result/acceptance:** Eight files remain 1.5.1; core crate version does not set app version; startup/status/NDJSON agree with actual target/features. Both-host full gates and required identity mutation/live cases pass. Fresh independent DONE required; repaired remediator results are insufficient.
+
+**Checks/lifecycle/stop:** F I; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP0.7 — One characterized server/domain decomposition
+
+**Aim/placement and entry:** Accepted route matrix and stable identity make structural before/after comparison meaningful. Entry: WP0.2, WP0.6; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core src/server/mod.rs, route/domain modules, response/error helpers and tests. (1) Freeze route/error characterization. (2) Extract auth/status/lifecycle/workspace/judge/toolchains/OSD ownership in behavior-preserving slices. (3) Compare inventory/goldens and callers. (4) List WP2.1 boundaries already delivered.
+
+**Falsifiable claim and focused RED/GREEN:** Characterization catches missing route or changed status/framing; inject an owned missing-route mutant to prove coverage. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Domain/owner map, before/after route manifests, characterization tests and report.
+
+**Expected result/acceptance:** No behavior or route drift; existing unsafe behavior is documented for Phase 1, never called secure by refactoring. No broad security fix is bundled.
+
+**Checks/lifecycle/stop:** F; resource class none. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### G0 — Foundation gate
+
+**Entry/artifacts:** WP0.1, WP0.2, WP0.3, WP0.4, WP0.5, N0, WP0.6, WP0.7 independently DONE with applicable reports. One fresh gate owner verifies the final identity and row-level executed/reference union.
+
+**Ordered acceptance/outputs:** Reconcile upstream inventories and invalidation; run cheap critical preconditions; execute fresh integrated assertions: Aggregate accepted reports on current source; fresh integrated source/build/route inventory and executor identity/start-stop proof. No complete Rust judge feature required. Emit g0-gate.md with executed/reference row map and independent verdict plus source/build/coverage/audit manifests and raw logs. Checks: F I; resource class native, so common cleanup applies. A missing row, wrong source, weakened assertion or failed drain rejects the gate. Restore only owned candidate state; report the owning prerequisite and next eligible nodes. No gate is DONE today.
+
+
+### Stage 1 — Safe backend boundary, early exact contracts and parity instrumentation
+
+#### WP1.1 — Explicit backend selection and supervised lifecycle
+
+**Aim/placement and entry:** Accepted identity/decomposition/executor foundation supplies real readiness and ownership contracts. Entry: G0; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** src-tauri/src/backend.rs, process_supervisor*, startup_guard, core server lifecycle/status. (1) Characterize Node default/Rust opt-in. (2) Remove implicit fallback after missing/spawn/handshake failure. (3) Bind actual loopback port before ready; retain task/error/shutdown handles. (4) Integrate admission-close/cancel/drain/socket-release/update ordering.
+
+**Falsifiable claim and focused RED/GREEN:** Missing/broken Node sidecar, spoofed handshake, occupied/racing port, duplicate/stop-during-start, late serve error, parent/core/executor crash and restart. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Selection policy, lifecycle state machine, Tauri/core integration tests, runtime identity and port/process reports.
+
+**Expected result/acceptance:** Node stays default; failures are visible and never auto-select Rust. Ready owns listener/task; stop and updater wait for drain; no orphan or stale ready state.
+
+**Checks/lifecycle/stop:** F M W; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP1.2 — Loopback HTTP authentication/origin/input boundary
+
+**Aim/placement and entry:** Supervised startup delivers a distinct HTTP credential and authoritative listener identity. Entry: G0, WP1.1; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core server auth/routes, src/api.ts and Node equivalent boundary, shared errors. (1) Inventory protected routes. (2) Separate parent handshake secret from per-request HTTP auth. (3) Define exact origins/no-origin/null/development/OPTIONS policy and header delivery for fetch/streams. (4) Enforce bounds, denial, rotation and redaction across both backends.
+
+**Falsifiable claim and focused RED/GREEN:** Hostile origins, CSRF/simple forms, duplicate/missing/expired/replayed auth, invalid method/JSON, body/header/query/path overflow, IPv4/IPv6 binding and reconnect. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Threat table, authorization matrix, real HTTP negative fixtures and shared response tests.
+
+**Expected result/acceptance:** Denied request performs zero mutation; canonical 401/403/error schema; secrets never appear in URLs/logs. Intentional Node security corrections must be explicit compatibility decisions.
+
+**Checks/lifecycle/stop:** F; resource class http. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP1.3 — Native folder selection without script interpolation
+
+**Aim/placement and entry:** Startup/dialog ownership and authenticated route delivery preserve request/error behavior. Entry: WP1.1, WP1.2; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core folder route, existing Tauri dialog bridge, frontend workspace callers. (1) Capture cancel/success contract. (2) Route through native dialog APIs. (3) Remove path-to-script interpolation. (4) Validate safe initial directory and focus return on both GUI hosts.
+
+**Falsifiable claim and focused RED/GREEN:** Quotes/semicolon/newline/backtick/dollar-substitution/UNC/reserved/long/Unicode paths; harmless marker must never execute; dialog cancel/denied/error. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Safe dialog contract/tests, required early actual Windows/Mac native dialog/cancel/focus GUI evidence, and report.
+
+**Expected result/acceptance:** No command evaluation; exact safe path/cancel response. Required actual Windows and Mac native dialog/cancel/focus proof must execute before WP1.3 DONE; if Mac GUI access is unavailable, WP1.3/G1 remain blocked pending that early human session. V9.4/G9 later repeat full product GUI validation on final packages; SSH is never dialog/focus evidence.
+
+**Checks/lifecycle/stop:** F G; resource class http. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP1.5 — Truthful capabilities and guarded incomplete execution
+
+**Aim/placement and entry:** Actual backend readiness/auth and owned-path policy define what routes may advertise or invoke. Entry: WP1.1, WP1.2, WP1.6; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core capability/status/toolchain/OSD/judge routes, shared contracts and UI capability consumers. (1) Inventory every success stub/direct execution caller including diagnose. (2) Derive capability from build/backend/platform/verified disk state. (3) Deny unsafe/incomplete judge/checker/compiler routes with stable unavailable responses and zero side effects. (4) Re-enable only in later accepted owning task.
+
+**Falsifiable claim and focused RED/GREEN:** Missing executor/feature/runtime, fake installed directory, OSD start without watcher, unsupported source/role, stale capability and restart; attempt blocked invocation through real routes. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Capability/route ownership manifest, unavailable-response/UI tests and live no-side-effect evidence.
+
+**Expected result/acceptance:** No fake success or diagnostic badge licenses untrusted execution. Phase 1 can close with explicitly unavailable migration features; final G6/G9 cannot. Node product default remains functional.
+
+**Checks/lifecycle/stop:** F; resource class http. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP1.6 — Owned workspace and hostile-path lifecycle
+
+**Aim/placement and entry:** Accepted IPC and route boundaries identify trusted coordinator and untrusted path inputs. Entry: G0; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core owned workspace API; native request validation; Node workspace reference; Tauri archive callers audited. (1) Search/reuse existing ownership primitives. (2) Specify protected root/owner identity and no-follow handles. (3) Stage/validate/IPC using race-resistant OS paths. (4) Implement RAII and crash scavenging only for authenticated owned descendants.
+
+**Falsifiable claim and focused RED/GREEN:** Leaf/ancestor link/junction/reparse/hardlink, ancestor swap, root-as-target, ADS/device/control/long/case/Unicode paths, forged marker, stale root, cancel at each stage and concurrent cleanup. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Containment API contract, owned-root threat fixtures and both-platform cleanup evidence.
+
+**Expected result/acceptance:** No string-only canonicalize-then-delete authorization; cannot mutate neighbor/protected state. Destructive probes stay below verified disposable root. All real execution and installs depend on this API.
+
+**Checks/lifecycle/stop:** F S; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP1.7 — Structured observability and redaction
+
+**Aim/placement and entry:** Build identity/domain and startup/auth supply correlation and secret boundaries. Entry: WP0.6, WP0.7, WP1.1, WP1.2; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core/Tauri/Node log adapters, status/errors and log rotation; no new telemetry service. (1) Define request/job/run/executor/build labels. (2) Bound logs and stable codes. (3) Capture failure/cancel/drain/crash/update transitions. (4) Add secret/source/path canaries; extend job probes when Phase 4 becomes available.
+
+**Falsifiable claim and focused RED/GREEN:** Auth/compile/checker errors, shutdown/crash, rotation overflow, raw token/ticket/signing/source/answer/path canary leak. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Structured event schema, sanitized correlation fixtures, rotation tests and reports.
+
+**Expected result/acceptance:** Trace one operation across tiers without private contents; future events are contract-tested initially and actually executed at G4/G6, never claimed live from a synthetic log.
+
+**Checks/lifecycle/stop:** F; resource class http. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP5.1 — Exact rational model before its consumers
+
+**Aim/placement and entry:** Accepted Node exact carriers define parser/arithmetic/ranking semantics independently of execution. Entry: G0, WP0.3; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core rational/scoring and config/result types; shared/rational.ts and Node scoring reference. (1) Inventory every parser/multiplier/total/rank caller. (2) Define lexical decimal/fraction and safe numeric/string carriers. (3) Replace f64 approximation/saturating corruption with checked exact reductions. (4) Property-test and route through consumers before they are integrated.
+
+**Falsifiable claim and focused RED/GREEN:** 1/3+2/3, .5/-.5/1., 0.35*10, MAX_SAFE_INTEGER/3, large cross-products, overflow, invalid denominator/nonfinite, partial award and permutation/rank ties. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Exact scoring/carrier contract, Node goldens/property tests and error policy.
+
+**Expected result/acceptance:** No floating-point score/rank arithmetic; explicit config/JE error rather than silent saturation; presentation conversion only at existing boundary. Overflow beyond available representation requires scoped design/dependency decision, not rounding.
+
+**Checks/lifecycle/stop:** F; resource class none. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP5.2 — Pure standard-checker parity before integration
+
+**Aim/placement and entry:** Exact award carriers let checker decisions feed scores without approximation. Entry: G0, WP5.1; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core checkers, Node standard-checkers and existing Themis oracle inputs. (1) Enumerate all identifiers/aliases/defaults. (2) Compare token/line/binary/integer/float-tolerance/yesno behavior. (3) Bound input/UTF-8 errors. (4) Produce canonical verdict/message/award fixtures.
+
+**Falsifiable claim and focused RED/GREEN:** Empty/huge tokens and integers, signed zero/exponent/NaN/Infinity policy, mixed newline/trailing whitespace/NUL/invalid UTF-8, PE and aliases. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Table/property/golden tests, static parity links and live DLL oracle report where required.
+
+**Expected result/acceptance:** Exact verdict/alias/default behavior; float tolerance compares contestant numeric output only and never score/rank math. Static checker parity alone does not prove a new live oracle run.
+
+**Checks/lifecycle/stop:** F O; resource class none. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP8.1 — Early isolated sequential parity harness
+
+**Aim/placement and entry:** Secured backend launching and frozen contracts/corpus allow measurement of gaps before complete integration. Entry: G1, WP0.2, WP0.3; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** Future parity harness plus backend adapters/owned roots; no production semantic repair. (1) Allocate separate writable state/ports/preferences/executor/cache/logs per backend. (2) Run sequential immutable-input copies. (3) Verify actual identity and drain. (4) Exercise currently available real contracts and preserve expected nonzero gaps.
+
+**Falsifiable claim and focused RED/GREEN:** Wrong backend/hash, shared root, absent runtime, timeout/descendant leak and harness failure must fail; incomplete Rust case cannot count as success. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Harness safety/isolation tests, runner/build manifests and early gap report.
+
+**Expected result/acceptance:** Harness correctness accepted separately from backend parity. An expected negative test can prove failure detection; observed migration mismatch remains FAIL until G8. No temporary broad allowlist.
+
+**Checks/lifecycle/stop:** F S; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP8.2 — Strict comparison contract
+
+**Aim/placement and entry:** Isolated executions plus exact score/checker fixtures define comparison semantics. Entry: WP8.1, WP5.1, WP5.2; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** Parity normalizer/comparator; WP0.2 route/stream and WP0.3 result fixtures. (1) List only contractual volatile fields. (2) Compare HTTP/body/events/order/identity/compile/verdict/exact award/groups/rank/disk/lifecycle. (3) Capture raw time/memory with declared tolerances. (4) Mutation-test comparator.
+
+**Falsifiable claim and focused RED/GREEN:** Verdict/score/order/language/source/version/error/event mutation rejected; only timestamps/job IDs/temp roots and approved measured tolerances normalize. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Comparison schema/table, mutation tests and minimal paired diffs.
+
+**Expected result/acceptance:** No semantic masking; a faster wrong verdict fails; startup/OSD stream contracts each use their own framing.
+
+**Checks/lifecycle/stop:** F; resource class none. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP8.3 — Mismatch artifact and failing exit
+
+**Aim/placement and entry:** Comparator provides precise failing dimension and raw request/result. Entry: WP8.2; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** Parity artifact writer/CLI exit, evidence manifest and triage schema. (1) Emit minimal case/backend/source/request/expected/actual diff. (2) Assign owning layer. (3) Exit nonzero for unexplained mismatch or missing execution. (4) Prove artifact safety and cleanup on failed writer.
+
+**Falsifiable claim and focused RED/GREEN:** Missing result, empty selection, unexpected skip, mismatched artifact hash, log-write failure and deliberate semantic mutant. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Machine-readable mismatch/coverage schema and exit/artifact tests.
+
+**Expected result/acceptance:** No silent successful zero-case run; gap records are evidence, never package completion for the failed feature.
+
+**Checks/lifecycle/stop:** F; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### G1 — Shell/HTTP/path safety gate
+
+**Entry/artifacts:** WP1.1, WP1.2, WP1.3, WP1.5, WP1.6, WP1.7 independently DONE with applicable reports. One fresh gate owner verifies the final identity and row-level executed/reference union.
+
+**Ordered acceptance/outputs:** Reconcile upstream inventories and invalidation; run cheap critical preconditions; execute fresh integrated assertions: Live both-backend startup/auth/path/capability denial and shutdown/update drain. Unsafe unfinished execution is unavailable with zero side effects. Native checker compilation is deliberately later; verify no direct path remains reachable before hostile fixtures. Emit g1-gate.md with executed/reference row map and independent verdict plus source/build/coverage/audit manifests and raw logs. Checks: F S M W; resource class native, so common cleanup applies. A missing row, wrong source, weakened assertion or failed drain rejects the gate. Restore only owned candidate state; report the owning prerequisite and next eligible nodes. No gate is DONE today.
+
+
+### Stage 2 — Durable toolchain state, configuration and exact source plans
+
+#### WP2.1 — Domain ownership delta review
+
+**Aim/placement and entry:** Accepted decomposition and Phase 1 changes reveal any remaining cross-domain ownership gaps. Entry: G1, WP0.7; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** Domain map/route modules already extracted by WP0.7; owning service interfaces. (1) Compare WP0.7 boundaries with toolchain/compiler/services needs. (2) Prove covered boundaries by exact accepted evidence. (3) Extract only missing boundaries with characterization; no repeated whole-server move.
+
+**Falsifiable claim and focused RED/GREEN:** Route inventory and characterization fail on a missing domain/changed behavior. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Explicit evidence decision for every domain; structural delta tests only if needed.
+
+**Expected result/acceptance:** Retain required ownership outcome. A no-code evidence closure needs independent verdict; it is not an assumed skipped WP.
+
+**Checks/lifecycle/stop:** D or F; resource class none. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP2.2 — Revisioned preferences and execution policy persistence
+
+**Aim/placement and entry:** Authenticated owned service boundaries make atomic preference mutation safe. Entry: G1, WP2.1; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core toolchain preference/policy models and routes; Node preferences/migration reference. (1) Capture schema/revision/legacy migration. (2) Implement per-profile source preferences and concurrency conflicts. (3) Atomic same-directory persist/recover. (4) Read after restart and derive UI state.
+
+**Falsifiable claim and focused RED/GREEN:** Truncated/corrupt JSON, old schema, invalid mode/path, write/flush/rename failure, revision race, crash between stages. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Preference/policy schema, migration fixtures, durable round-trip/recovery tests and report.
+
+**Expected result/acceptance:** Restart observes only valid complete revision; conflict/error matches Node; no silent default or raw path leak.
+
+**Checks/lifecycle/stop:** F; resource class disk. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP2.3 — Signed package/manifest/receipt disk truth
+
+**Aim/placement and entry:** Owned service boundaries and accepted corpus trust model define immutable inputs. Pre-implementation catalog identifies a vetted existing/system signature-verification provider; any necessary new dependency/provider must be separately approved before coding. Entry: G1, WP2.1; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core package models; server/toolchains/{manifest,receipts} references; signed distribution resource fixture. (1) Resolve the early verification-provider prerequisite using vetted existing/system capabilities or separately approved minimal dependency; do not hand-roll cryptography. (2) Capture canonical signed-v2 schema/keys and verify signature, size/hash/platform/arch/provenance/licenses. (3) Define canonical receipt and tamper/restart validation. (4) Refuse unverified entry before mutation.
+
+**Falsifiable claim and focused RED/GREEN:** Unknown key/algorithm, wrong hash/size/OS/arch, duplicate/ambiguous entry, unsigned metadata, receipt tamper and downgrade policy violation. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Trusted local signed fixtures, manifest/receipt contract and negative tests.
+
+**Expected result/acceptance:** Disk truth derives from covered signature and verified bytes; missing signed resource is a closure error, never an excuse to fetch/use a trust bypass.
+
+**Checks/lifecycle/stop:** F; resource class disk. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP2.4 — Bounded extraction and atomic installation
+
+**Aim/placement and entry:** Owned staging, revision policy and verified package inputs are required to publish safely. Entry: WP1.6, WP2.2, WP2.3; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core package store/installer/routes; existing Node extraction and mutation gate. (1) Preflight quotas and source trust. (2) Stream into private owned staging with byte/file/depth limits. (3) Normalize executable permissions, verify tree and atomic publish. (4) Add cancel/recovery and approved network integration separately.
+
+**Falsifiable claim and focused RED/GREEN:** Traversal/bomb/link/device/duplicate/depth floods, expanded-size mismatch, collision/permission failure, cancellation/crash at each phase and active lease conflict. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Executable signed local install fixtures, post-extract manifest, atomicity/recovery and real download report if authorized.
+
+**Expected result/acceptance:** No partial selected package; no unowned deletion/network from submissions; active judge mutation returns 409. New crypto/network/archive dependency requires separate approval.
+
+**Checks/lifecycle/stop:** F S; resource class disk. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP2.5 — Owned uninstall/dedup/recovery
+
+**Aim/placement and entry:** Verified installed receipts and atomic publish state identify what may be removed. Entry: WP2.4; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core package store/recovery; preference selections and package leases. (1) Define selected/in-use refusal. (2) Remove by verified owner/receipt, with reference accounting only if dedup exists. (3) Recover stale staging/publish journal. (4) Prove idempotent restart.
+
+**Falsifiable claim and focused RED/GREEN:** Forged marker/receipt, root replacement, selected/in-use 409, concurrent mutation, duplicate install, partial prior publish, cancellation and neighbor preservation. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Uninstall/recovery fixtures, journal/state transition and delayed handle/root report.
+
+**Expected result/acceptance:** Only owned unused package removed; selected/in-use preserved; recovery never guesses a broader root.
+
+**Checks/lifecycle/stop:** F S; resource class disk. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP2.6 — Exact source resolution and pinned identity
+
+**Aim/placement and entry:** Persisted source intent and verified receipts eliminate directory-name/PATH guesses. Entry: WP2.2, WP2.3; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core resolver/discovery/certification interfaces; Node registry/resolver/version-policy reference. (1) Build release-profile/source matrix from actual registry. (2) Resolve none/managed/local_path/local_auto separately. (3) Validate exact executable/runtime/version/snapshot/isolation evidence. (4) Return immutable plan or unavailable.
+
+**Falsifiable claim and focused RED/GREEN:** Disabled/missing managed, incompatible exact local path, auto with zero/two candidates, stale certificate/receipt, wrong version/arch and changed binary. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Resolver tables, immutable toolchain snapshot schema and per-profile identity tests.
+
+**Expected result/acceptance:** none disables; missing/invalid selected source never substitutes another. Auto selection deterministic only within certified auto candidates. Managed Python submissions/local checker-only policy preserved.
+
+**Checks/lifecycle/stop:** F; resource class disk. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP2.7 — Mac driver/SDK qualification
+
+**Aim/placement and entry:** Exact source selection makes clang/clang++ and SDK hypotheses testable. Entry: WP2.6; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core discovery/diagnostics/compiler-plan inputs; native local toolchain snapshot; Apple Clang fixtures. (1) Refresh earlier header-failure applicability. (2) Compare selected driver, SDK/sysroot/minimal environment and frozen resource paths. (3) Reproduce only if still failing; repair exact shared root. (4) Preserve real C/C++ protected compile/run proof.
+
+**Falsifiable claim and focused RED/GREEN:** Wrong driver/SDK/missing resource under production path; host xcrun success alone is not GREEN. If old defect is fixed, retain characterization and prove present path without fabricating RED. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Mac driver/SDK manifest, focused regression and live protected C/C++ diagnostics.
+
+**Expected result/acceptance:** Correct configured driver retained, no arbitrary host-dir grants or compiler substitution; historical failure not automatically a current blocker.
+
+**Checks/lifecycle/stop:** F S M; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP4.1 — Normalized configuration before compiler/session integration
+
+**Aim/placement and entry:** HTTP/path safety and exact lexical carriers provide secure canonical config inputs. Entry: G1, WP5.1; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core config/domain/routes; server/problems resolver; shared contracts/editor fixtures. (1) Inventory stored/request/default precedence. (2) Normalize legacy stdio/split I/O, limits, groups, checker/interactor, profiles/flags. (3) Preserve exact lexical weights/dependencies. (4) Test identical Node JSON/config files.
+
+**Falsifiable claim and focused RED/GREEN:** Stored/request conflict, malformed/unknown/legacy fields, group cycles, flags, missing config, fraction overflow, Unicode I/O, memory 8/1024/outside and actual time bounds. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Normalized config contract, Node/Rust table fixtures and persisted compile snapshots.
+
+**Expected result/acceptance:** No invented precedence; invalid limits/flags fail before launch; resolve prose time-bound disagreement from actual normalization explicitly. No session success claimed here.
+
+**Checks/lifecycle/stop:** F; resource class disk. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### G2 — Toolchain/config disk contract gate
+
+**Entry/artifacts:** WP2.1, WP2.2, WP2.3, WP2.4, WP2.5, WP2.6, WP2.7, WP4.1, WP5.1 independently DONE with applicable reports. One fresh gate owner verifies the final identity and row-level executed/reference union.
+
+**Ordered acceptance/outputs:** Reconcile upstream inventories and invalidation; run cheap critical preconditions; execute fresh integrated assertions: Restart/mutation/recovery/resolver/config matrix and actual C/C++ Mac driver probes. Runtime certification reports unresolved native capabilities truthfully; this gate accepts safe disk/source semantics, not six-language batch readiness. Emit g2-gate.md with executed/reference row map and independent verdict plus source/build/coverage/audit manifests and raw logs. Checks: F S M; resource class disk, so common cleanup applies. A missing row, wrong source, weakened assertion or failed drain rejects the gate. Restore only owned candidate state; report the owning prerequisite and next eligible nodes. No gate is DONE today.
+
+
+### Stage 3 — Native capabilities and protected execution components
+
+#### N1 — Native strict runtime/role capability closure
+
+**Aim/placement and entry:** Verified source/runtime snapshots and install truth allow native OS capability gaps to be isolated before Rust adapters. Entry: G2; common authorization/owner/environment criteria apply. Each cataloged native gap needs a named bounded subdivision and approval before implementation.
+
+**Scope/ordered work:** native executor validation/platform/launcher/guardian roles and Node staging references; per-gap approved subcontracts only. (1) Reconcile early capability catalog against real source/role registry. (2) Name each failing native combination and bounded native subpackage before coding; serialize shared files. (3) Prove pre-edit validator/harness refusal with harmless fixtures. (4) Implement the bounded OS capability slice fail-closed using existing verified primitives. (5) Prove the implemented caller's denial/partial-start ownership harmlessly before hostile probes, then accept strict sandbox/limits/drain or stop with the concrete unsatisfied release obligation.
+
+**Falsifiable claim and focused RED/GREEN:** Pascal/Java/Scratch ResourceOnly cannot pass; per-role network/external read/write/descendant escape/process/thread/open-file limits, 8/1024 MiB and deadline boundaries, missing runtime and negative launch paths. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Native capability catalog and separately accepted gap reports, source/toolchain/role matrix, real native probes and cleanup.
+
+**Expected result/acceptance:** All six production languages' supported submission combinations on both hosts need strict containment before final migration. Unsupported registry combinations remain unavailable. Inability to meet a required language is FAIL/BLOCKED for release, never removal of support or blanket grants.
+
+**Checks/lifecycle/stop:** F S M W; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP3.1 — Protected compiler service
+
+**Aim/placement and entry:** Exact source/disk truth, native compiler/runtime capability and owned workspace support bounded compilation. Entry: G2, N1, WP1.6; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core engine/compiler service; Node compiler/checker-compiler/interactor-compiler reference; IPC client. (1) Capture current role limits/argv/profile. (2) Build one pinned compiler plan for diagnose/submission/checker/interactor. (3) Execute through approved protected boundary with minimal env/no shell/bounded outputs. (4) Validate artifact and publish atomically after drain.
+
+**Falsifiable claim and focused RED/GREEN:** Hang/descendants/template bomb, diagnostic flood, missing/wrong-type/oversize artifact, selected compiler unavailable, Unicode/spaces, cancel during compile/link/publish. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Compiler plan/result/error contract, role-limit fixtures, protected compile/cancel tests and report.
+
+**Expected result/acceptance:** Submission timeout 15000 ms, binary cap 32 MiB; custom checker timeout 60000 ms and current explicit memory policy; CE versus JE preserves reference. Timeout proves whole-tree drain, no PATH/compiler fallback.
+
+**Checks/lifecycle/stop:** F S; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP3.3 — Session toolchain leases and immutable pinning
+
+**Aim/placement and entry:** Compiler plan plus revisioned resolver provides immutable snapshot and maintenance lease. Entry: WP3.1, WP2.2, WP2.6; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core toolchain lease service/compiler plan and future session admission adapter; Node session/maintenance reference. (1) Resolve all required roles before launch. (2) Acquire one generation/session lease with cancel-safe RAII. (3) Make metadata use snapshot. (4) Test a component caller now; integrate job owner in WP4.2/4.3.
+
+**Falsifiable claim and focused RED/GREEN:** Preference/uninstall/rescan during compile/prewarm, cancel during pinning, failed compiler start, double release and restart recovery. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Lease API/state machine, race tests, metadata fixtures.
+
+**Expected result/acceptance:** Mutation refused 409 while leased; changed preference affects next session only; release exactly once after actual drain. Component acceptance does not claim real batch admission yet.
+
+**Checks/lifecycle/stop:** F; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP3.2 — Six protected language adapters
+
+**Aim/placement and entry:** Compiler service, pinned leases and Mac driver evidence supply real role/source plans. Entry: WP3.1, WP3.3, WP2.7; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core engine language adapters and diagnostics; Node language-adapters/compiler/scratch runtime; declared registry. (1) Implement C++, C, Python, Pascal, Java, Scratch as separate reviewable slices. (2) Use exact flags/runtime/main-class/artifact contracts. (3) Exercise compile + run through production adapter on owned component fixtures. (4) Feed future batch integration without enabling incomplete routes.
+
+**Falsifiable claim and focused RED/GREEN:** Each profile: AC program, CE/RE, stdio/file I/O, wrong/missing selected source, Unicode/ambiguity, TLE/MLE/OLE, cancel and strict sandbox role/source probes. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Independently named per-profile tests/results, adapter contracts and target/toolchain/runtime snapshots.
+
+**Expected result/acceptance:** All six real adapter component paths pass on supported hosts; Python syntax and checker-only local policy; Java output tree/JVM limits; Scratch actual sb3/sb2/sb. No badge/single mega-test substitutes per-row proof. Real batch is G4, not required before its code exists.
+
+**Checks/lifecycle/stop:** F S M W; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP1.4 — One executor-backed custom-checker runner
+
+**Aim/placement and entry:** Owned staging plus certified pinned compiler/checker runtime eliminates direct host execution. Entry: WP1.6, WP3.1, WP3.2, WP3.3; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core runner/checker service, existing IPC client; Node checker compiler/runner and Python policy. (1) Preserve staging/testlib/Themis argv/stdin layout. (2) Replace direct Command/recv_timeout with role-specific compiler/run plans. (3) Bound stdout/stderr/files. (4) Integrate native cancel/drain under lease and verify no direct checker caller remains.
+
+**Falsifiable claim and focused RED/GREEN:** Missing/CE checker, infinite child/thread/flood, external/network denial, cancel, Unicode diagnostic, partial-start and all AC/WA/PE/PARTIAL/FAIL cases. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Checker execution API/tests, caller inventory and component containment evidence.
+
+**Expected result/acceptance:** Untrusted checker never runs outside executor; timeout/cancel/EOF drains descendants before lease/root release. Exact-score semantic integration belongs WP5.3; component verdict/message uses accepted fixtures.
+
+**Checks/lifecycle/stop:** F S; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### G3 — Protected execution component gate
+
+**Entry/artifacts:** N1, WP3.1, WP3.2, WP3.3, WP1.4, WP5.2 independently DONE with applicable reports. One fresh gate owner verifies the final identity and row-level executed/reference union.
+
+**Ordered acceptance/outputs:** Reconcile upstream inventories and invalidation; run cheap critical preconditions; execute fresh integrated assertions: Real compiler+adapter+checker role/source tests on both hosts with leases/drain and strict isolation. No batch/event result demanded until G4; disabled Rust routes stay unavailable until their integration is accepted. Emit g3-gate.md with executed/reference row map and independent verdict plus source/build/coverage/audit manifests and raw logs. Checks: F S M W O; resource class native, so common cleanup applies. A missing row, wrong source, weakened assertion or failed drain rejects the gate. Restore only owned candidate state; report the owning prerequisite and next eligible nodes. No gate is DONE today.
+
+
+### Stage 4 — Real batch sessions, cancellation, streams and metadata
+
+#### WP4.2 — Job admission and registry
+
+**Aim/placement and entry:** Protected services and normalized config support real prepared jobs, not global flags. Entry: G3, WP4.1; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core job/session/admission registry; Node SingleJudgeSessionGate/activeJobs/tombstones. (1) Model bounded unique IDs and admission. (2) Register/tombstone cancel linearizably. (3) Attach pinned leases and cleanup owner. (4) Wire real endpoint preparation while terminal execution remains protected.
+
+**Falsifiable claim and focused RED/GREEN:** Simultaneous request, duplicate/invalid/exhausted ID, cancel-before-register, register/cancel race, maintenance/admission, clean removal and next run. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Registry state machine/race tests, bounded job-ID policy and endpoint contract.
+
+**Expected result/acceptance:** Canonical concurrency/busy/error semantics; no shared AtomicBool reset by a new request; one owner and eventual removal.
+
+**Checks/lifecycle/stop:** F; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP4.3 — End-to-end cancellation/disconnect/native drain
+
+**Aim/placement and entry:** Registered jobs and supervised executor ownership provide cancellation targets and drain authority. Entry: WP4.2, WP0.4, WP1.1; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core sessions/jobs/compiler/runner, IPC, Tauri shutdown/update bridge. (1) Define prepare/compile/run/checker/interactor/cancel/drained states. (2) Wire user cancel, disconnect, shutdown and update to same owner. (3) Retain reservations/guard/lease until native proof. (4) Reject new work after drain failure.
+
+**Falsifiable claim and focused RED/GREEN:** Cancel every phase/partial start, repeated cancel, disconnect around terminal event, executor refusal/crash/protocol failure, deadline drain timeout and new run after cleanup. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Lifecycle transition assertions, stress races, process/container/port/handle evidence.
+
+**Expected result/acceptance:** cancelled true means native empty; uncertain drain closes admission and fails visibly. Exactly-once cleanup/lease release; backend/window crash cannot strand execution.
+
+**Checks/lifecycle/stop:** F S M W; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP4.4 — Frontend-compatible streaming writer
+
+**Aim/placement and entry:** Auth/admission and drain guarantee bounded stream lifecycle and meaningful terminal events. Entry: WP4.2, WP4.3, WP1.2; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core judge route/event writer; shared/contracts; useJudgeSession/reducer reference. (1) Freeze actual Node NDJSON order/error behavior. (2) Serialize camelCase and flush boundaries. (3) Bound slow-consumer buffers. (4) Exercise frontend reader/reducer on actual Rust events.
+
+**Falsifiable claim and focused RED/GREEN:** Split/combined chunks, multibyte UTF-8 split, blank/final lines, slow client/backpressure, disconnect before/after terminal and redacted internal error. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Stream goldens, live reader/reducer tests and job cleanup reports.
+
+**Expected result/acceptance:** metadata/progress/problem_completed/done/error and one canonical terminal policy match Node; no completed/job_start inventions, no orphan on broken stream.
+
+**Checks/lifecycle/stop:** F; resource class http. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP4.5 — Run metadata and workbook compatibility
+
+**Aim/placement and entry:** Config/events/pinned identities and exact carriers feed existing frontend exporter. Entry: WP4.1, WP4.4, WP3.3, WP5.1; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core metadata/result serialization, shared contracts, src/features/export/score-workbook.ts. (1) Emit all selected profile/executor identities including Python. (2) Feed real Rust result/events into reducer and workbook. (3) Compare Summary/Details/order/ranks/exact totals. (4) Test missing/failed profiles without phantom metric.
+
+**Falsifiable claim and focused RED/GREEN:** Missing Python key, large exact/fraction scores, ties/unjudged, display sort, CE/JE and source unavailable metadata. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Actual Rust metadata/event fixtures, workbook content assertions and export report.
+
+**Expected result/acceptance:** No omitted required toolchain or fake metric; exact award/rank preserved through archive/export presentation; human-visible order matches UI.
+
+**Checks/lifecycle/stop:** F; resource class disk. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### G4 — Real batch/session/stream gate
+
+**Entry/artifacts:** WP4.2, WP4.3, WP4.4, WP4.5 independently DONE with applicable reports. One fresh gate owner verifies the final identity and row-level executed/reference union.
+
+**Ordered acceptance/outputs:** Reconcile upstream inventories and invalidation; run cheap critical preconditions; execute fresh integrated assertions: All six languages through actual batch endpoint on both hosts with standard checker/exact totals; cancellation stress, metadata/reducer/workbook, user rejudge/delete smoke. Custom/interactive full semantic parity is explicitly G5. Emit g4-gate.md with executed/reference row map and independent verdict plus source/build/coverage/audit manifests and raw logs. Checks: F S M W G; resource class native, so common cleanup applies. A missing row, wrong source, weakened assertion or failed drain rejects the gate. Restore only owned candidate state; report the owning prerequisite and next eligible nodes. No gate is DONE today.
+
+
+### Stage 5 — Full custom/interactive judge semantics
+
+#### WP5.3 — Custom-checker exact semantic integration
+
+**Aim/placement and entry:** Contained runner plus exact scoring and completed sessions provide real semantic oracle path. Entry: WP1.4, WP5.1, G4; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core checker parsing/runner/session; Node custom checker/testlib and accepted corpus. (1) Resolve result=2/out-of-range contract explicitly. (2) Parse testlib/Themis exit/stdout/stderr lexical scores. (3) Apply exact awards/groups. (4) Run real batch failures and DLL oracle where applicable.
+
+**Falsifiable claim and focused RED/GREEN:** AC/WA/PE/PARTIAL/FAIL/JE, invalid score/NaN/out-of-range, missing/CE, timeout, sandbox denial and Unicode messages. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Semantic decision row, production batch oracle fixtures, exact score and failure reports.
+
+**Expected result/acceptance:** No silent clamp or replacement checker; verdict priority and exact score match approved Node semantics. Any product decision must precede implementation, no expectation changed to fit Rust.
+
+**Checks/lifecycle/stop:** F S O; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP5.4 — Rust-core interactive orchestration/integration
+
+**Aim/placement and entry:** Native Mac dual-process support, adapters, job drain and exact scores now exist for Rust integration. Entry: N0, WP3.2, WP4.3, WP5.1, G4; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core interactive service/session/IPC adapter; native caller only if bounded defect found; frontend event/results. (1) Reuse existing framed interactive_run and N0 lifecycle. (2) Pin/stage both participant roles. (3) Integrate job cancel/disconnect and exact verdict/award. (4) Run real Node/Rust batch and frontend-event parity.
+
+**Falsifiable claim and focused RED/GREEN:** Both-side timeout/crash/pipe-close/deadlock/flood, partial-start, cancel/EOF/shutdown, input-only/no-answer, C++/Python interactor and partial/testlib verdicts. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Rust production interactive route tests, pair role/source matrix, score/event/lifecycle artifacts.
+
+**Expected result/acceptance:** Both hosts and every supported participant combination pass full interactive integration; N0's AC or native safety alone grants no credit. Native policy/protocol expansion stops for scope decision.
+
+**Checks/lifecycle/stop:** F S M W; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### G5 — Complete scoring/checker/interactive gate
+
+**Entry/artifacts:** WP5.1, WP5.2, WP5.3, WP5.4, G4 independently DONE with applicable reports. One fresh gate owner verifies the final identity and row-level executed/reference union.
+
+**Ordered acceptance/outputs:** Reconcile upstream inventories and invalidation; run cheap critical preconditions; execute fresh integrated assertions: Live custom/standard/interactive corpus, exact awards/groups/ranking, all terminal and hostile role/source cases. Reuse pure arithmetic evidence only if applicable; live integration fresh. Emit g5-gate.md with executed/reference row map and independent verdict plus source/build/coverage/audit manifests and raw logs. Checks: F S M W O; resource class native, so common cleanup applies. A missing row, wrong source, weakened assertion or failed drain rejects the gate. Restore only owned candidate state; report the owning prerequisite and next eligible nodes. No gate is DONE today.
+
+
+### Stage 6 — Remaining product services and shell integration
+
+#### WP6.1a — OSD parser and durable state
+
+**Aim/placement and entry:** Complete judge semantics makes durable OSD results meaningful. Entry: G5; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core OSD parser/state; Node OSD types/parser/logs. (1) Capture filename/content identity and duplicate policy. (2) Parse bounded immutable records. (3) Persist state/log atomically. (4) Recover restart without duplicate award.
+
+**Falsifiable claim and focused RED/GREEN:** Malformed/Unicode/case collision, oversized/partial records, duplicates, crash/write failure and legacy state. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Parser/state fixtures, durable schema/recovery and parity tests.
+
+**Expected result/acceptance:** Only validated accepted items become durable; invalid record has bounded canonical error; no phantom success.
+
+**Checks/lifecycle/stop:** F; resource class disk. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP6.1b — OSD watcher/debounce/queue
+
+**Aim/placement and entry:** Durable item identity and job ownership supply a safe queue/drain target. Entry: WP6.1a, WP4.2, WP4.3; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core OSD watcher/queue; Node fs watcher/debounce reference. (1) Watch only approved source root. (2) Match stable-write/rename and 500 ms contract after code reconciliation. (3) Bound FIFO/backpressure and batch conflict. (4) Drain watcher/queued/active work on stop.
+
+**Falsifiable claim and focused RED/GREEN:** Partial writes, rapid duplicate events, overflow/restart, inaccessible root, queue limit, batch race and cancellation. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Watcher/queue tests and live file-arrival event sequence.
+
+**Expected result/acceptance:** No lost/duplicate accepted submission; deterministic bounded order and busy behavior; released watcher handles and cancelled/drained active job.
+
+**Checks/lifecycle/stop:** F; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP6.1c — OSD status/events and lifecycle
+
+**Aim/placement and entry:** Real watcher/queue, event framing and backend supervision support truthful status. Entry: WP6.1b, WP4.4, WP1.1; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core OSD routes/events/lifecycle; frontend OSD consumers. (1) Port start/stop/status and reconnect/replay contract. (2) Couple capability to actual watcher. (3) Bound slow consumers. (4) Use shared shutdown/update drain.
+
+**Falsifiable claim and focused RED/GREEN:** Repeated start/stop, reconnect, slow/disconnected client, terminal error, shutdown with queued/running item and restart. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Live OSD HTTP/stream fixtures, frontend state and cleanup reports.
+
+**Expected result/acceptance:** Status reflects actual queue/work; no fixed success, orphan watcher or stale busy lease.
+
+**Checks/lifecycle/stop:** F; resource class http. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP6.2 — Workspace/problem/config route parity
+
+**Aim/placement and entry:** Safe paths and normalized config plus judge contract anchor disk routes. Entry: G5, WP1.6, WP4.1; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core workspace/problem routes; Node discovery/config/list-preview references; frontend Reload. (1) Port natural ordering/discovery and checker/interactor listings. (2) Bound UTF-8 previews/directory scans. (3) Atomic config writes. (4) Exercise Reload preserving checked/unchecked/scores and selecting new items.
+
+**Falsifiable claim and focused RED/GREEN:** Empty/missing/inaccessible/large/Unicode dirs, links/reparse/case races, truncated UTF-8, malformed config and concurrent write. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Endpoint goldens, disk mutation and frontend Reload tests.
+
+**Expected result/acceptance:** Canonical status/body/order, no unbounded reads or path escape; existing selection/score preservation remains.
+
+**Checks/lifecycle/stop:** F; resource class disk. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP6.3 — Archive/export/update/lifecycle ownership
+
+**Aim/placement and entry:** Exact results/export and lifecycle/path containment keep shell-owned operations safe. Entry: G5, WP4.5, WP1.1, WP1.6; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** Tauri contest_archive/update/opener, core bridge, frontend contest/export/update flows. (1) State frontend/core/Tauri owner for each flow. (2) Preserve .judgedesk portable archive/dirty prompts. (3) Bound archive extraction/Excel write/open. (4) Couple update handoff to complete drain without absorbing shell responsibilities.
+
+**Falsifiable claim and focused RED/GREEN:** Traversal/bomb/link/collision, save-as/crash/overwrite, invalid exact stored carrier, viewer failure, cancelled update/handoff and second instance. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Ownership matrix, archive round-trip/export/update integration tests.
+
+**Expected result/acceptance:** Atomic safe persistence and clean update tree; app identity/data directory/UpgradeCode unchanged; no update installation/publication without separate authorization.
+
+**Checks/lifecycle/stop:** F S G; resource class disk. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### G6 — Complete production services gate
+
+**Entry/artifacts:** WP6.1a, WP6.1b, WP6.1c, WP6.2, WP6.3 independently DONE with applicable reports. One fresh gate owner verifies the final identity and row-level executed/reference union.
+
+**Ordered acceptance/outputs:** Reconcile upstream inventories and invalidation; run cheap critical preconditions; execute fresh integrated assertions: Every frontend-used route has real state/result or approved shell ownership. OSD live queue, config/Reload, archive/export/update integration; no fixed success or remaining unavailable required product feature. Emit g6-gate.md with executed/reference row map and independent verdict plus source/build/coverage/audit manifests and raw logs. Checks: F S M W G; resource class native, so common cleanup applies. A missing row, wrong source, weakened assertion or failed drain rejects the gate. Restore only owned candidate state; report the owning prerequisite and next eligible nodes. No gate is DONE today.
+
+
+### Stage 7 — Measured performance, PCH and prewarm
+
+#### WP7.1 — Comparable performance baseline/measurement contract
+
+**Aim/placement and entry:** Feature-complete packaged modes produce comparable workloads; early capability catalog reserves hosts/budgets. Entry: G6; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** Existing Node/core/native benchmark primitives; new benchmark harness/report only under future implementation authority. (1) Approve startup budget and metric definitions before optimization. (2) Record hardware/power/thermal/build/compiler/SDK/flags/source/cache/load. (3) Disable PCH for baseline, alternate sequential Node/Rust with >=3 warmups and >=20 measured trials. (4) Retain all failures/raw samples and distributions.
+
+**Falsifiable claim and focused RED/GREEN:** Harness tests prove sample/units/accounting and detect backend/fixture mismatch; noisy/loaded runs become INCONCLUSIVE, no cherry-picked best run. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Raw samples/p50/p90/p95/min/max/failures, measurement contract and both-host baseline.
+
+**Expected result/acceptance:** Entire frontend+backend idle <150 MB (150,000,000 bytes; report MiB too), orchestration overhead <50 ms and warm PCH compile p50/p95 <300 ms are retained budgets. Startup target/regression ceiling needs human adoption before optimization; no invented passing target.
+
+**Checks/lifecycle/stop:** F P; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP7.2 — PCH fingerprint and atomic generation
+
+**Aim/placement and entry:** Measurement baseline and pinned bounded compiler/lease provide cache authority. Entry: WP7.1, WP3.1, WP3.3; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core PCH cache service, compiler plan; Node universal-pch reference. (1) Fingerprint compiler hash/version/canonical identity, target/flags/headers/SDK/schema. (2) Single-flight bounded private generation. (3) Validate compile and atomic publish. (4) Recover only owned stale entries.
+
+**Falsifiable claim and focused RED/GREEN:** Concurrent first use, changed compiler/flags/SDK/header, corrupt/truncated cache, path/permission/crash/cancel and timeout. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Fingerprint schema, cache lifecycle tests and compiler/source/build reports.
+
+**Expected result/acceptance:** No mixed profile/architecture hit; incomplete cache never selected; generation obeys compiler containment/drain.
+
+**Checks/lifecycle/stop:** F S P; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP7.3 — Safe PCH consumption
+
+**Aim/placement and entry:** Validated published cache and exact fingerprint identify usable acceleration. Entry: WP7.2; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core compiler/PCH consume hook and same selected toolchain. (1) Inject supported PCH flags only for real compile. (2) Exclude --test-* directives. (3) Validate hit/miss/rebuild/bypass and failure. (4) Compare identical verdict/exact results enabled/disabled.
+
+**Falsifiable claim and focused RED/GREEN:** Miss/corrupt/incompatible cache, generation failure, compiler/profile mismatch, Unicode path and test-harness flag injection. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Hit-rate/raw timing and correctness parity, safe fallback tests.
+
+**Expected result/acceptance:** PCH failure may use ordinary compilation by the same pinned compiler/profile only; no compiler fallback or changed isolation.
+
+**Checks/lifecycle/stop:** F S P; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP7.4 — Cancellable background prewarm
+
+**Aim/placement and entry:** Single-flight cache and job drain/lease define safe foreground/background arbitration. Entry: WP7.2, WP7.3, WP4.3; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** core startup/prewarm/PCH scheduler; Node background-prewarm reference. (1) Low-priority single-flight scheduling. (2) Foreground join/direct compile bounded policy. (3) Block on toolchain mutation/update/shutdown. (4) Drain tasks/artifacts on cancel/restart.
+
+**Falsifiable claim and focused RED/GREEN:** Startup/foreground/mutation races, slow prewarm, repeated schedule, failed generation, shutdown/update and lease starvation. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Race tests, foreground latency/hit-rate and cleanup reports.
+
+**Expected result/acceptance:** Prewarm cannot delay first judge indefinitely or keep busy after stop; measured budgets still pass without correctness loss.
+
+**Checks/lifecycle/stop:** F S P; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### G7 — Measured performance gate
+
+**Entry/artifacts:** WP7.1, WP7.2, WP7.3, WP7.4 independently DONE with applicable reports. One fresh gate owner verifies the final identity and row-level executed/reference union.
+
+**Ordered acceptance/outputs:** Reconcile upstream inventories and invalidation; run cheap critical preconditions; execute fresh integrated assertions: Fresh comparable both-host samples/hit rates and enabled/disabled correctness/security; preserve real budgets and approved startup definition; failures/noise cannot be dropped. Emit g7-gate.md with executed/reference row map and independent verdict plus source/build/coverage/audit manifests and raw logs. Checks: F S P; resource class native, so common cleanup applies. A missing row, wrong source, weakened assertion or failed drain rejects the gate. Restore only owned candidate state; report the owning prerequisite and next eligible nodes. No gate is DONE today.
+
+
+### Stage 8 — Complete strict Node/Rust parity
+
+The harness was moved to Stage 1; this stage is the final completeness acceptance, not repeated implementation.
+#### G8 — Full semantic parity gate
+
+**Entry/artifacts:** WP8.1, WP8.2, WP8.3, G6, G7 independently DONE with applicable reports. One fresh gate owner verifies the final identity and row-level executed/reference union.
+
+**Ordered acceptance/outputs:** Reconcile upstream inventories and invalidation; run cheap critical preconditions; execute fresh integrated assertions: 100% approved corpus/API/event/disk/lifecycle parity on both hosts after PCH; zero unexplained mismatch allowlists, missing runtime or unattempted supported matrix row. No earlier harness acceptance stands in for this. Emit g8-gate.md with executed/reference row map and independent verdict plus source/build/coverage/audit manifests and raw logs. Checks: F S M W O P; resource class native, so common cleanup applies. A missing row, wrong source, weakened assertion or failed drain rejects the gate. Restore only owned candidate state; report the owning prerequisite and next eligible nodes. No gate is DONE today.
+
+
+### Stage 9 — Actual desktop and platform acceptance
+
+#### V9.1 — Windows Rust desktop launch protocol
+
+**Aim/placement and entry:** Complete correctness/security/parity/performance permits UI acceptance against real backend. Entry: G8; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** Future isolated Rust desktop launcher; Tauri/React actual packaged Core/Full. (1) Implement/document a Rust-only build/launch path before using UI results. (2) Isolate state. (3) Assert actual status target/features/backend and no Node/SEA process. (4) Capture state after each UI action and clean tree on exit.
+
+**Falsifiable claim and focused RED/GREEN:** Deliberately select Node/wrong binary/occupied port and require failure; deadline/close/crash tests drain launcher descendants. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Dedicated launcher command and manifest, screenshots/logs/process inventory.
+
+**Expected result/acceptance:** Current test:desktop builds Node and cannot alone prove Rust-only. Future command is required deliverable, not an existing command/PASS.
+
+**Checks/lifecycle/stop:** F G W; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### V9.2 — Complete Windows desktop acceptance matrix
+
+**Aim/placement and entry:** Verified launcher identifies actual candidate/backend and isolated user state. Entry: V9.1; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** All frontend flows through Node/Rust and packaged Core/Full. (1) Execute every matrix row below with fixed 18x5/72x20 data. (2) Capture stable screenshot and frontend/backend/executor logs. (3) Record expected/observed behavior. (4) Test close/reopen/crash and restore owned state.
+
+**Falsifiable claim and focused RED/GREEN:** Missing/CE/unavailable/cancel/invalid path/dirty save/focus/resize/sort/rejudge/delete/export/OSD/update error flows. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** phase-9-windows-matrix.md, numbered screenshots and scenario records.
+
+**Expected result/acceptance:** Every required Windows row executed; localization/theme/keyboard/focus and scoreboard stability preserved; no inference from API-only tests.
+
+**Checks/lifecycle/stop:** G W; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### V9.3 — Mac automated/platform/package matrix
+
+**Aim/placement and entry:** Final matched source and complete parity enable actual arm64 platform/package tests. Entry: G8; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** Exact transferred source, macOS Core/Full bundle, SSH command harness. (1) Verify archive/literal names and locked build manifest. (2) Run own final union and distinct Mac security/supervisor/checker/resource checks. (3) Verify bundle architecture/signatures/resources/backend. (4) Drain and collect immutable evidence.
+
+**Falsifiable claim and focused RED/GREEN:** Missing resource/helper/wrong arch, stale binary, guardian loss, parent EOF, update lock and package failure. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** phase-9-macos-ssh.md, bundle SHA/resource manifest and cleanup.
+
+**Expected result/acceptance:** Live arm64 results only; remote dirty checkouts preserved; unsigned local build does not prove release signature. SSH never satisfies GUI rows.
+
+**Checks/lifecycle/stop:** F S M; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### V9.4 — Actual Mac GUI/manual acceptance
+
+**Aim/placement and entry:** Verified bundle/source/backend ensures GUI tester uses the reviewed candidate. Entry: V9.3; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** Future macos-gui-checklist.md and actual WKWebView/native dialogs/install UX. (1) Prepare numbered human checklist with exact bundle/source/data identities and expected states. (2) Schedule real Mac session. (3) Test matrix/install/upgrade/rollback/dialog/focus/menu/resize. (4) Capture screenshots/video/sanitized logs and tester/date verdict.
+
+**Falsifiable claim and focused RED/GREEN:** Wrong candidate identity or absent evidence is BLOCKED; visual/focus/menu failure is FAIL, not SSH PASS. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Signed-off checklist, screenshot names, short focus/menu/animation video and mount/process/root cleanup.
+
+**Expected result/acceptance:** Every required Mac GUI row actually executed; informational cosmetic rows identified in advance cannot absorb required behavior.
+
+**Checks/lifecycle/stop:** G; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### G9 — Desktop/platform/package gate
+
+**Entry/artifacts:** V9.2, V9.3, V9.4 independently DONE with applicable reports. One fresh gate owner verifies the final identity and row-level executed/reference union.
+
+**Ordered acceptance/outputs:** Reconcile upstream inventories and invalidation; run cheap critical preconditions; execute fresh integrated assertions: All Windows and actual Mac GUI rows plus platform/architecture/resource/signature obligations satisfied for declared candidate editions. SSH-only GUI remains BLOCKED. Emit g9-gate.md with executed/reference row map and independent verdict plus source/build/coverage/audit manifests and raw logs. Checks: F S M W G R; resource class native, so common cleanup applies. A missing row, wrong source, weakened assertion or failed drain rejects the gate. Restore only owned candidate state; report the owning prerequisite and next eligible nodes. No gate is DONE today.
+
+
+### Stage 10 — Cutover, release candidate, stabilization and decommission
+
+#### WP10.1 — Cutover readiness decision
+
+**Aim/placement and entry:** Independent gates provide complete platform/product/security/performance/GUI evidence. Entry: G0, G1, G2, G3, G4, G5, G6, G7, G8, G9; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** Readiness report, architecture/API/user docs and rollback/stabilization contract. (1) Reconcile final candidate applicability and zero required findings. (2) Approve minimum stabilization interval/exit owner. (3) Verify rollback package/data compatibility rehearsal. (4) Present concrete cutover authorization request.
+
+**Falsifiable claim and focused RED/GREEN:** Missing gate/GUI/platform/profile/mismatch or unapproved budget/rollback record rejects readiness. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Cutover checklist and explicit human authorization record.
+
+**Expected result/acceptance:** No default switch or publication from planning/readiness alone; Node remains default until specifically authorized WP10.2.
+
+**Checks/lifecycle/stop:** D G; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP10.2 — Deliberate Rust default with explicit Node rollback
+
+**Aim/placement and entry:** Accepted readiness and human cutover authorization justify default change. Entry: WP10.1; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** Tauri backend selection, package manifests and rollback selection tests. (1) Switch selection policy only after authorization. (2) Preserve explicit legacy flag and mutually exclusive generation. (3) Exercise installed Rust/Node selection/failure. (4) Restore known candidate if cutover fails.
+
+**Falsifiable claim and focused RED/GREEN:** Rust startup fails without automatic fallback; explicit rollback reaches compatible executor; restart/update/data compatibility. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Selection/installed rollback tests and cutover report.
+
+**Expected result/acceptance:** Rust default and deliberate packaged Node rollback both work; no dual startup or silent failure fallback.
+
+**Checks/lifecycle/stop:** F S G; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP10.3 — Coordinated eight-file 1.6.0 version stage
+
+**Aim/placement and entry:** Accepted cutover establishes release-candidate behavior before identity bump. Entry: WP10.2; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** Exactly eight authoritative version files; release notes/package metadata; governing locks. (1) Refresh current eight-file authority. (2) Bump all app files together via correct manager lock regeneration. (3) Update expected release metadata. (4) Verify status/UI/package/executor identity.
+
+**Falsifiable claim and focused RED/GREEN:** One-file mismatch/tag/name mismatch must reject in disposable fixture; partial bump cannot hand off. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Version diff, version gate log and package identity fixtures.
+
+**Expected result/acceptance:** All eight report 1.6.0; no ninth authority or core crate policy change; install/upgrade from released 1.5.0 and packaged 1.5.1 where applicable.
+
+**Checks/lifecycle/stop:** F; resource class disk. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP10.4 — Actual release-candidate acceptance
+
+**Aim/placement and entry:** Reviewed final behavior/version source drives concrete Core/Full artifacts. Entry: WP10.3; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** Existing Windows/macOS build/release pipelines and candidate artifact staging. (1) Build both hosts/editions under recorded authorized signing policy. (2) Run full plus distinct live oracle/security/stress/resource/desktop/parity. (3) Verify bytes/signature/architecture/allowlist/updater/clean install/upgrade/rollback. (4) Collect release handoff without publish.
+
+**Falsifiable claim and focused RED/GREEN:** Wrong architecture/resources/manifest/hash/version, installer interruption, anonymous updater failure and rollback data mismatch. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Actual installer/bundle SHA and contents, signatures/SBOM/notices/update manifests, all release evidence.
+
+**Expected result/acceptance:** Zero required gaps/new skips; static parity insufficient. Separate direct publication/tag/upload authorization still required; local build acceptance never publishes.
+
+**Checks/lifecycle/stop:** F S M W O P G R; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP10.5 — Stabilization and rollback exit
+
+**Aim/placement and entry:** Accepted candidate and separately authorized rollout start the agreed observation interval. Entry: WP10.4; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** Issue/diagnostic ledger, installed rollback exercises and release support docs. (1) Begin only on actual authorized rollout. (2) Track crash/orphan/mismatch/security/capability/performance categories. (3) Exercise packaged rollback and bidirectional data compatibility. (4) Obtain human exit approval after minimum interval.
+
+**Falsifiable claim and focused RED/GREEN:** Any required regression reopens owning layer; missing interval/evidence prevents exit. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Timestamped stabilization observations, rollback logs and explicit exit decision.
+
+**Expected result/acceptance:** Rollback remains packaged through agreed release/time window; no invented quiet-period PASS or automatic decommission.
+
+**Checks/lifecycle/stop:** D G; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### WP10.6 — Separate Node backend decommission milestone
+
+**Aim/placement and entry:** Approved stabilization exit permits removing temporary shipped rollback footprint. Entry: WP10.5; common authorization/owner/environment criteria apply.
+
+**Scope/ordered work:** Node SEA/server-only sidecar/build/hooks/runtime/permissions/update component/notices; frontend/build TS remains. (1) Enumerate complete Node-only production footprint. (2) Obtain decommission implementation authorization. (3) Remove reviewed owned footprint without deleting historical tests/oracles. (4) Build/install/upgrade both Core/Full hosts and exercise installer-level rollback.
+
+**Falsifiable claim and focused RED/GREEN:** Search/build graph catches remaining SEA/runtime/server; package missing Rust helper and upgrade/uninstall/rollback failures. GREEN must satisfy the acceptance below through the appropriate real caller; inherit common edge/lifecycle/security-order requirements.
+
+**Required outputs:** Footprint/build graph, before/after package manifests/size/notices and final architecture docs.
+
+**Expected result/acceptance:** No shipped Node backend/runtime/SEA in Core/Full on either host; Scratch runtime classification explicit; retained TypeScript tooling is not a backend. Historical regression/oracle fixtures remain. Post-decommission rollback uses installer/release strategy.
+
+**Checks/lifecycle/stop:** F S M W G R; resource class native. Common protected-state, crash/cancel/deadline/drain, stop-on-expansion, rollback and independent acceptance rules apply. Only accepted downstream nodes in the JSON become eligible after DONE; none auto-start.
+
+#### G10 — Decommissioned architecture gate
+
+**Entry/artifacts:** WP10.6 independently DONE with applicable reports. One fresh gate owner verifies the final identity and row-level executed/reference union.
+
+**Ordered acceptance/outputs:** Reconcile upstream inventories and invalidation; run cheap critical preconditions; execute fresh integrated assertions: Fresh actual no-Node Core/Full artifacts on both hosts; complete required runtime/security/product/GUI/install/upgrade/uninstall/installer rollback acceptance and final docs/footprint. Publication separate. Emit g10-gate.md with executed/reference row map and independent verdict plus source/build/coverage/audit manifests and raw logs. Checks: F S M W G R; resource class native, so common cleanup applies. A missing row, wrong source, weakened assertion or failed drain rejects the gate. Restore only owned candidate state; report the owning prerequisite and next eligible nodes. No gate is DONE today.
+
+## Desktop matrix retained for V9/G9 and release revalidation
+
+| Area | Required Windows and actual Mac GUI cases |
+|---|---|
+| Startup | cold/warm, Node/Rust deliberate modes, missing/broken backend/executor, second instance, close/crash/restart, no orphan |
+| Workspace | empty/missing/space/literal Unicode paths; 18×5 and 72×20; F2/F3/F5; Reload choices/scores and new selections |
+| Scoreboard | both resize axes, sticky/scroll cells, sort 3 states, ties/unjudged, keyboard/context menu/double-click details, no oscillation |
+| Config | save/reopen/legacy, exact fractions/groups/dependencies, limits and I/O, checker/interactor/presets/custom flags/invalid values |
+| Toolchains | each supported profile/source; corrupt/missing/incompatible; dormant profiles hidden; persistence/restart/rescan/mutation locks; dynamic real metrics/errors |
+| Judging | every verdict/six languages; progress/details/rejudge/delete; cancel all phases; unavailable/failure recovery |
+| OSD | real start/stop/arrival/debounce/queue, duplicate/malformed, batch conflict, reconnect, shutdown |
+| Archive/export | new/open/save/save-as/dirty prompts, portable round-trip/overwrite safety, Excel exact totals/order/metadata, viewer failure |
+| Presentation | Vietnamese/English, light/dark, Tab/focus/Escape/shortcuts, overflow/loading/empty/error/Help |
+| Update/package | Core/Full identity/resources, update check/error/cancel/handoff, native install/upgrade/rollback, DMG drag/mount, clean uninstall |
+
+SSH cannot prove WKWebView visuals/native-dialog/focus/menu/installation UX. V9.4's human checklist includes exact source/bundle SHA/backend/version/hardware/data-root, numbered expected states, PASS/FAIL/BLOCKED fields, required screenshots/video/log redaction, tester/date and process/port/mount/root cleanup. Schedule it during early prerequisite intake; missing evidence blocks release, even when automated Mac gates pass.
+
+## Concrete next action and adoption boundary
+
+The 2026-10-01 rewrite itself authorized planning only. Mon subsequently directly dispatched N0 at 2026-10-02T06:15:45Z and adopted **only N0 → WP0.6 prerequisite ordering**, lifting the prior deferral for bounded N0 repair. Live STATUS records the real N0 owner/IN_PROGRESS and suspended WP0.6 source edits. Full-roadmap/mapped-ledger adoption remains outstanding and is not a prerequisite to continuing already authorized N0.
+
+Next action: send the [N0 continuation prompt](verification/pure-rust-core/prompts/n0-continuation-20261002.md) to the existing remediator. Establish original-root audit/private-harness guards, prepare exact recovery inputs and continue the authorized dual-launch slices. The [incident clarification](verification/pure-rust-core/n0-plan-conflict-resolution-20261002.md) governs protected recovery and public/private native protocol scope. No repeated N0 adoption/ownership approval, later-package implementation or state promotion follows this amendment.
+
+After verified incident closure, complete N0's frozen final union and obtain fresh independent acceptance. After independent N0 DONE, separately authorize WP0.6 resume/revalidate/freeze and its fresh identity acceptance. Later WP0.7/G0 and other graph nodes still require their actual authorization and applicable accepted prerequisites. Do not replace the rest of the live ledger with the proposed graph or infer N1 READY/DONE.
+
+Unresolved future decisions are concrete: full-roadmap adoption; exact native gap subdivisions if a later authorized N1 finds unmet strict support; any checker out-of-range semantics still conflicting; startup measurement target/reference hardware; actual Mac GUI tester/access; stabilization minimum duration/releases and exit owner; explicit cutover, signing/publication and Node-decommission instructions. Protected recovery may additionally need exact original bytes and human authorization of a concrete transaction; prepare them before asking. None grants a waiver or a result. Runtime/build/security/platform/recovery operations in this planning audit are **NOT_RUN**.

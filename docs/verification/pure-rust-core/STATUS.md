@@ -3,20 +3,20 @@
 > **Authoritative current-state ledger:** all agents must read and update this file.
 > **Released/source baseline:** `v1.5.1` (eight-file source lockstep; historical WP0.1/WP0.2 evidence used v1.5.0)
 > **Development target:** `v1.6.0`
-> **Last reconciled:** 2026-09-26T11:35:42+07:00 by Codex (LOG-0053)
-> **Observed source:** Windows `main` HEAD `b68242131eaf8db15990fadf1c48c8c16c45473e` plus preserved LOG-0047 evidence and Codex WP0.3 remediation. No macOS source-parity result is implied.
+> **Last reconciled:** 2026-10-04. Bounded N0 remediation repaired canonical submission output/write OLE and passed own both-host full/security plus live91-row production and platform/package gates. N0 remains IN_PROGRESS:1024MiB submission fixture peaks1211.36MiB against unchanged1024MiB whole-app budget; logger failure drains native groups but leaves two private workspaces and no worker completion receipt. Complete both-host original-pinned protected entries/semantics and security inventories match; raw ambient/serialization diagnostics retained. No independent acceptance or scope approval.
+> **Observed source:** Windows main HEAD 8bc8ac9a2161a7468b633c421185d039c97e5a68, preserved dirty working tree; WP0.4 is accepted in LOG-0069. LOG-0083 findings repaired in LOG-0084; WP0.5 is DONE in LOG-0084: Windows and byte-identical live macOS gates, emitted diagnostics and cleanup pass. Application version remains 1.5.1.
 
 ## Current control state
 
 | Field | Value |
 |---|---|
-| Current implementation package | `WP0.4` — `IN_PROGRESS`, proposed executor-boundary ADR and opening report (LOG-0051) |
-| Next permitted package | Finish WP0.4 within its boundary; no later package has been started |
-| Current phase | Phase 0 — contract/baseline freeze |
-| Package progress | `3 / 51 DONE` |
+| Current implementation package | N0 — `IN_PROGRESS` / NOT_READY_FOR_REVIEW (Codex bounded remediation stopped at truthful candidate06 handoff; aggregate resource and logger workspace/receipt gaps remain) |
+| Next permitted package | Complete bounded N0 remediation, then stop at a truthful frozen handoff for fresh independent N0 review. WP0.6 source edits remain suspended until independent N0 DONE and a separate post-N0 dispatch. No WP0.7/G0 work starts here. |
+| Current phase | Phase 0 — native interactive prerequisite baseline |
+| Package progress | 5 / 51 DONE (WP0.5 DONE) |
 | Phase gates | `0 / 11 DONE` |
 | Version files | Preserve observed eight-file lockstep `1.5.1`; no migration version bump until WP10.3 |
-| Last required action | Antigravity claims the authorized WP0.4 handoff in LOG-0053 and applies LOG-0052 efficient execution; fresh Codex independently verifies after submission |
+| Last required action | Read [current handoff](artifacts/n0/codex-remediator-20261004T153938Z/remediation-handoff.md). Next remediation or independent review requires direct human dispatch. No resource waiver, policy/scope expansion, automatic chat or WP0.6 resumption. Neutral [remediator](artifacts/n0/codex-remediator-20261004T153938Z/next-remediator-prompt.md) / [reviewer](artifacts/n0/codex-remediator-20261004T153938Z/next-reviewer-prompt.md) prompts grant no permission. |
 
 Existing partial Rust code does not make a work package `DONE`. Required reports, test and cleanup evidence must be accepted. WP0.3 has a bounded Mon-authorized same-session acceptance exception (LOG-0048–0050); the normal independent-review protocol remains the default for later packages.
 
@@ -28,6 +28,7 @@ Existing partial Rust code does not make a work package `DONE`. Required reports
 | Detailed implementation/test plan | `DONE` | Codex | `docs/pure-rust-core-detailed-implementation-plan.md` |
 | Antigravity protocol handoff | `DONE` | Codex | `docs/pure-rust-core-antigravity-handoff.md` |
 | Efficient execution revision | `DOCUMENTED` | Codex, fresh-context text review | `docs/pure-rust-core-efficient-execution.md`, `plan-streamlining-review.md`, LOG-0052; no runtime/automation implementation |
+| N0 conflict/continuation clarification | `DOCUMENTED` | Codex planning chat, separate from N0 runtime owner | `n0-plan-conflict-resolution-20261002.md`; `prompts/n0-continuation-20261002.md`; factual handoff synchronization only, no package verdict or protected recovery |
 | Verification root and ledger | `DONE` | Codex | `docs/verification/pure-rust-core/STATUS.md`, `WORKLOG.md` |
 
 ## Execution ledger
@@ -37,9 +38,10 @@ Existing partial Rust code does not make a work package `DONE`. Required reports
 | WP0.1 | Workspace and environment snapshot | None | `DONE` | Antigravity implementation; Codex independent verification / 2026-09-19T23:26:41+07:00 | NO | `docs/verification/pure-rust-core/wp0.1-workspace-snapshot.md` + `artifacts/wp0.1/` |
 | WP0.2 | API and stream contract inventory | WP0.1 | `DONE` | Codex final closure / D:\Minh\Code\judgedesk / 2026-09-21T20:13:16+07:00 | NO | `docs/verification/pure-rust-core/wp0.2-api-stream-contract.md`, `wp0.2-final-closure.md`, `LOG-0032` |
 | WP0.3 | Corpus and expected-result manifest | WP0.2 | `DONE` | Codex same-session acceptance explicitly authorized by Mon / D:\Minh\Code\judgedesk / LOG-0050 | NO | `docs/verification/pure-rust-core/wp0.3-corpus-expected-results.md` Section 27, `LOG-0050` |
-| WP0.4 | Executor architecture ADR | WP0.1 | `IN_PROGRESS` | Antigravity authorized handoff, awaiting new-session claim / D:\Minh\Code\judgedesk / LOG-0053; Codex initial draft LOG-0051 | NO | `docs/adr/0001-rust-core-executor-boundary.md` PROPOSED; `wp0.4-executor-boundary.md`; `prompts/wp0.4-antigravity-implement.md`, `prompts/wp0.4-codex-verify.md` |
-| WP0.5 | Rust gates, CI, expected-skip policy | WP0.1 | `READY` | - | NO | - |
-| WP0.6 | Version/build identity/lockfile policy | WP0.1 | `READY` | - | NO | - |
+| WP0.4 | Executor architecture ADR | WP0.1 | `DONE` | Codex remediation and final review explicitly authorized by Mon / LOG-0069 | NO | docs/adr/0001-rust-core-executor-boundary.md; wp0.4-executor-boundary.md Section 18; artifacts/wp0.4/remediation-review-log0069-codex-20260928/ |
+| WP0.5 | Rust gates, CI, expected-skip policy | WP0.1 | `DONE` | Codex remediator/self-reviewer authorized by Mon / D:\Minh\Code\judgedesk / LOG-0084 | NO | `docs/verification/pure-rust-core/wp0.5-rust-gates-ci-expected-skips.md`; `artifacts/wp0.5/remediation-review-log0084-codex-20260930/review.md` |
+| N0 | Mac native interactive baseline prerequisite | WP0.1, WP0.2, WP0.3, WP0.4, WP0.5 | `IN_PROGRESS` | Codex bounded remediator / D:/Minh/Code/judgedesk / codex-remediator-20261004T153938Z | NO | [Candidate06 handoff](artifacts/n0/codex-remediator-20261004T153938Z/remediation-handoff.md): R1/R2 repaired, full/security both hosts PASS, production91 rows and focused75 PASS, actual packages/platform gates PASS. Resource512MiB610.59 bounded PASS,1024MiB1211.36 aggregate FAIL; logger-failure worker receipt/two-workspace closure incomplete. Historical FAILs/recoveries preserved; no independent acceptance. |
+| WP0.6 | Version/build identity/lockfile policy | WP0.1, N0 (adopted prerequisite ordering) | `IN_PROGRESS` (source edits suspended during N0) | Prior Codex remediator / D:\Minh\Code\judgedesk / main 8bc8ac9a2161a7468b633c421185d039c97e5a68 / LOG-0091; N0 owns shared native inputs | NO | `wp0.6-version-build-identity-lockfile-policy.md`; `artifacts/wp0.6/independent-review-log0090-codex-20261001/review.md`; `prompts/wp0.6-remediator-log0091.md`; `prompts/wp0.6-reviewer-log0091.md` |
 | WP0.7 | Minimal Rust server decomposition | WP0.1, WP0.2 | `READY` | - | NO | - |
 | G0 | Phase 0 exit gate | WP0.1-WP0.7 | `NOT_READY` | - | NO | `phase-0-gate.md` when run |
 | WP1.1 | Explicit backend selection and supervised lifecycle | G0 | `NOT_READY` | - | NO | - |
@@ -106,28 +108,20 @@ Existing partial Rust code does not make a work package `DONE`. Required reports
 The current owner replaces this block whenever work is handed off. Preserve prior history in WORKLOG.
 
 ```yaml
-work_package: WP0.4
-owner: Antigravity (claimed for implementation)
-tool: Antigravity (implementer); fresh Codex (independent verifier after VERIFYING)
+work_package: N0
+owner: Codex bounded remediator / codex-remediator-20261004T153938Z
 workspace: D:\Minh\Code\judgedesk
-branch_or_head: b68242131eaf8db15990fadf1c48c8c16c45473e-plus-preserved-remediation
+branch_or_head: 8bc8ac9a2161a7468b633c421185d039c97e5a68-plus-preserved-dirty-tree
 status: IN_PROGRESS
-last_command: git status; git rev-parse HEAD
-last_result: LOG-0054 Antigravity claimed WP0.4; verified dirty working tree and HEAD b68242131eaf8db15990fadf1c48c8c16c45473e
-report: docs/verification/pure-rust-core/wp0.4-executor-boundary.md
-artifacts:
-  - docs/adr/0001-rust-core-executor-boundary.md
-  - docs/verification/pure-rust-core/wp0.4-executor-boundary.md
-  - docs/verification/pure-rust-core/wp0.3-corpus-expected-results.md (prerequisite acceptance Section 27)
-  - docs/pure-rust-core-efficient-execution.md
-  - docs/verification/pure-rust-core/plan-streamlining-review.md
-  - docs/verification/pure-rust-core/prompts/wp0.4-antigravity-implement.md
-  - docs/verification/pure-rust-core/prompts/wp0.4-codex-verify.md
-findings:
-  - current Node uses executor IPC; partial Rust core still reaches Platform in process
-  - parent/generation identity and unreachable-alternative tests remain required; proposed ADR is not accepted
-blocker: none for bounded WP0.4 work; exit evidence not yet implemented
-next_action: Antigravity resolves ADR open items, proves selected boundary with RED/GREEN, submits VERIFYING and stops for fresh Codex review
-updated_at: 2026-09-26T11:51:00+07:00
+last_result: "Candidate06 R1/R2 repaired; own required full/security both hosts and production91/focused75/platform/package gates executed. IN_PROGRESS: resource1211.36MiB exceeds1024MiB aggregate budget; logger failure omits worker receipt and retains two private workspaces despite native drains. Complete original-pinned protected inventories and security equal; all historical evidence preserved. No self-acceptance or approval outside Plan."
+independent_review: docs/verification/pure-rust-core/artifacts/n0/codex-independent-review-20261004T122158Z/review.md
+remediator_prompt: docs/verification/pure-rust-core/artifacts/n0/codex-remediator-20261004T153938Z/next-remediator-prompt.md
+reviewer_prompt: docs/verification/pure-rust-core/artifacts/n0/codex-remediator-20261004T153938Z/next-reviewer-prompt.md
+previous_safe_stop: docs/verification/pure-rust-core/artifacts/n0/codex-independent-review-20261004T122158Z/SAFE-STOP-HANDOFF.md
+rejected_candidate_intake: docs/verification/pure-rust-core/artifacts/n0/codex-resume-20261002T121734Z/resume-20261004/final-union/reviewer-intake.md
+current_remediator_handoff: docs/verification/pure-rust-core/artifacts/n0/codex-remediator-20261004T153938Z/remediation-handoff.md
+report: docs/verification/pure-rust-core/n0-native-interactive-baseline.md
+incident_procedure: docs/verification/pure-rust-core/n0-plan-conflict-resolution-20261002.md
+workflow: docs/pure-rust-core-review-workflow.md
+updated_at: 2026-10-04T16:53:49.619807+00:00
 ```
-

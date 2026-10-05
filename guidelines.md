@@ -71,7 +71,7 @@ All code changes must preserve the following identity invariants to guarantee ba
    - `package-lock.json` (`version` & `packages[""].version`)
    - `src/version.ts` (`APP_VERSION`)
    - `src-tauri/Cargo.toml` (`package.version`)
-   - `src-tauri/Cargo.lock` (`judgedesk-desktop` version)
+   - `src-tauri/Cargo.lock` (`themis-v2` version; authoritative existing Cargo package name)
    - `src-tauri/tauri.conf.json` (`version`)
    - `native-executor/Cargo.toml` (`package.version`)
    - `native-executor/Cargo.lock` (`judgedesk-native-executor` version)

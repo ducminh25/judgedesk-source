@@ -4,6 +4,7 @@ import path from "path";
 import crypto from "crypto";
 import { execFileSync } from "child_process";
 import { buildSync } from "esbuild";
+import { resolveBuildMetadata } from './build-metadata.js';
 import { targetTripleForHost } from "./build-server-target.js";
 
 export function resolveTarget(platform, architecture, envTarget) {
@@ -38,48 +39,7 @@ export function bundleServer(appRoot, srcFile, outFile) {
   });
 }
 
-export function resolveBuildMetadata(appRoot, environment = process.env) {
-  let appVersion = environment.npm_package_version || "development";
-  try {
-    const packageJson = JSON.parse(
-      fs.readFileSync(path.join(appRoot, "package.json"), "utf8"),
-    );
-    if (typeof packageJson.version === "string" && packageJson.version) {
-      appVersion = packageJson.version;
-    }
-  } catch {
-    // Source archives used by tests may not carry package.json.
-  }
-
-  let gitCommit = environment.JUDGEDESK_GIT_COMMIT || environment.GITHUB_SHA || "unknown";
-  if (gitCommit === "unknown") {
-    try {
-      gitCommit = execFileSync("git", ["rev-parse", "HEAD"], {
-        cwd: appRoot,
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-      }).trim() || "unknown";
-    } catch {
-      // Release source archives may not contain .git.
-    }
-  }
-
-  const sourceDateEpoch = Number.parseInt(environment.SOURCE_DATE_EPOCH || "", 10);
-  const builtAt = Number.isFinite(sourceDateEpoch)
-    ? new Date(sourceDateEpoch * 1000).toISOString()
-    : environment.JUDGEDESK_BUILD_TIMESTAMP || new Date().toISOString();
-
-  return {
-    appVersion,
-    gitCommit,
-    buildNumber:
-      environment.JUDGEDESK_BUILD_NUMBER
-      || environment.CM_BUILD_ID
-      || environment.GITHUB_RUN_NUMBER
-      || "local",
-    builtAt,
-  };
-}
+export { resolveBuildMetadata } from './build-metadata.js';
 
 export function generateSeaBlob(appRoot, configPath) {
   console.log("Generating SEA config blob...");

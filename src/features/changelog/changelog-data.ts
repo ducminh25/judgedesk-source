@@ -11,6 +11,18 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
   {
+    version: "1.5.2",
+    date: "2026-10-05",
+    sections: [
+      {
+        title: "Nhận test từ cặp file cùng tên",
+        items: [
+          "Bổ sung cách thức nhận test mới: cặp file input và output cùng tên được tính là 1 test."
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.1",
     date: "2026-09-23",
     sections: [
@@ -524,6 +536,18 @@ export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
 ];
 
 export const CHANGELOG_DATA_EN: ChangelogRelease[] = [
+  {
+    version: "1.5.2",
+    date: "2026-10-05",
+    sections: [
+      {
+        title: "Test discovery from matching file pairs",
+        items: [
+          "Added a new test discovery method: an input file and an output file with the same base name count as one test."
+        ],
+      },
+    ],
+  },
   {
     version: "1.5.1",
     date: "2026-09-23",

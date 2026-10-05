@@ -1,0 +1,2418 @@
+{
+  "schemaVersion": 1,
+  "status": "PROPOSED_NOT_ADOPTED",
+  "planningOnly": true,
+  "implementationAuthorization": false,
+  "date": "2026-10-01",
+  "nodes": [
+    {
+      "id": "WP0.1",
+      "stage": 0,
+      "title": "Accepted workspace/environment baseline",
+      "deps": [],
+      "need": "Historical starting identity and preservation report.",
+      "files": "Existing snapshot report and artifacts only.",
+      "steps": "Read accepted verdict; refresh current intake separately; do not replay the package or replace its baseline.",
+      "red": "Historical evidence; new drift is an intake finding, not a new RED.",
+      "outputs": "Existing wp0.1-workspace-snapshot.md and immutable evidence.",
+      "accept": "Retain DONE and original platform/environment limits.",
+      "checks": "D",
+      "resource": "none",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP0.2",
+      "stage": 0,
+      "title": "Accepted API/stream contract inventory",
+      "deps": [
+        "WP0.1"
+      ],
+      "need": "Baseline anchors the frontend/Node route inventory.",
+      "files": "api-contract-matrix.md, api-contract-manifest.json, shared/contracts.ts and original fixtures.",
+      "steps": "Reuse accepted inventory; each later task compares its actual route/caller delta and adds attributable contract tests.",
+      "red": "Missing/dynamic/unowned routes must be detected; no prose-only event substitution.",
+      "outputs": "Accepted route matrix/goldens; additive deltas in future owning package.",
+      "accept": "Retain DONE; canonical batch NDJSON is metadata/progress/problem_completed/done/error, with actual Node ordering.",
+      "checks": "D",
+      "resource": "none",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP0.3",
+      "stage": 0,
+      "title": "Accepted corpus and exact-score oracle",
+      "deps": [
+        "WP0.2"
+      ],
+      "need": "Endpoint semantics define expected case outcomes.",
+      "files": "corpus-manifest.json/schema, server/test-fixtures/corpus, accepted Node exact carriers.",
+      "steps": "Reuse 25 immutable cases and accepted rational/ZIP repairs; capture future fixture additions before their implementations; keep generator check read-only.",
+      "red": "Mutate owned copies to prove schema/hash and real semantic rejection; supported missing runtime cannot silently pass.",
+      "outputs": "Accepted manifest, hashes, raw tamper/oracle evidence.",
+      "accept": "Retain DONE and bounded historical same-session exception; no new acceptance authority.",
+      "checks": "D",
+      "resource": "none",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP0.4",
+      "stage": 0,
+      "title": "Accepted out-of-process executor boundary",
+      "deps": [
+        "WP0.1"
+      ],
+      "need": "Environment anchors OS generation/ownership proofs.",
+      "files": "ADR 0001, executor_client.rs, native IPC/guardian/tree guards, Node client.",
+      "steps": "Read accepted LOG-0069 closure rather than historical ADR proposal wording; preserve framed v1 and executor-owner lease.",
+      "red": "Protocol/parent/generation refusal and native drain proofs remain required downstream.",
+      "outputs": "Accepted ADR and exact packaged/client evidence.",
+      "accept": "Retain DONE; production core cannot call Platform or substitute a debug executor.",
+      "checks": "D",
+      "resource": "none",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP0.5",
+      "stage": 0,
+      "title": "Accepted Rust gates and expected-skip policy",
+      "deps": [
+        "WP0.1"
+      ],
+      "need": "Baseline supplies test inventory and tool prerequisites.",
+      "files": "run-rust-gates.js, expected-skips.json, gates/CI reports.",
+      "steps": "Reuse LOG-0084 acceptance; inspect today's composition; reconcile CI/CodeMagic coverage separately at release.",
+      "red": "Changed gate coverage or unaccounted skip is a new finding; do not weaken the policy.",
+      "outputs": "Accepted nine-step gate, source scans and profile diagnostic evidence.",
+      "accept": "Retain DONE; accepted gate implementation is distinct from all platform features being complete.",
+      "checks": "D",
+      "resource": "none",
+      "mapping": "retained"
+    },
+    {
+      "id": "N0",
+      "stage": 0,
+      "title": "Mac native interactive baseline prerequisite",
+      "deps": [
+        "WP0.1",
+        "WP0.2",
+        "WP0.3",
+        "WP0.4",
+        "WP0.5"
+      ],
+      "need": "Accepted preservation, unchanged AC oracle, framed IPC ownership, and gate discipline allow native repair without Rust orchestration prerequisites.",
+      "files": "native-executor/src/platform/{mod,macos}.rs; existing macos_launcher/run_controller/run_guardian, request validation and directly related native/Node tests.",
+      "steps": "(1) Inventory actual Node/client/native callers, certified participant roles/sources and fixed-owned roots; prove pre-edit validator/harness refusals, not the nonexistent dual-launch behavior. (2) Preserve live cpp_interactor RED. (3) Implement bounded fail-closed dual-process launch/pipe/guardian lifecycle in separately reviewed slices using existing OS primitives. (4) On the implemented new caller, prove harmless denial and partial-start/second-launch ownership before any hostile fixture. (5) Exercise every newly reachable supported strict pair via production Node IPC and Windows regressions; freeze all affected binaries and inputs.",
+      "red": "Unchanged Mac cpp_interactor AC currently yields JE; add separate-side timeout/crash, second-spawn failure, cancel-before/after registration, EOF, pipe deadlock/flood and denied-path/network regressions.",
+      "outputs": "New n0-native-interactive-baseline.md, role/source matrix, RED/GREEN and safety tests, complete frozen source/build manifest, both-host logs and cleanup.",
+      "accept": "Both participants remain strictly isolated with independent limits; no participant/descendant survives terminal paths; AC/WA/PE/PARTIAL/TLE/MLE/RE/JE mappings and exact Node award carrier stay unchanged. Full Mac and Windows gates pass. Independent N0 DONE gives no WP5.4 or WP0.6 acceptance.",
+      "checks": "F S M W",
+      "resource": "native",
+      "mapping": "split from WP5.4; new dedicated upstream package",
+      "privateNativeBoundary": "Public Node/core-executor framed-v1/schema and sandbox authority stay fixed. Required private launcher/controller/guardian stdio/control changes belong to bounded N0 scope with authenticated run/generation/parent ownership, matching helper provenance, explicit mismatch/stale-peer refusal, bounded parsing/descriptor lifetime and single-run regressions. No public arbitrary-FD authority or grants.",
+      "incidentContinuation": "Pin original protected audit roots independently of private runtime TMPDIR before stateful work. Guarded in-scope source work/isolated focused tests may continue while original incident remains open. VERIFYING requires exact corrected-original inventory/trusted bytes, concrete authorized protected recovery with original FAIL retained, then fresh linked final union/cleanup. No post-mutation rebaseline or preservation waiver; see n0-plan-conflict-resolution-20261002.md."
+    },
+    {
+      "id": "WP0.6",
+      "stage": 0,
+      "title": "Build identity/version/lockfile acceptance",
+      "deps": [
+        "WP0.1",
+        "N0"
+      ],
+      "need": "Baseline proves version authority; independently accepted N0 removes the existing Mac full-gate prerequisite while identity remains a distinct claim.",
+      "files": "core build.rs/build_support.rs/build_metadata.rs, Tauri build.rs, build-metadata/build-packaged scripts, status/stream identity tests.",
+      "steps": "(1) Reconcile LOG-0090 F1 and LOG-0091 repair; do not redo unrelated fixes. (2) Verify actual compiler-selected features under forged declared/undeclared parent variables. (3) Prove development/packaged, default/no-default/real test-server, core/Tauri/Node/frontend and build-input refresh. (4) Re-freeze combined post-N0 source; rerun invalidated coverage; submit separate frozen identity handoff.",
+      "red": "Existing original Windows and reconstructed Mac RED may be referenced with exact applicability; runtime spoof, stale cache, missing/mismatched locks and missing packaged provenance must fail using real Cargo/build/launch callers.",
+      "outputs": "Updated canonical wp0.6 report with attributable new section, lock-owner matrix, metadata/target/features/backend/binary manifests and independent reviewer logs.",
+      "accept": "Eight files remain 1.5.1; core crate version does not set app version; startup/status/NDJSON agree with actual target/features. Both-host full gates and required identity mutation/live cases pass. Fresh independent DONE required; repaired remediator results are insufficient.",
+      "checks": "F I",
+      "resource": "native",
+      "mapping": "retained; new N0 prerequisite"
+    },
+    {
+      "id": "WP0.7",
+      "stage": 0,
+      "title": "One characterized server/domain decomposition",
+      "deps": [
+        "WP0.2",
+        "WP0.6"
+      ],
+      "need": "Accepted route matrix and stable identity make structural before/after comparison meaningful.",
+      "files": "core src/server/mod.rs, route/domain modules, response/error helpers and tests.",
+      "steps": "(1) Freeze route/error characterization. (2) Extract auth/status/lifecycle/workspace/judge/toolchains/OSD ownership in behavior-preserving slices. (3) Compare inventory/goldens and callers. (4) List WP2.1 boundaries already delivered.",
+      "red": "Characterization catches missing route or changed status/framing; inject an owned missing-route mutant to prove coverage.",
+      "outputs": "Domain/owner map, before/after route manifests, characterization tests and report.",
+      "accept": "No behavior or route drift; existing unsafe behavior is documented for Phase 1, never called secure by refactoring. No broad security fix is bundled.",
+      "checks": "F",
+      "resource": "none",
+      "mapping": "retained; serialized after WP0.6 to remove misleading READY scheduling"
+    },
+    {
+      "id": "WP1.1",
+      "stage": 1,
+      "title": "Explicit backend selection and supervised lifecycle",
+      "deps": [
+        "G0"
+      ],
+      "need": "Accepted identity/decomposition/executor foundation supplies real readiness and ownership contracts.",
+      "files": "src-tauri/src/backend.rs, process_supervisor*, startup_guard, core server lifecycle/status.",
+      "steps": "(1) Characterize Node default/Rust opt-in. (2) Remove implicit fallback after missing/spawn/handshake failure. (3) Bind actual loopback port before ready; retain task/error/shutdown handles. (4) Integrate admission-close/cancel/drain/socket-release/update ordering.",
+      "red": "Missing/broken Node sidecar, spoofed handshake, occupied/racing port, duplicate/stop-during-start, late serve error, parent/core/executor crash and restart.",
+      "outputs": "Selection policy, lifecycle state machine, Tauri/core integration tests, runtime identity and port/process reports.",
+      "accept": "Node stays default; failures are visible and never auto-select Rust. Ready owns listener/task; stop and updater wait for drain; no orphan or stale ready state.",
+      "checks": "F M W",
+      "resource": "native",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP1.2",
+      "stage": 1,
+      "title": "Loopback HTTP authentication/origin/input boundary",
+      "deps": [
+        "G0",
+        "WP1.1"
+      ],
+      "need": "Supervised startup delivers a distinct HTTP credential and authoritative listener identity.",
+      "files": "core server auth/routes, src/api.ts and Node equivalent boundary, shared errors.",
+      "steps": "(1) Inventory protected routes. (2) Separate parent handshake secret from per-request HTTP auth. (3) Define exact origins/no-origin/null/development/OPTIONS policy and header delivery for fetch/streams. (4) Enforce bounds, denial, rotation and redaction across both backends.",
+      "red": "Hostile origins, CSRF/simple forms, duplicate/missing/expired/replayed auth, invalid method/JSON, body/header/query/path overflow, IPv4/IPv6 binding and reconnect.",
+      "outputs": "Threat table, authorization matrix, real HTTP negative fixtures and shared response tests.",
+      "accept": "Denied request performs zero mutation; canonical 401/403/error schema; secrets never appear in URLs/logs. Intentional Node security corrections must be explicit compatibility decisions.",
+      "checks": "F",
+      "resource": "http",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP1.3",
+      "stage": 1,
+      "title": "Native folder selection without script interpolation",
+      "deps": [
+        "WP1.1",
+        "WP1.2"
+      ],
+      "need": "Startup/dialog ownership and authenticated route delivery preserve request/error behavior.",
+      "files": "core folder route, existing Tauri dialog bridge, frontend workspace callers.",
+      "steps": "(1) Capture cancel/success contract. (2) Route through native dialog APIs. (3) Remove path-to-script interpolation. (4) Validate safe initial directory and focus return on both GUI hosts.",
+      "red": "Quotes/semicolon/newline/backtick/dollar-substitution/UNC/reserved/long/Unicode paths; harmless marker must never execute; dialog cancel/denied/error.",
+      "outputs": "Safe dialog contract/tests, required early actual Windows/Mac native dialog/cancel/focus GUI evidence, and report.",
+      "accept": "No command evaluation; exact safe path/cancel response. Required actual Windows and Mac native dialog/cancel/focus proof must execute before WP1.3 DONE; if Mac GUI access is unavailable, WP1.3/G1 remain blocked pending that early human session. V9.4/G9 later repeat full product GUI validation on final packages; SSH is never dialog/focus evidence.",
+      "checks": "F G",
+      "resource": "http",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP1.5",
+      "stage": 1,
+      "title": "Truthful capabilities and guarded incomplete execution",
+      "deps": [
+        "WP1.1",
+        "WP1.2",
+        "WP1.6"
+      ],
+      "need": "Actual backend readiness/auth and owned-path policy define what routes may advertise or invoke.",
+      "files": "core capability/status/toolchain/OSD/judge routes, shared contracts and UI capability consumers.",
+      "steps": "(1) Inventory every success stub/direct execution caller including diagnose. (2) Derive capability from build/backend/platform/verified disk state. (3) Deny unsafe/incomplete judge/checker/compiler routes with stable unavailable responses and zero side effects. (4) Re-enable only in later accepted owning task.",
+      "red": "Missing executor/feature/runtime, fake installed directory, OSD start without watcher, unsupported source/role, stale capability and restart; attempt blocked invocation through real routes.",
+      "outputs": "Capability/route ownership manifest, unavailable-response/UI tests and live no-side-effect evidence.",
+      "accept": "No fake success or diagnostic badge licenses untrusted execution. Phase 1 can close with explicitly unavailable migration features; final G6/G9 cannot. Node product default remains functional.",
+      "checks": "F",
+      "resource": "http",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP1.6",
+      "stage": 1,
+      "title": "Owned workspace and hostile-path lifecycle",
+      "deps": [
+        "G0"
+      ],
+      "need": "Accepted IPC and route boundaries identify trusted coordinator and untrusted path inputs.",
+      "files": "core owned workspace API; native request validation; Node workspace reference; Tauri archive callers audited.",
+      "steps": "(1) Search/reuse existing ownership primitives. (2) Specify protected root/owner identity and no-follow handles. (3) Stage/validate/IPC using race-resistant OS paths. (4) Implement RAII and crash scavenging only for authenticated owned descendants.",
+      "red": "Leaf/ancestor link/junction/reparse/hardlink, ancestor swap, root-as-target, ADS/device/control/long/case/Unicode paths, forged marker, stale root, cancel at each stage and concurrent cleanup.",
+      "outputs": "Containment API contract, owned-root threat fixtures and both-platform cleanup evidence.",
+      "accept": "No string-only canonicalize-then-delete authorization; cannot mutate neighbor/protected state. Destructive probes stay below verified disposable root. All real execution and installs depend on this API.",
+      "checks": "F S",
+      "resource": "native",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP1.7",
+      "stage": 1,
+      "title": "Structured observability and redaction",
+      "deps": [
+        "WP0.6",
+        "WP0.7",
+        "WP1.1",
+        "WP1.2"
+      ],
+      "need": "Build identity/domain and startup/auth supply correlation and secret boundaries.",
+      "files": "core/Tauri/Node log adapters, status/errors and log rotation; no new telemetry service.",
+      "steps": "(1) Define request/job/run/executor/build labels. (2) Bound logs and stable codes. (3) Capture failure/cancel/drain/crash/update transitions. (4) Add secret/source/path canaries; extend job probes when Phase 4 becomes available.",
+      "red": "Auth/compile/checker errors, shutdown/crash, rotation overflow, raw token/ticket/signing/source/answer/path canary leak.",
+      "outputs": "Structured event schema, sanitized correlation fixtures, rotation tests and reports.",
+      "accept": "Trace one operation across tiers without private contents; future events are contract-tested initially and actually executed at G4/G6, never claimed live from a synthetic log.",
+      "checks": "F",
+      "resource": "http",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP2.1",
+      "stage": 2,
+      "title": "Domain ownership delta review",
+      "deps": [
+        "G1",
+        "WP0.7"
+      ],
+      "need": "Accepted decomposition and Phase 1 changes reveal any remaining cross-domain ownership gaps.",
+      "files": "Domain map/route modules already extracted by WP0.7; owning service interfaces.",
+      "steps": "(1) Compare WP0.7 boundaries with toolchain/compiler/services needs. (2) Prove covered boundaries by exact accepted evidence. (3) Extract only missing boundaries with characterization; no repeated whole-server move.",
+      "red": "Route inventory and characterization fail on a missing domain/changed behavior.",
+      "outputs": "Explicit evidence decision for every domain; structural delta tests only if needed.",
+      "accept": "Retain required ownership outcome. A no-code evidence closure needs independent verdict; it is not an assumed skipped WP.",
+      "checks": "D or F",
+      "resource": "none",
+      "mapping": "consolidated implementation with WP0.7; retain distinct evidence closure"
+    },
+    {
+      "id": "WP2.2",
+      "stage": 2,
+      "title": "Revisioned preferences and execution policy persistence",
+      "deps": [
+        "G1",
+        "WP2.1"
+      ],
+      "need": "Authenticated owned service boundaries make atomic preference mutation safe.",
+      "files": "core toolchain preference/policy models and routes; Node preferences/migration reference.",
+      "steps": "(1) Capture schema/revision/legacy migration. (2) Implement per-profile source preferences and concurrency conflicts. (3) Atomic same-directory persist/recover. (4) Read after restart and derive UI state.",
+      "red": "Truncated/corrupt JSON, old schema, invalid mode/path, write/flush/rename failure, revision race, crash between stages.",
+      "outputs": "Preference/policy schema, migration fixtures, durable round-trip/recovery tests and report.",
+      "accept": "Restart observes only valid complete revision; conflict/error matches Node; no silent default or raw path leak.",
+      "checks": "F",
+      "resource": "disk",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP2.3",
+      "stage": 2,
+      "title": "Signed package/manifest/receipt disk truth",
+      "deps": [
+        "G1",
+        "WP2.1"
+      ],
+      "need": "Owned service boundaries and accepted corpus trust model define immutable inputs. Pre-implementation catalog identifies a vetted existing/system signature-verification provider; any necessary new dependency/provider must be separately approved before coding.",
+      "files": "core package models; server/toolchains/{manifest,receipts} references; signed distribution resource fixture.",
+      "steps": "(1) Resolve the early verification-provider prerequisite using vetted existing/system capabilities or separately approved minimal dependency; do not hand-roll cryptography. (2) Capture canonical signed-v2 schema/keys and verify signature, size/hash/platform/arch/provenance/licenses. (3) Define canonical receipt and tamper/restart validation. (4) Refuse unverified entry before mutation.",
+      "red": "Unknown key/algorithm, wrong hash/size/OS/arch, duplicate/ambiguous entry, unsigned metadata, receipt tamper and downgrade policy violation.",
+      "outputs": "Trusted local signed fixtures, manifest/receipt contract and negative tests.",
+      "accept": "Disk truth derives from covered signature and verified bytes; missing signed resource is a closure error, never an excuse to fetch/use a trust bypass.",
+      "checks": "F",
+      "resource": "disk",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP2.4",
+      "stage": 2,
+      "title": "Bounded extraction and atomic installation",
+      "deps": [
+        "WP1.6",
+        "WP2.2",
+        "WP2.3"
+      ],
+      "need": "Owned staging, revision policy and verified package inputs are required to publish safely.",
+      "files": "core package store/installer/routes; existing Node extraction and mutation gate.",
+      "steps": "(1) Preflight quotas and source trust. (2) Stream into private owned staging with byte/file/depth limits. (3) Normalize executable permissions, verify tree and atomic publish. (4) Add cancel/recovery and approved network integration separately.",
+      "red": "Traversal/bomb/link/device/duplicate/depth floods, expanded-size mismatch, collision/permission failure, cancellation/crash at each phase and active lease conflict.",
+      "outputs": "Executable signed local install fixtures, post-extract manifest, atomicity/recovery and real download report if authorized.",
+      "accept": "No partial selected package; no unowned deletion/network from submissions; active judge mutation returns 409. New crypto/network/archive dependency requires separate approval.",
+      "checks": "F S",
+      "resource": "disk",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP2.5",
+      "stage": 2,
+      "title": "Owned uninstall/dedup/recovery",
+      "deps": [
+        "WP2.4"
+      ],
+      "need": "Verified installed receipts and atomic publish state identify what may be removed.",
+      "files": "core package store/recovery; preference selections and package leases.",
+      "steps": "(1) Define selected/in-use refusal. (2) Remove by verified owner/receipt, with reference accounting only if dedup exists. (3) Recover stale staging/publish journal. (4) Prove idempotent restart.",
+      "red": "Forged marker/receipt, root replacement, selected/in-use 409, concurrent mutation, duplicate install, partial prior publish, cancellation and neighbor preservation.",
+      "outputs": "Uninstall/recovery fixtures, journal/state transition and delayed handle/root report.",
+      "accept": "Only owned unused package removed; selected/in-use preserved; recovery never guesses a broader root.",
+      "checks": "F S",
+      "resource": "disk",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP2.6",
+      "stage": 2,
+      "title": "Exact source resolution and pinned identity",
+      "deps": [
+        "WP2.2",
+        "WP2.3"
+      ],
+      "need": "Persisted source intent and verified receipts eliminate directory-name/PATH guesses.",
+      "files": "core resolver/discovery/certification interfaces; Node registry/resolver/version-policy reference.",
+      "steps": "(1) Build release-profile/source matrix from actual registry. (2) Resolve none/managed/local_path/local_auto separately. (3) Validate exact executable/runtime/version/snapshot/isolation evidence. (4) Return immutable plan or unavailable.",
+      "red": "Disabled/missing managed, incompatible exact local path, auto with zero/two candidates, stale certificate/receipt, wrong version/arch and changed binary.",
+      "outputs": "Resolver tables, immutable toolchain snapshot schema and per-profile identity tests.",
+      "accept": "none disables; missing/invalid selected source never substitutes another. Auto selection deterministic only within certified auto candidates. Managed Python submissions/local checker-only policy preserved.",
+      "checks": "F",
+      "resource": "disk",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP2.7",
+      "stage": 2,
+      "title": "Mac driver/SDK qualification",
+      "deps": [
+        "WP2.6"
+      ],
+      "need": "Exact source selection makes clang/clang++ and SDK hypotheses testable.",
+      "files": "core discovery/diagnostics/compiler-plan inputs; native local toolchain snapshot; Apple Clang fixtures.",
+      "steps": "(1) Refresh earlier header-failure applicability. (2) Compare selected driver, SDK/sysroot/minimal environment and frozen resource paths. (3) Reproduce only if still failing; repair exact shared root. (4) Preserve real C/C++ protected compile/run proof.",
+      "red": "Wrong driver/SDK/missing resource under production path; host xcrun success alone is not GREEN. If old defect is fixed, retain characterization and prove present path without fabricating RED.",
+      "outputs": "Mac driver/SDK manifest, focused regression and live protected C/C++ diagnostics.",
+      "accept": "Correct configured driver retained, no arbitrary host-dir grants or compiler substitution; historical failure not automatically a current blocker.",
+      "checks": "F S M",
+      "resource": "native",
+      "mapping": "retained"
+    },
+    {
+      "id": "N1",
+      "stage": 3,
+      "title": "Native strict runtime/role capability closure",
+      "deps": [
+        "G2"
+      ],
+      "need": "Verified source/runtime snapshots and install truth allow native OS capability gaps to be isolated before Rust adapters.",
+      "files": "native executor validation/platform/launcher/guardian roles and Node staging references; per-gap approved subcontracts only.",
+      "steps": "(1) Reconcile early capability catalog against real source/role registry. (2) Name each failing native combination and bounded native subpackage before coding; serialize shared files. (3) Prove pre-edit validator/harness refusal with harmless fixtures. (4) Implement the bounded OS capability slice fail-closed using existing verified primitives. (5) Prove the implemented caller's denial/partial-start ownership harmlessly before hostile probes, then accept strict sandbox/limits/drain or stop with the concrete unsatisfied release obligation.",
+      "red": "Pascal/Java/Scratch ResourceOnly cannot pass; per-role network/external read/write/descendant escape/process/thread/open-file limits, 8/1024 MiB and deadline boundaries, missing runtime and negative launch paths.",
+      "outputs": "Native capability catalog and separately accepted gap reports, source/toolchain/role matrix, real native probes and cleanup.",
+      "accept": "All six production languages' supported submission combinations on both hosts need strict containment before final migration. Unsupported registry combinations remain unavailable. Inability to meet a required language is FAIL/BLOCKED for release, never removal of support or blanket grants.",
+      "checks": "F S M W",
+      "resource": "native",
+      "mapping": "new; extract OS/runtime prerequisites from WP3.2"
+    },
+    {
+      "id": "WP5.1",
+      "stage": 1,
+      "title": "Exact rational model before its consumers",
+      "deps": [
+        "G0",
+        "WP0.3"
+      ],
+      "need": "Accepted Node exact carriers define parser/arithmetic/ranking semantics independently of execution.",
+      "files": "core rational/scoring and config/result types; shared/rational.ts and Node scoring reference.",
+      "steps": "(1) Inventory every parser/multiplier/total/rank caller. (2) Define lexical decimal/fraction and safe numeric/string carriers. (3) Replace f64 approximation/saturating corruption with checked exact reductions. (4) Property-test and route through consumers before they are integrated.",
+      "red": "1/3+2/3, .5/-.5/1., 0.35*10, MAX_SAFE_INTEGER/3, large cross-products, overflow, invalid denominator/nonfinite, partial award and permutation/rank ties.",
+      "outputs": "Exact scoring/carrier contract, Node goldens/property tests and error policy.",
+      "accept": "No floating-point score/rank arithmetic; explicit config/JE error rather than silent saturation; presentation conversion only at existing boundary. Overflow beyond available representation requires scoped design/dependency decision, not rounding.",
+      "checks": "F",
+      "resource": "none",
+      "mapping": "moved before config/compiler/session"
+    },
+    {
+      "id": "WP5.2",
+      "stage": 1,
+      "title": "Pure standard-checker parity before integration",
+      "deps": [
+        "G0",
+        "WP5.1"
+      ],
+      "need": "Exact award carriers let checker decisions feed scores without approximation.",
+      "files": "core checkers, Node standard-checkers and existing Themis oracle inputs.",
+      "steps": "(1) Enumerate all identifiers/aliases/defaults. (2) Compare token/line/binary/integer/float-tolerance/yesno behavior. (3) Bound input/UTF-8 errors. (4) Produce canonical verdict/message/award fixtures.",
+      "red": "Empty/huge tokens and integers, signed zero/exponent/NaN/Infinity policy, mixed newline/trailing whitespace/NUL/invalid UTF-8, PE and aliases.",
+      "outputs": "Table/property/golden tests, static parity links and live DLL oracle report where required.",
+      "accept": "Exact verdict/alias/default behavior; float tolerance compares contestant numeric output only and never score/rank math. Static checker parity alone does not prove a new live oracle run.",
+      "checks": "F O",
+      "resource": "none",
+      "mapping": "moved to early pure contracts"
+    },
+    {
+      "id": "WP3.1",
+      "stage": 3,
+      "title": "Protected compiler service",
+      "deps": [
+        "G2",
+        "N1",
+        "WP1.6"
+      ],
+      "need": "Exact source/disk truth, native compiler/runtime capability and owned workspace support bounded compilation.",
+      "files": "core engine/compiler service; Node compiler/checker-compiler/interactor-compiler reference; IPC client.",
+      "steps": "(1) Capture current role limits/argv/profile. (2) Build one pinned compiler plan for diagnose/submission/checker/interactor. (3) Execute through approved protected boundary with minimal env/no shell/bounded outputs. (4) Validate artifact and publish atomically after drain.",
+      "red": "Hang/descendants/template bomb, diagnostic flood, missing/wrong-type/oversize artifact, selected compiler unavailable, Unicode/spaces, cancel during compile/link/publish.",
+      "outputs": "Compiler plan/result/error contract, role-limit fixtures, protected compile/cancel tests and report.",
+      "accept": "Submission timeout 15000 ms, binary cap 32 MiB; custom checker timeout 60000 ms and current explicit memory policy; CE versus JE preserves reference. Timeout proves whole-tree drain, no PATH/compiler fallback.",
+      "checks": "F S",
+      "resource": "native",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP3.3",
+      "stage": 3,
+      "title": "Session toolchain leases and immutable pinning",
+      "deps": [
+        "WP3.1",
+        "WP2.2",
+        "WP2.6"
+      ],
+      "need": "Compiler plan plus revisioned resolver provides immutable snapshot and maintenance lease.",
+      "files": "core toolchain lease service/compiler plan and future session admission adapter; Node session/maintenance reference.",
+      "steps": "(1) Resolve all required roles before launch. (2) Acquire one generation/session lease with cancel-safe RAII. (3) Make metadata use snapshot. (4) Test a component caller now; integrate job owner in WP4.2/4.3.",
+      "red": "Preference/uninstall/rescan during compile/prewarm, cancel during pinning, failed compiler start, double release and restart recovery.",
+      "outputs": "Lease API/state machine, race tests, metadata fixtures.",
+      "accept": "Mutation refused 409 while leased; changed preference affects next session only; release exactly once after actual drain. Component acceptance does not claim real batch admission yet.",
+      "checks": "F",
+      "resource": "native",
+      "mapping": "retained; order before adapters/checker callers"
+    },
+    {
+      "id": "WP3.2",
+      "stage": 3,
+      "title": "Six protected language adapters",
+      "deps": [
+        "WP3.1",
+        "WP3.3",
+        "WP2.7"
+      ],
+      "need": "Compiler service, pinned leases and Mac driver evidence supply real role/source plans.",
+      "files": "core engine language adapters and diagnostics; Node language-adapters/compiler/scratch runtime; declared registry.",
+      "steps": "(1) Implement C++, C, Python, Pascal, Java, Scratch as separate reviewable slices. (2) Use exact flags/runtime/main-class/artifact contracts. (3) Exercise compile + run through production adapter on owned component fixtures. (4) Feed future batch integration without enabling incomplete routes.",
+      "red": "Each profile: AC program, CE/RE, stdio/file I/O, wrong/missing selected source, Unicode/ambiguity, TLE/MLE/OLE, cancel and strict sandbox role/source probes.",
+      "outputs": "Independently named per-profile tests/results, adapter contracts and target/toolchain/runtime snapshots.",
+      "accept": "All six real adapter component paths pass on supported hosts; Python syntax and checker-only local policy; Java output tree/JVM limits; Scratch actual sb3/sb2/sb. No badge/single mega-test substitutes per-row proof. Real batch is G4, not required before its code exists.",
+      "checks": "F S M W",
+      "resource": "native",
+      "mapping": "split native obligations to N1; G3 component acceptance"
+    },
+    {
+      "id": "WP1.4",
+      "stage": 3,
+      "title": "One executor-backed custom-checker runner",
+      "deps": [
+        "WP1.6",
+        "WP3.1",
+        "WP3.2",
+        "WP3.3"
+      ],
+      "need": "Owned staging plus certified pinned compiler/checker runtime eliminates direct host execution.",
+      "files": "core runner/checker service, existing IPC client; Node checker compiler/runner and Python policy.",
+      "steps": "(1) Preserve staging/testlib/Themis argv/stdin layout. (2) Replace direct Command/recv_timeout with role-specific compiler/run plans. (3) Bound stdout/stderr/files. (4) Integrate native cancel/drain under lease and verify no direct checker caller remains.",
+      "red": "Missing/CE checker, infinite child/thread/flood, external/network denial, cancel, Unicode diagnostic, partial-start and all AC/WA/PE/PARTIAL/FAIL cases.",
+      "outputs": "Checker execution API/tests, caller inventory and component containment evidence.",
+      "accept": "Untrusted checker never runs outside executor; timeout/cancel/EOF drains descendants before lease/root release. Exact-score semantic integration belongs WP5.3; component verdict/message uses accepted fixtures.",
+      "checks": "F S",
+      "resource": "native",
+      "mapping": "moved from G1 after compiler/adapter prerequisites"
+    },
+    {
+      "id": "WP4.1",
+      "stage": 2,
+      "title": "Normalized configuration before compiler/session integration",
+      "deps": [
+        "G1",
+        "WP5.1"
+      ],
+      "need": "HTTP/path safety and exact lexical carriers provide secure canonical config inputs.",
+      "files": "core config/domain/routes; server/problems resolver; shared contracts/editor fixtures.",
+      "steps": "(1) Inventory stored/request/default precedence. (2) Normalize legacy stdio/split I/O, limits, groups, checker/interactor, profiles/flags. (3) Preserve exact lexical weights/dependencies. (4) Test identical Node JSON/config files.",
+      "red": "Stored/request conflict, malformed/unknown/legacy fields, group cycles, flags, missing config, fraction overflow, Unicode I/O, memory 8/1024/outside and actual time bounds.",
+      "outputs": "Normalized config contract, Node/Rust table fixtures and persisted compile snapshots.",
+      "accept": "No invented precedence; invalid limits/flags fail before launch; resolve prose time-bound disagreement from actual normalization explicitly. No session success claimed here.",
+      "checks": "F",
+      "resource": "disk",
+      "mapping": "moved before compiler/session"
+    },
+    {
+      "id": "WP4.2",
+      "stage": 4,
+      "title": "Job admission and registry",
+      "deps": [
+        "G3",
+        "WP4.1"
+      ],
+      "need": "Protected services and normalized config support real prepared jobs, not global flags.",
+      "files": "core job/session/admission registry; Node SingleJudgeSessionGate/activeJobs/tombstones.",
+      "steps": "(1) Model bounded unique IDs and admission. (2) Register/tombstone cancel linearizably. (3) Attach pinned leases and cleanup owner. (4) Wire real endpoint preparation while terminal execution remains protected.",
+      "red": "Simultaneous request, duplicate/invalid/exhausted ID, cancel-before-register, register/cancel race, maintenance/admission, clean removal and next run.",
+      "outputs": "Registry state machine/race tests, bounded job-ID policy and endpoint contract.",
+      "accept": "Canonical concurrency/busy/error semantics; no shared AtomicBool reset by a new request; one owner and eventual removal.",
+      "checks": "F",
+      "resource": "native",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP4.3",
+      "stage": 4,
+      "title": "End-to-end cancellation/disconnect/native drain",
+      "deps": [
+        "WP4.2",
+        "WP0.4",
+        "WP1.1"
+      ],
+      "need": "Registered jobs and supervised executor ownership provide cancellation targets and drain authority.",
+      "files": "core sessions/jobs/compiler/runner, IPC, Tauri shutdown/update bridge.",
+      "steps": "(1) Define prepare/compile/run/checker/interactor/cancel/drained states. (2) Wire user cancel, disconnect, shutdown and update to same owner. (3) Retain reservations/guard/lease until native proof. (4) Reject new work after drain failure.",
+      "red": "Cancel every phase/partial start, repeated cancel, disconnect around terminal event, executor refusal/crash/protocol failure, deadline drain timeout and new run after cleanup.",
+      "outputs": "Lifecycle transition assertions, stress races, process/container/port/handle evidence.",
+      "accept": "cancelled true means native empty; uncertain drain closes admission and fails visibly. Exactly-once cleanup/lease release; backend/window crash cannot strand execution.",
+      "checks": "F S M W",
+      "resource": "native",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP4.4",
+      "stage": 4,
+      "title": "Frontend-compatible streaming writer",
+      "deps": [
+        "WP4.2",
+        "WP4.3",
+        "WP1.2"
+      ],
+      "need": "Auth/admission and drain guarantee bounded stream lifecycle and meaningful terminal events.",
+      "files": "core judge route/event writer; shared/contracts; useJudgeSession/reducer reference.",
+      "steps": "(1) Freeze actual Node NDJSON order/error behavior. (2) Serialize camelCase and flush boundaries. (3) Bound slow-consumer buffers. (4) Exercise frontend reader/reducer on actual Rust events.",
+      "red": "Split/combined chunks, multibyte UTF-8 split, blank/final lines, slow client/backpressure, disconnect before/after terminal and redacted internal error.",
+      "outputs": "Stream goldens, live reader/reducer tests and job cleanup reports.",
+      "accept": "metadata/progress/problem_completed/done/error and one canonical terminal policy match Node; no completed/job_start inventions, no orphan on broken stream.",
+      "checks": "F",
+      "resource": "http",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP4.5",
+      "stage": 4,
+      "title": "Run metadata and workbook compatibility",
+      "deps": [
+        "WP4.1",
+        "WP4.4",
+        "WP3.3",
+        "WP5.1"
+      ],
+      "need": "Config/events/pinned identities and exact carriers feed existing frontend exporter.",
+      "files": "core metadata/result serialization, shared contracts, src/features/export/score-workbook.ts.",
+      "steps": "(1) Emit all selected profile/executor identities including Python. (2) Feed real Rust result/events into reducer and workbook. (3) Compare Summary/Details/order/ranks/exact totals. (4) Test missing/failed profiles without phantom metric.",
+      "red": "Missing Python key, large exact/fraction scores, ties/unjudged, display sort, CE/JE and source unavailable metadata.",
+      "outputs": "Actual Rust metadata/event fixtures, workbook content assertions and export report.",
+      "accept": "No omitted required toolchain or fake metric; exact award/rank preserved through archive/export presentation; human-visible order matches UI.",
+      "checks": "F",
+      "resource": "disk",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP5.3",
+      "stage": 5,
+      "title": "Custom-checker exact semantic integration",
+      "deps": [
+        "WP1.4",
+        "WP5.1",
+        "G4"
+      ],
+      "need": "Contained runner plus exact scoring and completed sessions provide real semantic oracle path.",
+      "files": "core checker parsing/runner/session; Node custom checker/testlib and accepted corpus.",
+      "steps": "(1) Resolve result=2/out-of-range contract explicitly. (2) Parse testlib/Themis exit/stdout/stderr lexical scores. (3) Apply exact awards/groups. (4) Run real batch failures and DLL oracle where applicable.",
+      "red": "AC/WA/PE/PARTIAL/FAIL/JE, invalid score/NaN/out-of-range, missing/CE, timeout, sandbox denial and Unicode messages.",
+      "outputs": "Semantic decision row, production batch oracle fixtures, exact score and failure reports.",
+      "accept": "No silent clamp or replacement checker; verdict priority and exact score match approved Node semantics. Any product decision must precede implementation, no expectation changed to fit Rust.",
+      "checks": "F S O",
+      "resource": "native",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP5.4",
+      "stage": 5,
+      "title": "Rust-core interactive orchestration/integration",
+      "deps": [
+        "N0",
+        "WP3.2",
+        "WP4.3",
+        "WP5.1",
+        "G4"
+      ],
+      "need": "Native Mac dual-process support, adapters, job drain and exact scores now exist for Rust integration.",
+      "files": "core interactive service/session/IPC adapter; native caller only if bounded defect found; frontend event/results.",
+      "steps": "(1) Reuse existing framed interactive_run and N0 lifecycle. (2) Pin/stage both participant roles. (3) Integrate job cancel/disconnect and exact verdict/award. (4) Run real Node/Rust batch and frontend-event parity.",
+      "red": "Both-side timeout/crash/pipe-close/deadlock/flood, partial-start, cancel/EOF/shutdown, input-only/no-answer, C++/Python interactor and partial/testlib verdicts.",
+      "outputs": "Rust production interactive route tests, pair role/source matrix, score/event/lifecycle artifacts.",
+      "accept": "Both hosts and every supported participant combination pass full interactive integration; N0's AC or native safety alone grants no credit. Native policy/protocol expansion stops for scope decision.",
+      "checks": "F S M W",
+      "resource": "native",
+      "mapping": "split native baseline to N0; retain complete integration here"
+    },
+    {
+      "id": "WP6.1a",
+      "stage": 6,
+      "title": "OSD parser and durable state",
+      "deps": [
+        "G5"
+      ],
+      "need": "Complete judge semantics makes durable OSD results meaningful.",
+      "files": "core OSD parser/state; Node OSD types/parser/logs.",
+      "steps": "(1) Capture filename/content identity and duplicate policy. (2) Parse bounded immutable records. (3) Persist state/log atomically. (4) Recover restart without duplicate award.",
+      "red": "Malformed/Unicode/case collision, oversized/partial records, duplicates, crash/write failure and legacy state.",
+      "outputs": "Parser/state fixtures, durable schema/recovery and parity tests.",
+      "accept": "Only validated accepted items become durable; invalid record has bounded canonical error; no phantom success.",
+      "checks": "F",
+      "resource": "disk",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP6.1b",
+      "stage": 6,
+      "title": "OSD watcher/debounce/queue",
+      "deps": [
+        "WP6.1a",
+        "WP4.2",
+        "WP4.3"
+      ],
+      "need": "Durable item identity and job ownership supply a safe queue/drain target.",
+      "files": "core OSD watcher/queue; Node fs watcher/debounce reference.",
+      "steps": "(1) Watch only approved source root. (2) Match stable-write/rename and 500 ms contract after code reconciliation. (3) Bound FIFO/backpressure and batch conflict. (4) Drain watcher/queued/active work on stop.",
+      "red": "Partial writes, rapid duplicate events, overflow/restart, inaccessible root, queue limit, batch race and cancellation.",
+      "outputs": "Watcher/queue tests and live file-arrival event sequence.",
+      "accept": "No lost/duplicate accepted submission; deterministic bounded order and busy behavior; released watcher handles and cancelled/drained active job.",
+      "checks": "F",
+      "resource": "native",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP6.1c",
+      "stage": 6,
+      "title": "OSD status/events and lifecycle",
+      "deps": [
+        "WP6.1b",
+        "WP4.4",
+        "WP1.1"
+      ],
+      "need": "Real watcher/queue, event framing and backend supervision support truthful status.",
+      "files": "core OSD routes/events/lifecycle; frontend OSD consumers.",
+      "steps": "(1) Port start/stop/status and reconnect/replay contract. (2) Couple capability to actual watcher. (3) Bound slow consumers. (4) Use shared shutdown/update drain.",
+      "red": "Repeated start/stop, reconnect, slow/disconnected client, terminal error, shutdown with queued/running item and restart.",
+      "outputs": "Live OSD HTTP/stream fixtures, frontend state and cleanup reports.",
+      "accept": "Status reflects actual queue/work; no fixed success, orphan watcher or stale busy lease.",
+      "checks": "F",
+      "resource": "http",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP6.2",
+      "stage": 6,
+      "title": "Workspace/problem/config route parity",
+      "deps": [
+        "G5",
+        "WP1.6",
+        "WP4.1"
+      ],
+      "need": "Safe paths and normalized config plus judge contract anchor disk routes.",
+      "files": "core workspace/problem routes; Node discovery/config/list-preview references; frontend Reload.",
+      "steps": "(1) Port natural ordering/discovery and checker/interactor listings. (2) Bound UTF-8 previews/directory scans. (3) Atomic config writes. (4) Exercise Reload preserving checked/unchecked/scores and selecting new items.",
+      "red": "Empty/missing/inaccessible/large/Unicode dirs, links/reparse/case races, truncated UTF-8, malformed config and concurrent write.",
+      "outputs": "Endpoint goldens, disk mutation and frontend Reload tests.",
+      "accept": "Canonical status/body/order, no unbounded reads or path escape; existing selection/score preservation remains.",
+      "checks": "F",
+      "resource": "disk",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP6.3",
+      "stage": 6,
+      "title": "Archive/export/update/lifecycle ownership",
+      "deps": [
+        "G5",
+        "WP4.5",
+        "WP1.1",
+        "WP1.6"
+      ],
+      "need": "Exact results/export and lifecycle/path containment keep shell-owned operations safe.",
+      "files": "Tauri contest_archive/update/opener, core bridge, frontend contest/export/update flows.",
+      "steps": "(1) State frontend/core/Tauri owner for each flow. (2) Preserve .judgedesk portable archive/dirty prompts. (3) Bound archive extraction/Excel write/open. (4) Couple update handoff to complete drain without absorbing shell responsibilities.",
+      "red": "Traversal/bomb/link/collision, save-as/crash/overwrite, invalid exact stored carrier, viewer failure, cancelled update/handoff and second instance.",
+      "outputs": "Ownership matrix, archive round-trip/export/update integration tests.",
+      "accept": "Atomic safe persistence and clean update tree; app identity/data directory/UpgradeCode unchanged; no update installation/publication without separate authorization.",
+      "checks": "F S G",
+      "resource": "disk",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP7.1",
+      "stage": 7,
+      "title": "Comparable performance baseline/measurement contract",
+      "deps": [
+        "G6"
+      ],
+      "need": "Feature-complete packaged modes produce comparable workloads; early capability catalog reserves hosts/budgets.",
+      "files": "Existing Node/core/native benchmark primitives; new benchmark harness/report only under future implementation authority.",
+      "steps": "(1) Approve startup budget and metric definitions before optimization. (2) Record hardware/power/thermal/build/compiler/SDK/flags/source/cache/load. (3) Disable PCH for baseline, alternate sequential Node/Rust with >=3 warmups and >=20 measured trials. (4) Retain all failures/raw samples and distributions.",
+      "red": "Harness tests prove sample/units/accounting and detect backend/fixture mismatch; noisy/loaded runs become INCONCLUSIVE, no cherry-picked best run.",
+      "outputs": "Raw samples/p50/p90/p95/min/max/failures, measurement contract and both-host baseline.",
+      "accept": "Entire frontend+backend idle <150 MB (150,000,000 bytes; report MiB too), orchestration overhead <50 ms and warm PCH compile p50/p95 <300 ms are retained budgets. Startup target/regression ceiling needs human adoption before optimization; no invented passing target.",
+      "checks": "F P",
+      "resource": "native",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP7.2",
+      "stage": 7,
+      "title": "PCH fingerprint and atomic generation",
+      "deps": [
+        "WP7.1",
+        "WP3.1",
+        "WP3.3"
+      ],
+      "need": "Measurement baseline and pinned bounded compiler/lease provide cache authority.",
+      "files": "core PCH cache service, compiler plan; Node universal-pch reference.",
+      "steps": "(1) Fingerprint compiler hash/version/canonical identity, target/flags/headers/SDK/schema. (2) Single-flight bounded private generation. (3) Validate compile and atomic publish. (4) Recover only owned stale entries.",
+      "red": "Concurrent first use, changed compiler/flags/SDK/header, corrupt/truncated cache, path/permission/crash/cancel and timeout.",
+      "outputs": "Fingerprint schema, cache lifecycle tests and compiler/source/build reports.",
+      "accept": "No mixed profile/architecture hit; incomplete cache never selected; generation obeys compiler containment/drain.",
+      "checks": "F S P",
+      "resource": "native",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP7.3",
+      "stage": 7,
+      "title": "Safe PCH consumption",
+      "deps": [
+        "WP7.2"
+      ],
+      "need": "Validated published cache and exact fingerprint identify usable acceleration.",
+      "files": "core compiler/PCH consume hook and same selected toolchain.",
+      "steps": "(1) Inject supported PCH flags only for real compile. (2) Exclude --test-* directives. (3) Validate hit/miss/rebuild/bypass and failure. (4) Compare identical verdict/exact results enabled/disabled.",
+      "red": "Miss/corrupt/incompatible cache, generation failure, compiler/profile mismatch, Unicode path and test-harness flag injection.",
+      "outputs": "Hit-rate/raw timing and correctness parity, safe fallback tests.",
+      "accept": "PCH failure may use ordinary compilation by the same pinned compiler/profile only; no compiler fallback or changed isolation.",
+      "checks": "F S P",
+      "resource": "native",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP7.4",
+      "stage": 7,
+      "title": "Cancellable background prewarm",
+      "deps": [
+        "WP7.2",
+        "WP7.3",
+        "WP4.3"
+      ],
+      "need": "Single-flight cache and job drain/lease define safe foreground/background arbitration.",
+      "files": "core startup/prewarm/PCH scheduler; Node background-prewarm reference.",
+      "steps": "(1) Low-priority single-flight scheduling. (2) Foreground join/direct compile bounded policy. (3) Block on toolchain mutation/update/shutdown. (4) Drain tasks/artifacts on cancel/restart.",
+      "red": "Startup/foreground/mutation races, slow prewarm, repeated schedule, failed generation, shutdown/update and lease starvation.",
+      "outputs": "Race tests, foreground latency/hit-rate and cleanup reports.",
+      "accept": "Prewarm cannot delay first judge indefinitely or keep busy after stop; measured budgets still pass without correctness loss.",
+      "checks": "F S P",
+      "resource": "native",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP8.1",
+      "stage": 1,
+      "title": "Early isolated sequential parity harness",
+      "deps": [
+        "G1",
+        "WP0.2",
+        "WP0.3"
+      ],
+      "need": "Secured backend launching and frozen contracts/corpus allow measurement of gaps before complete integration.",
+      "files": "Future parity harness plus backend adapters/owned roots; no production semantic repair.",
+      "steps": "(1) Allocate separate writable state/ports/preferences/executor/cache/logs per backend. (2) Run sequential immutable-input copies. (3) Verify actual identity and drain. (4) Exercise currently available real contracts and preserve expected nonzero gaps.",
+      "red": "Wrong backend/hash, shared root, absent runtime, timeout/descendant leak and harness failure must fail; incomplete Rust case cannot count as success.",
+      "outputs": "Harness safety/isolation tests, runner/build manifests and early gap report.",
+      "accept": "Harness correctness accepted separately from backend parity. An expected negative test can prove failure detection; observed migration mismatch remains FAIL until G8. No temporary broad allowlist.",
+      "checks": "F S",
+      "resource": "native",
+      "mapping": "moved early; completeness acceptance remains G8"
+    },
+    {
+      "id": "WP8.2",
+      "stage": 1,
+      "title": "Strict comparison contract",
+      "deps": [
+        "WP8.1",
+        "WP5.1",
+        "WP5.2"
+      ],
+      "need": "Isolated executions plus exact score/checker fixtures define comparison semantics.",
+      "files": "Parity normalizer/comparator; WP0.2 route/stream and WP0.3 result fixtures.",
+      "steps": "(1) List only contractual volatile fields. (2) Compare HTTP/body/events/order/identity/compile/verdict/exact award/groups/rank/disk/lifecycle. (3) Capture raw time/memory with declared tolerances. (4) Mutation-test comparator.",
+      "red": "Verdict/score/order/language/source/version/error/event mutation rejected; only timestamps/job IDs/temp roots and approved measured tolerances normalize.",
+      "outputs": "Comparison schema/table, mutation tests and minimal paired diffs.",
+      "accept": "No semantic masking; a faster wrong verdict fails; startup/OSD stream contracts each use their own framing.",
+      "checks": "F",
+      "resource": "none",
+      "mapping": "moved early"
+    },
+    {
+      "id": "WP8.3",
+      "stage": 1,
+      "title": "Mismatch artifact and failing exit",
+      "deps": [
+        "WP8.2"
+      ],
+      "need": "Comparator provides precise failing dimension and raw request/result.",
+      "files": "Parity artifact writer/CLI exit, evidence manifest and triage schema.",
+      "steps": "(1) Emit minimal case/backend/source/request/expected/actual diff. (2) Assign owning layer. (3) Exit nonzero for unexplained mismatch or missing execution. (4) Prove artifact safety and cleanup on failed writer.",
+      "red": "Missing result, empty selection, unexpected skip, mismatched artifact hash, log-write failure and deliberate semantic mutant.",
+      "outputs": "Machine-readable mismatch/coverage schema and exit/artifact tests.",
+      "accept": "No silent successful zero-case run; gap records are evidence, never package completion for the failed feature.",
+      "checks": "F",
+      "resource": "native",
+      "mapping": "moved early; live final strict gate at G8"
+    },
+    {
+      "id": "V9.1",
+      "stage": 9,
+      "title": "Windows Rust desktop launch protocol",
+      "deps": [
+        "G8"
+      ],
+      "need": "Complete correctness/security/parity/performance permits UI acceptance against real backend.",
+      "files": "Future isolated Rust desktop launcher; Tauri/React actual packaged Core/Full.",
+      "steps": "(1) Implement/document a Rust-only build/launch path before using UI results. (2) Isolate state. (3) Assert actual status target/features/backend and no Node/SEA process. (4) Capture state after each UI action and clean tree on exit.",
+      "red": "Deliberately select Node/wrong binary/occupied port and require failure; deadline/close/crash tests drain launcher descendants.",
+      "outputs": "Dedicated launcher command and manifest, screenshots/logs/process inventory.",
+      "accept": "Current test:desktop builds Node and cannot alone prove Rust-only. Future command is required deliverable, not an existing command/PASS.",
+      "checks": "F G W",
+      "resource": "native",
+      "mapping": "retained"
+    },
+    {
+      "id": "V9.2",
+      "stage": 9,
+      "title": "Complete Windows desktop acceptance matrix",
+      "deps": [
+        "V9.1"
+      ],
+      "need": "Verified launcher identifies actual candidate/backend and isolated user state.",
+      "files": "All frontend flows through Node/Rust and packaged Core/Full.",
+      "steps": "(1) Execute every matrix row below with fixed 18x5/72x20 data. (2) Capture stable screenshot and frontend/backend/executor logs. (3) Record expected/observed behavior. (4) Test close/reopen/crash and restore owned state.",
+      "red": "Missing/CE/unavailable/cancel/invalid path/dirty save/focus/resize/sort/rejudge/delete/export/OSD/update error flows.",
+      "outputs": "phase-9-windows-matrix.md, numbered screenshots and scenario records.",
+      "accept": "Every required Windows row executed; localization/theme/keyboard/focus and scoreboard stability preserved; no inference from API-only tests.",
+      "checks": "G W",
+      "resource": "native",
+      "mapping": "retained"
+    },
+    {
+      "id": "V9.3",
+      "stage": 9,
+      "title": "Mac automated/platform/package matrix",
+      "deps": [
+        "G8"
+      ],
+      "need": "Final matched source and complete parity enable actual arm64 platform/package tests.",
+      "files": "Exact transferred source, macOS Core/Full bundle, SSH command harness.",
+      "steps": "(1) Verify archive/literal names and locked build manifest. (2) Run own final union and distinct Mac security/supervisor/checker/resource checks. (3) Verify bundle architecture/signatures/resources/backend. (4) Drain and collect immutable evidence.",
+      "red": "Missing resource/helper/wrong arch, stale binary, guardian loss, parent EOF, update lock and package failure.",
+      "outputs": "phase-9-macos-ssh.md, bundle SHA/resource manifest and cleanup.",
+      "accept": "Live arm64 results only; remote dirty checkouts preserved; unsigned local build does not prove release signature. SSH never satisfies GUI rows.",
+      "checks": "F S M",
+      "resource": "native",
+      "mapping": "retained"
+    },
+    {
+      "id": "V9.4",
+      "stage": 9,
+      "title": "Actual Mac GUI/manual acceptance",
+      "deps": [
+        "V9.3"
+      ],
+      "need": "Verified bundle/source/backend ensures GUI tester uses the reviewed candidate.",
+      "files": "Future macos-gui-checklist.md and actual WKWebView/native dialogs/install UX.",
+      "steps": "(1) Prepare numbered human checklist with exact bundle/source/data identities and expected states. (2) Schedule real Mac session. (3) Test matrix/install/upgrade/rollback/dialog/focus/menu/resize. (4) Capture screenshots/video/sanitized logs and tester/date verdict.",
+      "red": "Wrong candidate identity or absent evidence is BLOCKED; visual/focus/menu failure is FAIL, not SSH PASS.",
+      "outputs": "Signed-off checklist, screenshot names, short focus/menu/animation video and mount/process/root cleanup.",
+      "accept": "Every required Mac GUI row actually executed; informational cosmetic rows identified in advance cannot absorb required behavior.",
+      "checks": "G",
+      "resource": "native",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP10.1",
+      "stage": 10,
+      "title": "Cutover readiness decision",
+      "deps": [
+        "G0",
+        "G1",
+        "G2",
+        "G3",
+        "G4",
+        "G5",
+        "G6",
+        "G7",
+        "G8",
+        "G9"
+      ],
+      "need": "Independent gates provide complete platform/product/security/performance/GUI evidence.",
+      "files": "Readiness report, architecture/API/user docs and rollback/stabilization contract.",
+      "steps": "(1) Reconcile final candidate applicability and zero required findings. (2) Approve minimum stabilization interval/exit owner. (3) Verify rollback package/data compatibility rehearsal. (4) Present concrete cutover authorization request.",
+      "red": "Missing gate/GUI/platform/profile/mismatch or unapproved budget/rollback record rejects readiness.",
+      "outputs": "Cutover checklist and explicit human authorization record.",
+      "accept": "No default switch or publication from planning/readiness alone; Node remains default until specifically authorized WP10.2.",
+      "checks": "D G",
+      "resource": "native",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP10.2",
+      "stage": 10,
+      "title": "Deliberate Rust default with explicit Node rollback",
+      "deps": [
+        "WP10.1"
+      ],
+      "need": "Accepted readiness and human cutover authorization justify default change.",
+      "files": "Tauri backend selection, package manifests and rollback selection tests.",
+      "steps": "(1) Switch selection policy only after authorization. (2) Preserve explicit legacy flag and mutually exclusive generation. (3) Exercise installed Rust/Node selection/failure. (4) Restore known candidate if cutover fails.",
+      "red": "Rust startup fails without automatic fallback; explicit rollback reaches compatible executor; restart/update/data compatibility.",
+      "outputs": "Selection/installed rollback tests and cutover report.",
+      "accept": "Rust default and deliberate packaged Node rollback both work; no dual startup or silent failure fallback.",
+      "checks": "F S G",
+      "resource": "native",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP10.3",
+      "stage": 10,
+      "title": "Coordinated eight-file 1.6.0 version stage",
+      "deps": [
+        "WP10.2"
+      ],
+      "need": "Accepted cutover establishes release-candidate behavior before identity bump.",
+      "files": "Exactly eight authoritative version files; release notes/package metadata; governing locks.",
+      "steps": "(1) Refresh current eight-file authority. (2) Bump all app files together via correct manager lock regeneration. (3) Update expected release metadata. (4) Verify status/UI/package/executor identity.",
+      "red": "One-file mismatch/tag/name mismatch must reject in disposable fixture; partial bump cannot hand off.",
+      "outputs": "Version diff, version gate log and package identity fixtures.",
+      "accept": "All eight report 1.6.0; no ninth authority or core crate policy change; install/upgrade from released 1.5.0 and packaged 1.5.1 where applicable.",
+      "checks": "F",
+      "resource": "disk",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP10.4",
+      "stage": 10,
+      "title": "Actual release-candidate acceptance",
+      "deps": [
+        "WP10.3"
+      ],
+      "need": "Reviewed final behavior/version source drives concrete Core/Full artifacts.",
+      "files": "Existing Windows/macOS build/release pipelines and candidate artifact staging.",
+      "steps": "(1) Build both hosts/editions under recorded authorized signing policy. (2) Run full plus distinct live oracle/security/stress/resource/desktop/parity. (3) Verify bytes/signature/architecture/allowlist/updater/clean install/upgrade/rollback. (4) Collect release handoff without publish.",
+      "red": "Wrong architecture/resources/manifest/hash/version, installer interruption, anonymous updater failure and rollback data mismatch.",
+      "outputs": "Actual installer/bundle SHA and contents, signatures/SBOM/notices/update manifests, all release evidence.",
+      "accept": "Zero required gaps/new skips; static parity insufficient. Separate direct publication/tag/upload authorization still required; local build acceptance never publishes.",
+      "checks": "F S M W O P G R",
+      "resource": "native",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP10.5",
+      "stage": 10,
+      "title": "Stabilization and rollback exit",
+      "deps": [
+        "WP10.4"
+      ],
+      "need": "Accepted candidate and separately authorized rollout start the agreed observation interval.",
+      "files": "Issue/diagnostic ledger, installed rollback exercises and release support docs.",
+      "steps": "(1) Begin only on actual authorized rollout. (2) Track crash/orphan/mismatch/security/capability/performance categories. (3) Exercise packaged rollback and bidirectional data compatibility. (4) Obtain human exit approval after minimum interval.",
+      "red": "Any required regression reopens owning layer; missing interval/evidence prevents exit.",
+      "outputs": "Timestamped stabilization observations, rollback logs and explicit exit decision.",
+      "accept": "Rollback remains packaged through agreed release/time window; no invented quiet-period PASS or automatic decommission.",
+      "checks": "D G",
+      "resource": "native",
+      "mapping": "retained"
+    },
+    {
+      "id": "WP10.6",
+      "stage": 10,
+      "title": "Separate Node backend decommission milestone",
+      "deps": [
+        "WP10.5"
+      ],
+      "need": "Approved stabilization exit permits removing temporary shipped rollback footprint.",
+      "files": "Node SEA/server-only sidecar/build/hooks/runtime/permissions/update component/notices; frontend/build TS remains.",
+      "steps": "(1) Enumerate complete Node-only production footprint. (2) Obtain decommission implementation authorization. (3) Remove reviewed owned footprint without deleting historical tests/oracles. (4) Build/install/upgrade both Core/Full hosts and exercise installer-level rollback.",
+      "red": "Search/build graph catches remaining SEA/runtime/server; package missing Rust helper and upgrade/uninstall/rollback failures.",
+      "outputs": "Footprint/build graph, before/after package manifests/size/notices and final architecture docs.",
+      "accept": "No shipped Node backend/runtime/SEA in Core/Full on either host; Scratch runtime classification explicit; retained TypeScript tooling is not a backend. Historical regression/oracle fixtures remain. Post-decommission rollback uses installer/release strategy.",
+      "checks": "F S M W G R",
+      "resource": "native",
+      "mapping": "retained"
+    },
+    {
+      "id": "G0",
+      "stage": 0,
+      "deps": [
+        "WP0.1",
+        "WP0.2",
+        "WP0.3",
+        "WP0.4",
+        "WP0.5",
+        "N0",
+        "WP0.6",
+        "WP0.7"
+      ],
+      "title": "Foundation gate",
+      "accept": "Aggregate accepted reports on current source; fresh integrated source/build/route inventory and executor identity/start-stop proof. No complete Rust judge feature required.",
+      "checks": "F I",
+      "resource": "native",
+      "need": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here.",
+      "outputs": "g0-gate.md with executed/reference row map and independent verdict",
+      "mapping": "retained; gate scope/dependencies corrected"
+    },
+    {
+      "id": "G1",
+      "stage": 1,
+      "deps": [
+        "WP1.1",
+        "WP1.2",
+        "WP1.3",
+        "WP1.5",
+        "WP1.6",
+        "WP1.7"
+      ],
+      "title": "Shell/HTTP/path safety gate",
+      "accept": "Live both-backend startup/auth/path/capability denial and shutdown/update drain. Unsafe unfinished execution is unavailable with zero side effects. Native checker compilation is deliberately later; verify no direct path remains reachable before hostile fixtures.",
+      "checks": "F S M W",
+      "resource": "native",
+      "need": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here.",
+      "outputs": "g1-gate.md with executed/reference row map and independent verdict",
+      "mapping": "retained; gate scope/dependencies corrected"
+    },
+    {
+      "id": "G2",
+      "stage": 2,
+      "deps": [
+        "WP2.1",
+        "WP2.2",
+        "WP2.3",
+        "WP2.4",
+        "WP2.5",
+        "WP2.6",
+        "WP2.7",
+        "WP4.1",
+        "WP5.1"
+      ],
+      "title": "Toolchain/config disk contract gate",
+      "accept": "Restart/mutation/recovery/resolver/config matrix and actual C/C++ Mac driver probes. Runtime certification reports unresolved native capabilities truthfully; this gate accepts safe disk/source semantics, not six-language batch readiness.",
+      "checks": "F S M",
+      "resource": "disk",
+      "need": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here.",
+      "outputs": "g2-gate.md with executed/reference row map and independent verdict",
+      "mapping": "retained; gate scope/dependencies corrected"
+    },
+    {
+      "id": "G3",
+      "stage": 3,
+      "deps": [
+        "N1",
+        "WP3.1",
+        "WP3.2",
+        "WP3.3",
+        "WP1.4",
+        "WP5.2"
+      ],
+      "title": "Protected execution component gate",
+      "accept": "Real compiler+adapter+checker role/source tests on both hosts with leases/drain and strict isolation. No batch/event result demanded until G4; disabled Rust routes stay unavailable until their integration is accepted.",
+      "checks": "F S M W O",
+      "resource": "native",
+      "need": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here.",
+      "outputs": "g3-gate.md with executed/reference row map and independent verdict",
+      "mapping": "retained; gate scope/dependencies corrected"
+    },
+    {
+      "id": "G4",
+      "stage": 4,
+      "deps": [
+        "WP4.2",
+        "WP4.3",
+        "WP4.4",
+        "WP4.5"
+      ],
+      "title": "Real batch/session/stream gate",
+      "accept": "All six languages through actual batch endpoint on both hosts with standard checker/exact totals; cancellation stress, metadata/reducer/workbook, user rejudge/delete smoke. Custom/interactive full semantic parity is explicitly G5.",
+      "checks": "F S M W G",
+      "resource": "native",
+      "need": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here.",
+      "outputs": "g4-gate.md with executed/reference row map and independent verdict",
+      "mapping": "retained; gate scope/dependencies corrected"
+    },
+    {
+      "id": "G5",
+      "stage": 5,
+      "deps": [
+        "WP5.1",
+        "WP5.2",
+        "WP5.3",
+        "WP5.4",
+        "G4"
+      ],
+      "title": "Complete scoring/checker/interactive gate",
+      "accept": "Live custom/standard/interactive corpus, exact awards/groups/ranking, all terminal and hostile role/source cases. Reuse pure arithmetic evidence only if applicable; live integration fresh.",
+      "checks": "F S M W O",
+      "resource": "native",
+      "need": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here.",
+      "outputs": "g5-gate.md with executed/reference row map and independent verdict",
+      "mapping": "retained; gate scope/dependencies corrected"
+    },
+    {
+      "id": "G6",
+      "stage": 6,
+      "deps": [
+        "WP6.1a",
+        "WP6.1b",
+        "WP6.1c",
+        "WP6.2",
+        "WP6.3"
+      ],
+      "title": "Complete production services gate",
+      "accept": "Every frontend-used route has real state/result or approved shell ownership. OSD live queue, config/Reload, archive/export/update integration; no fixed success or remaining unavailable required product feature.",
+      "checks": "F S M W G",
+      "resource": "native",
+      "need": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here.",
+      "outputs": "g6-gate.md with executed/reference row map and independent verdict",
+      "mapping": "retained; gate scope/dependencies corrected"
+    },
+    {
+      "id": "G7",
+      "stage": 7,
+      "deps": [
+        "WP7.1",
+        "WP7.2",
+        "WP7.3",
+        "WP7.4"
+      ],
+      "title": "Measured performance gate",
+      "accept": "Fresh comparable both-host samples/hit rates and enabled/disabled correctness/security; preserve real budgets and approved startup definition; failures/noise cannot be dropped.",
+      "checks": "F S P",
+      "resource": "native",
+      "need": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here.",
+      "outputs": "g7-gate.md with executed/reference row map and independent verdict",
+      "mapping": "retained; gate scope/dependencies corrected"
+    },
+    {
+      "id": "G8",
+      "stage": 8,
+      "deps": [
+        "WP8.1",
+        "WP8.2",
+        "WP8.3",
+        "G6",
+        "G7"
+      ],
+      "title": "Full semantic parity gate",
+      "accept": "100% approved corpus/API/event/disk/lifecycle parity on both hosts after PCH; zero unexplained mismatch allowlists, missing runtime or unattempted supported matrix row. No earlier harness acceptance stands in for this.",
+      "checks": "F S M W O P",
+      "resource": "native",
+      "need": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here.",
+      "outputs": "g8-gate.md with executed/reference row map and independent verdict",
+      "mapping": "retained; gate scope/dependencies corrected"
+    },
+    {
+      "id": "G9",
+      "stage": 9,
+      "deps": [
+        "V9.2",
+        "V9.3",
+        "V9.4"
+      ],
+      "title": "Desktop/platform/package gate",
+      "accept": "All Windows and actual Mac GUI rows plus platform/architecture/resource/signature obligations satisfied for declared candidate editions. SSH-only GUI remains BLOCKED.",
+      "checks": "F S M W G R",
+      "resource": "native",
+      "need": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here.",
+      "outputs": "g9-gate.md with executed/reference row map and independent verdict",
+      "mapping": "retained; gate scope/dependencies corrected"
+    },
+    {
+      "id": "G10",
+      "stage": 10,
+      "deps": [
+        "WP10.6"
+      ],
+      "title": "Decommissioned architecture gate",
+      "accept": "Fresh actual no-Node Core/Full artifacts on both hosts; complete required runtime/security/product/GUI/install/upgrade/uninstall/installer rollback acceptance and final docs/footprint. Publication separate.",
+      "checks": "F S M W G R",
+      "resource": "native",
+      "need": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here.",
+      "outputs": "g10-gate.md with executed/reference row map and independent verdict",
+      "mapping": "retained; gate scope/dependencies corrected"
+    }
+  ],
+  "edges": [
+    {
+      "from": "WP0.1",
+      "to": "WP0.2",
+      "artifactNeeded": "Existing wp0.1-workspace-snapshot.md and immutable evidence.",
+      "downstreamUse": "Baseline anchors the frontend/Node route inventory."
+    },
+    {
+      "from": "WP0.2",
+      "to": "WP0.3",
+      "artifactNeeded": "Accepted route matrix/goldens; additive deltas in future owning package.",
+      "downstreamUse": "Endpoint semantics define expected case outcomes."
+    },
+    {
+      "from": "WP0.1",
+      "to": "WP0.4",
+      "artifactNeeded": "Existing wp0.1-workspace-snapshot.md and immutable evidence.",
+      "downstreamUse": "Environment anchors OS generation/ownership proofs."
+    },
+    {
+      "from": "WP0.1",
+      "to": "WP0.5",
+      "artifactNeeded": "Existing wp0.1-workspace-snapshot.md and immutable evidence.",
+      "downstreamUse": "Baseline supplies test inventory and tool prerequisites."
+    },
+    {
+      "from": "WP0.1",
+      "to": "N0",
+      "artifactNeeded": "Existing wp0.1-workspace-snapshot.md and immutable evidence.",
+      "downstreamUse": "Accepted preservation, unchanged AC oracle, framed IPC ownership, and gate discipline allow native repair without Rust orchestration prerequisites."
+    },
+    {
+      "from": "WP0.2",
+      "to": "N0",
+      "artifactNeeded": "Accepted route matrix/goldens; additive deltas in future owning package.",
+      "downstreamUse": "Accepted preservation, unchanged AC oracle, framed IPC ownership, and gate discipline allow native repair without Rust orchestration prerequisites."
+    },
+    {
+      "from": "WP0.3",
+      "to": "N0",
+      "artifactNeeded": "Accepted manifest, hashes, raw tamper/oracle evidence.",
+      "downstreamUse": "Accepted preservation, unchanged AC oracle, framed IPC ownership, and gate discipline allow native repair without Rust orchestration prerequisites."
+    },
+    {
+      "from": "WP0.4",
+      "to": "N0",
+      "artifactNeeded": "Accepted ADR and exact packaged/client evidence.",
+      "downstreamUse": "Accepted preservation, unchanged AC oracle, framed IPC ownership, and gate discipline allow native repair without Rust orchestration prerequisites."
+    },
+    {
+      "from": "WP0.5",
+      "to": "N0",
+      "artifactNeeded": "Accepted nine-step gate, source scans and profile diagnostic evidence.",
+      "downstreamUse": "Accepted preservation, unchanged AC oracle, framed IPC ownership, and gate discipline allow native repair without Rust orchestration prerequisites."
+    },
+    {
+      "from": "WP0.1",
+      "to": "WP0.6",
+      "artifactNeeded": "Existing wp0.1-workspace-snapshot.md and immutable evidence.",
+      "downstreamUse": "Baseline proves version authority; independently accepted N0 removes the existing Mac full-gate prerequisite while identity remains a distinct claim."
+    },
+    {
+      "from": "N0",
+      "to": "WP0.6",
+      "artifactNeeded": "New n0-native-interactive-baseline.md, role/source matrix, RED/GREEN and safety tests, complete frozen source/build manifest, both-host logs and cleanup.",
+      "downstreamUse": "Baseline proves version authority; independently accepted N0 removes the existing Mac full-gate prerequisite while identity remains a distinct claim."
+    },
+    {
+      "from": "WP0.2",
+      "to": "WP0.7",
+      "artifactNeeded": "Accepted route matrix/goldens; additive deltas in future owning package.",
+      "downstreamUse": "Accepted route matrix and stable identity make structural before/after comparison meaningful."
+    },
+    {
+      "from": "WP0.6",
+      "to": "WP0.7",
+      "artifactNeeded": "Updated canonical wp0.6 report with attributable new section, lock-owner matrix, metadata/target/features/backend/binary manifests and independent reviewer logs.",
+      "downstreamUse": "Accepted route matrix and stable identity make structural before/after comparison meaningful."
+    },
+    {
+      "from": "G0",
+      "to": "WP1.1",
+      "artifactNeeded": "g0-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Accepted identity/decomposition/executor foundation supplies real readiness and ownership contracts."
+    },
+    {
+      "from": "G0",
+      "to": "WP1.2",
+      "artifactNeeded": "g0-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Supervised startup delivers a distinct HTTP credential and authoritative listener identity."
+    },
+    {
+      "from": "WP1.1",
+      "to": "WP1.2",
+      "artifactNeeded": "Selection policy, lifecycle state machine, Tauri/core integration tests, runtime identity and port/process reports.",
+      "downstreamUse": "Supervised startup delivers a distinct HTTP credential and authoritative listener identity."
+    },
+    {
+      "from": "WP1.1",
+      "to": "WP1.3",
+      "artifactNeeded": "Selection policy, lifecycle state machine, Tauri/core integration tests, runtime identity and port/process reports.",
+      "downstreamUse": "Startup/dialog ownership and authenticated route delivery preserve request/error behavior."
+    },
+    {
+      "from": "WP1.2",
+      "to": "WP1.3",
+      "artifactNeeded": "Threat table, authorization matrix, real HTTP negative fixtures and shared response tests.",
+      "downstreamUse": "Startup/dialog ownership and authenticated route delivery preserve request/error behavior."
+    },
+    {
+      "from": "WP1.1",
+      "to": "WP1.5",
+      "artifactNeeded": "Selection policy, lifecycle state machine, Tauri/core integration tests, runtime identity and port/process reports.",
+      "downstreamUse": "Actual backend readiness/auth and owned-path policy define what routes may advertise or invoke."
+    },
+    {
+      "from": "WP1.2",
+      "to": "WP1.5",
+      "artifactNeeded": "Threat table, authorization matrix, real HTTP negative fixtures and shared response tests.",
+      "downstreamUse": "Actual backend readiness/auth and owned-path policy define what routes may advertise or invoke."
+    },
+    {
+      "from": "WP1.6",
+      "to": "WP1.5",
+      "artifactNeeded": "Containment API contract, owned-root threat fixtures and both-platform cleanup evidence.",
+      "downstreamUse": "Actual backend readiness/auth and owned-path policy define what routes may advertise or invoke."
+    },
+    {
+      "from": "G0",
+      "to": "WP1.6",
+      "artifactNeeded": "g0-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Accepted IPC and route boundaries identify trusted coordinator and untrusted path inputs."
+    },
+    {
+      "from": "WP0.6",
+      "to": "WP1.7",
+      "artifactNeeded": "Updated canonical wp0.6 report with attributable new section, lock-owner matrix, metadata/target/features/backend/binary manifests and independent reviewer logs.",
+      "downstreamUse": "Build identity/domain and startup/auth supply correlation and secret boundaries."
+    },
+    {
+      "from": "WP0.7",
+      "to": "WP1.7",
+      "artifactNeeded": "Domain/owner map, before/after route manifests, characterization tests and report.",
+      "downstreamUse": "Build identity/domain and startup/auth supply correlation and secret boundaries."
+    },
+    {
+      "from": "WP1.1",
+      "to": "WP1.7",
+      "artifactNeeded": "Selection policy, lifecycle state machine, Tauri/core integration tests, runtime identity and port/process reports.",
+      "downstreamUse": "Build identity/domain and startup/auth supply correlation and secret boundaries."
+    },
+    {
+      "from": "WP1.2",
+      "to": "WP1.7",
+      "artifactNeeded": "Threat table, authorization matrix, real HTTP negative fixtures and shared response tests.",
+      "downstreamUse": "Build identity/domain and startup/auth supply correlation and secret boundaries."
+    },
+    {
+      "from": "G1",
+      "to": "WP2.1",
+      "artifactNeeded": "g1-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Accepted decomposition and Phase 1 changes reveal any remaining cross-domain ownership gaps."
+    },
+    {
+      "from": "WP0.7",
+      "to": "WP2.1",
+      "artifactNeeded": "Domain/owner map, before/after route manifests, characterization tests and report.",
+      "downstreamUse": "Accepted decomposition and Phase 1 changes reveal any remaining cross-domain ownership gaps."
+    },
+    {
+      "from": "G1",
+      "to": "WP2.2",
+      "artifactNeeded": "g1-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Authenticated owned service boundaries make atomic preference mutation safe."
+    },
+    {
+      "from": "WP2.1",
+      "to": "WP2.2",
+      "artifactNeeded": "Explicit evidence decision for every domain; structural delta tests only if needed.",
+      "downstreamUse": "Authenticated owned service boundaries make atomic preference mutation safe."
+    },
+    {
+      "from": "G1",
+      "to": "WP2.3",
+      "artifactNeeded": "g1-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Owned service boundaries and accepted corpus trust model define immutable inputs."
+    },
+    {
+      "from": "WP2.1",
+      "to": "WP2.3",
+      "artifactNeeded": "Explicit evidence decision for every domain; structural delta tests only if needed.",
+      "downstreamUse": "Owned service boundaries and accepted corpus trust model define immutable inputs."
+    },
+    {
+      "from": "WP1.6",
+      "to": "WP2.4",
+      "artifactNeeded": "Containment API contract, owned-root threat fixtures and both-platform cleanup evidence.",
+      "downstreamUse": "Owned staging, revision policy and verified package inputs are required to publish safely."
+    },
+    {
+      "from": "WP2.2",
+      "to": "WP2.4",
+      "artifactNeeded": "Preference/policy schema, migration fixtures, durable round-trip/recovery tests and report.",
+      "downstreamUse": "Owned staging, revision policy and verified package inputs are required to publish safely."
+    },
+    {
+      "from": "WP2.3",
+      "to": "WP2.4",
+      "artifactNeeded": "Trusted local signed fixtures, manifest/receipt contract and negative tests.",
+      "downstreamUse": "Owned staging, revision policy and verified package inputs are required to publish safely."
+    },
+    {
+      "from": "WP2.4",
+      "to": "WP2.5",
+      "artifactNeeded": "Executable signed local install fixtures, post-extract manifest, atomicity/recovery and real download report if authorized.",
+      "downstreamUse": "Verified installed receipts and atomic publish state identify what may be removed."
+    },
+    {
+      "from": "WP2.2",
+      "to": "WP2.6",
+      "artifactNeeded": "Preference/policy schema, migration fixtures, durable round-trip/recovery tests and report.",
+      "downstreamUse": "Persisted source intent and verified receipts eliminate directory-name/PATH guesses."
+    },
+    {
+      "from": "WP2.3",
+      "to": "WP2.6",
+      "artifactNeeded": "Trusted local signed fixtures, manifest/receipt contract and negative tests.",
+      "downstreamUse": "Persisted source intent and verified receipts eliminate directory-name/PATH guesses."
+    },
+    {
+      "from": "WP2.6",
+      "to": "WP2.7",
+      "artifactNeeded": "Resolver tables, immutable toolchain snapshot schema and per-profile identity tests.",
+      "downstreamUse": "Exact source selection makes clang/clang++ and SDK hypotheses testable."
+    },
+    {
+      "from": "G2",
+      "to": "N1",
+      "artifactNeeded": "g2-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Verified source/runtime snapshots and install truth allow native OS capability gaps to be isolated before Rust adapters."
+    },
+    {
+      "from": "G0",
+      "to": "WP5.1",
+      "artifactNeeded": "g0-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Accepted Node exact carriers define parser/arithmetic/ranking semantics independently of execution."
+    },
+    {
+      "from": "WP0.3",
+      "to": "WP5.1",
+      "artifactNeeded": "Accepted manifest, hashes, raw tamper/oracle evidence.",
+      "downstreamUse": "Accepted Node exact carriers define parser/arithmetic/ranking semantics independently of execution."
+    },
+    {
+      "from": "G0",
+      "to": "WP5.2",
+      "artifactNeeded": "g0-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Exact award carriers let checker decisions feed scores without approximation."
+    },
+    {
+      "from": "WP5.1",
+      "to": "WP5.2",
+      "artifactNeeded": "Exact scoring/carrier contract, Node goldens/property tests and error policy.",
+      "downstreamUse": "Exact award carriers let checker decisions feed scores without approximation."
+    },
+    {
+      "from": "G2",
+      "to": "WP3.1",
+      "artifactNeeded": "g2-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Exact source/disk truth, native compiler/runtime capability and owned workspace support bounded compilation."
+    },
+    {
+      "from": "N1",
+      "to": "WP3.1",
+      "artifactNeeded": "Native capability catalog and separately accepted gap reports, source/toolchain/role matrix, real native probes and cleanup.",
+      "downstreamUse": "Exact source/disk truth, native compiler/runtime capability and owned workspace support bounded compilation."
+    },
+    {
+      "from": "WP1.6",
+      "to": "WP3.1",
+      "artifactNeeded": "Containment API contract, owned-root threat fixtures and both-platform cleanup evidence.",
+      "downstreamUse": "Exact source/disk truth, native compiler/runtime capability and owned workspace support bounded compilation."
+    },
+    {
+      "from": "WP3.1",
+      "to": "WP3.3",
+      "artifactNeeded": "Compiler plan/result/error contract, role-limit fixtures, protected compile/cancel tests and report.",
+      "downstreamUse": "Compiler plan plus revisioned resolver provides immutable snapshot and maintenance lease."
+    },
+    {
+      "from": "WP2.2",
+      "to": "WP3.3",
+      "artifactNeeded": "Preference/policy schema, migration fixtures, durable round-trip/recovery tests and report.",
+      "downstreamUse": "Compiler plan plus revisioned resolver provides immutable snapshot and maintenance lease."
+    },
+    {
+      "from": "WP2.6",
+      "to": "WP3.3",
+      "artifactNeeded": "Resolver tables, immutable toolchain snapshot schema and per-profile identity tests.",
+      "downstreamUse": "Compiler plan plus revisioned resolver provides immutable snapshot and maintenance lease."
+    },
+    {
+      "from": "WP3.1",
+      "to": "WP3.2",
+      "artifactNeeded": "Compiler plan/result/error contract, role-limit fixtures, protected compile/cancel tests and report.",
+      "downstreamUse": "Compiler service, pinned leases and Mac driver evidence supply real role/source plans."
+    },
+    {
+      "from": "WP3.3",
+      "to": "WP3.2",
+      "artifactNeeded": "Lease API/state machine, race tests, metadata fixtures.",
+      "downstreamUse": "Compiler service, pinned leases and Mac driver evidence supply real role/source plans."
+    },
+    {
+      "from": "WP2.7",
+      "to": "WP3.2",
+      "artifactNeeded": "Mac driver/SDK manifest, focused regression and live protected C/C++ diagnostics.",
+      "downstreamUse": "Compiler service, pinned leases and Mac driver evidence supply real role/source plans."
+    },
+    {
+      "from": "WP1.6",
+      "to": "WP1.4",
+      "artifactNeeded": "Containment API contract, owned-root threat fixtures and both-platform cleanup evidence.",
+      "downstreamUse": "Owned staging plus certified pinned compiler/checker runtime eliminates direct host execution."
+    },
+    {
+      "from": "WP3.1",
+      "to": "WP1.4",
+      "artifactNeeded": "Compiler plan/result/error contract, role-limit fixtures, protected compile/cancel tests and report.",
+      "downstreamUse": "Owned staging plus certified pinned compiler/checker runtime eliminates direct host execution."
+    },
+    {
+      "from": "WP3.2",
+      "to": "WP1.4",
+      "artifactNeeded": "Independently named per-profile tests/results, adapter contracts and target/toolchain/runtime snapshots.",
+      "downstreamUse": "Owned staging plus certified pinned compiler/checker runtime eliminates direct host execution."
+    },
+    {
+      "from": "WP3.3",
+      "to": "WP1.4",
+      "artifactNeeded": "Lease API/state machine, race tests, metadata fixtures.",
+      "downstreamUse": "Owned staging plus certified pinned compiler/checker runtime eliminates direct host execution."
+    },
+    {
+      "from": "G1",
+      "to": "WP4.1",
+      "artifactNeeded": "g1-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "HTTP/path safety and exact lexical carriers provide secure canonical config inputs."
+    },
+    {
+      "from": "WP5.1",
+      "to": "WP4.1",
+      "artifactNeeded": "Exact scoring/carrier contract, Node goldens/property tests and error policy.",
+      "downstreamUse": "HTTP/path safety and exact lexical carriers provide secure canonical config inputs."
+    },
+    {
+      "from": "G3",
+      "to": "WP4.2",
+      "artifactNeeded": "g3-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Protected services and normalized config support real prepared jobs, not global flags."
+    },
+    {
+      "from": "WP4.1",
+      "to": "WP4.2",
+      "artifactNeeded": "Normalized config contract, Node/Rust table fixtures and persisted compile snapshots.",
+      "downstreamUse": "Protected services and normalized config support real prepared jobs, not global flags."
+    },
+    {
+      "from": "WP4.2",
+      "to": "WP4.3",
+      "artifactNeeded": "Registry state machine/race tests, bounded job-ID policy and endpoint contract.",
+      "downstreamUse": "Registered jobs and supervised executor ownership provide cancellation targets and drain authority."
+    },
+    {
+      "from": "WP0.4",
+      "to": "WP4.3",
+      "artifactNeeded": "Accepted ADR and exact packaged/client evidence.",
+      "downstreamUse": "Registered jobs and supervised executor ownership provide cancellation targets and drain authority."
+    },
+    {
+      "from": "WP1.1",
+      "to": "WP4.3",
+      "artifactNeeded": "Selection policy, lifecycle state machine, Tauri/core integration tests, runtime identity and port/process reports.",
+      "downstreamUse": "Registered jobs and supervised executor ownership provide cancellation targets and drain authority."
+    },
+    {
+      "from": "WP4.2",
+      "to": "WP4.4",
+      "artifactNeeded": "Registry state machine/race tests, bounded job-ID policy and endpoint contract.",
+      "downstreamUse": "Auth/admission and drain guarantee bounded stream lifecycle and meaningful terminal events."
+    },
+    {
+      "from": "WP4.3",
+      "to": "WP4.4",
+      "artifactNeeded": "Lifecycle transition assertions, stress races, process/container/port/handle evidence.",
+      "downstreamUse": "Auth/admission and drain guarantee bounded stream lifecycle and meaningful terminal events."
+    },
+    {
+      "from": "WP1.2",
+      "to": "WP4.4",
+      "artifactNeeded": "Threat table, authorization matrix, real HTTP negative fixtures and shared response tests.",
+      "downstreamUse": "Auth/admission and drain guarantee bounded stream lifecycle and meaningful terminal events."
+    },
+    {
+      "from": "WP4.1",
+      "to": "WP4.5",
+      "artifactNeeded": "Normalized config contract, Node/Rust table fixtures and persisted compile snapshots.",
+      "downstreamUse": "Config/events/pinned identities and exact carriers feed existing frontend exporter."
+    },
+    {
+      "from": "WP4.4",
+      "to": "WP4.5",
+      "artifactNeeded": "Stream goldens, live reader/reducer tests and job cleanup reports.",
+      "downstreamUse": "Config/events/pinned identities and exact carriers feed existing frontend exporter."
+    },
+    {
+      "from": "WP3.3",
+      "to": "WP4.5",
+      "artifactNeeded": "Lease API/state machine, race tests, metadata fixtures.",
+      "downstreamUse": "Config/events/pinned identities and exact carriers feed existing frontend exporter."
+    },
+    {
+      "from": "WP5.1",
+      "to": "WP4.5",
+      "artifactNeeded": "Exact scoring/carrier contract, Node goldens/property tests and error policy.",
+      "downstreamUse": "Config/events/pinned identities and exact carriers feed existing frontend exporter."
+    },
+    {
+      "from": "WP1.4",
+      "to": "WP5.3",
+      "artifactNeeded": "Checker execution API/tests, caller inventory and component containment evidence.",
+      "downstreamUse": "Contained runner plus exact scoring and completed sessions provide real semantic oracle path."
+    },
+    {
+      "from": "WP5.1",
+      "to": "WP5.3",
+      "artifactNeeded": "Exact scoring/carrier contract, Node goldens/property tests and error policy.",
+      "downstreamUse": "Contained runner plus exact scoring and completed sessions provide real semantic oracle path."
+    },
+    {
+      "from": "G4",
+      "to": "WP5.3",
+      "artifactNeeded": "g4-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Contained runner plus exact scoring and completed sessions provide real semantic oracle path."
+    },
+    {
+      "from": "N0",
+      "to": "WP5.4",
+      "artifactNeeded": "New n0-native-interactive-baseline.md, role/source matrix, RED/GREEN and safety tests, complete frozen source/build manifest, both-host logs and cleanup.",
+      "downstreamUse": "Native Mac dual-process support, adapters, job drain and exact scores now exist for Rust integration."
+    },
+    {
+      "from": "WP3.2",
+      "to": "WP5.4",
+      "artifactNeeded": "Independently named per-profile tests/results, adapter contracts and target/toolchain/runtime snapshots.",
+      "downstreamUse": "Native Mac dual-process support, adapters, job drain and exact scores now exist for Rust integration."
+    },
+    {
+      "from": "WP4.3",
+      "to": "WP5.4",
+      "artifactNeeded": "Lifecycle transition assertions, stress races, process/container/port/handle evidence.",
+      "downstreamUse": "Native Mac dual-process support, adapters, job drain and exact scores now exist for Rust integration."
+    },
+    {
+      "from": "WP5.1",
+      "to": "WP5.4",
+      "artifactNeeded": "Exact scoring/carrier contract, Node goldens/property tests and error policy.",
+      "downstreamUse": "Native Mac dual-process support, adapters, job drain and exact scores now exist for Rust integration."
+    },
+    {
+      "from": "G4",
+      "to": "WP5.4",
+      "artifactNeeded": "g4-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Native Mac dual-process support, adapters, job drain and exact scores now exist for Rust integration."
+    },
+    {
+      "from": "G5",
+      "to": "WP6.1a",
+      "artifactNeeded": "g5-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Complete judge semantics makes durable OSD results meaningful."
+    },
+    {
+      "from": "WP6.1a",
+      "to": "WP6.1b",
+      "artifactNeeded": "Parser/state fixtures, durable schema/recovery and parity tests.",
+      "downstreamUse": "Durable item identity and job ownership supply a safe queue/drain target."
+    },
+    {
+      "from": "WP4.2",
+      "to": "WP6.1b",
+      "artifactNeeded": "Registry state machine/race tests, bounded job-ID policy and endpoint contract.",
+      "downstreamUse": "Durable item identity and job ownership supply a safe queue/drain target."
+    },
+    {
+      "from": "WP4.3",
+      "to": "WP6.1b",
+      "artifactNeeded": "Lifecycle transition assertions, stress races, process/container/port/handle evidence.",
+      "downstreamUse": "Durable item identity and job ownership supply a safe queue/drain target."
+    },
+    {
+      "from": "WP6.1b",
+      "to": "WP6.1c",
+      "artifactNeeded": "Watcher/queue tests and live file-arrival event sequence.",
+      "downstreamUse": "Real watcher/queue, event framing and backend supervision support truthful status."
+    },
+    {
+      "from": "WP4.4",
+      "to": "WP6.1c",
+      "artifactNeeded": "Stream goldens, live reader/reducer tests and job cleanup reports.",
+      "downstreamUse": "Real watcher/queue, event framing and backend supervision support truthful status."
+    },
+    {
+      "from": "WP1.1",
+      "to": "WP6.1c",
+      "artifactNeeded": "Selection policy, lifecycle state machine, Tauri/core integration tests, runtime identity and port/process reports.",
+      "downstreamUse": "Real watcher/queue, event framing and backend supervision support truthful status."
+    },
+    {
+      "from": "G5",
+      "to": "WP6.2",
+      "artifactNeeded": "g5-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Safe paths and normalized config plus judge contract anchor disk routes."
+    },
+    {
+      "from": "WP1.6",
+      "to": "WP6.2",
+      "artifactNeeded": "Containment API contract, owned-root threat fixtures and both-platform cleanup evidence.",
+      "downstreamUse": "Safe paths and normalized config plus judge contract anchor disk routes."
+    },
+    {
+      "from": "WP4.1",
+      "to": "WP6.2",
+      "artifactNeeded": "Normalized config contract, Node/Rust table fixtures and persisted compile snapshots.",
+      "downstreamUse": "Safe paths and normalized config plus judge contract anchor disk routes."
+    },
+    {
+      "from": "G5",
+      "to": "WP6.3",
+      "artifactNeeded": "g5-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Exact results/export and lifecycle/path containment keep shell-owned operations safe."
+    },
+    {
+      "from": "WP4.5",
+      "to": "WP6.3",
+      "artifactNeeded": "Actual Rust metadata/event fixtures, workbook content assertions and export report.",
+      "downstreamUse": "Exact results/export and lifecycle/path containment keep shell-owned operations safe."
+    },
+    {
+      "from": "WP1.1",
+      "to": "WP6.3",
+      "artifactNeeded": "Selection policy, lifecycle state machine, Tauri/core integration tests, runtime identity and port/process reports.",
+      "downstreamUse": "Exact results/export and lifecycle/path containment keep shell-owned operations safe."
+    },
+    {
+      "from": "WP1.6",
+      "to": "WP6.3",
+      "artifactNeeded": "Containment API contract, owned-root threat fixtures and both-platform cleanup evidence.",
+      "downstreamUse": "Exact results/export and lifecycle/path containment keep shell-owned operations safe."
+    },
+    {
+      "from": "G6",
+      "to": "WP7.1",
+      "artifactNeeded": "g6-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Feature-complete packaged modes produce comparable workloads; early capability catalog reserves hosts/budgets."
+    },
+    {
+      "from": "WP7.1",
+      "to": "WP7.2",
+      "artifactNeeded": "Raw samples/p50/p90/p95/min/max/failures, measurement contract and both-host baseline.",
+      "downstreamUse": "Measurement baseline and pinned bounded compiler/lease provide cache authority."
+    },
+    {
+      "from": "WP3.1",
+      "to": "WP7.2",
+      "artifactNeeded": "Compiler plan/result/error contract, role-limit fixtures, protected compile/cancel tests and report.",
+      "downstreamUse": "Measurement baseline and pinned bounded compiler/lease provide cache authority."
+    },
+    {
+      "from": "WP3.3",
+      "to": "WP7.2",
+      "artifactNeeded": "Lease API/state machine, race tests, metadata fixtures.",
+      "downstreamUse": "Measurement baseline and pinned bounded compiler/lease provide cache authority."
+    },
+    {
+      "from": "WP7.2",
+      "to": "WP7.3",
+      "artifactNeeded": "Fingerprint schema, cache lifecycle tests and compiler/source/build reports.",
+      "downstreamUse": "Validated published cache and exact fingerprint identify usable acceleration."
+    },
+    {
+      "from": "WP7.2",
+      "to": "WP7.4",
+      "artifactNeeded": "Fingerprint schema, cache lifecycle tests and compiler/source/build reports.",
+      "downstreamUse": "Single-flight cache and job drain/lease define safe foreground/background arbitration."
+    },
+    {
+      "from": "WP7.3",
+      "to": "WP7.4",
+      "artifactNeeded": "Hit-rate/raw timing and correctness parity, safe fallback tests.",
+      "downstreamUse": "Single-flight cache and job drain/lease define safe foreground/background arbitration."
+    },
+    {
+      "from": "WP4.3",
+      "to": "WP7.4",
+      "artifactNeeded": "Lifecycle transition assertions, stress races, process/container/port/handle evidence.",
+      "downstreamUse": "Single-flight cache and job drain/lease define safe foreground/background arbitration."
+    },
+    {
+      "from": "G1",
+      "to": "WP8.1",
+      "artifactNeeded": "g1-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Secured backend launching and frozen contracts/corpus allow measurement of gaps before complete integration."
+    },
+    {
+      "from": "WP0.2",
+      "to": "WP8.1",
+      "artifactNeeded": "Accepted route matrix/goldens; additive deltas in future owning package.",
+      "downstreamUse": "Secured backend launching and frozen contracts/corpus allow measurement of gaps before complete integration."
+    },
+    {
+      "from": "WP0.3",
+      "to": "WP8.1",
+      "artifactNeeded": "Accepted manifest, hashes, raw tamper/oracle evidence.",
+      "downstreamUse": "Secured backend launching and frozen contracts/corpus allow measurement of gaps before complete integration."
+    },
+    {
+      "from": "WP8.1",
+      "to": "WP8.2",
+      "artifactNeeded": "Harness safety/isolation tests, runner/build manifests and early gap report.",
+      "downstreamUse": "Isolated executions plus exact score/checker fixtures define comparison semantics."
+    },
+    {
+      "from": "WP5.1",
+      "to": "WP8.2",
+      "artifactNeeded": "Exact scoring/carrier contract, Node goldens/property tests and error policy.",
+      "downstreamUse": "Isolated executions plus exact score/checker fixtures define comparison semantics."
+    },
+    {
+      "from": "WP5.2",
+      "to": "WP8.2",
+      "artifactNeeded": "Table/property/golden tests, static parity links and live DLL oracle report where required.",
+      "downstreamUse": "Isolated executions plus exact score/checker fixtures define comparison semantics."
+    },
+    {
+      "from": "WP8.2",
+      "to": "WP8.3",
+      "artifactNeeded": "Comparison schema/table, mutation tests and minimal paired diffs.",
+      "downstreamUse": "Comparator provides precise failing dimension and raw request/result."
+    },
+    {
+      "from": "G8",
+      "to": "V9.1",
+      "artifactNeeded": "g8-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Complete correctness/security/parity/performance permits UI acceptance against real backend."
+    },
+    {
+      "from": "V9.1",
+      "to": "V9.2",
+      "artifactNeeded": "Dedicated launcher command and manifest, screenshots/logs/process inventory.",
+      "downstreamUse": "Verified launcher identifies actual candidate/backend and isolated user state."
+    },
+    {
+      "from": "G8",
+      "to": "V9.3",
+      "artifactNeeded": "g8-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Final matched source and complete parity enable actual arm64 platform/package tests."
+    },
+    {
+      "from": "V9.3",
+      "to": "V9.4",
+      "artifactNeeded": "phase-9-macos-ssh.md, bundle SHA/resource manifest and cleanup.",
+      "downstreamUse": "Verified bundle/source/backend ensures GUI tester uses the reviewed candidate."
+    },
+    {
+      "from": "G0",
+      "to": "WP10.1",
+      "artifactNeeded": "g0-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Independent gates provide complete platform/product/security/performance/GUI evidence."
+    },
+    {
+      "from": "G1",
+      "to": "WP10.1",
+      "artifactNeeded": "g1-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Independent gates provide complete platform/product/security/performance/GUI evidence."
+    },
+    {
+      "from": "G2",
+      "to": "WP10.1",
+      "artifactNeeded": "g2-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Independent gates provide complete platform/product/security/performance/GUI evidence."
+    },
+    {
+      "from": "G3",
+      "to": "WP10.1",
+      "artifactNeeded": "g3-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Independent gates provide complete platform/product/security/performance/GUI evidence."
+    },
+    {
+      "from": "G4",
+      "to": "WP10.1",
+      "artifactNeeded": "g4-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Independent gates provide complete platform/product/security/performance/GUI evidence."
+    },
+    {
+      "from": "G5",
+      "to": "WP10.1",
+      "artifactNeeded": "g5-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Independent gates provide complete platform/product/security/performance/GUI evidence."
+    },
+    {
+      "from": "G6",
+      "to": "WP10.1",
+      "artifactNeeded": "g6-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Independent gates provide complete platform/product/security/performance/GUI evidence."
+    },
+    {
+      "from": "G7",
+      "to": "WP10.1",
+      "artifactNeeded": "g7-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Independent gates provide complete platform/product/security/performance/GUI evidence."
+    },
+    {
+      "from": "G8",
+      "to": "WP10.1",
+      "artifactNeeded": "g8-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Independent gates provide complete platform/product/security/performance/GUI evidence."
+    },
+    {
+      "from": "G9",
+      "to": "WP10.1",
+      "artifactNeeded": "g9-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Independent gates provide complete platform/product/security/performance/GUI evidence."
+    },
+    {
+      "from": "WP10.1",
+      "to": "WP10.2",
+      "artifactNeeded": "Cutover checklist and explicit human authorization record.",
+      "downstreamUse": "Accepted readiness and human cutover authorization justify default change."
+    },
+    {
+      "from": "WP10.2",
+      "to": "WP10.3",
+      "artifactNeeded": "Selection/installed rollback tests and cutover report.",
+      "downstreamUse": "Accepted cutover establishes release-candidate behavior before identity bump."
+    },
+    {
+      "from": "WP10.3",
+      "to": "WP10.4",
+      "artifactNeeded": "Version diff, version gate log and package identity fixtures.",
+      "downstreamUse": "Reviewed final behavior/version source drives concrete Core/Full artifacts."
+    },
+    {
+      "from": "WP10.4",
+      "to": "WP10.5",
+      "artifactNeeded": "Actual installer/bundle SHA and contents, signatures/SBOM/notices/update manifests, all release evidence.",
+      "downstreamUse": "Accepted candidate and separately authorized rollout start the agreed observation interval."
+    },
+    {
+      "from": "WP10.5",
+      "to": "WP10.6",
+      "artifactNeeded": "Timestamped stabilization observations, rollback logs and explicit exit decision.",
+      "downstreamUse": "Approved stabilization exit permits removing temporary shipped rollback footprint."
+    },
+    {
+      "from": "WP0.1",
+      "to": "G0",
+      "artifactNeeded": "Existing wp0.1-workspace-snapshot.md and immutable evidence.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP0.2",
+      "to": "G0",
+      "artifactNeeded": "Accepted route matrix/goldens; additive deltas in future owning package.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP0.3",
+      "to": "G0",
+      "artifactNeeded": "Accepted manifest, hashes, raw tamper/oracle evidence.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP0.4",
+      "to": "G0",
+      "artifactNeeded": "Accepted ADR and exact packaged/client evidence.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP0.5",
+      "to": "G0",
+      "artifactNeeded": "Accepted nine-step gate, source scans and profile diagnostic evidence.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "N0",
+      "to": "G0",
+      "artifactNeeded": "New n0-native-interactive-baseline.md, role/source matrix, RED/GREEN and safety tests, complete frozen source/build manifest, both-host logs and cleanup.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP0.6",
+      "to": "G0",
+      "artifactNeeded": "Updated canonical wp0.6 report with attributable new section, lock-owner matrix, metadata/target/features/backend/binary manifests and independent reviewer logs.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP0.7",
+      "to": "G0",
+      "artifactNeeded": "Domain/owner map, before/after route manifests, characterization tests and report.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP1.1",
+      "to": "G1",
+      "artifactNeeded": "Selection policy, lifecycle state machine, Tauri/core integration tests, runtime identity and port/process reports.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP1.2",
+      "to": "G1",
+      "artifactNeeded": "Threat table, authorization matrix, real HTTP negative fixtures and shared response tests.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP1.3",
+      "to": "G1",
+      "artifactNeeded": "Safe dialog contract/tests, required early actual Windows/Mac native dialog/cancel/focus GUI evidence, and report.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP1.5",
+      "to": "G1",
+      "artifactNeeded": "Capability/route ownership manifest, unavailable-response/UI tests and live no-side-effect evidence.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP1.6",
+      "to": "G1",
+      "artifactNeeded": "Containment API contract, owned-root threat fixtures and both-platform cleanup evidence.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP1.7",
+      "to": "G1",
+      "artifactNeeded": "Structured event schema, sanitized correlation fixtures, rotation tests and reports.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP2.1",
+      "to": "G2",
+      "artifactNeeded": "Explicit evidence decision for every domain; structural delta tests only if needed.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP2.2",
+      "to": "G2",
+      "artifactNeeded": "Preference/policy schema, migration fixtures, durable round-trip/recovery tests and report.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP2.3",
+      "to": "G2",
+      "artifactNeeded": "Trusted local signed fixtures, manifest/receipt contract and negative tests.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP2.4",
+      "to": "G2",
+      "artifactNeeded": "Executable signed local install fixtures, post-extract manifest, atomicity/recovery and real download report if authorized.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP2.5",
+      "to": "G2",
+      "artifactNeeded": "Uninstall/recovery fixtures, journal/state transition and delayed handle/root report.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP2.6",
+      "to": "G2",
+      "artifactNeeded": "Resolver tables, immutable toolchain snapshot schema and per-profile identity tests.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP2.7",
+      "to": "G2",
+      "artifactNeeded": "Mac driver/SDK manifest, focused regression and live protected C/C++ diagnostics.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP4.1",
+      "to": "G2",
+      "artifactNeeded": "Normalized config contract, Node/Rust table fixtures and persisted compile snapshots.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP5.1",
+      "to": "G2",
+      "artifactNeeded": "Exact scoring/carrier contract, Node goldens/property tests and error policy.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "N1",
+      "to": "G3",
+      "artifactNeeded": "Native capability catalog and separately accepted gap reports, source/toolchain/role matrix, real native probes and cleanup.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP3.1",
+      "to": "G3",
+      "artifactNeeded": "Compiler plan/result/error contract, role-limit fixtures, protected compile/cancel tests and report.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP3.2",
+      "to": "G3",
+      "artifactNeeded": "Independently named per-profile tests/results, adapter contracts and target/toolchain/runtime snapshots.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP3.3",
+      "to": "G3",
+      "artifactNeeded": "Lease API/state machine, race tests, metadata fixtures.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP1.4",
+      "to": "G3",
+      "artifactNeeded": "Checker execution API/tests, caller inventory and component containment evidence.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP5.2",
+      "to": "G3",
+      "artifactNeeded": "Table/property/golden tests, static parity links and live DLL oracle report where required.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP4.2",
+      "to": "G4",
+      "artifactNeeded": "Registry state machine/race tests, bounded job-ID policy and endpoint contract.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP4.3",
+      "to": "G4",
+      "artifactNeeded": "Lifecycle transition assertions, stress races, process/container/port/handle evidence.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP4.4",
+      "to": "G4",
+      "artifactNeeded": "Stream goldens, live reader/reducer tests and job cleanup reports.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP4.5",
+      "to": "G4",
+      "artifactNeeded": "Actual Rust metadata/event fixtures, workbook content assertions and export report.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP5.1",
+      "to": "G5",
+      "artifactNeeded": "Exact scoring/carrier contract, Node goldens/property tests and error policy.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP5.2",
+      "to": "G5",
+      "artifactNeeded": "Table/property/golden tests, static parity links and live DLL oracle report where required.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP5.3",
+      "to": "G5",
+      "artifactNeeded": "Semantic decision row, production batch oracle fixtures, exact score and failure reports.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP5.4",
+      "to": "G5",
+      "artifactNeeded": "Rust production interactive route tests, pair role/source matrix, score/event/lifecycle artifacts.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "G4",
+      "to": "G5",
+      "artifactNeeded": "g4-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP6.1a",
+      "to": "G6",
+      "artifactNeeded": "Parser/state fixtures, durable schema/recovery and parity tests.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP6.1b",
+      "to": "G6",
+      "artifactNeeded": "Watcher/queue tests and live file-arrival event sequence.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP6.1c",
+      "to": "G6",
+      "artifactNeeded": "Live OSD HTTP/stream fixtures, frontend state and cleanup reports.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP6.2",
+      "to": "G6",
+      "artifactNeeded": "Endpoint goldens, disk mutation and frontend Reload tests.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP6.3",
+      "to": "G6",
+      "artifactNeeded": "Ownership matrix, archive round-trip/export/update integration tests.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP7.1",
+      "to": "G7",
+      "artifactNeeded": "Raw samples/p50/p90/p95/min/max/failures, measurement contract and both-host baseline.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP7.2",
+      "to": "G7",
+      "artifactNeeded": "Fingerprint schema, cache lifecycle tests and compiler/source/build reports.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP7.3",
+      "to": "G7",
+      "artifactNeeded": "Hit-rate/raw timing and correctness parity, safe fallback tests.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP7.4",
+      "to": "G7",
+      "artifactNeeded": "Race tests, foreground latency/hit-rate and cleanup reports.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP8.1",
+      "to": "G8",
+      "artifactNeeded": "Harness safety/isolation tests, runner/build manifests and early gap report.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP8.2",
+      "to": "G8",
+      "artifactNeeded": "Comparison schema/table, mutation tests and minimal paired diffs.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP8.3",
+      "to": "G8",
+      "artifactNeeded": "Machine-readable mismatch/coverage schema and exit/artifact tests.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "G6",
+      "to": "G8",
+      "artifactNeeded": "g6-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "G7",
+      "to": "G8",
+      "artifactNeeded": "g7-gate.md with executed/reference row map and independent verdict",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "V9.2",
+      "to": "G9",
+      "artifactNeeded": "phase-9-windows-matrix.md, numbered screenshots and scenario records.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "V9.3",
+      "to": "G9",
+      "artifactNeeded": "phase-9-macos-ssh.md, bundle SHA/resource manifest and cleanup.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "V9.4",
+      "to": "G9",
+      "artifactNeeded": "Signed-off checklist, screenshot names, short focus/menu/animation video and mount/process/root cleanup.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    },
+    {
+      "from": "WP10.6",
+      "to": "G10",
+      "artifactNeeded": "Footprint/build graph, before/after package manifests/size/notices and final architecture docs.",
+      "downstreamUse": "Independently accepted upstream contracts plus applicable final-source evidence; fresh integrated assertions described here."
+    }
+  ],
+  "topologicalOrder": [
+    "WP0.1",
+    "WP0.2",
+    "WP0.3",
+    "WP0.4",
+    "WP0.5",
+    "N0",
+    "WP0.6",
+    "WP0.7",
+    "G0",
+    "WP1.1",
+    "WP1.2",
+    "WP1.3",
+    "WP1.6",
+    "WP1.5",
+    "WP1.7",
+    "WP5.1",
+    "WP5.2",
+    "G1",
+    "WP8.1",
+    "WP8.2",
+    "WP8.3",
+    "WP2.1",
+    "WP2.2",
+    "WP2.3",
+    "WP2.4",
+    "WP2.5",
+    "WP2.6",
+    "WP2.7",
+    "WP4.1",
+    "G2",
+    "N1",
+    "WP3.1",
+    "WP3.3",
+    "WP3.2",
+    "WP1.4",
+    "G3",
+    "WP4.2",
+    "WP4.3",
+    "WP4.4",
+    "WP4.5",
+    "G4",
+    "WP5.3",
+    "WP5.4",
+    "G5",
+    "WP6.1a",
+    "WP6.1b",
+    "WP6.1c",
+    "WP6.2",
+    "WP6.3",
+    "G6",
+    "WP7.1",
+    "WP7.2",
+    "WP7.3",
+    "WP7.4",
+    "G7",
+    "G8",
+    "V9.1",
+    "V9.2",
+    "V9.3",
+    "V9.4",
+    "G9",
+    "WP10.1",
+    "WP10.2",
+    "WP10.3",
+    "WP10.4",
+    "WP10.5",
+    "WP10.6",
+    "G10"
+  ]
+}

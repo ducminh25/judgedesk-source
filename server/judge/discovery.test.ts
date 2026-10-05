@@ -223,3 +223,213 @@ test("testcase discovery for interactive problem allows input-only directories",
   assert.equal(testcases[0].inputFileName, "data.inp");
   assert.equal(testcases[0].outputPath, "");
 });
+
+test("flat test discovery discovers x.inp and x.out pairs in a single folder naturally sorted", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-flat-discovery-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  fs.writeFileSync(path.join(root, "1.inp"), "10");
+  fs.writeFileSync(path.join(root, "1.out"), "20");
+  fs.writeFileSync(path.join(root, "2.INP"), "30");
+  fs.writeFileSync(path.join(root, "2.OUT"), "40");
+  fs.writeFileSync(path.join(root, "10.inp"), "50");
+  fs.writeFileSync(path.join(root, "10.out"), "60");
+  fs.writeFileSync(path.join(root, "case-a.in"), "70");
+  fs.writeFileSync(path.join(root, "case-a.ans"), "80");
+  fs.writeFileSync(path.join(root, "incomplete.inp"), "90");
+  fs.writeFileSync(path.join(root, "orphan.out"), "100");
+  fs.writeFileSync(path.join(root, "solution.cpp"), "int main(){}");
+  fs.writeFileSync(path.join(root, "Config.cfg"), "{}");
+
+  assert.deepEqual(listTestDirectories(root), ["1", "2", "10", "case-a"]);
+
+  const discovered = discoverTestCases(root);
+  assert.equal(discovered.length, 4);
+  assert.equal(discovered[0].name, "1");
+  assert.equal(discovered[0].inputPath, path.join(root, "1.inp"));
+  assert.equal(discovered[0].outputPath, path.join(root, "1.out"));
+  assert.equal(discovered[0].inputFileName, "1.inp");
+  assert.equal(discovered[0].directory, root);
+
+  assert.equal(discovered[1].name, "2");
+  assert.equal(discovered[1].inputPath, path.join(root, "2.INP"));
+  assert.equal(discovered[1].outputPath, path.join(root, "2.OUT"));
+  assert.equal(discovered[1].inputFileName, "2.INP");
+
+  assert.equal(discovered[2].name, "10");
+  assert.equal(discovered[2].inputFileName, "10.inp");
+
+  assert.equal(discovered[3].name, "case-a");
+  assert.equal(discovered[3].inputFileName, "case-a.in");
+  assert.equal(discovered[3].outputPath, path.join(root, "case-a.ans"));
+
+  const resolvedOne = resolveTestCaseFiles(root, "1");
+  assert.ok(resolvedOne);
+  assert.equal(resolvedOne.name, "1");
+  assert.equal(resolvedOne.inputFileName, "1.inp");
+  assert.equal(resolvedOne.outputPath, path.join(root, "1.out"));
+
+  assert.equal(resolveTestCaseFiles(root, "incomplete"), null);
+  assert.equal(resolveTestCaseFiles(root, "orphan"), null);
+  assert.equal(resolveTestCaseFiles(root, "solution"), null);
+});
+
+test("flat test discovery for interactive problem allows input-only flat files", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-flat-interactive-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  fs.writeFileSync(path.join(root, "1.inp"), "42");
+  fs.writeFileSync(path.join(root, "2.in"), "99");
+
+  assert.deepEqual(discoverTestCases(root, false), []);
+
+  const interactiveTests = discoverTestCases(root, true);
+  assert.equal(interactiveTests.length, 2);
+  assert.equal(interactiveTests[0].name, "1");
+  assert.equal(interactiveTests[0].outputPath, "");
+  assert.equal(interactiveTests[1].name, "2");
+  assert.equal(interactiveTests[1].outputPath, "");
+
+  const resolvedInteractive = resolveTestCaseFiles(root, "1", true);
+  assert.ok(resolvedInteractive);
+  assert.equal(resolvedInteractive.name, "1");
+  assert.equal(resolvedInteractive.outputPath, "");
+});
+
+test("testcase discovery prefers directory tests when Themis structure exists alongside root sample files", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-themis-precedence-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  for (const dirName of ["Test01", "Test02"]) {
+    const dir = path.join(root, dirName);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "BAI1.INP"), "1");
+    fs.writeFileSync(path.join(dir, "BAI1.OUT"), "2");
+  }
+
+  // Root sample file left over from problem setter testing
+  fs.writeFileSync(path.join(root, "BAI1.INP"), "sample");
+  fs.writeFileSync(path.join(root, "BAI1.OUT"), "sample");
+
+  assert.deepEqual(listTestDirectories(root), ["Test01", "Test02"]);
+  const discovered = discoverTestCases(root);
+  assert.equal(discovered.length, 2);
+  assert.equal(discovered[0].name, "Test01");
+  assert.equal(discovered[1].name, "Test02");
+});
+
+test("createProblemDirectoryResolver resolves problem directory when directory itself is named after the problem", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-single-problem-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const sumDir = path.join(root, "SUM");
+  fs.mkdirSync(sumDir, { recursive: true });
+  fs.writeFileSync(path.join(sumDir, "1.inp"), "1");
+  fs.writeFileSync(path.join(sumDir, "1.out"), "2");
+
+  const resolver = createProblemDirectoryResolver(sumDir);
+  const resolved = resolver("sum");
+  assert.ok(resolved);
+  assert.equal(resolved.name, "SUM");
+  assert.equal(resolved.path, sumDir);
+});
+
+test("Themis tests take precedence even when root samples outnumber them", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-layout-precedence-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.mkdirSync(path.join(root, "test1"));
+  fs.writeFileSync(path.join(root, "test1", "official.inp"), "official");
+  fs.writeFileSync(path.join(root, "test1", "official.out"), "answer");
+  for (const stem of ["test1", "test2"]) {
+    fs.writeFileSync(path.join(root, `${stem}.inp`), "sample");
+    fs.writeFileSync(path.join(root, `${stem}.out`), "answer");
+  }
+
+  const discovered = discoverTestCases(root);
+  assert.deepEqual(discovered.map(files => files.name), ["test1"]);
+  assert.equal(discovered[0].inputPath, path.join(root, "test1", "official.inp"));
+  assert.deepEqual(resolveTestCaseFiles(root, "test1"), discovered[0]);
+  assert.equal(resolveTestCaseFiles(root, "test2"), null);
+});
+
+test("flat discovery resolves mixed extensions by matching the complete stem", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-mixed-flat-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const [input, output] of [
+    ["test1.inp", "test1.out"],
+    ["test2.in", "test2.ans"],
+    ["CASE.3.INP", "case.3.ANS"],
+    ["test4.in", "test4.out"],
+    ["test5.inp", "test5.ans"],
+  ]) {
+    fs.writeFileSync(path.join(root, input), input);
+    fs.writeFileSync(path.join(root, output), output);
+  }
+  fs.writeFileSync(path.join(root, "unmatched.inp"), "input");
+  fs.writeFileSync(path.join(root, "other.out"), "output");
+  fs.mkdirSync(path.join(root, "fake.inp"));
+  fs.mkdirSync(path.join(root, "fake.out"));
+
+  const discovered = discoverTestCases(root);
+  assert.deepEqual(discovered.map(files => files.name), ["CASE.3", "test1", "test2", "test4", "test5"]);
+  for (const files of discovered) {
+    assert.deepEqual(resolveTestCaseFiles(root, files.name.toLowerCase()), files);
+  }
+});
+
+test("problem resolver ignores files and cannot alias a missing or container directory", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-problem-resolver-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(root, "SUM"), "not a directory");
+  const resolve = createProblemDirectoryResolver(root);
+  assert.equal(resolve("SUM"), null);
+  assert.equal(resolve(path.basename(root)), null);
+  assert.throws(() => createProblemDirectoryResolver(path.join(root, "missing")), /ENOENT/);
+});
+
+test("flat aliases prefer inp and out and numeric name ties stay deterministic", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-flat-aliases-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const stem of ["1", "01", "10", "2"]) {
+    for (const extension of ["in", "inp", "ans", "out"]) {
+      fs.writeFileSync(path.join(root, `${stem}.${extension}`), extension);
+    }
+  }
+  const discovered = discoverTestCases(root);
+  assert.deepEqual(discovered.map(files => files.name), ["01", "1", "2", "10"]);
+  for (const files of discovered) {
+    assert.equal(files.inputFileName, `${files.name}.inp`);
+    assert.equal(files.outputPath, path.join(root, `${files.name}.out`));
+    assert.deepEqual(resolveTestCaseFiles(root, files.name), files);
+  }
+});
+
+test("a direct flat problem takes precedence over its same-name auxiliary child", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-same-name-auxiliary-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const problem = path.join(root, "SUM");
+  fs.mkdirSync(path.join(problem, "SUM", "docs"), { recursive: true });
+  fs.writeFileSync(path.join(problem, "1.inp"), "1");
+  fs.writeFileSync(path.join(problem, "1.out"), "2");
+  assert.deepEqual(createProblemDirectoryResolver(problem)("sum"), { name: "SUM", path: problem });
+});
+
+test("root samples cannot alias a real same-name Themis or interactive problem", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-real-child-problem-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const name of ["SUM", "CHAT"]) {
+    const container = path.join(root, name);
+    const problem = path.join(container, name);
+    fs.mkdirSync(problem, { recursive: true });
+    fs.writeFileSync(path.join(container, "sample.inp"), "sample");
+    fs.writeFileSync(path.join(container, "sample.out"), "sample");
+    if (name === "SUM") {
+      fs.mkdirSync(path.join(problem, "Test01"));
+      fs.writeFileSync(path.join(problem, "Test01", "data.inp"), "official");
+      fs.writeFileSync(path.join(problem, "Test01", "data.out"), "answer");
+    } else {
+      fs.writeFileSync(path.join(problem, "1.in"), "interactive");
+      fs.writeFileSync(path.join(problem, "Config.cfg"), JSON.stringify({ isInteractive: true }));
+    }
+    assert.deepEqual(createProblemDirectoryResolver(container)(name), { name, path: problem });
+  }
+});

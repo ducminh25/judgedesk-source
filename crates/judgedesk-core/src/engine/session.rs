@@ -6,16 +6,17 @@ use tokio::sync::mpsc::UnboundedSender;
 
 static SESSION_TEMP_COUNTER: AtomicU64 = AtomicU64::new(1);
 
+use crate::discovery::testcase::read_stored_problem_config;
 use crate::discovery::{
     create_problem_directory_resolver, create_submission_resolver, discover_test_cases,
     list_contestants,
 };
 use crate::engine::compiler::compile_submission;
 use crate::engine::runner::{run_test_case, TestCaseExecutionConfig};
+use crate::executor_client::ExecutorClient;
 use crate::scoring::{
     calculate_problem_summary, ProblemScoringConfig, ProblemSummary, TestCaseRun,
 };
-use crate::executor_client::ExecutorClient;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "data")]
@@ -83,12 +84,7 @@ pub async fn run_judge_session(
         "startedAt": chrono_like_now(),
         "platform": if cfg!(windows) { "win32" } else { "darwin" },
         "arch": if cfg!(target_arch = "x86_64") { "x64" } else { "arm64" },
-        "build": {
-            "appVersion": "1.5.0",
-            "gitCommit": "native",
-            "buildNumber": "1",
-            "builtAt": "2026-09-19"
-        },
+        "build": crate::build_metadata::BUILD_METADATA,
         "executor": {
             "mode": health.mode,
             "version": health.executor_version,
@@ -169,20 +165,7 @@ pub async fn run_judge_session(
                 }
             };
 
-            // Read problem config from Config.cfg or config.json
-            let cfg_path = problem_dir.path.join("Config.cfg");
-            let fallback_cfg = problem_dir.path.join("config.json");
-            let cfg_val: Option<serde_json::Value> = if cfg_path.is_file() {
-                std::fs::read_to_string(&cfg_path)
-                    .ok()
-                    .and_then(|s| serde_json::from_str(&s).ok())
-            } else if fallback_cfg.is_file() {
-                std::fs::read_to_string(&fallback_cfg)
-                    .ok()
-                    .and_then(|s| serde_json::from_str(&s).ok())
-            } else {
-                None
-            };
+            let cfg_val = read_stored_problem_config(&problem_dir.path);
 
             let scoring_config: ProblemScoringConfig = cfg_val
                 .as_ref()
@@ -336,7 +319,37 @@ pub async fn run_judge_session(
                 continue;
             }
 
-            let exe_path = comp_res.executable.unwrap();
+            let exe_path = match comp_res.executable {
+                Some(path) => path,
+                None => {
+                    let problem_result = ProblemResultData {
+                        problem_name: problem_name.clone(),
+                        language: submission.language.clone(),
+                        compile_status: "CE".to_string(),
+                        compile_error: comp_res
+                            .error
+                            .or_else(|| Some("No executable generated".to_string())),
+                        compile_time: Some(compile_time_ms),
+                        test_cases: Vec::new(),
+                        summary: ProblemSummary {
+                            total: 0,
+                            passed: 0,
+                            score: 0.0,
+                            max_score: 0.0,
+                            status: "CE".to_string(),
+                        },
+                    };
+
+                    let _ =
+                        event_tx.send(JudgeStreamEvent::ProblemCompleted(ProblemCompletedData {
+                            contestant: contestant.clone(),
+                            problem_result,
+                        }));
+                    let _ = std::fs::remove_dir_all(&temp_dir);
+                    completed_operations += 1;
+                    continue;
+                }
+            };
             let is_interactive = cfg_val
                 .as_ref()
                 .and_then(|v| v.get("isInteractive"))

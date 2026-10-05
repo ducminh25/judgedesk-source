@@ -24,7 +24,7 @@ test("C and C++ split compilation share an explicit two-phase budget", () => {
       "submission.exe",
     );
     assert.equal(recipe.splitCompilerPhases, true);
-    assert.equal(recipe.timeoutMs, 60_000);
+    assert.equal(recipe.timeoutMs, 15_000);
   }
 });
 

@@ -65,6 +65,41 @@ pub fn validate_run(root: &Path, spec: &RunSpec) -> Result<ValidatedRun, String>
     validate_run_with_builtin_root(root, spec, built_in_root.as_deref())
 }
 
+pub fn validate_interactive_pair(
+    spec: &crate::protocol::InteractiveRunSpec,
+    submission: &ValidatedRun,
+    interactor: &ValidatedRun,
+) -> Result<(), String> {
+    validate_id(&spec.run_id, "interactive runId")?;
+    validate_id(&spec.submission.run_id, "submission runId")?;
+    validate_id(&spec.interactor.run_id, "interactor runId")?;
+    if spec.run_id == spec.submission.run_id
+        || spec.run_id == spec.interactor.run_id
+        || spec.submission.run_id == spec.interactor.run_id
+    {
+        return Err("interactive and participant run IDs must be distinct".into());
+    }
+    if spec.submission.role != RunRole::Submission
+        || !matches!(
+            spec.interactor.role,
+            RunRole::Checker | RunRole::CheckerRuntime
+        )
+    {
+        return Err("interactive participants require submission and checker roles".into());
+    }
+    if spec.submission.workspace_id == spec.interactor.workspace_id
+        || submission.workspace == interactor.workspace
+    {
+        return Err("interactive participants require distinct workspaces".into());
+    }
+    if !matches!(submission.isolation, LocalToolchainIsolation::Strict)
+        || !matches!(interactor.isolation, LocalToolchainIsolation::Strict)
+    {
+        return Err("interactive participants require strict isolation".into());
+    }
+    Ok(())
+}
+
 fn validate_run_with_builtin_root(
     root: &Path,
     spec: &RunSpec,
@@ -98,7 +133,10 @@ fn validate_run_with_builtin_root(
             (Some(grant), None) => {
                 let (executable, package_root) =
                     resolve_granted_toolchain(&canonical_root, spec, grant, built_in_root)?;
-                let isolation = if grant.package_id.starts_with("scratch-") {
+                let isolation = if grant.package_id.starts_with("scratch-")
+                    || grant.package_id.starts_with("temurin")
+                    || grant.package_id.starts_with("fpc-")
+                {
                     LocalToolchainIsolation::ResourceOnly
                 } else {
                     LocalToolchainIsolation::Strict
@@ -610,6 +648,7 @@ pub(crate) fn validate_environment(environment: &BTreeMap<String, String>) -> Re
             || normalized.starts_with("JUDGEDESK_EXECUTOR_")
             || normalized.starts_with("JUDGEDESK_BOOTSTRAP_")
             || normalized.starts_with("JUDGEDESK_PROBE_")
+            || normalized == "JUDGEDESK_INTERACTIVE_FAULT_PAUSE"
             || normalized == "JUDGEDESK_SENTINEL"
             || normalized == "JUDGEDESK_START";
         if loader_control || executor_control {
@@ -768,7 +807,7 @@ fn reject_links_between(root: &Path, target: &Path) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::protocol::{
-        LocalToolchainGrant, LocalToolchainIsolation, RunLimits, ToolchainGrant,
+        InteractiveRunSpec, LocalToolchainGrant, LocalToolchainIsolation, RunLimits, ToolchainGrant,
     };
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -778,6 +817,51 @@ mod tests {
             assert!(validate_id(value, "id").is_err(), "accepted {value:?}");
         }
         assert!(validate_id("run_123-abc", "id").is_ok());
+    }
+
+    #[test]
+    fn interactive_admission_requires_distinct_strict_submission_and_checker_runs() {
+        let mut interactive = InteractiveRunSpec {
+            run_id: "interactive".into(),
+            submission: sample_spec(RunRole::Submission, "submission/bin/program"),
+            interactor: sample_spec(RunRole::Checker, "interactor/bin/checker"),
+        };
+        interactive.interactor.run_id = "interactor".into();
+        interactive.interactor.workspace_id = "interactor_workspace".into();
+        let submission = validated_run("submission_workspace", LocalToolchainIsolation::Strict);
+        let interactor = validated_run("interactor_workspace", LocalToolchainIsolation::Strict);
+
+        assert!(validate_interactive_pair(&interactive, &submission, &interactor).is_ok());
+        interactive.interactor.role = RunRole::CheckerRuntime;
+        assert!(validate_interactive_pair(&interactive, &submission, &interactor).is_ok());
+        interactive.interactor.role = RunRole::Checker;
+
+        interactive.submission.role = RunRole::Checker;
+        assert!(validate_interactive_pair(&interactive, &submission, &interactor).is_err());
+        interactive.submission.role = RunRole::Submission;
+
+        interactive.interactor.role = RunRole::SecurityProbe;
+        assert!(validate_interactive_pair(&interactive, &submission, &interactor).is_err());
+        interactive.interactor.role = RunRole::Checker;
+
+        interactive.run_id = interactive.submission.run_id.clone();
+        assert!(validate_interactive_pair(&interactive, &submission, &interactor).is_err());
+        interactive.run_id = "interactive".into();
+
+        interactive.interactor.run_id = interactive.submission.run_id.clone();
+        assert!(validate_interactive_pair(&interactive, &submission, &interactor).is_err());
+        interactive.interactor.run_id = "interactor".into();
+
+        interactive.interactor.workspace_id = interactive.submission.workspace_id.clone();
+        assert!(validate_interactive_pair(&interactive, &submission, &interactor).is_err());
+        interactive.interactor.workspace_id = "interactor_workspace".into();
+
+        let resource_only = validated_run(
+            "interactor_workspace",
+            LocalToolchainIsolation::ResourceOnly,
+        );
+        assert!(validate_interactive_pair(&interactive, &submission, &resource_only).is_err());
+        assert!(validate_interactive_pair(&interactive, &resource_only, &interactor).is_err());
     }
 
     #[test]
@@ -804,6 +888,8 @@ mod tests {
             "JUDGEDESK_EXECUTOR_PATH",
             "JUDGEDESK_BOOTSTRAP_TOKEN",
             "JUDGEDESK_PROBE_SENTINEL",
+            "JUDGEDESK_INTERACTIVE_FAULT_PAUSE",
+            "judgedesk_interactive_fault_pause",
         ] {
             let environment = BTreeMap::from([(key.to_string(), "attacker-controlled".into())]);
             assert!(
@@ -1207,6 +1293,18 @@ mod tests {
                 open_files: 16,
                 created_files: 16,
             },
+        }
+    }
+
+    fn validated_run(workspace: &str, isolation: LocalToolchainIsolation) -> ValidatedRun {
+        ValidatedRun {
+            executable: PathBuf::from("/executor/workspaces/program"),
+            toolchain_package_root: None,
+            isolation,
+            workspace: PathBuf::from(format!("/executor/workspaces/{workspace}")),
+            stdin: None,
+            stdout: PathBuf::from(format!("/executor/workspaces/{workspace}/stdout.txt")),
+            stderr: PathBuf::from(format!("/executor/workspaces/{workspace}/stderr.txt")),
         }
     }
 

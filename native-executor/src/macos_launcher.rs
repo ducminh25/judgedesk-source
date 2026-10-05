@@ -1,18 +1,20 @@
 #[cfg(target_os = "macos")]
 mod macos {
+    use crate::guardian_io::{FrameRead, FrameReader};
     use crate::guardian_protocol::{
-        authenticate_process_identity, read_authenticated_frame, write_authenticated_frame,
-        CleanupCause, FrameIdentity, LauncherMonitorLimits, LauncherRlimits, LauncherSpec,
-        ProcessIdentity, SupervisorDirectCommand, SupervisorEvent, SupervisorGuardianCommand,
-        SupervisorLaunchState, MACOS_RUN_SUPERVISOR_ARGUMENT, SUPERVISOR_DIRECT_FD_ENV,
-        SUPERVISOR_GENERATION_ENV, SUPERVISOR_GUARDIAN_FD_ENV, SUPERVISOR_GUARDIAN_PID_ENV,
-        SUPERVISOR_RUN_ID_ENV, SUPERVISOR_TOKEN_ENV,
+        authenticate_process_identity, write_authenticated_frame, CleanupCause, FrameIdentity,
+        LauncherMonitorLimits, LauncherRlimits, LauncherSpec, ProcessIdentity,
+        SupervisorDirectCommand, SupervisorEvent, SupervisorGuardianCommand, SupervisorLaunchState,
+        MACOS_RUN_SUPERVISOR_ARGUMENT, SUPERVISOR_DIRECT_FD_ENV, SUPERVISOR_GENERATION_ENV,
+        SUPERVISOR_GUARDIAN_FD_ENV, SUPERVISOR_GUARDIAN_PID_ENV, SUPERVISOR_RUN_ID_ENV,
+        SUPERVISOR_TOKEN_ENV,
     };
     use crate::macos_process::{
         inventory_live_process_group, read_process_identity,
         verify_live_anchor_descendants_stopped, verify_process_identity, IdentityVerification,
         LiveAnchorProtocolLiveness,
     };
+    use crate::macos_stdio::receive_stdio;
     use crate::protocol::{RunReason, RunResult};
     use crate::request_validation::validate_environment;
     use crate::tree_guard;
@@ -36,6 +38,7 @@ mod macos {
     const MAX_LAUNCH_TEXT_BYTES: usize = 512 * 1024;
     const MAX_OPEN_FILES: u64 = 1024;
     const CONTROL_POLL_INTERVAL_MS: i32 = 2;
+    const STDIO_INSTALL_TIMEOUT: Duration = Duration::from_secs(2);
     const EXEC_CONFIRM_TIMEOUT: Duration = Duration::from_secs(5);
     const CHILD_IDENTITY_TIMEOUT: Duration = Duration::from_millis(250);
     const EXTERNAL_FREEZE_PROOF_TIMEOUT: Duration = Duration::from_millis(200);
@@ -95,6 +98,7 @@ mod macos {
         baseline_workspace_files: u32,
         cwd_path: PathBuf,
         stdout_path: PathBuf,
+        native_pipe_stdout_bytes: Option<u64>,
         stderr_path: PathBuf,
         monitor_limits: LauncherMonitorLimits,
     }
@@ -116,6 +120,7 @@ mod macos {
 
     struct ControllerChannel {
         stream: UnixStream,
+        reader: FrameReader,
         open: bool,
     }
 
@@ -139,6 +144,9 @@ mod macos {
         cleanup_authorizer: Option<Controller>,
         diagnostic: Option<String>,
         setup_started: Instant,
+        paired: bool,
+        pair_member: Option<ProcessIdentity>,
+        precommit_result_sent: bool,
     }
 
     pub fn try_run_internal_mode() -> Option<i32> {
@@ -187,13 +195,7 @@ mod macos {
         let direct = inherited_unix_stream(direct_fd)?;
 
         let generation_guard = tree_guard::acquire_from_environment()
-            .map_err(|error| io::Error::new(io::ErrorKind::PermissionDenied, error))?
-            .ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::PermissionDenied,
-                    "run supervisor requires an independent generation guard",
-                )
-            })?;
+            .map_err(|error| io::Error::new(io::ErrorKind::PermissionDenied, error))?;
         let tree_generation = std::env::var(tree_guard::GENERATION_ENV).map_err(|_| {
             io::Error::new(
                 io::ErrorKind::PermissionDenied,
@@ -209,17 +211,33 @@ mod macos {
 
         let anchor = become_process_group_anchor()?;
         let mut session = SupervisorSession::new(identity, anchor, guardian, direct)?;
+        session.paired = match std::env::var(crate::guardian_protocol::PAIRED_SUPERVISOR_ENV) {
+            Ok(value) if value == "1" => true,
+            Err(std::env::VarError::NotPresent) => false,
+            _ => return Err(invalid("paired supervisor mode is invalid")),
+        };
         // The guard is intentionally held across the infinite post-Prepared wait. The only
         // successful terminal path is the external controller's whole-group SIGKILL.
         let _generation_guard = generation_guard;
         loop {
             match session.run() {
+                Ok(())
+                    if session.paired
+                        && session.state.may_retire_precommit()
+                        && !session.guardian.open
+                        && !session.direct.open =>
+                {
+                    return Ok(())
+                }
                 Ok(()) => hold_generation_guard_forever(),
                 Err(error) => {
                     session.diagnostic.get_or_insert_with(|| error.to_string());
                     session.report_fatal("SUPERVISOR_INTERNAL_FAILED", error.to_string());
                     session.request_cleanup(CleanupCause::InternalError);
                     if !session.guardian.open && !session.direct.open {
+                        if session.paired && session.state.may_retire_precommit() {
+                            return Ok(());
+                        }
                         hold_generation_guard_forever();
                     }
                 }
@@ -234,6 +252,12 @@ mod macos {
             guardian: UnixStream,
             direct: UnixStream,
         ) -> io::Result<Self> {
+            for stream in [&guardian, &direct] {
+                stream.set_read_timeout(Some(Duration::from_millis(
+                    CONTROL_POLL_INTERVAL_MS as u64,
+                )))?;
+                stream.set_write_timeout(Some(STDIO_INSTALL_TIMEOUT))?;
+            }
             let mut state = SupervisorLaunchState::default();
             state.record_registered(anchor)?;
             let mut session = Self {
@@ -241,10 +265,12 @@ mod macos {
                 anchor,
                 guardian: ControllerChannel {
                     stream: guardian,
+                    reader: FrameReader::new(),
                     open: true,
                 },
                 direct: ControllerChannel {
                     stream: direct,
+                    reader: FrameReader::new(),
                     open: true,
                 },
                 state,
@@ -254,6 +280,9 @@ mod macos {
                 cleanup_authorizer: None,
                 diagnostic: None,
                 setup_started: Instant::now(),
+                paired: false,
+                pair_member: None,
+                precommit_result_sent: false,
             };
             session.broadcast(&SupervisorEvent::registered(
                 &session.identity,
@@ -265,7 +294,7 @@ mod macos {
 
         fn run(&mut self) -> io::Result<()> {
             loop {
-                if self.cleanup_authorized {
+                if self.cleanup_authorized && !self.precommit_result_sent {
                     match self.prepare_final_result() {
                         Ok(result) => {
                             self.state.record_prepared()?;
@@ -274,6 +303,11 @@ mod macos {
                                 self.anchor,
                                 result,
                             ));
+                            if self.paired && self.state.may_retire_precommit() {
+                                self.precommit_result_sent = true;
+                                self.cleanup_authorized = false;
+                                continue;
+                            }
                             hold_generation_guard_forever();
                         }
                         Err(error) => {
@@ -298,6 +332,9 @@ mod macos {
 
                 self.observe_target();
                 if !self.guardian.open && !self.direct.open {
+                    if self.paired && self.state.may_retire_precommit() {
+                        return Ok(());
+                    }
                     hold_generation_guard_forever();
                 }
 
@@ -323,24 +360,35 @@ mod macos {
         fn read_controller(&mut self, controller: Controller) -> io::Result<()> {
             match controller {
                 Controller::Guardian => {
-                    let frame = read_authenticated_frame::<_, SupervisorGuardianCommand>(
-                        &mut self.guardian.stream,
-                        &self.identity,
-                    )?;
-                    let Some(frame) = frame else {
-                        self.close_controller(controller);
-                        return Ok(());
+                    let frame = self
+                        .guardian
+                        .reader
+                        .receive::<_, SupervisorGuardianCommand>(
+                            &mut self.guardian.stream,
+                            &self.identity,
+                        )?;
+                    let frame = match frame {
+                        FrameRead::Frame(frame) => frame,
+                        FrameRead::Pending => return Ok(()),
+                        FrameRead::Eof => {
+                            self.close_controller(controller);
+                            return Ok(());
+                        }
                     };
                     self.handle_guardian_command(frame)
                 }
                 Controller::Direct => {
-                    let frame = read_authenticated_frame::<_, SupervisorDirectCommand>(
+                    let frame = self.direct.reader.receive::<_, SupervisorDirectCommand>(
                         &mut self.direct.stream,
                         &self.identity,
                     )?;
-                    let Some(frame) = frame else {
-                        self.close_controller(controller);
-                        return Ok(());
+                    let frame = match frame {
+                        FrameRead::Frame(frame) => frame,
+                        FrameRead::Pending => return Ok(()),
+                        FrameRead::Eof => {
+                            self.close_controller(controller);
+                            return Ok(());
+                        }
                     };
                     self.handle_direct_command(frame)
                 }
@@ -358,7 +406,18 @@ mod macos {
                             "duplicate or out-of-order supervisor configuration",
                         ));
                     }
-                    let prepared = PreparedLaunch::new(*spec)?;
+                    let prepared = match PreparedLaunch::new(*spec) {
+                        Ok(prepared) => prepared,
+                        Err(error) => {
+                            // A missing owned input is a launch preparation failure, not a
+                            // malformed control frame. Keep both authenticated channels open
+                            // so the controllers can freeze and drain this registered group.
+                            self.diagnostic = Some(error.to_string());
+                            self.report_fatal("SUPERVISOR_INTERNAL_FAILED", error.to_string());
+                            self.request_cleanup(CleanupCause::InternalError);
+                            return Ok(());
+                        }
+                    };
                     self.state.record_ready(self.anchor)?;
                     self.prepared = Some(prepared);
                     self.broadcast(&SupervisorEvent::ready(&self.identity, self.anchor));
@@ -377,6 +436,42 @@ mod macos {
 
         fn handle_direct_command(&mut self, frame: SupervisorDirectCommand) -> io::Result<()> {
             match frame {
+                SupervisorDirectCommand::OutputProgress {
+                    anchor,
+                    stdout_bytes,
+                    ..
+                } => {
+                    let target = self
+                        .target
+                        .as_mut()
+                        .ok_or_else(|| invalid("pipe output progress has no started target"))?;
+                    if target.native_pipe_stdout_bytes.is_none() {
+                        return Err(invalid(
+                            "pipe output progress has no installed target stdio",
+                        ));
+                    }
+                    self.state.record_output_progress(anchor, stdout_bytes)?;
+                    target.native_pipe_stdout_bytes = Some(stdout_bytes);
+                    Ok(())
+                }
+                SupervisorDirectCommand::InstallStdio {
+                    anchor,
+                    pair_member,
+                    ..
+                } => {
+                    if let Some(member) = pair_member {
+                        if !self.paired || self.pair_member.is_some() {
+                            return Err(invalid("unexpected paired member stdio enrollment"));
+                        }
+                        crate::guardian_protocol::validate_target_identity(&member, &self.anchor)?;
+                        authenticate_process_identity(
+                            &member,
+                            &read_process_identity(member.pid)?,
+                        )?;
+                        self.pair_member = Some(member);
+                    }
+                    self.install_stdio(anchor)
+                }
                 SupervisorDirectCommand::Commit { anchor, .. } => {
                     authenticate_process_identity(&anchor, &self.anchor)?;
                     self.state.record_direct_commit(anchor)
@@ -385,6 +480,38 @@ mod macos {
                     self.authorize_cleanup(Controller::Direct, anchor, cause)
                 }
             }
+        }
+
+        fn install_stdio(&mut self, anchor: ProcessIdentity) -> io::Result<()> {
+            authenticate_process_identity(&anchor, &self.anchor)?;
+            if !self.state.may_install_stdio() {
+                return Err(invalid(
+                    "duplicate or out-of-order supervisor stdio installation",
+                ));
+            }
+            let prepared = self
+                .prepared
+                .as_mut()
+                .ok_or_else(|| invalid("stdio installation has no prepared target"))?;
+            // The authenticated frame reader consumes exactly its frame. Only this transaction
+            // reads the following SCM_RIGHTS marker, with a bounded timeout before any commit.
+            let previous_timeout = self.direct.stream.read_timeout()?;
+            self.direct
+                .stream
+                .set_read_timeout(Some(STDIO_INSTALL_TIMEOUT))?;
+            let stdio = receive_stdio(&self.direct.stream);
+            self.direct.stream.set_read_timeout(previous_timeout)?;
+            let stdio = stdio?;
+            self.state.record_stdio_installed(anchor)?;
+            // These are target-owned files, never the supervisor's protocol stdin/stdout.
+            // PreparedLaunch is dropped after spawn, closing the supervisor's target-end copies.
+            prepared.stdin = stdio.stdin;
+            prepared.stdout = stdio.stdout;
+            write_authenticated_frame(
+                &mut self.direct.stream,
+                &SupervisorEvent::stdio_ready(&self.identity, self.anchor),
+                &self.identity,
+            )
         }
 
         fn authorize_cleanup(
@@ -419,7 +546,10 @@ mod macos {
                 .elapsed()
                 .as_micros()
                 .min(u64::MAX as u128) as u64;
-            let target = prepared.spawn(self.anchor, security_setup_time_us)?;
+            let mut target = prepared.spawn(self.anchor, security_setup_time_us)?;
+            if self.state.stdio_installed() {
+                target.native_pipe_stdout_bytes = Some(0);
+            }
             self.state.record_target_started(target.identity)?;
             let target_identity = target.identity;
             let exec_confirmed = target.exec_confirmed;
@@ -473,7 +603,7 @@ mod macos {
                 }
             }
 
-            match observe_group_usage(self.anchor) {
+            match observe_group_usage(self.anchor, self.pair_member) {
                 Ok(usage) => {
                     target.peak_memory_bytes = target.peak_memory_bytes.max(usage.memory_bytes);
                     target.last_usage = usage;
@@ -537,7 +667,8 @@ mod macos {
                             .ok_or_else(|| io::Error::other("blocking wait4 returned no target"))?,
                     );
                 }
-                let final_usage = observe_group_usage(self.anchor).unwrap_or(target.last_usage);
+                let final_usage =
+                    observe_group_usage(self.anchor, self.pair_member).unwrap_or(target.last_usage);
                 target.peak_memory_bytes = target.peak_memory_bytes.max(final_usage.memory_bytes);
                 target.last_usage = final_usage;
                 build_target_result(
@@ -546,7 +677,7 @@ mod macos {
                     target,
                     self.diagnostic.take(),
                     collection_started,
-                )
+                )?
             } else {
                 build_no_target_result(
                     &self.identity.run_id,
@@ -761,7 +892,9 @@ mod macos {
                 &spec.sandbox_executable,
                 "sandbox executable",
             )?);
-            arguments.push(CString::new("-f").expect("static argument has no NUL"));
+            arguments.push(CString::new("-f").map_err(|error| {
+                io::Error::other(format!("invalid static sandbox profile flag: {error}"))
+            })?);
             arguments.push(path_cstring(&spec.sandbox_profile, "sandbox profile")?);
             arguments.push(path_cstring(&spec.target_executable, "target executable")?);
             for argument in &spec.arguments {
@@ -882,6 +1015,7 @@ mod macos {
                 baseline_workspace_files: self.baseline_workspace_files,
                 cwd_path: self.cwd_path.clone(),
                 stdout_path: self.stdout_path.clone(),
+                native_pipe_stdout_bytes: None,
                 stderr_path: self.stderr_path.clone(),
                 monitor_limits: self.monitor_limits.clone(),
             })
@@ -1038,10 +1172,35 @@ mod macos {
                 Err(error) => return Err(error),
             }
         }
-        Ok(Some(ChildSetupFailure {
-            stage: u32::from_le_bytes(record[..4].try_into().expect("fixed stage bytes")),
-            errno: i32::from_le_bytes(record[4..].try_into().expect("fixed errno bytes")),
-        }))
+        Ok(Some(decode_child_setup_failure(&record)?))
+    }
+
+    fn decode_child_setup_failure(record: &[u8]) -> io::Result<ChildSetupFailure> {
+        if record.len() != EXEC_STATUS_BYTES {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "child exec-status record has {} bytes; expected {EXEC_STATUS_BYTES}",
+                    record.len()
+                ),
+            ));
+        }
+        let stage = record
+            .get(..4)
+            .and_then(|bytes| <[u8; 4]>::try_from(bytes).ok())
+            .ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidData, "invalid exec-status stage")
+            })?;
+        let errno = record
+            .get(4..8)
+            .and_then(|bytes| <[u8; 4]>::try_from(bytes).ok())
+            .ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidData, "invalid exec-status errno")
+            })?;
+        Ok(ChildSetupFailure {
+            stage: u32::from_le_bytes(stage),
+            errno: i32::from_le_bytes(errno),
+        })
     }
 
     fn read_child_identity(
@@ -1513,16 +1672,14 @@ mod macos {
         target: SpawnedTarget,
         diagnostic: Option<String>,
         collection_started: Instant,
-    ) -> RunResult {
-        let outcome = target
-            .reaped
-            .expect("target result is built only after direct-child wait4");
+    ) -> io::Result<RunResult> {
+        let (outcome, finished_at) = target_completion(&target)?;
         let mut reason = reason_for_cleanup(cause);
         if !target.exec_confirmed {
             reason = RunReason::LaunchError;
         }
         let (workspace_bytes, workspace_files) = inspect_workspace(&target.cwd_path);
-        let stdout_bytes = file_size(&target.stdout_path);
+        let stdout_bytes = target_stdout_bytes(&target);
         let stderr_bytes = file_size(&target.stderr_path);
         let peak_memory = target
             .peak_memory_bytes
@@ -1536,18 +1693,13 @@ mod macos {
         } else {
             peak_memory
         });
-        RunResult {
+        Ok(RunResult {
             run_id: run_id.into(),
             reason,
             exit_code: outcome.status.code(),
             signal_or_status: signal.map(|value| format!("signal {value}")),
             security_setup_time_us: target.security_setup_time_us,
-            wall_time_us: elapsed_us(
-                target.started_at,
-                target
-                    .finished_at
-                    .expect("cleanup request records the target finish boundary"),
-            ),
+            wall_time_us: elapsed_us(target.started_at, finished_at),
             result_collection_time_us: collection_started
                 .elapsed()
                 .as_micros()
@@ -1561,7 +1713,7 @@ mod macos {
             stderr_bytes,
             created_files: Some(workspace_files),
             diagnostic,
-        }
+        })
     }
 
     fn build_no_target_result(
@@ -1617,9 +1769,7 @@ mod macos {
             (Some(CleanupCause::OutputLimit), None)
         } else {
             let (workspace_bytes, workspace_files) = inspect_workspace(&target.cwd_path);
-            if workspace_bytes.saturating_sub(target.baseline_workspace_bytes)
-                > limits.total_write_bytes
-            {
+            if target_written_bytes(target, workspace_bytes) > limits.total_write_bytes {
                 (Some(CleanupCause::WriteLimit), None)
             } else if workspace_files.saturating_sub(target.baseline_workspace_files)
                 > limits.created_files
@@ -1636,14 +1786,19 @@ mod macos {
 
     fn classify_exited_target(target: &SpawnedTarget) -> (Option<CleanupCause>, Option<String>) {
         let limits = &target.monitor_limits;
-        let outcome = target
-            .reaped
-            .as_ref()
-            .expect("exited-target classification requires wait4 ownership");
+        let (outcome, _) = match target_completion(target) {
+            Ok(completion) => completion,
+            Err(error) => {
+                return (
+                    Some(CleanupCause::InternalError),
+                    Some(format!("cannot classify exited target: {error}")),
+                )
+            }
+        };
         let output_bytes = redirected_output_bytes(target);
         let (workspace_bytes, workspace_files) = inspect_workspace(&target.cwd_path);
         let created_delta = workspace_files.saturating_sub(target.baseline_workspace_files);
-        let write_delta = workspace_bytes.saturating_sub(target.baseline_workspace_bytes);
+        let write_delta = target_written_bytes(target, workspace_bytes);
         let exited_leader_processes = target.last_usage.processes.saturating_add(1);
         let exited_leader_threads = target.last_usage.threads.saturating_add(1);
 
@@ -1676,8 +1831,30 @@ mod macos {
         }
     }
 
+    fn target_completion(target: &SpawnedTarget) -> io::Result<(&WaitOutcome, Instant)> {
+        let outcome = target.reaped.as_ref().ok_or_else(|| {
+            io::Error::other("target completion has no authenticated direct-child wait4 result")
+        })?;
+        let finished_at = target
+            .finished_at
+            .ok_or_else(|| io::Error::other("target completion has no recorded finish boundary"))?;
+        Ok((outcome, finished_at))
+    }
+
     fn redirected_output_bytes(target: &SpawnedTarget) -> u64 {
-        file_size(&target.stdout_path).saturating_add(file_size(&target.stderr_path))
+        target_stdout_bytes(target).saturating_add(file_size(&target.stderr_path))
+    }
+
+    fn target_stdout_bytes(target: &SpawnedTarget) -> u64 {
+        target
+            .native_pipe_stdout_bytes
+            .unwrap_or_else(|| file_size(&target.stdout_path))
+    }
+
+    fn target_written_bytes(target: &SpawnedTarget, workspace_bytes: u64) -> u64 {
+        workspace_bytes
+            .saturating_sub(target.baseline_workspace_bytes)
+            .saturating_add(target.native_pipe_stdout_bytes.unwrap_or(0))
     }
 
     fn reason_for_cleanup(cause: CleanupCause) -> RunReason {
@@ -1734,7 +1911,10 @@ mod macos {
             .saturating_add(value.tv_usec.max(0) as u64)
     }
 
-    fn observe_group_usage(anchor: ProcessIdentity) -> io::Result<GroupUsage> {
+    fn observe_group_usage(
+        anchor: ProcessIdentity,
+        pair_member: Option<ProcessIdentity>,
+    ) -> io::Result<GroupUsage> {
         let snapshot = inventory_live_process_group(anchor.pgid)?;
         let observed_anchor = snapshot
             .members
@@ -1747,17 +1927,33 @@ mod macos {
                 )
             })?;
         authenticate_process_identity(observed_anchor, &anchor)?;
-        let zombie_count = snapshot.zombie_pids.len().min(u32::MAX as usize) as u32;
+        if let Some(member) = pair_member {
+            crate::guardian_protocol::validate_target_identity(&member, &anchor)?;
+            if let Some(actual) = snapshot
+                .members
+                .iter()
+                .find(|actual| actual.pid == member.pid)
+            {
+                authenticate_process_identity(actual, &member)?;
+            } else if !snapshot.zombie_pids.contains(&member.pid) {
+                return Err(invalid("paired trusted member disappeared before cleanup"));
+            }
+        }
+        let zombie_count = snapshot
+            .zombie_pids
+            .iter()
+            .filter(|pid| !pair_member.is_some_and(|member| member.pid == **pid))
+            .count()
+            .min(u32::MAX as usize) as u32;
         let mut usage = GroupUsage {
             processes: zombie_count,
             threads: zombie_count,
             ..GroupUsage::default()
         };
-        for member in snapshot
-            .members
-            .iter()
-            .filter(|member| member.pid != anchor.pid)
-        {
+        for member in snapshot.members.iter().filter(|member| {
+            member.pid != anchor.pid
+                && !pair_member.is_some_and(|trusted| trusted.pid == member.pid)
+        }) {
             usage.processes = usage.processes.saturating_add(1);
             let Some(process) = process_usage(member)? else {
                 // A short-lived member may exit after the authenticated group inventory but
@@ -1941,6 +2137,7 @@ mod macos {
     #[cfg(test)]
     mod tests {
         use super::*;
+        use crate::guardian_protocol::read_authenticated_frame;
         use std::collections::BTreeMap;
         use std::fs;
         use std::sync::atomic::{AtomicU64, Ordering};
@@ -2032,6 +2229,232 @@ mod macos {
         }
 
         #[test]
+        fn authenticated_stdio_installation_replaces_only_prepared_target_files_and_acks_direct() {
+            let directory = TestDirectory::new("install-stdio");
+            let (mut session, mut direct, mut guardian) = stdio_test_session(&directory);
+            let mut pipes = crate::macos_stdio::PipePair::new().expect("create native pipes");
+            let stderr = session
+                .prepared
+                .as_ref()
+                .expect("prepared target")
+                .stderr
+                .as_raw_fd();
+            write_authenticated_frame(
+                &mut direct,
+                &SupervisorDirectCommand::install_stdio(&session.identity, session.anchor),
+                &session.identity,
+            )
+            .expect("write authenticated install command");
+            crate::macos_stdio::send_stdio(&direct, pipes.target).expect("send target descriptors");
+            session
+                .read_controller(Controller::Direct)
+                .expect("install target stdio");
+            let ack: SupervisorEvent = read_authenticated_frame(&mut direct, &session.identity)
+                .expect("read direct acknowledgement")
+                .expect("one acknowledgement");
+            assert!(
+                matches!(ack, SupervisorEvent::StdioReady { anchor, .. } if anchor == session.anchor)
+            );
+            let guardian_error =
+                read_authenticated_frame::<_, SupervisorEvent>(&mut guardian, &session.identity)
+                    .expect_err("guardian must receive no stdio acknowledgement");
+            assert!(matches!(
+                guardian_error.kind(),
+                io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+            ));
+            let prepared = session.prepared.as_mut().expect("prepared target");
+            assert_eq!(prepared.stderr.as_raw_fd(), stderr);
+            assert!(prepared
+                .stdin
+                .metadata()
+                .expect("inspect installed stdin")
+                .file_type()
+                .is_fifo());
+            assert!(prepared
+                .stdout
+                .metadata()
+                .expect("inspect installed stdout")
+                .file_type()
+                .is_fifo());
+            pipes.input.write_all(b"in").expect("coordinator input");
+            let mut bytes = [0; 2];
+            prepared.stdin.read_exact(&mut bytes).expect("target input");
+            assert_eq!(&bytes, b"in");
+            prepared.stdout.write_all(b"out").expect("target output");
+            let mut output = [0; 3];
+            pipes
+                .output
+                .read_exact(&mut output)
+                .expect("coordinator output");
+            assert_eq!(&output, b"out");
+            assert!(!session.state.may_fork_target());
+            assert!(
+                session
+                    .handle_direct_command(SupervisorDirectCommand::install_stdio(
+                        &session.identity,
+                        session.anchor
+                    ))
+                    .is_err(),
+                "duplicate installation must fail before receiving more descriptors"
+            );
+            session.prepared = None;
+            assert_eq!(
+                pipes
+                    .output
+                    .read(&mut bytes)
+                    .expect("all target writers closed"),
+                0
+            );
+            assert_eq!(
+                pipes
+                    .input
+                    .write(b"x")
+                    .expect_err("all target readers closed")
+                    .kind(),
+                io::ErrorKind::BrokenPipe
+            );
+        }
+
+        #[test]
+        fn stdio_installation_rejects_wrong_anchor_and_late_commands_without_consuming_rights() {
+            for transition in 0..4 {
+                let directory = TestDirectory::new("reject-stdio");
+                let (mut session, _direct, _guardian) = stdio_test_session(&directory);
+                let anchor = if transition == 0 {
+                    ProcessIdentity {
+                        start_abstime: session.anchor.start_abstime + 1,
+                        ..session.anchor
+                    }
+                } else {
+                    session.anchor
+                };
+                match transition {
+                    1 => session
+                        .state
+                        .record_direct_commit(anchor)
+                        .expect("direct commit"),
+                    2 => session
+                        .state
+                        .record_guardian_go(anchor)
+                        .expect("guardian GO"),
+                    3 => {
+                        session.state.request_cleanup(CleanupCause::Cancelled);
+                    }
+                    _ => {}
+                }
+                let stdin = session
+                    .prepared
+                    .as_ref()
+                    .expect("prepared target")
+                    .stdin
+                    .as_raw_fd();
+                assert!(session
+                    .handle_direct_command(SupervisorDirectCommand::install_stdio(
+                        &session.identity,
+                        anchor
+                    ))
+                    .is_err());
+                assert_eq!(
+                    session
+                        .prepared
+                        .as_ref()
+                        .expect("prepared target")
+                        .stdin
+                        .as_raw_fd(),
+                    stdin
+                );
+            }
+        }
+
+        fn stdio_test_session(
+            directory: &TestDirectory,
+        ) -> (SupervisorSession, UnixStream, UnixStream) {
+            let identity = FrameIdentity::new("a".repeat(64), "b".repeat(64), "stdio_test".into())
+                .expect("frame identity");
+            let anchor = ProcessIdentity {
+                pid: 41,
+                pgid: 41,
+                start_abstime: 99,
+            };
+            let (guardian, mut guardian_peer) = UnixStream::pair().expect("guardian channel");
+            let (direct, mut direct_peer) = UnixStream::pair().expect("direct channel");
+            for stream in [&guardian_peer, &direct_peer] {
+                stream
+                    .set_read_timeout(Some(Duration::from_millis(100)))
+                    .expect("bound test reads");
+                stream
+                    .set_write_timeout(Some(Duration::from_secs(1)))
+                    .expect("bound test writes");
+            }
+            let mut session = SupervisorSession::new(identity, anchor, guardian, direct)
+                .expect("supervisor session");
+            for channel in [&session.guardian, &session.direct] {
+                channel
+                    .stream
+                    .set_read_timeout(Some(Duration::from_millis(2)))
+                    .expect("bound controller reads");
+            }
+            for stream in [&mut guardian_peer, &mut direct_peer] {
+                assert!(matches!(
+                    read_authenticated_frame::<_, SupervisorEvent>(stream, &session.identity)
+                        .expect("read registration"),
+                    Some(SupervisorEvent::Registered { .. })
+                ));
+            }
+            session.prepared = Some(prepared_test_launch(directory));
+            session.state.record_ready(anchor).expect("ready target");
+            (session, direct_peer, guardian_peer)
+        }
+
+        #[test]
+        fn supervisor_controller_readers_preserve_partial_authenticated_frames() {
+            for controller in [Controller::Guardian, Controller::Direct] {
+                for split in [2, 8] {
+                    let directory = TestDirectory::new("partial-controller-frame");
+                    let (mut session, mut direct, mut guardian) = stdio_test_session(&directory);
+                    let mut bytes = Vec::new();
+                    let peer = match controller {
+                        Controller::Guardian => {
+                            write_authenticated_frame(
+                                &mut bytes,
+                                &SupervisorGuardianCommand::go(&session.identity, session.anchor),
+                                &session.identity,
+                            )
+                            .expect("encode GO");
+                            &mut guardian
+                        }
+                        Controller::Direct => {
+                            write_authenticated_frame(
+                                &mut bytes,
+                                &SupervisorDirectCommand::commit(&session.identity, session.anchor),
+                                &session.identity,
+                            )
+                            .expect("encode commit");
+                            &mut direct
+                        }
+                    };
+                    peer.write_all(&bytes[..split])
+                        .expect("write partial frame");
+                    session
+                        .read_controller(controller)
+                        .expect("partial frame remains pending");
+                    assert!(
+                        session.state.may_install_stdio(),
+                        "partial frame must not commit ownership"
+                    );
+                    peer.write_all(&bytes[split..]).expect("complete frame");
+                    session
+                        .read_controller(controller)
+                        .expect("resume authenticated frame");
+                    assert!(
+                        !session.state.may_install_stdio(),
+                        "complete ownership frame prevents stdio replacement"
+                    );
+                }
+            }
+        }
+
+        #[test]
         fn control_stream_descriptor_is_close_on_exec() {
             let (stream, _peer) = UnixStream::pair().expect("socket pair");
             set_close_on_exec(stream.as_raw_fd()).expect("set CLOEXEC");
@@ -2083,6 +2506,293 @@ mod macos {
             let finished_at = started_at + Duration::from_millis(7);
             assert_eq!(elapsed_us(started_at, finished_at), 7_000);
             assert_eq!(elapsed_us(finished_at, started_at), 0);
+        }
+
+        #[test]
+        fn child_exec_status_decoder_rejects_wrong_record_lengths() {
+            assert!(decode_child_setup_failure(&[0; EXEC_STATUS_BYTES - 1]).is_err());
+            assert!(decode_child_setup_failure(&[0; EXEC_STATUS_BYTES + 1]).is_err());
+
+            let failure = decode_child_setup_failure(&[4, 0, 0, 0, 13, 0, 0, 0])
+                .expect("valid fixed-width child status should decode");
+            assert_eq!(failure.stage, 4);
+            assert_eq!(failure.errno, 13);
+        }
+
+        #[test]
+        fn missing_target_completion_state_returns_errors_without_panicking() {
+            let directory = TestDirectory::new("missing-target-completion");
+            let started_at = Instant::now();
+            let reaped = WaitOutcome {
+                status: ExitStatus::from_raw(0),
+                usage: unsafe { std::mem::zeroed() },
+            };
+
+            let missing_wait = test_target(&directory, None, Some(started_at), started_at);
+            assert!(target_completion(&missing_wait).is_err());
+            assert!(build_target_result(
+                "missing-wait",
+                CleanupCause::InternalError,
+                missing_wait,
+                None,
+                started_at,
+            )
+            .is_err());
+
+            let missing_finish = test_target(&directory, Some(reaped), None, started_at);
+            assert!(target_completion(&missing_finish).is_err());
+            assert!(build_target_result(
+                "missing-finish",
+                CleanupCause::InternalError,
+                missing_finish,
+                None,
+                started_at,
+            )
+            .is_err());
+
+            let missing_finish = test_target(
+                &directory,
+                Some(WaitOutcome {
+                    status: ExitStatus::from_raw(0),
+                    usage: unsafe { std::mem::zeroed() },
+                }),
+                None,
+                started_at,
+            );
+            assert_eq!(
+                classify_exited_target(&missing_finish).0,
+                Some(CleanupCause::InternalError)
+            );
+        }
+
+        #[test]
+        fn native_pipe_output_and_workspace_writes_are_combined_at_exact_limit_boundaries() {
+            let directory = TestDirectory::new("native-pipe-limits");
+            let started = Instant::now();
+            let mut target = test_target(
+                &directory,
+                Some(WaitOutcome {
+                    status: ExitStatus::from_raw(0),
+                    usage: unsafe { std::mem::zeroed() },
+                }),
+                Some(started),
+                started,
+            );
+            fs::write(&target.stdout_path, b"").expect("empty deferred stdout artifact");
+            fs::write(&target.stderr_path, b"er").expect("stderr bytes");
+            fs::write(directory.0.join("scratch.txt"), b"abc").expect("workspace bytes");
+            target.native_pipe_stdout_bytes = Some(7);
+            target.monitor_limits.output_bytes = 9;
+            target.monitor_limits.total_write_bytes = 12;
+            assert_eq!(redirected_output_bytes(&target), 9);
+            assert_eq!(
+                classify_live_target(&target).0,
+                None,
+                "output=9 and workspace+pipe=12 are exact boundaries"
+            );
+            assert_eq!(
+                classify_exited_target(&target).0,
+                Some(CleanupCause::TargetExited)
+            );
+            target.native_pipe_stdout_bytes = Some(8);
+            assert_eq!(
+                classify_live_target(&target).0,
+                Some(CleanupCause::OutputLimit)
+            );
+            assert_eq!(
+                classify_exited_target(&target).0,
+                Some(CleanupCause::OutputLimit)
+            );
+            target.monitor_limits.output_bytes = 99;
+            assert_eq!(
+                classify_live_target(&target).0,
+                Some(CleanupCause::WriteLimit),
+                "workspace5+pipe8 exceeds12"
+            );
+            assert_eq!(
+                classify_exited_target(&target).0,
+                Some(CleanupCause::WriteLimit)
+            );
+        }
+
+        #[test]
+        fn pipe_output_counter_survives_stdout_path_deletion_and_results_use_its_authenticated_snapshot(
+        ) {
+            let directory = TestDirectory::new("native-pipe-result");
+            for pipe_mode in [false, true] {
+                let started = Instant::now();
+                let mut target = test_target(
+                    &directory,
+                    Some(WaitOutcome {
+                        status: ExitStatus::from_raw(0),
+                        usage: unsafe { std::mem::zeroed() },
+                    }),
+                    Some(started),
+                    started,
+                );
+                fs::write(&target.stdout_path, b"file").expect("ordinary stdout bytes");
+                fs::write(&target.stderr_path, b"er").expect("stderr bytes");
+                target.native_pipe_stdout_bytes = pipe_mode.then_some(7);
+                assert_eq!(
+                    redirected_output_bytes(&target),
+                    if pipe_mode { 9 } else { 6 }
+                );
+                if pipe_mode {
+                    fs::remove_file(&target.stdout_path).expect("unlink visible stdout path");
+                    assert_eq!(
+                        redirected_output_bytes(&target),
+                        9,
+                        "path deletion cannot erase pipe output"
+                    );
+                }
+                let result = build_target_result(
+                    "pipe_result",
+                    CleanupCause::TargetExited,
+                    target,
+                    None,
+                    started,
+                )
+                .expect("authenticated result snapshot");
+                assert_eq!(result.stdout_bytes, if pipe_mode { 7 } else { 4 });
+                assert_eq!(result.stderr_bytes, 2);
+            }
+        }
+
+        #[test]
+        fn direct_pipe_progress_updates_only_the_started_targets_counter() {
+            let directory = TestDirectory::new("direct-pipe-progress");
+            let (mut session, _direct, _guardian) = stdio_test_session(&directory);
+            session
+                .state
+                .record_stdio_installed(session.anchor)
+                .expect("installed target stdio");
+            session
+                .state
+                .record_direct_commit(session.anchor)
+                .expect("direct commit");
+            session
+                .state
+                .record_guardian_go(session.anchor)
+                .expect("guardian GO");
+            let started = Instant::now();
+            let mut target = test_target(&directory, None, None, started);
+            target.identity = ProcessIdentity {
+                pid: 42,
+                pgid: session.anchor.pgid,
+                start_abstime: 100,
+            };
+            target.native_pipe_stdout_bytes = Some(0);
+            session
+                .state
+                .record_target_started(target.identity)
+                .expect("target started");
+            session.target = Some(target);
+            session
+                .handle_direct_command(SupervisorDirectCommand::output_progress(
+                    &session.identity,
+                    session.anchor,
+                    7,
+                ))
+                .expect("record output progress");
+            assert_eq!(
+                session
+                    .target
+                    .as_ref()
+                    .expect("target")
+                    .native_pipe_stdout_bytes,
+                Some(7)
+            );
+            let wrong = ProcessIdentity {
+                start_abstime: session.anchor.start_abstime + 1,
+                ..session.anchor
+            };
+            assert!(session
+                .handle_direct_command(SupervisorDirectCommand::output_progress(
+                    &session.identity,
+                    wrong,
+                    9
+                ))
+                .is_err());
+            assert!(session
+                .handle_direct_command(SupervisorDirectCommand::output_progress(
+                    &session.identity,
+                    session.anchor,
+                    6
+                ))
+                .is_err());
+            assert_eq!(
+                session
+                    .target
+                    .as_ref()
+                    .expect("target")
+                    .native_pipe_stdout_bytes,
+                Some(7)
+            );
+            session.state.request_cleanup(CleanupCause::TargetExited);
+            session
+                .handle_direct_command(SupervisorDirectCommand::output_progress(
+                    &session.identity,
+                    session.anchor,
+                    9,
+                ))
+                .expect("record final cleanup progress");
+            assert_eq!(
+                session
+                    .target
+                    .as_ref()
+                    .expect("target")
+                    .native_pipe_stdout_bytes,
+                Some(9)
+            );
+            session
+                .state
+                .record_prepared()
+                .expect("prepared final snapshot");
+            assert!(session
+                .handle_direct_command(SupervisorDirectCommand::output_progress(
+                    &session.identity,
+                    session.anchor,
+                    10
+                ))
+                .is_err());
+        }
+
+        fn test_target(
+            directory: &TestDirectory,
+            reaped: Option<WaitOutcome>,
+            finished_at: Option<Instant>,
+            started_at: Instant,
+        ) -> SpawnedTarget {
+            SpawnedTarget {
+                identity: ProcessIdentity {
+                    pid: 41,
+                    pgid: 41,
+                    start_abstime: 99,
+                },
+                exec_confirmed: true,
+                setup_failure: None,
+                reaped,
+                started_at,
+                finished_at,
+                security_setup_time_us: 0,
+                peak_memory_bytes: 0,
+                last_usage: GroupUsage::default(),
+                baseline_workspace_bytes: 0,
+                baseline_workspace_files: 0,
+                cwd_path: directory.0.clone(),
+                stdout_path: directory.0.join("stdout.txt"),
+                native_pipe_stdout_bytes: None,
+                stderr_path: directory.0.join("stderr.txt"),
+                monitor_limits: LauncherMonitorLimits {
+                    wall_time_ms: 10_000,
+                    memory_bytes: 256 * 1024 * 1024,
+                    process_count: 16,
+                    thread_count: 64,
+                    output_bytes: 1024 * 1024,
+                    total_write_bytes: 2 * 1024 * 1024,
+                    created_files: 64,
+                },
+            }
         }
 
         #[test]

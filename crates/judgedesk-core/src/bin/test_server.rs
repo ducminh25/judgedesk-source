@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use judgedesk_core::server::{
     start_embedded_server_with_state, AppState, DirectoryPicker, WorkbookOpener,
 };
@@ -50,9 +52,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let mock_file = std::env::var("JUDGEDESK_TEST_SELECT_DIRECTORY").ok();
 
-    let mut state = AppState::default();
-    state.directory_picker = Arc::new(TestDirectoryPicker { mock_file });
-    state.workbook_opener = Arc::new(TestWorkbookOpener);
+    let state = AppState {
+        directory_picker: Arc::new(TestDirectoryPicker { mock_file }),
+        workbook_opener: Arc::new(TestWorkbookOpener),
+        ..AppState::default()
+    };
 
     let (addr, handle) = start_embedded_server_with_state(port, state).await?;
     println!("JUDGEDESK_CORE_PORT={}", addr.port());

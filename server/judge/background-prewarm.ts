@@ -10,6 +10,16 @@ import { compileSubmission, isWindowsNativeCompilerExecutionReady } from "./comp
 import { createRunWorkspace } from "./run-workspace.js";
 import { executorClient } from "../executor/client.js";
 import { ensureUniversalCppPch } from "./universal-pch.js";
+import type { ResolvedToolchain, ToolchainKind } from "../toolchains/types.js";
+
+export function nativeCompilerKindsToPrewarm(
+  requirements: ReadonlySet<ToolchainKind>,
+): Array<Extract<ToolchainKind, "cpp" | "c">> {
+  const nativeKinds: Array<Extract<ToolchainKind, "cpp" | "c">> = ["cpp", "c"];
+  return nativeKinds.filter((kind) =>
+    requirements.has(kind),
+  );
+}
 
 const execFileAsync = promisify(execFile);
 
@@ -33,6 +43,32 @@ function findStdcxxBitsDir(packageRoot: string): string | null {
     }
   } catch {}
   return null;
+}
+
+function isPrewarmToolchainEligible(
+  kind: Extract<ToolchainKind, "cpp" | "c">,
+  toolchain: Readonly<ResolvedToolchain>,
+): boolean {
+  if (!toolchain.ready) return false;
+  if (process.platform === "win32" && !isWindowsNativeCompilerExecutionReady(toolchain)) {
+    console.warn(`[Judge Pre-warm] ${kind.toUpperCase()} toolchain is not execution ready; skipping.`);
+    return false;
+  }
+  if (toolchain.source === "managed" && process.platform === "win32" && toolchain.packageOrigin !== "built-in") {
+    try {
+      const managedRoot = path.resolve(process.env.LOCALAPPDATA || "", "ThemisV2", "toolchains");
+      const canonical = fs.realpathSync(toolchain.executablePath);
+      const rel = path.relative(managedRoot, canonical);
+      if (rel.startsWith("..") || path.isAbsolute(rel)) {
+        console.warn(`[Judge Pre-warm] Managed ${kind.toUpperCase()} toolchain is outside sandbox root; skipping.`);
+        return false;
+      }
+    } catch {
+      console.warn(`[Judge Pre-warm] Failed to resolve managed ${kind.toUpperCase()} toolchain path; skipping.`);
+      return false;
+    }
+  }
+  return true;
 }
 
 async function ensureStdcxxPch(packageRoot: string, gccPath: string): Promise<void> {
@@ -98,95 +134,102 @@ export async function executeJudgePrewarm(
   }
 
   const cpp = resolveToolchain("cpp");
-  if (!cpp.ready) {
-    console.warn("[Judge Pre-warm] C++ toolchain not ready, deferring pre-warm.");
+  const c = resolveToolchain("c");
+  if (!cpp.ready && !c.ready) {
+    console.warn("[Judge Pre-warm] No native C/C++ toolchain is ready, deferring pre-warm.");
     return { status: "deferred", reason: "CPP_TOOLCHAIN_NOT_READY" };
   }
 
-  if (process.platform === "win32" && !isWindowsNativeCompilerExecutionReady(cpp)) {
-    console.warn("[Judge Pre-warm] C++ toolchain not execution ready, deferring pre-warm.");
-    return { status: "deferred", reason: "TOOLCHAIN_NOT_SANDBOX_COMPATIBLE" };
-  }
+  const cppEligible = isPrewarmToolchainEligible("cpp", cpp);
+  const cEligible = isPrewarmToolchainEligible("c", c);
 
-  if (cpp.source === "managed" && process.platform === "win32" && cpp.packageOrigin !== "built-in") {
-    try {
-      const managedRoot = path.resolve(process.env.LOCALAPPDATA || "", "ThemisV2", "toolchains");
-      const canonical = fs.realpathSync(cpp.executablePath);
-      const rel = path.relative(managedRoot, canonical);
-      if (rel.startsWith("..") || path.isAbsolute(rel)) {
-        console.warn("[Judge Pre-warm] Managed C++ toolchain outside sandbox root, deferring pre-warm.");
-        return { status: "deferred", reason: "TOOLCHAIN_NOT_SANDBOX_COMPATIBLE" };
+  if (cppEligible) {
+    // Universal Step: Ensure bits/stdc++.h PCH is generated and cached for C++.
+    await ensurePch(cpp);
+
+    // Managed GCC package preparation also authenticates and imports the shared C entrypoint.
+    if (cpp.source === "managed") {
+      const prepared = await prepareManagedToolchainComponent(
+        "cpp",
+        cpp,
+        cpp.packageComponentId,
+        "compiler",
+      );
+
+      if (cpp.packageRoot) {
+        await ensureStdcxxPch(cpp.packageRoot, cpp.executablePath);
       }
-    } catch {
-      console.warn("[Judge Pre-warm] Failed to resolve C++ toolchain path, deferring pre-warm.");
-      return { status: "deferred", reason: "TOOLCHAIN_NOT_SANDBOX_COMPATIBLE" };
-    }
-  }
-
-  // Universal Step: Ensure bits/stdc++.h PCH is generated and cached for any ready C++ toolchain
-  await ensurePch(cpp);
-
-  // Case A: Managed GCC package (Standard on Windows)
-  if (cpp.source === "managed") {
-    const prepared = await prepareManagedToolchainComponent(
-      "cpp",
-      cpp,
-      cpp.packageComponentId,
-      "compiler",
-    );
-
-    // Ensure PCH is available in the root and destination
-    if (cpp.packageRoot) {
-      await ensureStdcxxPch(cpp.packageRoot, cpp.executablePath);
-    }
-    if (prepared.root && prepared.root !== cpp.packageRoot) {
-      const bitsDir = findStdcxxBitsDir(prepared.root);
-      if (bitsDir) {
-        const destGch = path.join(bitsDir, "stdc++.h.gch");
-        if (!fs.existsSync(destGch) && cpp.packageRoot) {
-          const srcBitsDir = findStdcxxBitsDir(cpp.packageRoot);
-          if (srcBitsDir) {
-            const srcGch = path.join(srcBitsDir, "stdc++.h.gch");
-            if (fs.existsSync(srcGch)) {
-              try {
-                fs.copyFileSync(srcGch, destGch);
-              } catch {}
+      if (prepared.root && prepared.root !== cpp.packageRoot) {
+        const bitsDir = findStdcxxBitsDir(prepared.root);
+        if (bitsDir) {
+          const destGch = path.join(bitsDir, "stdc++.h.gch");
+          if (!fs.existsSync(destGch) && cpp.packageRoot) {
+            const srcBitsDir = findStdcxxBitsDir(cpp.packageRoot);
+            if (srcBitsDir) {
+              const srcGch = path.join(srcBitsDir, "stdc++.h.gch");
+              if (fs.existsSync(srcGch)) {
+                try {
+                  fs.copyFileSync(srcGch, destGch);
+                } catch {}
+              }
             }
           }
         }
       }
     }
-  }
 
-  // Case B: Certified Local C++ (MinGW/Clang local path)
-  if (cpp.provenance === "certified-local" && cpp.certificateId && cpp.snapshotDigest) {
+    if (cpp.provenance === "certified-local" && cpp.certificateId && cpp.snapshotDigest) {
+      const workspace = createRunWorkspace();
+      try {
+        await ensureCertifiedLocalCppSessionProbe(cpp, workspace.path);
+        console.info("[Judge Pre-warm] Certified local C++ session probe ready.");
+      } finally {
+        workspace.dispose();
+      }
+    }
+
     const workspace = createRunWorkspace();
     try {
-      await ensureCertifiedLocalCppSessionProbe(cpp, workspace.path);
-      console.info("[Judge Pre-warm] Certified local C++ session probe ready.");
+      const sourcePath = path.join(workspace.path, ".prewarm_noop.cpp");
+      fs.writeFileSync(sourcePath, "int main(){return 0;}\n", "utf8");
+      const compilation = await compile({
+        language: "cpp",
+        contestantName: "system_prewarm",
+        problemName: "prewarm",
+        submissionPath: sourcePath,
+        tempDirectory: workspace.path,
+        cppToolchain: cpp,
+      });
+      console.info(
+        `[Judge Pre-warm] C++ warm-up probe completed in ${compilation.compileTime} ms (Status: ${compilation.compileStatus})`,
+      );
     } finally {
       workspace.dispose();
     }
   }
 
-  // Warm-up no-op compilation probe for all ready C++ toolchains (managed, local, or certified)
-  const workspace = createRunWorkspace();
-  try {
-    const sourcePath = path.join(workspace.path, ".prewarm_noop.cpp");
-    fs.writeFileSync(sourcePath, "int main(){return 0;}\n", "utf8");
-    const compilation = await compile({
-      language: "cpp",
-      contestantName: "system_prewarm",
-      problemName: "prewarm",
-      submissionPath: sourcePath,
-      tempDirectory: workspace.path,
-      cppToolchain: cpp,
-    });
-    console.info(
-      `[Judge Pre-warm] C++ warm-up probe completed in ${compilation.compileTime} ms (Status: ${compilation.compileStatus})`,
-    );
-  } finally {
-    workspace.dispose();
+  if (cEligible) {
+    if (c.source === "managed") {
+      await prepareManagedToolchainComponent("c", c, c.packageComponentId, "compiler");
+    }
+    const workspace = createRunWorkspace();
+    try {
+      const sourcePath = path.join(workspace.path, ".prewarm_noop.c");
+      fs.writeFileSync(sourcePath, "int main(void){return 0;}\n", "utf8");
+      const compilation = await compile({
+        language: "c",
+        contestantName: "system_prewarm",
+        problemName: "prewarm",
+        submissionPath: sourcePath,
+        tempDirectory: workspace.path,
+        cToolchain: c,
+      });
+      console.info(
+        `[Judge Pre-warm] C warm-up probe completed in ${compilation.compileTime} ms (Status: ${compilation.compileStatus})`,
+      );
+    } finally {
+      workspace.dispose();
+    }
   }
   return { status: "completed" };
 }

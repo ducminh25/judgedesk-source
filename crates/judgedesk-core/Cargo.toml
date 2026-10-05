@@ -28,3 +28,9 @@ tokio-stream = { version = "0.1", features = ["sync"] }
 axum = "0.8"
 tower-http = { version = "0.6", features = ["cors"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+[target.'cfg(windows)'.dev-dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Storage_FileSystem"] }
+
+[target.'cfg(unix)'.dev-dependencies]
+libc = "0.2"

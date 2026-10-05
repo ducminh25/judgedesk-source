@@ -45,7 +45,11 @@ import {
   type PinnedJudgeToolchains,
   type JudgeToolchainRequirements,
 } from "./toolchain-preflight.js";
-import { ensureJudgePrewarmReady } from "./background-prewarm.js";
+import {
+  ensureJudgePrewarmReady,
+  nativeCompilerKindsToPrewarm,
+} from "./background-prewarm.js";
+import type { ToolchainKind } from "../toolchains/types.js";
 
 interface JudgeSessionOptions {
   request: Partial<BatchJudgeRequest>;
@@ -129,10 +133,11 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
     }
   }
   assertJudgeToolchainPreflight(toolchainRequirements, pinnedToolchains);
-  if (
-    toolchainRequirements.submissions.has("cpp")
-    || toolchainRequirements.checkers.has("cpp")
-  ) {
+  const nativePrewarmRequirements = new Set<ToolchainKind>([
+    ...toolchainRequirements.submissions,
+    ...toolchainRequirements.checkers,
+  ]);
+  if (nativeCompilerKindsToPrewarm(nativePrewarmRequirements).length > 0) {
     sendEvent("progress", {
       contestant: "",
       problem: "",

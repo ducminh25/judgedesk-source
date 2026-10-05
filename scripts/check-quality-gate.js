@@ -167,6 +167,54 @@ function checkApiContracts() {
   }
 }
 
+// 8. Authoritative Scoring Module Boundary & Floating-Point Prohibition
+function checkScoringBoundaryGate() {
+  const checker = path.join(repoRoot, "scripts", "check-scoring-boundary.js");
+  const result = spawnSync(process.execPath, [checker], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  if (result.status !== 0) {
+    recordError("SCORING_BOUNDARY", "scripts/check-scoring-boundary.js", 1, result.stderr || result.stdout || "Scoring boundary check failed");
+  }
+}
+
+// 9. Production Rust Runtime Invariants (deny unwrap/expect in non-test paths)
+function checkRustInvariantsGate() {
+  const checker = path.join(repoRoot, "scripts", "check-rust-runtime-invariants.js");
+  const result = spawnSync(process.execPath, [checker], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  if (result.status !== 0) {
+    recordError("RUST_RUNTIME_INVARIANTS", "scripts/check-rust-runtime-invariants.js", 1, result.stderr || result.stdout || "Rust runtime invariants check failed");
+  }
+}
+
+// 10. Expected Skips Registry & Schema Invariants
+function checkExpectedSkipsGate() {
+  const checker = path.join(repoRoot, "scripts", "check-expected-skips.js");
+  const result = spawnSync(process.execPath, [checker], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  if (result.status !== 0) {
+    recordError("EXPECTED_SKIPS", "scripts/check-expected-skips.js", 1, result.stderr || result.stdout || "Expected skips validation failed");
+  }
+}
+
+// 11. Entry Point Graph & Inventory Coverage
+function checkEntryPointGraphGate() {
+  const checker = path.join(repoRoot, "scripts", "check-entry-point-graph.js");
+  const result = spawnSync(process.execPath, [checker], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  if (result.status !== 0) {
+    recordError("ENTRY_POINT_GRAPH", "scripts/check-entry-point-graph.js", 1, result.stderr || result.stdout || "Entry point graph verification failed");
+  }
+}
+
 function main() {
   const startTime = Date.now();
   console.log("[quality-gate] Running JudgeDesk architecture & quality invariant checks...");
@@ -178,6 +226,10 @@ function main() {
   checkVersionLockstep();
   checkTestInventorySync();
   checkApiContracts();
+  checkScoringBoundaryGate();
+  checkRustInvariantsGate();
+  checkExpectedSkipsGate();
+  checkEntryPointGraphGate();
 
   const elapsed = Date.now() - startTime;
 

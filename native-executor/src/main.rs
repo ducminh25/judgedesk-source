@@ -1,3 +1,5 @@
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
+
 use judgedesk_native_executor::platform::{ActiveRuns, Platform};
 use judgedesk_native_executor::protocol::{
     read_frame, write_frame, ExecutorRequest, ExecutorResponse,
@@ -10,6 +12,27 @@ use std::time::{Duration, Instant};
 
 type AcceptedRuns = Arc<Mutex<HashSet<String>>>;
 const CANCEL_DRAIN_TIMEOUT: Duration = Duration::from_secs(20);
+
+fn reserve_run_ids(accepted: &AcceptedRuns, run_ids: &[&str]) -> bool {
+    let mut reservations = accepted
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let unique: HashSet<_> = run_ids.iter().copied().collect();
+    if unique.len() != run_ids.len() || run_ids.iter().any(|id| reservations.contains(*id)) {
+        return false;
+    }
+    reservations.extend(run_ids.iter().map(|id| (*id).to_owned()));
+    true
+}
+
+fn release_run_ids(accepted: &AcceptedRuns, run_ids: &[&str]) {
+    let mut reservations = accepted
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    for run_id in run_ids {
+        reservations.remove(*run_id);
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CancelOutcome {
@@ -24,19 +47,22 @@ fn main() {
         std::process::exit(exit_code);
     }
 
-    if std::env::var("JUDGEDESK_EXECUTOR_TOKEN").is_err() {
-        eprintln!("Missing executor token");
-        std::process::exit(1);
-    }
-
     match std::env::args().nth(1).as_deref() {
         #[cfg(target_os = "macos")]
         Some("--test-process-identity") => {
-            let pid = numeric_argument(2)
-                .try_into()
-                .expect("process identity PID is outside i32");
+            let pid = match numeric_argument(2).try_into() {
+                Ok(pid) => pid,
+                Err(error) => {
+                    let _ = writeln!(io::stderr(), "process identity PID is outside i32: {error}");
+                    std::process::exit(2);
+                }
+            };
             match judgedesk_native_executor::macos_process::read_process_identity(pid) {
-                Ok(identity) => println!("{}", serde_json::to_string(&identity).unwrap()),
+                Ok(identity) => {
+                    if let Ok(json) = serde_json::to_string(&identity) {
+                        println!("{json}");
+                    }
+                }
                 Err(error) => {
                     let _ = writeln!(io::stderr(), "process identity lookup failed: {error}");
                     std::process::exit(2);
@@ -108,7 +134,13 @@ fn main() {
         }
         Some("--test-spawn-child") => {
             let mut arguments = std::env::args_os().skip(2);
-            let executable = arguments.next().expect("missing child executable");
+            let executable = match arguments.next() {
+                Some(executable) => executable,
+                None => {
+                    let _ = writeln!(io::stderr(), "missing child executable");
+                    std::process::exit(2);
+                }
+            };
             match std::process::Command::new(executable)
                 .args(arguments)
                 .status()
@@ -131,17 +163,71 @@ fn main() {
         }
         Some("--test-write") => {
             let arguments: Vec<_> = std::env::args_os().collect();
-            let path = arguments.get(2).expect("missing output path");
-            let bytes = arguments
+            let path = match arguments.get(2) {
+                Some(path) => path,
+                None => {
+                    let _ = writeln!(io::stderr(), "missing output path");
+                    std::process::exit(2);
+                }
+            };
+            let bytes = match arguments
                 .get(3)
                 .and_then(|value| value.to_str())
                 .and_then(|value| value.parse::<usize>().ok())
-                .expect("invalid byte count");
-            std::fs::write(path, vec![0_u8; bytes]).expect("write test output");
+            {
+                Some(bytes) => bytes,
+                None => {
+                    let _ = writeln!(io::stderr(), "invalid byte count");
+                    std::process::exit(2);
+                }
+            };
+            if let Err(error) = std::fs::write(path, vec![0_u8; bytes]) {
+                let _ = writeln!(io::stderr(), "write test output: {error}");
+                std::process::exit(2);
+            }
             return;
         }
         Some("--test-file-network-probe") => {
             test_file_network_probe();
+            return;
+        }
+        Some("--test-mock-health-version") => {
+            let ver = std::env::args().nth(2).unwrap_or_else(|| "1.4.0".into());
+            run_mock_health(true, &ver, true, true, true, true);
+            return;
+        }
+        Some("--test-mock-health-unready") => {
+            run_mock_health(
+                false,
+                judgedesk_native_executor::protocol::EXECUTOR_VERSION,
+                true,
+                true,
+                true,
+                true,
+            );
+            return;
+        }
+        Some("--test-mock-health-insecure") => {
+            run_mock_health(
+                true,
+                judgedesk_native_executor::protocol::EXECUTOR_VERSION,
+                false,
+                true,
+                true,
+                true,
+            );
+            return;
+        }
+        Some("--test-mock-malformed-response") => {
+            run_mock_malformed();
+            return;
+        }
+        Some("--test-mock-unknown-id") => {
+            run_mock_unknown_id();
+            return;
+        }
+        Some("--test-mock-health-then-unknown-drain") => {
+            run_mock_health_then_unknown_drain();
             return;
         }
         _ => {}
@@ -156,18 +242,22 @@ fn numeric_argument(index: usize) -> u64 {
     std::env::args()
         .nth(index)
         .and_then(|value| value.parse::<u64>().ok())
-        .unwrap_or_else(|| panic!("missing or invalid numeric argument at index {index}"))
+        .unwrap_or(0)
 }
 
 fn test_file_network_probe() {
     use std::net::{SocketAddr, TcpStream};
 
-    let sentinel = std::env::args_os()
-        .nth(2)
-        .expect("missing private sentinel path");
+    let sentinel = match std::env::args_os().nth(2) {
+        Some(sentinel) => sentinel,
+        None => {
+            let _ = writeln!(io::stderr(), "missing private sentinel path");
+            return;
+        }
+    };
     let read_blocked = std::fs::read(&sentinel).is_err();
     let write_blocked = std::fs::write(&sentinel, b"OVERWRITTEN").is_err();
-    let address: SocketAddr = "127.0.0.1:9".parse().unwrap();
+    let address = SocketAddr::from(([127, 0, 0, 1], 9));
     let network_blocked = std::panic::catch_unwind(|| {
         let network_error = TcpStream::connect_timeout(&address, Duration::from_millis(500)).err();
         network_error.as_ref().is_some_and(|error| {
@@ -186,9 +276,129 @@ fn test_file_network_probe() {
     );
 }
 
+fn run_mock_health(
+    ready: bool,
+    version: &str,
+    network_blocked: bool,
+    filesystem_isolated: bool,
+    process_tree_controlled: bool,
+    memory_limit_supported: bool,
+) {
+    use judgedesk_native_executor::protocol::{write_frame, ExecutorHealth};
+    let mut reader = io::stdin();
+    if let Ok(Some(frame)) = read_frame(&mut reader) {
+        if let Ok(ExecutorRequest::Health { id }) = serde_json::from_slice(&frame) {
+            let resp = ExecutorResponse::Health {
+                id,
+                health: ExecutorHealth {
+                    ready,
+                    mode: "sandbox".into(),
+                    executor_version: version.into(),
+                    executor_root: std::env::temp_dir().to_string_lossy().to_string(),
+                    diagnostics: if ready {
+                        vec![]
+                    } else {
+                        vec!["mock unready".into()]
+                    },
+                    network_blocked,
+                    filesystem_isolated,
+                    process_tree_controlled,
+                    memory_limit_supported,
+                    startup_timings: None,
+                },
+            };
+            let mut writer = io::stdout();
+            let _ = write_frame(&mut writer, &resp);
+        }
+    }
+}
+
+fn run_mock_malformed() {
+    let mut reader = io::stdin();
+    if let Ok(Some(_)) = read_frame(&mut reader) {
+        let mut writer = io::stdout();
+        let bad = b"not a json object";
+        let _ = writer.write_all(&(bad.len() as u32).to_le_bytes());
+        let _ = writer.write_all(bad);
+        let _ = writer.flush();
+    }
+}
+
+fn run_mock_unknown_id() {
+    use judgedesk_native_executor::protocol::{write_frame, ExecutorHealth};
+    let mut reader = io::stdin();
+    if let Ok(Some(_)) = read_frame(&mut reader) {
+        let resp = ExecutorResponse::Health {
+            id: "wrong-correlation-id-999".into(),
+            health: ExecutorHealth {
+                ready: true,
+                mode: "sandbox".into(),
+                executor_version: judgedesk_native_executor::protocol::EXECUTOR_VERSION.into(),
+                executor_root: std::env::temp_dir().to_string_lossy().to_string(),
+                diagnostics: vec![],
+                network_blocked: true,
+                filesystem_isolated: true,
+                process_tree_controlled: true,
+                memory_limit_supported: true,
+                startup_timings: None,
+            },
+        };
+        let mut writer = io::stdout();
+        let _ = write_frame(&mut writer, &resp);
+    }
+}
+
+fn run_mock_health_then_unknown_drain() {
+    use judgedesk_native_executor::protocol::{write_frame, ExecutorHealth};
+
+    let mut reader = io::stdin();
+    let Ok(Some(frame)) = read_frame(&mut reader) else {
+        return;
+    };
+    let Ok(ExecutorRequest::Health { id }) = serde_json::from_slice(&frame) else {
+        return;
+    };
+    let health = ExecutorHealth {
+        ready: true,
+        mode: "sandbox".into(),
+        executor_version: judgedesk_native_executor::protocol::EXECUTOR_VERSION.into(),
+        executor_root: std::env::temp_dir().to_string_lossy().to_string(),
+        diagnostics: vec![],
+        network_blocked: true,
+        filesystem_isolated: true,
+        process_tree_controlled: true,
+        memory_limit_supported: true,
+        startup_timings: None,
+    };
+    let mut writer = io::stdout();
+    let _ = write_frame(
+        &mut writer,
+        &ExecutorResponse::Health {
+            id,
+            health: health.clone(),
+        },
+    );
+    let _ = write_frame(
+        &mut writer,
+        &ExecutorResponse::Health {
+            id: "wrong-correlation-id-after-health".into(),
+            health,
+        },
+    );
+
+    while matches!(read_frame(&mut reader), Ok(Some(_))) {}
+    std::thread::sleep(Duration::from_millis(250));
+}
+
 #[cfg(not(target_os = "macos"))]
 fn test_process_bomb(count: usize, hold_ms: u64) {
-    let executable = std::env::current_exe().expect("locate process-bomb helper");
+    let executable = match std::env::current_exe() {
+        Ok(exe) => exe,
+        Err(error) => {
+            let _ = writeln!(io::stderr(), "locate process-bomb helper: {error}");
+            return;
+        }
+    };
     let mut children = Vec::with_capacity(count.min(64));
     for _ in 0..count {
         match std::process::Command::new(&executable)
@@ -272,7 +482,7 @@ fn wait_for_macos_probe_child(child: libc::pid_t) -> Result<i32, String> {
 }
 
 fn run() -> Result<(), String> {
-    let _tree_guard = judgedesk_native_executor::tree_guard::acquire_from_environment()?;
+    let _tree_guard = judgedesk_native_executor::tree_guard::acquire_executor_from_environment()?;
     let platform = Arc::new(Platform::initialize());
     let active: ActiveRuns = Arc::new(Mutex::new(HashMap::new()));
     let accepted_runs: AcceptedRuns = Arc::new(Mutex::new(HashSet::new()));
@@ -306,7 +516,7 @@ fn serve_requests(
                         message: error.to_string(),
                     },
                 )?;
-                continue;
+                return Err(format!("malformed or unknown executor request: {error}"));
             }
         };
         match request {
@@ -345,7 +555,11 @@ fn serve_requests(
                         continue;
                     }
                 };
-                if !accepted_runs.lock().unwrap().insert(spec.run_id.clone()) {
+                if !accepted_runs
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                    .insert(spec.run_id.clone())
+                {
                     send(
                         writer,
                         ExecutorResponse::Error {
@@ -408,7 +622,12 @@ fn serve_requests(
                     )?;
                     continue;
                 }
-                if !accepted_runs.lock().unwrap().insert(spec.run_id.clone()) {
+                let reserved_ids = [
+                    spec.run_id.clone(),
+                    spec.submission.run_id.clone(),
+                    spec.interactor.run_id.clone(),
+                ];
+                if !reserve_run_ids(accepted_runs, &reserved_ids.each_ref().map(String::as_str)) {
                     send(
                         writer,
                         ExecutorResponse::Error {
@@ -426,6 +645,7 @@ fn serve_requests(
                 let run_id = spec.run_id.clone();
                 let worker_run_id = run_id.clone();
                 let worker_id = id.clone();
+                let worker_reserved_ids = reserved_ids.clone();
                 if let Err(error) = std::thread::Builder::new()
                     .name(format!("judgedesk-interactive-{worker_run_id}"))
                     .spawn(move || {
@@ -437,16 +657,13 @@ fn serve_requests(
                                 result: Box::new(result),
                             },
                         );
-                        worker_accepted_runs
-                            .lock()
-                            .unwrap_or_else(|poisoned| poisoned.into_inner())
-                            .remove(&worker_run_id);
+                        release_run_ids(
+                            &worker_accepted_runs,
+                            &worker_reserved_ids.each_ref().map(String::as_str),
+                        );
                     })
                 {
-                    accepted_runs
-                        .lock()
-                        .unwrap_or_else(|poisoned| poisoned.into_inner())
-                        .remove(&run_id);
+                    release_run_ids(accepted_runs, &reserved_ids.each_ref().map(String::as_str));
                     send(
                         writer,
                         ExecutorResponse::Error {
@@ -697,5 +914,53 @@ mod tests {
             cancel_and_wait_for_run(&active, &accepted, "stuck", Duration::ZERO),
             CancelOutcome::TimedOut,
         );
+    }
+
+    #[test]
+    fn poisoned_mutex_synchronization_does_not_panic() {
+        let active: ActiveRuns = Arc::new(Mutex::new(HashMap::new()));
+        let accepted: AcceptedRuns = Arc::new(Mutex::new(HashSet::new()));
+
+        // Intentionally poison both mutexes by panicking inside a thread holding the lock
+        let poison_active = Arc::clone(&active);
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = poison_active.lock().unwrap();
+            panic!("intentional poison active");
+        }));
+        assert!(active.is_poisoned());
+
+        let poison_accepted = Arc::clone(&accepted);
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _guard = poison_accepted.lock().unwrap();
+            panic!("intentional poison accepted");
+        }));
+        assert!(accepted.is_poisoned());
+
+        // Now verify drain_runs handles poisoned mutexes without panic
+        drain_runs(&active, &accepted);
+
+        // Verify cancel_and_wait_for_run handles poisoned mutexes without panic
+        let outcome = cancel_and_wait_for_run(&active, &accepted, "nonexistent", Duration::ZERO);
+        assert_eq!(outcome, CancelOutcome::NotFound);
+
+        // Verify insertion into accepted_runs succeeds even when poisoned
+        let mut guard = accepted.lock().unwrap_or_else(|p| p.into_inner());
+        assert!(guard.insert("recovered".into()));
+    }
+
+    #[test]
+    fn interactive_reservation_is_atomic_and_protects_participant_ids() {
+        let accepted: AcceptedRuns = Arc::new(Mutex::new(HashSet::from(["busy".into()])));
+        assert!(!reserve_run_ids(&accepted, &["pair", "submission", "busy"]));
+        assert_eq!(*accepted.lock().unwrap(), HashSet::from(["busy".into()]));
+        assert!(!reserve_run_ids(&accepted, &["duplicate", "duplicate"]));
+        assert!(reserve_run_ids(
+            &accepted,
+            &["pair", "submission", "interactor"]
+        ));
+        assert!(!reserve_run_ids(&accepted, &["submission"]));
+        release_run_ids(&accepted, &["pair", "submission", "interactor"]);
+        assert!(reserve_run_ids(&accepted, &["submission"]));
+        assert!(accepted.lock().unwrap().contains("busy"));
     }
 }

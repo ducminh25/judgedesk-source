@@ -216,3 +216,535 @@ fn test_custom_checkers_and_interactors_order() {
         vec!["interactor.cpp", "interactor2.py"]
     );
 }
+
+#[test]
+fn test_flat_test_discovery_in_single_folder() {
+    let temp = TempDir::new("flat_discovery_test");
+    let root = &temp.0;
+
+    File::create(root.join("1.inp"))
+        .unwrap()
+        .write_all(b"10")
+        .unwrap();
+    File::create(root.join("1.out"))
+        .unwrap()
+        .write_all(b"20")
+        .unwrap();
+    File::create(root.join("2.INP"))
+        .unwrap()
+        .write_all(b"30")
+        .unwrap();
+    File::create(root.join("2.OUT"))
+        .unwrap()
+        .write_all(b"40")
+        .unwrap();
+    File::create(root.join("10.inp"))
+        .unwrap()
+        .write_all(b"50")
+        .unwrap();
+    File::create(root.join("10.out"))
+        .unwrap()
+        .write_all(b"60")
+        .unwrap();
+    File::create(root.join("case-a.in"))
+        .unwrap()
+        .write_all(b"70")
+        .unwrap();
+    File::create(root.join("case-a.ans"))
+        .unwrap()
+        .write_all(b"80")
+        .unwrap();
+    File::create(root.join("incomplete.inp"))
+        .unwrap()
+        .write_all(b"90")
+        .unwrap();
+    File::create(root.join("orphan.out"))
+        .unwrap()
+        .write_all(b"100")
+        .unwrap();
+    File::create(root.join("solution.cpp"))
+        .unwrap()
+        .write_all(b"int main(){}")
+        .unwrap();
+    File::create(root.join("Config.cfg"))
+        .unwrap()
+        .write_all(b"{}")
+        .unwrap();
+
+    assert_eq!(
+        list_test_directories(root, false),
+        vec![
+            "1".to_string(),
+            "2".to_string(),
+            "10".to_string(),
+            "case-a".to_string()
+        ]
+    );
+
+    let discovered = discover_test_cases(root, false);
+    assert_eq!(discovered.len(), 4);
+    assert_eq!(discovered[0].name, "1");
+    assert_eq!(discovered[0].input_path, root.join("1.inp"));
+    assert_eq!(discovered[0].output_path, root.join("1.out"));
+    assert_eq!(discovered[0].input_file_name, "1.inp");
+
+    assert_eq!(discovered[1].name, "2");
+    assert_eq!(discovered[1].input_path, root.join("2.INP"));
+    assert_eq!(discovered[1].output_path, root.join("2.OUT"));
+    assert_eq!(discovered[1].input_file_name, "2.INP");
+
+    assert_eq!(discovered[2].name, "10");
+    assert_eq!(discovered[2].input_file_name, "10.inp");
+
+    assert_eq!(discovered[3].name, "case-a");
+    assert_eq!(discovered[3].input_file_name, "case-a.in");
+    assert_eq!(discovered[3].output_path, root.join("case-a.ans"));
+
+    let resolved_one = testcase::resolve_test_case_files(root, "1", false).unwrap();
+    assert_eq!(resolved_one.name, "1");
+    assert_eq!(resolved_one.input_file_name, "1.inp");
+    assert_eq!(resolved_one.output_path, root.join("1.out"));
+
+    assert_eq!(
+        testcase::resolve_test_case_files(root, "incomplete", false),
+        None
+    );
+    assert_eq!(
+        testcase::resolve_test_case_files(root, "orphan", false),
+        None
+    );
+    assert_eq!(
+        testcase::resolve_test_case_files(root, "solution", false),
+        None
+    );
+}
+
+#[test]
+fn test_flat_test_discovery_interactive_allows_input_only() {
+    let temp = TempDir::new("flat_interactive_test");
+    let root = &temp.0;
+
+    File::create(root.join("1.inp"))
+        .unwrap()
+        .write_all(b"42")
+        .unwrap();
+    File::create(root.join("2.in"))
+        .unwrap()
+        .write_all(b"99")
+        .unwrap();
+
+    assert_eq!(discover_test_cases(root, false).len(), 0);
+
+    let interactive_tests = discover_test_cases(root, true);
+    assert_eq!(interactive_tests.len(), 2);
+    assert_eq!(interactive_tests[0].name, "1");
+    assert_eq!(interactive_tests[0].output_path.to_string_lossy(), "");
+    assert_eq!(interactive_tests[1].name, "2");
+    assert_eq!(interactive_tests[1].output_path.to_string_lossy(), "");
+
+    let resolved_interactive = testcase::resolve_test_case_files(root, "1", true).unwrap();
+    assert_eq!(resolved_interactive.name, "1");
+    assert_eq!(resolved_interactive.output_path.to_string_lossy(), "");
+}
+
+#[test]
+fn test_discovery_prefers_directory_tests_when_themis_structure_present() {
+    let temp = TempDir::new("themis_precedence_test");
+    let root = &temp.0;
+
+    for dir_name in ["Test01", "Test02"] {
+        let dir = root.join(dir_name);
+        fs::create_dir_all(&dir).unwrap();
+        File::create(dir.join("BAI1.INP"))
+            .unwrap()
+            .write_all(b"1")
+            .unwrap();
+        File::create(dir.join("BAI1.OUT"))
+            .unwrap()
+            .write_all(b"2")
+            .unwrap();
+    }
+
+    File::create(root.join("BAI1.INP"))
+        .unwrap()
+        .write_all(b"sample")
+        .unwrap();
+    File::create(root.join("BAI1.OUT"))
+        .unwrap()
+        .write_all(b"sample")
+        .unwrap();
+
+    assert_eq!(
+        list_test_directories(root, false),
+        vec!["Test01".to_string(), "Test02".to_string()]
+    );
+    let discovered = discover_test_cases(root, false);
+    assert_eq!(discovered.len(), 2);
+    assert_eq!(discovered[0].name, "Test01");
+    assert_eq!(discovered[1].name, "Test02");
+}
+
+#[test]
+fn test_create_problem_directory_resolver_matches_self() {
+    let temp = TempDir::new("single_problem_test");
+    let root = &temp.0;
+    let sum_dir = root.join("SUM");
+    fs::create_dir_all(&sum_dir).unwrap();
+    File::create(sum_dir.join("1.inp"))
+        .unwrap()
+        .write_all(b"1")
+        .unwrap();
+    File::create(sum_dir.join("1.out"))
+        .unwrap()
+        .write_all(b"2")
+        .unwrap();
+
+    let resolver = create_problem_directory_resolver(&sum_dir);
+    let resolved = resolver("sum");
+    assert!(resolved.is_some());
+    let p = resolved.unwrap();
+    assert_eq!(p.name, "SUM");
+    assert_eq!(p.path, sum_dir);
+}
+
+#[test]
+fn test_directory_tests_take_precedence_over_more_flat_pairs() {
+    let temp = TempDir::new("themis_more_flat_samples_test");
+    let root = &temp.0;
+    let test_dir = root.join("test1");
+    fs::create_dir_all(&test_dir).unwrap();
+    File::create(test_dir.join("SUM.inp")).unwrap();
+    File::create(test_dir.join("SUM.out")).unwrap();
+    for stem in ["test1", "test2"] {
+        File::create(root.join(format!("{stem}.inp"))).unwrap();
+        File::create(root.join(format!("{stem}.out"))).unwrap();
+    }
+
+    let discovered = discover_test_cases(root, false);
+    assert_eq!(discovered.len(), 1);
+    assert_eq!(discovered[0].directory, test_dir);
+    assert_eq!(
+        testcase::resolve_test_case_files(root, "test1", false),
+        Some(discovered[0].clone())
+    );
+}
+
+#[test]
+fn test_resolver_does_not_return_flat_cases_omitted_by_directory_layout() {
+    let temp = TempDir::new("themis_resolve_selected_test");
+    let root = &temp.0;
+    let test_dir = root.join("Test01");
+    fs::create_dir_all(&test_dir).unwrap();
+    File::create(test_dir.join("SUM.inp")).unwrap();
+    File::create(test_dir.join("SUM.out")).unwrap();
+    File::create(root.join("sample.inp")).unwrap();
+    File::create(root.join("sample.out")).unwrap();
+
+    assert_eq!(list_test_directories(root, false), vec!["Test01"]);
+    assert_eq!(
+        testcase::resolve_test_case_files(root, "sample", false),
+        None
+    );
+}
+
+#[test]
+fn test_problem_directory_resolver_rejects_files_missing_paths_and_containers() {
+    let temp = TempDir::new("problem_resolver_validation_test");
+    let root = &temp.0;
+    File::create(root.join("FILE")).unwrap();
+    let sum_dir = root.join("SUM");
+    fs::create_dir_all(&sum_dir).unwrap();
+    File::create(sum_dir.join("test1.inp")).unwrap();
+    File::create(sum_dir.join("test1.out")).unwrap();
+
+    let resolver = create_problem_directory_resolver(root);
+    assert_eq!(resolver("FILE"), None);
+    assert_eq!(resolver(root.file_name().unwrap().to_str().unwrap()), None);
+    assert_eq!(resolver("sum").unwrap().path, sum_dir);
+
+    let missing = root.join("MISSING");
+    let missing_resolver = create_problem_directory_resolver(&missing);
+    assert_eq!(missing_resolver("missing"), None);
+}
+
+#[test]
+fn test_flat_extension_preference_and_resolver_consistency() {
+    let temp = TempDir::new("flat_extension_preference_test");
+    let root = &temp.0;
+    for file in ["test1.in", "test1.inp", "test1.ans", "test1.out"] {
+        File::create(root.join(file)).unwrap();
+    }
+
+    let discovered = discover_test_cases(root, false);
+    assert_eq!(discovered.len(), 1);
+    assert_eq!(discovered[0].input_path, root.join("test1.inp"));
+    assert_eq!(discovered[0].output_path, root.join("test1.out"));
+    assert_eq!(
+        testcase::resolve_test_case_files(root, "TEST1", false),
+        Some(discovered[0].clone())
+    );
+}
+
+#[test]
+fn test_flat_natural_sort_has_deterministic_name_tiebreaker() {
+    let temp = TempDir::new("flat_natural_sort_tie_test");
+    let root = &temp.0;
+    for stem in ["1", "01", "001"] {
+        File::create(root.join(format!("{stem}.inp"))).unwrap();
+        File::create(root.join(format!("{stem}.out"))).unwrap();
+    }
+
+    for _ in 0..32 {
+        assert_eq!(list_test_directories(root, false), vec!["001", "01", "1"]);
+    }
+}
+
+#[test]
+fn test_flat_directory_detection_includes_interactive_inputs_and_ignores_helpers() {
+    let temp = TempDir::new("flat_directory_detection_test");
+    let root = &temp.0;
+    let sum_dir = root.join("SUM");
+    fs::create_dir_all(sum_dir.join("__pycache__")).unwrap();
+    File::create(sum_dir.join("test1.in")).unwrap();
+
+    assert!(testcase::is_flat_test_directory(&sum_dir));
+    assert!(!testcase::is_flat_test_directory(root));
+    assert!(!testcase::is_flat_test_directory(root.join("missing")));
+    let resolver = create_problem_directory_resolver(&sum_dir);
+    assert_eq!(resolver("sum").unwrap().path, sum_dir);
+
+    let themis_dir = sum_dir.join("Test01");
+    fs::create_dir_all(&themis_dir).unwrap();
+    File::create(themis_dir.join("SUM.inp")).unwrap();
+    assert!(!testcase::is_flat_test_directory(&sum_dir));
+}
+
+#[test]
+fn test_flat_directory_detection_accepts_complete_pairs_with_input_only_helpers() {
+    let temp = TempDir::new("flat_directory_input_helper_test");
+    let root = &temp.0;
+    let sum_dir = root.join("SUM");
+    fs::create_dir_all(sum_dir.join("examples")).unwrap();
+    File::create(sum_dir.join("test1.inp")).unwrap();
+    File::create(sum_dir.join("test1.out")).unwrap();
+    File::create(sum_dir.join("examples").join("example.in")).unwrap();
+
+    assert!(testcase::is_flat_test_directory(&sum_dir));
+    assert_eq!(
+        create_problem_directory_resolver(&sum_dir)("sum")
+            .unwrap()
+            .path,
+        sum_dir
+    );
+    assert_eq!(
+        testcase::resolve_problem_directory_path(sum_dir.join("SUM")),
+        sum_dir
+    );
+}
+
+#[test]
+fn test_synthetic_problem_path_resolves_only_repeated_flat_directory_name() {
+    let temp = TempDir::new("synthetic_problem_path_test");
+    let root = &temp.0;
+    let sum_dir = root.join("SUM");
+    fs::create_dir_all(&sum_dir).unwrap();
+    File::create(sum_dir.join("test1.inp")).unwrap();
+    File::create(sum_dir.join("test1.out")).unwrap();
+
+    assert_eq!(
+        testcase::resolve_problem_directory_path(sum_dir.join("sum")),
+        sum_dir
+    );
+    let unrelated = sum_dir.join("OTHER");
+    assert_eq!(
+        testcase::resolve_problem_directory_path(&unrelated),
+        unrelated
+    );
+
+    let container_alias = root.join(root.file_name().unwrap());
+    assert_eq!(
+        testcase::resolve_problem_directory_path(&container_alias),
+        container_alias
+    );
+    let missing = root.join("MISSING").join("MISSING");
+    assert_eq!(testcase::resolve_problem_directory_path(&missing), missing);
+
+    let existing = sum_dir.join("SUM");
+    fs::create_dir_all(&existing).unwrap();
+    assert_eq!(testcase::resolve_problem_directory_path(&existing), sum_dir);
+    File::create(existing.join("SUM.inp")).unwrap();
+    File::create(existing.join("SUM.out")).unwrap();
+    assert_eq!(
+        testcase::resolve_problem_directory_path(&existing),
+        existing
+    );
+}
+
+#[test]
+fn test_direct_flat_root_resolver_ignores_same_name_auxiliary_directory() {
+    let temp = TempDir::new("flat_root_same_name_helper_test");
+    let root = temp.0.join("SUM");
+    fs::create_dir_all(root.join("SUM").join("docs")).unwrap();
+    File::create(root.join("test1.inp")).unwrap();
+    File::create(root.join("test1.out")).unwrap();
+
+    assert_eq!(
+        create_problem_directory_resolver(&root)("sum")
+            .unwrap()
+            .path,
+        root
+    );
+    assert_eq!(
+        testcase::resolve_problem_directory_path(root.join("SUM")),
+        root
+    );
+
+    File::create(root.join("SUM").join("SUM.inp")).unwrap();
+    File::create(root.join("SUM").join("SUM.out")).unwrap();
+    assert_eq!(
+        create_problem_directory_resolver(&root)("sum")
+            .unwrap()
+            .path,
+        root.join("SUM")
+    );
+}
+
+#[test]
+fn test_synthetic_problem_path_maps_existing_same_name_compiled_binary() {
+    let temp = TempDir::new("flat_root_same_name_file_test");
+    let root = temp.0.join("SUM");
+    fs::create_dir_all(&root).unwrap();
+    File::create(root.join("test1.inp")).unwrap();
+    File::create(root.join("test1.out")).unwrap();
+    let file = root.join("SUM");
+    File::create(&file).unwrap();
+
+    assert_eq!(testcase::resolve_problem_directory_path(&file), root);
+}
+
+#[test]
+fn test_flat_root_samples_do_not_hide_nested_themis_problem() {
+    let temp = TempDir::new("flat_samples_nested_problem_test");
+    let root = temp.0.join("SUM");
+    let problem = root.join("SUM");
+    let test_dir = problem.join("Test01");
+    fs::create_dir_all(&test_dir).unwrap();
+    File::create(test_dir.join("data.inp")).unwrap();
+    File::create(test_dir.join("data.out")).unwrap();
+    File::create(root.join("sample.inp")).unwrap();
+    File::create(root.join("sample.out")).unwrap();
+
+    assert!(!testcase::is_flat_test_directory(&root));
+    assert_eq!(
+        create_problem_directory_resolver(&root)("sum")
+            .unwrap()
+            .path,
+        problem
+    );
+    assert_eq!(testcase::resolve_problem_directory_path(&problem), problem);
+}
+
+#[test]
+fn test_flat_root_samples_do_not_hide_same_name_interactive_problem() {
+    let temp = TempDir::new("flat_samples_interactive_problem_test");
+    let root = temp.0.join("SUM");
+    let problem = root.join("SUM");
+    fs::create_dir_all(&problem).unwrap();
+    File::create(problem.join("1.in")).unwrap();
+    File::create(root.join("sample.inp")).unwrap();
+    File::create(root.join("sample.out")).unwrap();
+
+    assert!(!testcase::is_flat_test_directory(&root));
+    assert_eq!(
+        create_problem_directory_resolver(&root)("sum")
+            .unwrap()
+            .path,
+        problem
+    );
+    assert_eq!(testcase::resolve_problem_directory_path(&problem), problem);
+}
+
+#[test]
+fn test_flat_root_samples_do_not_hide_differently_named_nested_problem() {
+    let temp = TempDir::new("flat_samples_other_nested_problem_test");
+    let root = temp.0.join("contest");
+    let test_dir = root.join("SUM").join("Test01");
+    fs::create_dir_all(&test_dir).unwrap();
+    File::create(test_dir.join("data.inp")).unwrap();
+    File::create(test_dir.join("data.out")).unwrap();
+    File::create(root.join("sample.inp")).unwrap();
+    File::create(root.join("sample.out")).unwrap();
+
+    assert!(!testcase::is_flat_test_directory(&root));
+    assert_eq!(create_problem_directory_resolver(&root)("contest"), None);
+}
+
+#[test]
+fn test_flat_root_accepts_nested_input_only_generator_examples_without_config() {
+    let temp = TempDir::new("flat_nested_input_only_generator_test");
+    let root = temp.0.join("SUM");
+    fs::create_dir_all(root.join("generator").join("examples")).unwrap();
+    File::create(root.join("generator").join("examples").join("example.in")).unwrap();
+    File::create(root.join("test1.inp")).unwrap();
+    File::create(root.join("test1.out")).unwrap();
+
+    assert!(testcase::is_flat_test_directory(&root));
+    assert_eq!(
+        create_problem_directory_resolver(&root)("sum")
+            .unwrap()
+            .path,
+        root
+    );
+}
+
+#[test]
+fn test_nested_child_mode_prefers_config_cfg_over_config_json() {
+    let temp = TempDir::new("flat_nested_child_config_precedence_test");
+    let root = temp.0.join("SUM");
+    let generator = root.join("generator");
+    fs::create_dir_all(generator.join("examples")).unwrap();
+    File::create(generator.join("examples").join("example.in")).unwrap();
+    File::create(root.join("test1.inp")).unwrap();
+    File::create(root.join("test1.out")).unwrap();
+    fs::write(generator.join("Config.cfg"), r#"{"isInteractive":false}"#).unwrap();
+    fs::write(generator.join("config.json"), r#"{"isInteractive":true}"#).unwrap();
+
+    assert!(testcase::is_flat_test_directory(&root));
+    fs::write(generator.join("Config.cfg"), "invalid config").unwrap();
+    assert!(testcase::is_flat_test_directory(&root));
+}
+
+#[test]
+fn test_flat_root_samples_do_not_hide_configured_nested_interactive_problem() {
+    let temp = TempDir::new("flat_nested_configured_interactive_problem_test");
+    let root = temp.0.join("contest");
+    let problem = root.join("SUM");
+    fs::create_dir_all(problem.join("Test01")).unwrap();
+    File::create(problem.join("Test01").join("data.in")).unwrap();
+    fs::write(problem.join("config.json"), r#"{"isInteractive":true}"#).unwrap();
+    File::create(root.join("sample.inp")).unwrap();
+    File::create(root.join("sample.out")).unwrap();
+
+    assert!(!testcase::is_flat_test_directory(&root));
+    assert_eq!(create_problem_directory_resolver(&root)("contest"), None);
+    assert_eq!(
+        create_problem_directory_resolver(&root)("sum")
+            .unwrap()
+            .path,
+        problem
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn test_synthetic_problem_path_preserves_dangling_same_name_symlink() {
+    let temp = TempDir::new("flat_root_same_name_symlink_test");
+    let root = temp.0.join("SUM");
+    fs::create_dir_all(&root).unwrap();
+    File::create(root.join("test1.inp")).unwrap();
+    File::create(root.join("test1.out")).unwrap();
+    let link = root.join("SUM");
+    std::os::unix::fs::symlink(root.join("missing"), &link).unwrap();
+
+    assert_eq!(testcase::resolve_problem_directory_path(&link), link);
+}

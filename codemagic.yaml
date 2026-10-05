@@ -49,8 +49,10 @@ workflows:
           "$selected_compiler" --version
           source_epoch="$(git show -s --format=%ct "${CM_COMMIT:-HEAD}")"
           {
-            echo "JUDGEDESK_GIT_COMMIT=${CM_COMMIT:-unknown}"
-            echo "JUDGEDESK_BUILD_NUMBER=${BUILD_NUMBER:-unknown}"
+            echo "JUDGEDESK_APP_VERSION=$(node -p "require('./package.json').version")"
+            echo "JUDGEDESK_GIT_COMMIT=$(git rev-parse HEAD)"
+            echo "JUDGEDESK_BUILD_SOURCE_STATE=$(if [[ -n "$(git status --porcelain --untracked-files=normal)" ]]; then echo dirty; else echo clean; fi)"
+            echo "JUDGEDESK_BUILD_NUMBER=${BUILD_NUMBER:?Missing CodeMagic build number}"
             echo "SOURCE_DATE_EPOCH=$source_epoch"
           } >> "$CM_ENV"
       - name: Install and verify source
@@ -71,6 +73,8 @@ workflows:
       - name: Build and smoke-test the Apple Silicon sidecar
         script: |
           set -euo pipefail
+          echo "JUDGEDESK_BUILD_MODE=packaged" >> "$CM_ENV"
+          export JUDGEDESK_BUILD_MODE=packaged
           bash scripts/build-macos-arm64-sidecar.sh
       - name: Test the Tauri shell with staged Apple Silicon sidecars
         script: |
@@ -87,7 +91,7 @@ workflows:
           rm -rf src-tauri/target/aarch64-apple-darwin/release/bundle
           npx tauri build \
             --config src-tauri/tauri.macos.core.conf.json \
-            --target aarch64-apple-darwin
+            --target aarch64-apple-darwin -- --locked
       - name: Verify and stage macOS Core artifact
         script: |
           set -euo pipefail
@@ -104,7 +108,7 @@ workflows:
           rm -rf src-tauri/target/aarch64-apple-darwin/release/bundle
           npx tauri build \
             --config src-tauri/tauri.macos.full.conf.json \
-            --target aarch64-apple-darwin
+            --target aarch64-apple-darwin -- --locked
       - name: Verify and stage macOS Full artifacts
         script: |
           set -euo pipefail

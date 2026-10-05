@@ -17,10 +17,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-const TRUSTED_SUPERVISOR_NPROC_OVERHEAD: u64 = 1;
-const OBSERVABLE_PROCESS_LIMIT_OVERFLOW: u64 = 1;
-const REAL_USER_PROCESS_DRIFT_ALLOWANCE: u64 = 4;
-
 pub struct MacosPlatform {
     self_test: SelfTest,
     startup_timings: ExecutorStartupTimings,
@@ -263,6 +259,16 @@ impl MacosPlatform {
     ) -> Result<RunResult, String> {
         crate::macos_run_controller::run_with_guardian(root, spec, active)
     }
+
+    pub fn validate_interactive(
+        &self,
+        root: &Path,
+        spec: &crate::protocol::InteractiveRunSpec,
+    ) -> Result<(), String> {
+        let submission = validate_run(root, &spec.submission)?;
+        let interactor = validate_run(root, &spec.interactor)?;
+        crate::request_validation::validate_interactive_pair(spec, &submission, &interactor)
+    }
 }
 
 fn elapsed_us(started: Instant) -> u64 {
@@ -303,17 +309,12 @@ fn launcher_nproc_ceiling(
     inherited_nproc_max: u64,
     process_count: u32,
 ) -> Result<u64, String> {
-    let required = user_process_baseline
-        .saturating_add(TRUSTED_SUPERVISOR_NPROC_OVERHEAD)
-        .saturating_add(process_count as u64)
-        .saturating_add(OBSERVABLE_PROCESS_LIMIT_OVERFLOW)
-        .saturating_add(REAL_USER_PROCESS_DRIFT_ALLOWANCE);
-    if required > inherited_nproc_max {
-        return Err(format!(
-            "RLIMIT_NPROC cannot provide safe launch headroom: baseline={user_process_baseline}, required={required}, hardMax={inherited_nproc_max}"
-        ));
-    }
-    Ok(required)
+    crate::macos_run_guardian::paired_launcher_nproc_ceiling(
+        user_process_baseline,
+        inherited_nproc_max,
+        process_count,
+        0,
+    )
 }
 
 fn minimal_environment(spec: &RunSpec, workspace: &Path) -> BTreeMap<String, String> {
@@ -405,6 +406,38 @@ pub(crate) fn prepare_launcher_spec(
         let _ = fs::remove_file(&profile_path);
     }
     result
+}
+
+pub(crate) fn prepare_launcher_spec_with_peer(
+    root: &Path,
+    spec: &RunSpec,
+    identity: &FrameIdentity,
+    peer_process_count: u32,
+) -> Result<LauncherSpec, String> {
+    let mut launcher = prepare_launcher_spec(root, spec, identity)?;
+    if peer_process_count == 0 {
+        return Ok(launcher);
+    }
+    let ceiling = (|| {
+        crate::macos_run_guardian::paired_launcher_nproc_ceiling(
+            real_user_process_count()?,
+            hard_resource_limit(libc::RLIMIT_NPROC)?,
+            spec.limits.process_count,
+            peer_process_count,
+        )
+    })();
+    match ceiling {
+        Ok(ceiling) => {
+            launcher.limits.nproc_ceiling = ceiling;
+            Ok(launcher)
+        }
+        Err(error) => match fs::remove_file(&launcher.sandbox_profile) {
+            Ok(()) => Err(error),
+            Err(cleanup) => Err(format!(
+                "{error}; remove paired Seatbelt profile: {cleanup}"
+            )),
+        },
+    }
 }
 
 fn write_private_profile(root: &Path, run_id: &str, contents: &str) -> Result<PathBuf, String> {
@@ -500,7 +533,7 @@ pub(crate) fn cleanup_run_profiles(root: &Path, run_id: &str) -> Result<(), Stri
     Ok(())
 }
 
-fn trusted_profile_directory(root: &Path) -> Result<PathBuf, String> {
+pub(crate) fn trusted_profile_directory(root: &Path) -> Result<PathBuf, String> {
     let canonical_root =
         fs::canonicalize(root).map_err(|error| format!("executor root unavailable: {error}"))?;
     let profile_directory = fs::canonicalize(canonical_root.join("profiles"))

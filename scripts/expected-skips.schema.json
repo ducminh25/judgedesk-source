@@ -1,0 +1,111 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ExpectedSkipsRegistry",
+  "type": "object",
+  "required": ["schemaVersion", "skips"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1
+    },
+    "skips": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "policyId",
+          "observedIdentity",
+          "sourcePath",
+          "sourceFingerprint",
+          "runner",
+          "suite",
+          "targets",
+          "owner",
+          "prerequisitePredicateId",
+          "expiresOn",
+          "removalPredicateId",
+          "justification"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "policyId": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9._-]*$"
+          },
+          "observedIdentity": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sourcePath": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sourceFingerprint": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{64}$"
+          },
+          "runner": {
+            "type": "string",
+            "enum": ["node:test", "cargo:test", "shell"]
+          },
+          "suite": {
+            "type": "string",
+            "minLength": 1
+          },
+          "targets": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["os", "arch"],
+              "additionalProperties": false,
+              "properties": {
+                "os": {
+                  "type": "string",
+                  "enum": ["win32", "darwin", "linux", "any"]
+                },
+                "arch": {
+                  "type": "string",
+                  "enum": ["x64", "arm64", "any"]
+                },
+                "profile": {
+                  "type": ["string", "null"]
+                },
+                "sourceMode": {
+                  "type": ["string", "null"],
+                  "enum": ["managed", "local", "any", null]
+                }
+              }
+            }
+          },
+          "owner": {
+            "type": "string",
+            "minLength": 1
+          },
+          "prerequisitePredicateId": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]+$"
+          },
+          "expiresOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?(?:Z|[+-]\\d{2}:\\d{2})$"
+          },
+          "removalPredicateId": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]+$"
+          },
+          "justification": {
+            "type": "string",
+            "minLength": 5
+          },
+          "isSubprocessHelper": {
+            "type": "boolean"
+          }
+        }
+      }
+    }
+  }
+}

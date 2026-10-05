@@ -107,7 +107,7 @@ export function normalizeVolatile(value: unknown, options: NormalizerOptions = {
         typeof val === "string"
       ) {
         result[key] = "<REVISION>";
-      } else if (key === "appVersion" && (val === "development" || val === "1.5.0" || val === "1.5.1")) {
+      } else if (key === "appVersion" && (val === "development" || val === "1.5.0" || val === "1.5.1" || val === "1.5.2")) {
         result[key] = "1.5.0";
       } else {
         result[key] = normalizeVolatile(val, options);

@@ -329,17 +329,19 @@ dependencies = [
  "axum",
  "chrono",
  "judgedesk-native-executor",
+ "libc",
  "serde",
  "serde_json",
  "tokio",
  "tokio-stream",
  "tower-http",
  "uuid",
+ "windows-sys",
 ]
 
 [[package]]
 name = "judgedesk-native-executor"
-version = "1.5.1"
+version = "1.5.2"
 dependencies = [
  "libc",
  "serde",

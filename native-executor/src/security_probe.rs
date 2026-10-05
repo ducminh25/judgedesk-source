@@ -16,7 +16,7 @@ pub fn security_probe_child() {
     let write_blocked = sentinel
         .as_ref()
         .is_some_and(|path| std::fs::write(path, b"OVERWRITTEN").is_err());
-    let address: SocketAddr = "127.0.0.1:9".parse().unwrap();
+    let address = SocketAddr::from(([127, 0, 0, 1], 9));
     let network_blocked = std::panic::catch_unwind(|| {
         let network_error = TcpStream::connect_timeout(&address, Duration::from_millis(500)).err();
         network_error.as_ref().is_some_and(|error| {
@@ -87,10 +87,30 @@ fn macos_process_group_escape_probe() -> serde_json::Value {
 fn macos_forbidden_exec_probe() -> MacosGroupEscapeProbe {
     use std::ffi::CString;
 
-    let shell = CString::new("/bin/sh").unwrap();
-    let shell_name = CString::new("sh").unwrap();
-    let command_flag = CString::new("-c").unwrap();
-    let command = CString::new("exit 97").unwrap();
+    let Ok(shell) = CString::new("/bin/sh") else {
+        return MacosGroupEscapeProbe {
+            blocked_with_eperm: false,
+            detail: "invalid shell cstring".into(),
+        };
+    };
+    let Ok(shell_name) = CString::new("sh") else {
+        return MacosGroupEscapeProbe {
+            blocked_with_eperm: false,
+            detail: "invalid shell_name cstring".into(),
+        };
+    };
+    let Ok(command_flag) = CString::new("-c") else {
+        return MacosGroupEscapeProbe {
+            blocked_with_eperm: false,
+            detail: "invalid command_flag cstring".into(),
+        };
+    };
+    let Ok(command) = CString::new("exit 97") else {
+        return MacosGroupEscapeProbe {
+            blocked_with_eperm: false,
+            detail: "invalid command cstring".into(),
+        };
+    };
     let environment = unsafe { *libc::_NSGetEnviron() as *const *const libc::c_char };
     let child = unsafe { libc::fork() };
     if child < 0 {
@@ -228,7 +248,12 @@ fn macos_posix_spawn_group_escape_probe() -> MacosGroupEscapeProbe {
             };
         }
     };
-    let argument = CString::new("--security-pgroup-spawn-child").unwrap();
+    let Ok(argument) = CString::new("--security-pgroup-spawn-child") else {
+        return MacosGroupEscapeProbe {
+            blocked_with_eperm: false,
+            detail: "invalid argument cstring".into(),
+        };
+    };
     let mut attributes: libc::posix_spawnattr_t = std::ptr::null_mut();
     let initialized = unsafe { libc::posix_spawnattr_init(&mut attributes) };
     if initialized != 0 {
