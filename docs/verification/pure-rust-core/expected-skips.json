@@ -5,7 +5,7 @@
       "policyId": "installer-win32-symlink-privilege",
       "observedIdentity": "installer links or copies compiler binaries to binDirectory",
       "sourcePath": "server/toolchains/installer.test.ts",
-      "sourceFingerprint": "ce754f043080b572c2c0f061c0688b166fc6e0753a67c99da7d1189536e93b9d",
+      "sourceFingerprint": "07e203bd6521187a669f44110a815a934e20bff39d681b862730ee658eb88292",
       "runner": "node:test",
       "suite": "server/toolchains/installer.test.ts",
       "targets": [
@@ -26,7 +26,7 @@
       "policyId": "installer-tools-win32-symlink-privilege",
       "observedIdentity": "installer links or copies tools to toolsDirectory",
       "sourcePath": "server/toolchains/installer.test.ts",
-      "sourceFingerprint": "ce754f043080b572c2c0f061c0688b166fc6e0753a67c99da7d1189536e93b9d",
+      "sourceFingerprint": "07e203bd6521187a669f44110a815a934e20bff39d681b862730ee658eb88292",
       "runner": "node:test",
       "suite": "server/toolchains/installer.test.ts",
       "targets": [
@@ -47,7 +47,7 @@
       "policyId": "snapshot-win32-symlink-elevation",
       "observedIdentity": "creates a toolchain snapshot with exact version resolution",
       "sourcePath": "server/toolchains/snapshot.test.ts",
-      "sourceFingerprint": "ced55a3b91927a65a8250cf7a8dd461f710eff48eb147c305a65a16ad0f719f5",
+      "sourceFingerprint": "8d467a874f2621960d0c905bbf446038ef107a1abd331a64688a085989ed8add",
       "runner": "node:test",
       "suite": "server/toolchains/snapshot.test.ts",
       "targets": [
@@ -68,7 +68,7 @@
       "policyId": "workspace-win32-dir-alias-privilege",
       "observedIdentity": "creating a directory alias requires additional privileges",
       "sourcePath": "server/executor/workspace.test.ts",
-      "sourceFingerprint": "77268d231d9dda015136bb8c81b5eb5cecd0253aaef50309944dc2159a0d88cd",
+      "sourceFingerprint": "f621c1c77867b5b98a6d3783a2bef94a00710e542deccac00d86574fa8d8fc9b",
       "runner": "node:test",
       "suite": "server/executor/workspace.test.ts",
       "targets": [
@@ -89,7 +89,7 @@
       "policyId": "workspace-win32-file-symlink-privilege",
       "observedIdentity": "creating file symlinks requires additional privileges",
       "sourcePath": "server/executor/workspace.test.ts",
-      "sourceFingerprint": "77268d231d9dda015136bb8c81b5eb5cecd0253aaef50309944dc2159a0d88cd",
+      "sourceFingerprint": "f621c1c77867b5b98a6d3783a2bef94a00710e542deccac00d86574fa8d8fc9b",
       "runner": "node:test",
       "suite": "server/executor/workspace.test.ts",
       "targets": [
@@ -110,7 +110,7 @@
       "policyId": "workspace-win32-file-symlink-privilege-2",
       "observedIdentity": "creating file symlinks requires additional privileges (nested)",
       "sourcePath": "server/executor/workspace.test.ts",
-      "sourceFingerprint": "77268d231d9dda015136bb8c81b5eb5cecd0253aaef50309944dc2159a0d88cd",
+      "sourceFingerprint": "f621c1c77867b5b98a6d3783a2bef94a00710e542deccac00d86574fa8d8fc9b",
       "runner": "node:test",
       "suite": "server/executor/workspace.test.ts",
       "targets": [
@@ -131,7 +131,7 @@
       "policyId": "python-unmanaged-runtime-not-installed",
       "observedIdentity": "No supported unmanaged Python runtime is installed on this test host.",
       "sourcePath": "server/judge/python-submission.test.ts",
-      "sourceFingerprint": "d36c0a8956ae2dacb2afa68fb65fe59feee9e4d9a223675ebd1923f6944eb910",
+      "sourceFingerprint": "7885127ff555daf21463d8a63e570d2a8ca7408fb201b3fa7d618f913c90ff4e",
       "runner": "node:test",
       "suite": "server/judge/python-submission.test.ts",
       "targets": [
@@ -152,7 +152,7 @@
       "policyId": "python-unmanaged-posix-system-python",
       "observedIdentity": "diagnoses unmanaged system Python 3 on POSIX",
       "sourcePath": "server/judge/python-submission.test.ts",
-      "sourceFingerprint": "d36c0a8956ae2dacb2afa68fb65fe59feee9e4d9a223675ebd1923f6944eb910",
+      "sourceFingerprint": "7885127ff555daf21463d8a63e570d2a8ca7408fb201b3fa7d618f913c90ff4e",
       "runner": "node:test",
       "suite": "server/judge/python-submission.test.ts",
       "targets": [
@@ -173,7 +173,7 @@
       "policyId": "python-unmanaged-macos-homebrew",
       "observedIdentity": "diagnoses unmanaged Homebrew Python 3 on macOS",
       "sourcePath": "server/judge/python-submission.test.ts",
-      "sourceFingerprint": "d36c0a8956ae2dacb2afa68fb65fe59feee9e4d9a223675ebd1923f6944eb910",
+      "sourceFingerprint": "7885127ff555daf21463d8a63e570d2a8ca7408fb201b3fa7d618f913c90ff4e",
       "runner": "node:test",
       "suite": "server/judge/python-submission.test.ts",
       "targets": [
@@ -215,7 +215,7 @@
       "policyId": "compiler-watchdog-fake-harness-posix-only",
       "observedIdentity": "compiler watchdog terminates a stuck compiler",
       "sourcePath": "server/judge/compiler.test.ts",
-      "sourceFingerprint": "802fb3e4ca60d0ec6058292c14be1ccb345a0c2b6ae1243cddb1317d3bad119c",
+      "sourceFingerprint": "6e5dd01ed1ff1aa6820d68505f9951eb901bcd1f5b4b0552890795f9c60fcb81",
       "runner": "node:test",
       "suite": "server/judge/compiler.test.ts",
       "targets": [
@@ -236,7 +236,7 @@
       "policyId": "compiler-oversized-fake-harness-posix-only",
       "observedIdentity": "compiler rejects and removes an oversized generated file",
       "sourcePath": "server/judge/compiler.test.ts",
-      "sourceFingerprint": "802fb3e4ca60d0ec6058292c14be1ccb345a0c2b6ae1243cddb1317d3bad119c",
+      "sourceFingerprint": "6e5dd01ed1ff1aa6820d68505f9951eb901bcd1f5b4b0552890795f9c60fcb81",
       "runner": "node:test",
       "suite": "server/judge/compiler.test.ts",
       "targets": [
@@ -257,7 +257,7 @@
       "policyId": "package-store-win32-only-package-test",
       "observedIdentity": "downloads and verifies Windows x64 release package",
       "sourcePath": "server/toolchains/package-store.test.ts",
-      "sourceFingerprint": "5428bd8de0b958b032bdfcf73a50096cbbf65aaf5bfef0fd45c3357870c7a35b",
+      "sourceFingerprint": "575fea88951c748fb5850fa8e75e693ff6d846d8c6eb057b2bb3fece41b72d59",
       "runner": "node:test",
       "suite": "server/toolchains/package-store.test.ts",
       "targets": [
@@ -278,7 +278,7 @@
       "policyId": "toolchain-routes-unsupported-cpp-mock",
       "observedIdentity": "handles unsupported profile gracefully",
       "sourcePath": "server/routes/toolchain-routes.test.ts",
-      "sourceFingerprint": "100f5519ad6cc6cfd2d0d86e90dd21c2e066443f567587477462707686064477",
+      "sourceFingerprint": "5640b0807e38266c745957fe36e266ffa949e95a361578cf9808c7af3a1e9f17",
       "runner": "node:test",
       "suite": "server/routes/toolchain-routes.test.ts",
       "targets": [
@@ -299,7 +299,7 @@
       "policyId": "toolchain-routes-win32-local-certification",
       "observedIdentity": "Windows local certification is intentionally host-specific",
       "sourcePath": "server/routes/toolchain-routes.test.ts",
-      "sourceFingerprint": "100f5519ad6cc6cfd2d0d86e90dd21c2e066443f567587477462707686064477",
+      "sourceFingerprint": "5640b0807e38266c745957fe36e266ffa949e95a361578cf9808c7af3a1e9f17",
       "runner": "node:test",
       "suite": "server/routes/toolchain-routes.test.ts",
       "targets": [
@@ -320,7 +320,7 @@
       "policyId": "storage-v2-mock-when-managed-present",
       "observedIdentity": "preserves existing state when managed package already installed",
       "sourcePath": "server/toolchains/storage-v2.test.ts",
-      "sourceFingerprint": "0b0fd8a99a2ec50d5aa0e39a7e6e0e6648b39a2c1bb5bd9086c286412f53c1dd",
+      "sourceFingerprint": "084f331f02f563541ea9daeced5f1a7690892575a641218f8a1720a20844cf66",
       "runner": "node:test",
       "suite": "server/toolchains/storage-v2.test.ts",
       "targets": [
@@ -341,7 +341,7 @@
       "policyId": "prepare-toolchain-gate-root-unsupported-host-mock",
       "observedIdentity": "prepare-toolchain-gate-root skips mock when host is supported",
       "sourcePath": "scripts/prepare-toolchain-gate-root.test.ts",
-      "sourceFingerprint": "06c243604cf6b909adbe83ca4bc3b04a0109276c9198926ca5379fb1f81aa319",
+      "sourceFingerprint": "194c0db05507c2103ce60d7c2aae869572ac53d79df19b44c6a0137236456e50",
       "runner": "node:test",
       "suite": "scripts/prepare-toolchain-gate-root.test.ts",
       "targets": [
@@ -362,7 +362,7 @@
       "policyId": "toolchains-gate-c-submission-real-toolchains",
       "observedIdentity": "c-submission real toolchains gate",
       "sourcePath": "server/judge/c-submission.gate.test.ts",
-      "sourceFingerprint": "8a9b21267bf8d97a00ff1b539d095849d24e4c20bb7c3804e5f7311f66fa4786",
+      "sourceFingerprint": "89559c8452e5dc0beb7105e8938e9ba1ba76bf71f0f9ff87bc47685df621d3b7",
       "runner": "node:test",
       "suite": "server/judge/c-submission.gate.test.ts",
       "targets": [
@@ -383,7 +383,7 @@
       "policyId": "toolchains-gate-custom-checker-real-toolchains",
       "observedIdentity": "custom-checker real toolchains gate",
       "sourcePath": "server/judge/custom-checker.gate.test.ts",
-      "sourceFingerprint": "98890b3779b176c8a0aaaa7c7bd97a747b1fc88985d0ae38d450dd8a12858950",
+      "sourceFingerprint": "2aff889368d005fe15aa7dfcd49cf7bfd25e3b8cdf1b7b9d7444357db5683391",
       "runner": "node:test",
       "suite": "server/judge/custom-checker.gate.test.ts",
       "targets": [
@@ -404,7 +404,7 @@
       "policyId": "toolchains-gate-multi-language-real-toolchains",
       "observedIdentity": "multi-language real toolchains gate",
       "sourcePath": "server/judge/multi-language.gate.test.ts",
-      "sourceFingerprint": "4dca4023b1ce929b01bb1139b9ba40b2c6f59e19a5e05b2b5b26170ee892571e",
+      "sourceFingerprint": "a8d865f608ed329d5b7f76f8ab5dc463ef35bc27bd4c2c316bd7915472356c3c",
       "runner": "node:test",
       "suite": "server/judge/multi-language.gate.test.ts",
       "targets": [
@@ -425,7 +425,7 @@
       "policyId": "macos-run-guardian-darwin-only",
       "observedIdentity": "macos run guardian integration gate",
       "sourcePath": "server/executor-tests/macos-run-guardian.integration.test.ts",
-      "sourceFingerprint": "885acbfb30e64119fdd5009b57ec2072fb80009e6137859c0f8fb8c24506e33f",
+      "sourceFingerprint": "471823916bf72edae99f729a91f2cbebada5578c0c2b2ee6da2f4ad0896a5b38",
       "runner": "node:test",
       "suite": "server/executor-tests/macos-run-guardian.integration.test.ts",
       "targets": [
@@ -446,7 +446,7 @@
       "policyId": "security-integration-win32-python-child-sandbox",
       "observedIdentity": "win32 python child sandbox probe",
       "sourcePath": "server/executor-tests/security.integration.test.ts",
-      "sourceFingerprint": "91e7671594232031037f6e6b5514a971179718005ebc9c536007327477edc5d0",
+      "sourceFingerprint": "c238d527257c2743d891c08ce56c3b6b24c5d75837b87c7e0bf75ce7c2ed050c",
       "runner": "node:test",
       "suite": "server/executor-tests/security.integration.test.ts",
       "targets": [
@@ -467,7 +467,7 @@
       "policyId": "security-integration-darwin-python-child-sandbox",
       "observedIdentity": "darwin python child sandbox probe",
       "sourcePath": "server/executor-tests/security.integration.test.ts",
-      "sourceFingerprint": "91e7671594232031037f6e6b5514a971179718005ebc9c536007327477edc5d0",
+      "sourceFingerprint": "c238d527257c2743d891c08ce56c3b6b24c5d75837b87c7e0bf75ce7c2ed050c",
       "runner": "node:test",
       "suite": "server/executor-tests/security.integration.test.ts",
       "targets": [
