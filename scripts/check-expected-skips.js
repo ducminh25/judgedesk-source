@@ -93,9 +93,12 @@ export function validateSkipEntry(entry, now = new Date()) {
     errors.push(`Source file does not exist: '${entry.sourcePath}'`);
   } else {
     const fileContent = fs.readFileSync(fullSourcePath, "utf8");
-    const currentFingerprint = crypto.createHash("sha256").update(fileContent, "utf8").digest("hex");
-    if (currentFingerprint.toLowerCase() !== entry.sourceFingerprint.toLowerCase()) {
-      errors.push(`Source fingerprint drift detected for '${entry.sourcePath}'. Expected: ${entry.sourceFingerprint}, actual: ${currentFingerprint}`);
+    const rawFingerprint = crypto.createHash("sha256").update(fileContent, "utf8").digest("hex");
+    const normalizedFingerprint = crypto.createHash("sha256").update(fileContent.replace(/\r\n/g, "\n"), "utf8").digest("hex");
+    const expected = entry.sourceFingerprint.toLowerCase();
+    const matched = rawFingerprint.toLowerCase() === expected || normalizedFingerprint.toLowerCase() === expected;
+    if (!matched) {
+      errors.push(`Source fingerprint drift detected for '${entry.sourcePath}'. Expected: ${entry.sourceFingerprint}, actual: ${rawFingerprint}`);
     }
   }
 
