@@ -2,11 +2,10 @@ use crate::checkers::{run_standard_checker, CheckerVerdict};
 use crate::executor_client::ExecutorClient;
 use judgedesk_native_executor::protocol::{RunLimits, RunReason, RunRole, RunSpec};
 use judgedesk_native_executor::request_validation::validate_run;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
 
 static RUN_COUNTER: AtomicU64 = AtomicU64::new(1);
 
@@ -129,7 +128,7 @@ pub fn run_test_case(config: TestCaseExecutionConfig) -> TestRunOutput {
         },
     };
 
-    let validated = match validate_run(config.platform.root().as_path(), &spec) {
+    let _validated = match validate_run(config.platform.root().as_path(), &spec) {
         Ok(v) => v,
         Err(err) => {
             let _ = fs::remove_dir_all(&workspace_dir);
@@ -146,7 +145,21 @@ pub fn run_test_case(config: TestCaseExecutionConfig) -> TestRunOutput {
         }
     };
 
-    let run_result = config.platform.run_sync(Box::new(spec)).expect("run");
+    let run_result = match config.platform.run_sync(Box::new(spec)) {
+        Ok(res) => res,
+        Err(err) => {
+            return TestRunOutput {
+                status: "JE".to_string(),
+                execution_time_ms: 0,
+                memory_used_kb: 0,
+                score_multiplier: 0.0,
+                message: Some(format!("Executor error: {err}")),
+                expected_output_preview: None,
+                actual_output_preview: None,
+                error_detail: None,
+            };
+        }
+    };
 
     let execution_time_ms = if matches!(run_result.reason, RunReason::WallTimeLimit) {
         config.time_limit_ms

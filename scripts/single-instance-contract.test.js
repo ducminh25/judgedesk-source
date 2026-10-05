@@ -175,7 +175,8 @@ test("Windows gates the backend behind the supervised backend-only Job", () => {
   );
   assert.match(processSupervisor, /AssignProcessToJobObject\(self\.handle\(\), process\)/);
   assert.match(processSupervisor, /JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE/);
-  assert.match(processSupervisor, /process-tree\.lock/);
+  assert.match(processSupervisor, /process-tree\.owner\.lock/);
+  assert.match(processSupervisor, /process-tree\.guard/);
   assert.match(processSupervisor, /ActiveProcesses/);
   assert.match(processSupervisor, /TerminateJobObject/);
   assert.match(processSupervisor, /SetHandleInformation\(handle, HANDLE_FLAG_INHERIT, 0\)/);

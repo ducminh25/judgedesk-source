@@ -17,9 +17,12 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_stream::StreamExt;
 use tower_http::cors::{Any, CorsLayer};
 
+use crate::discovery::testcase::{
+    is_flat_test_directory, read_stored_problem_config, resolve_problem_directory_path,
+};
 use crate::discovery::{
-    discover_custom_checkers, discover_interactors, list_contestants, list_test_directories,
-    natural_cmp, resolve_test_case_files,
+    discover_custom_checkers, discover_interactors, discover_test_cases, list_contestants,
+    list_test_directories, natural_cmp,
 };
 use crate::engine::{run_judge_session, JudgeSessionConfig};
 use crate::executor_client::ExecutorClient;
@@ -191,17 +194,93 @@ pub struct AppState {
     pub export_dir: Option<std::path::PathBuf>,
 }
 
-impl Default for AppState {
-    fn default() -> Self {
+pub fn resolve_packaged_executor_path() -> Result<std::path::PathBuf, String> {
+    let binary_name = if cfg!(windows) {
+        "judgedesk-executor.exe"
+    } else {
+        "judgedesk-executor"
+    };
+    if let Ok(current_exe) = std::env::current_exe() {
+        if let Some(parent) = current_exe.parent() {
+            let candidate = parent.join(binary_name);
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+        }
+    }
+    Err("PACKAGED_EXECUTOR_NOT_FOUND: exact packaged binary 'judgedesk-executor' not found beside executable".into())
+}
+
+impl AppState {
+    pub fn new(platform: Arc<crate::executor_client::ExecutorClient>) -> Self {
         Self {
             cancel_flag: Arc::new(AtomicBool::new(false)),
-            platform: Arc::new(tokio::task::block_in_place(|| tokio::runtime::Handle::current().block_on(crate::executor_client::ExecutorClient::spawn(std::path::Path::new("judgedesk-executor.exe")))).expect("executor")),
+            platform,
             shutdown_tx: None,
             toolchains: Arc::new(RwLock::new(ToolchainStore::default())),
             directory_picker: Arc::new(NativeDirectoryPicker),
             workbook_opener: Arc::new(NativeWorkbookOpener),
             export_dir: None,
         }
+    }
+
+    pub fn from_packaged_executor() -> Self {
+        match resolve_packaged_executor_path() {
+            Ok(exe_path) => match crate::executor_client::ExecutorClient::spawn_sync(&exe_path) {
+                Ok(client) => Self::new(Arc::new(client)),
+                Err(e) => Self::new(Arc::new(
+                    crate::executor_client::ExecutorClient::unavailable(&format!(
+                        "failed to spawn packaged executor at {}: {e}",
+                        exe_path.display()
+                    )),
+                )),
+            },
+            Err(e) => Self::new(Arc::new(
+                crate::executor_client::ExecutorClient::unavailable(&e),
+            )),
+        }
+    }
+
+    pub fn from_packaged_executor_with_tree_guard(
+        guard: crate::executor_client::TreeGuardContract,
+    ) -> Self {
+        match resolve_packaged_executor_path() {
+            Ok(exe_path) => match crate::executor_client::ExecutorClient::spawn_sync_with_tree_guard(
+                &exe_path,
+                guard,
+            ) {
+                Ok(client) => Self::new(Arc::new(client)),
+                Err(error) => Self::new(Arc::new(
+                    crate::executor_client::ExecutorClient::unavailable(&format!(
+                        "failed to spawn packaged executor at {} with application tree guard: {error}",
+                        exe_path.display()
+                    )),
+                )),
+            },
+            Err(error) => Self::new(Arc::new(
+                crate::executor_client::ExecutorClient::unavailable(&error),
+            )),
+        }
+    }
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        #[cfg(debug_assertions)]
+        {
+            let test_var = std::env::var_os("JUDGEDESK_TEST_EXECUTOR_PATH")
+                .or_else(|| std::env::var_os("JUDGEDESK_EXECUTOR_PATH"));
+            if let Some(path) = test_var {
+                let p = std::path::PathBuf::from(path);
+                if p.is_file() {
+                    if let Ok(client) = crate::executor_client::ExecutorClient::spawn_sync(&p) {
+                        return Self::new(Arc::new(client));
+                    }
+                }
+            }
+        }
+
+        Self::from_packaged_executor()
     }
 }
 
@@ -297,12 +376,7 @@ async fn handle_status(State(state): State<AppState>) -> impl IntoResponse {
         },
         "platform": if cfg!(windows) { "win32" } else { "darwin" },
         "isServerMode": false,
-        "build": {
-            "appVersion": "1.5.0",
-            "gitCommit": "native",
-            "buildNumber": "1",
-            "builtAt": "2026-09-19"
-        },
+        "build": crate::build_metadata::BUILD_METADATA,
         "sandbox": {
             "mode": health.mode,
             "ready": health.ready
@@ -355,7 +429,19 @@ async fn handle_fetch_problems(Query(q): Query<PathQuery>) -> Response {
     let mut interactors = HashMap::new();
     let platform_str = if cfg!(windows) { "win32" } else { "darwin" };
 
-    if let Ok(entries) = std::fs::read_dir(p) {
+    if is_flat_test_directory(p) {
+        let name = p
+            .file_name()
+            .map(|f| f.to_string_lossy().to_string())
+            .unwrap_or_default();
+        if !name.is_empty() {
+            dirs.push(name.clone());
+            let c_list = discover_custom_checkers(p, platform_str);
+            custom_checkers.insert(name.clone(), c_list);
+            let i_list = discover_interactors(p, platform_str);
+            interactors.insert(name, i_list);
+        }
+    } else if let Ok(entries) = std::fs::read_dir(p) {
         for entry in entries.flatten() {
             if entry.path().is_dir() {
                 let name = entry.file_name().to_string_lossy().to_string();
@@ -386,8 +472,19 @@ struct FetchTestsQuery {
     is_interactive: Option<String>,
 }
 
+fn is_interactive_problem(problem_directory: &Path, requested_mode: Option<&str>) -> bool {
+    requested_mode == Some("true")
+        || read_stored_problem_config(problem_directory)
+            .and_then(|config| {
+                config
+                    .get("isInteractive")
+                    .and_then(|value| value.as_bool())
+            })
+            .unwrap_or(false)
+}
+
 async fn handle_fetch_tests(Query(q): Query<FetchTestsQuery>) -> Response {
-    let p = Path::new(&q.path);
+    let p = resolve_problem_directory_path(&q.path);
     if !p.is_dir() {
         return (
             StatusCode::NOT_FOUND,
@@ -396,21 +493,13 @@ async fn handle_fetch_tests(Query(q): Query<FetchTestsQuery>) -> Response {
             .into_response();
     }
 
-    let is_inter = q.is_interactive.as_deref() == Some("true");
-    let dirs = list_test_directories(p, is_inter);
+    let is_inter = is_interactive_problem(&p, q.is_interactive.as_deref());
+    let dirs = list_test_directories(&p, is_inter);
     Json(json!({ "success": true, "data": dirs })).into_response()
 }
 
-#[derive(Deserialize)]
-struct FetchPolygonTestsQuery {
-    path: String,
-    #[serde(default)]
-    #[allow(dead_code)]
-    problem: Option<String>,
-}
-
-async fn handle_fetch_polygon_tests(Query(q): Query<FetchPolygonTestsQuery>) -> Response {
-    let p = Path::new(&q.path);
+async fn handle_fetch_polygon_tests(Query(q): Query<FetchTestsQuery>) -> Response {
+    let p = resolve_problem_directory_path(&q.path);
     if !p.is_dir() {
         return (
             StatusCode::NOT_FOUND,
@@ -419,76 +508,41 @@ async fn handle_fetch_polygon_tests(Query(q): Query<FetchPolygonTestsQuery>) -> 
             .into_response();
     }
 
-    let cfg_path = p.join("Config.cfg");
-    let is_interactive = if cfg_path.is_file() {
-        std::fs::read_to_string(&cfg_path)
-            .ok()
-            .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
-            .and_then(|v| v.get("isInteractive").and_then(|b| b.as_bool()))
-            .unwrap_or(false)
-    } else {
-        false
-    };
-
-    let dirs = list_test_directories(p, is_interactive);
+    let is_interactive = is_interactive_problem(&p, q.is_interactive.as_deref());
+    let tests = discover_test_cases(&p, is_interactive);
     let mut result = Vec::new();
-    for dir in dirs {
-        if let Some(files) = resolve_test_case_files(p, &dir, is_interactive) {
-            let size = std::fs::metadata(&files.input_path)
-                .map(|m| m.len())
-                .unwrap_or(0);
-            let preview = if size > 0 {
-                if let Ok(mut f) = std::fs::File::open(&files.input_path) {
-                    let mut buf = vec![0u8; 35];
-                    let bytes_read = f.read(&mut buf).unwrap_or(0);
-                    let mut s = String::from_utf8_lossy(&buf[..bytes_read]).replace('\r', "");
-                    if size > 35 {
-                        s.push_str("...");
-                    }
-                    s
-                } else {
-                    String::new()
+    for files in tests {
+        let size = std::fs::metadata(&files.input_path)
+            .map(|m| m.len())
+            .unwrap_or(0);
+        let preview = if size > 0 {
+            if let Ok(mut f) = std::fs::File::open(&files.input_path) {
+                let mut buf = vec![0u8; 35];
+                let bytes_read = f.read(&mut buf).unwrap_or(0);
+                let mut s = String::from_utf8_lossy(&buf[..bytes_read]).replace('\r', "");
+                if size > 35 {
+                    s.push_str("...");
                 }
+                s
             } else {
                 String::new()
-            };
-            result.push(json!({
-                "name": dir,
-                "preview": preview,
-                "size": size,
-            }));
+            }
         } else {
-            result.push(json!({
-                "name": dir,
-                "preview": "",
-                "size": 0,
-            }));
-        }
+            String::new()
+        };
+        result.push(json!({
+            "name": files.name,
+            "preview": preview,
+            "size": size,
+        }));
     }
 
     Json(json!({ "success": true, "data": result })).into_response()
 }
 
 async fn handle_get_polygon_config(Query(q): Query<PathQuery>) -> Response {
-    let p = Path::new(&q.path);
-    let cfg_path = p.join("Config.cfg");
-    let json_path = p.join("config.json");
-    let target = if cfg_path.is_file() {
-        Some(cfg_path)
-    } else if json_path.is_file() {
-        Some(json_path)
-    } else {
-        None
-    };
-
-    if let Some(path) = target {
-        if let Ok(content) = std::fs::read_to_string(&path) {
-            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&content) {
-                return Json(json!({ "success": true, "data": val })).into_response();
-            }
-        }
-    }
-    Json(json!({ "success": true, "data": null })).into_response()
+    let p = resolve_problem_directory_path(&q.path);
+    Json(json!({ "success": true, "data": read_stored_problem_config(&p) })).into_response()
 }
 
 #[derive(Deserialize)]
@@ -498,7 +552,7 @@ struct SavePolygonConfigPayload {
 }
 
 async fn handle_save_polygon_config(Json(body): Json<SavePolygonConfigPayload>) -> Response {
-    let p = Path::new(&body.path);
+    let p = resolve_problem_directory_path(&body.path);
     let config_path = p.join("Config.cfg");
     let tmp_path = p.join("Config.cfg.tmp");
     if let Ok(content) = serde_json::to_string_pretty(&body.config) {
@@ -560,11 +614,18 @@ async fn handle_batch_judge(
 
     let body = axum::body::Body::from_stream(stream);
 
-    Response::builder()
+    match Response::builder()
         .header("Content-Type", "application/x-ndjson")
         .header("Cache-Control", "no-cache")
         .body(body)
-        .unwrap()
+    {
+        Ok(resp) => resp,
+        Err(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "failed to build response",
+        )
+            .into_response(),
+    }
 }
 
 async fn handle_batch_judge_cancel(State(state): State<AppState>) -> impl IntoResponse {
@@ -573,13 +634,23 @@ async fn handle_batch_judge_cancel(State(state): State<AppState>) -> impl IntoRe
 }
 
 async fn handle_shutdown(State(state): State<AppState>) -> impl IntoResponse {
+    if let Err(error) = state.platform.shutdown().await {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "success": false,
+                "error": format!("native executor drain failed: {error}"),
+            })),
+        )
+            .into_response();
+    }
     if let Some(tx) = state.shutdown_tx {
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
             let _ = tx.send(()).await;
         });
     }
-    Json(json!({ "success": true }))
+    Json(json!({ "success": true })).into_response()
 }
 
 fn normalize_profile_id(id: &str) -> &str {
@@ -1507,7 +1578,16 @@ async fn handle_open_excel(State(state): State<AppState>, body: Bytes) -> Respon
             .into_response();
     }
 
-    let diag_len = u32::from_le_bytes(body[8..12].try_into().unwrap()) as usize;
+    let diag_len = match body[8..12].try_into() {
+        Ok(bytes) => u32::from_le_bytes(bytes) as usize,
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "success": false, "message": "Invalid score export payload" })),
+            )
+                .into_response();
+        }
+    };
     let offset = 12 + diag_len;
     if offset > body.len() {
         return (
@@ -1606,10 +1686,22 @@ pub async fn start_embedded_server(
     start_embedded_server_with_state(port, AppState::default()).await
 }
 
+pub async fn start_embedded_server_with_tree_guard(
+    port: u16,
+    guard: crate::executor_client::TreeGuardContract,
+) -> Result<(SocketAddr, tokio::task::JoinHandle<()>), Box<dyn std::error::Error + Send + Sync>> {
+    start_embedded_server_with_state(
+        port,
+        AppState::from_packaged_executor_with_tree_guard(guard),
+    )
+    .await
+}
+
 pub async fn start_embedded_server_with_state(
     port: u16,
     mut state: AppState,
 ) -> Result<(SocketAddr, tokio::task::JoinHandle<()>), Box<dyn std::error::Error + Send + Sync>> {
+    println!("{}", crate::build_metadata::startup_log()?);
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::mpsc::channel::<()>(1);
     state.shutdown_tx = Some(shutdown_tx);
     let app = create_router(state);

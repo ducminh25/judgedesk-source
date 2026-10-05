@@ -1,0 +1,10 @@
+# Antigravity remediation prompt — WP0.5 LOG-0072
+
+Remediate only WP0.5 in the saved dirty checkout `D:/Minh/Code/judgedesk`. Do not start WP0.6/WP0.7/G0, bump versions, reset/stash/clean, commit/push, delete or skip tests, weaken thresholds, or alter the accepted WP0.1–WP0.4 boundary. A fresh Codex conversation will re-review after a new synchronized `VERIFYING` freeze.
+
+Independent review found two decisive defects:
+
+1. The submitted host audit is contradictory. `docs/verification/pure-rust-core/artifacts/wp0.5/host-comparison.json` has `AllEqual=false` and records executor additions/changes plus process/listener and Defender-event deltas, while the report claims semantic identity and zero leaks. Fix the comparator/evidence workflow so it is correct on Windows PowerShell, rerun owned before/after snapshots with canonical containment and reparse checks, preserve raw deltas, and state any ambient/pre-existing changes truthfully. Do not hide or delete data.
+2. `scripts/run-rust-gates.js` uses `spawnSync` with piped stdout/stderr and no timeout, max-buffer, truncation, or bounded-drain policy. Add a bounded, fail-closed subprocess policy that still continues through every mandatory component, records timeout/output-limit failures, and returns aggregate nonzero. Add structural/mutation coverage for hung and output-spam children. Preserve `--locked`, `--all-targets`, `-D warnings`, sequential ordering, and continue-and-aggregate behavior.
+
+After remediation, rerun the relevant RED/GREEN checks, capture exact commands/results and hashes, revalidate the complete 3,126-input source freeze after the final run, and regenerate the report. The final enclosing Windows command must be one `npm run check:full`; run only non-enclosed structural/mutation/platform checks separately. Re-run the required live macOS gate against the identical archive. Perform delayed host cleanup and ensure the report, STATUS, WORKLOG, handoff YAML, evidence root and next-round prompts all identify one candidate and `VERIFYING`. Stop editing and hand off to `prompts/wp0.5-codex-reverify-log0072.md`.

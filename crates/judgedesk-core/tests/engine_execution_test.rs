@@ -1,6 +1,6 @@
 use judgedesk_core::engine::compiler::compile_submission;
 use judgedesk_core::engine::runner::{run_test_case, TestCaseExecutionConfig};
-use judgedesk_native_executor::platform::Platform;
+use judgedesk_core::executor_client::ExecutorClient;
 use std::fs;
 
 mod common;
@@ -9,7 +9,9 @@ mod common;
 fn test_platform_initialization_is_confined_to_owned_test_root() {
     let test_environment = common::OwnedTestEnvironment::new();
     let owned_root = test_environment.root().to_path_buf();
-    let platform = test_environment.with_isolated_roots(Platform::initialize);
+    let executor_bin = common::executor_binary_path();
+    let platform = test_environment
+        .with_isolated_roots(|| ExecutorClient::spawn_sync(&executor_bin).expect("spawn executor"));
 
     assert!(
         platform.root().starts_with(&owned_root),
@@ -28,9 +30,10 @@ fn test_platform_initialization_is_confined_to_owned_test_root() {
 
 #[test]
 fn test_cpp_compile_and_run_ac() {
-    let _test_environment = common::OwnedTestEnvironment::new();
-    common::ensure_test_environment();
-    let platform = _test_environment.with_isolated_roots(Platform::initialize);
+    let test_environment = common::OwnedTestEnvironment::new();
+    let executor_bin = common::executor_binary_path();
+    let platform = test_environment
+        .with_isolated_roots(|| ExecutorClient::spawn_sync(&executor_bin).expect("spawn executor"));
     let temp_dir = std::env::temp_dir().join(format!("test_exec_ac_{}", std::process::id()));
     fs::create_dir_all(&temp_dir).unwrap();
 
@@ -90,9 +93,10 @@ int main() {
 
 #[test]
 fn test_cpp_compile_and_run_wa() {
-    let _test_environment = common::OwnedTestEnvironment::new();
-    common::ensure_test_environment();
-    let platform = _test_environment.with_isolated_roots(Platform::initialize);
+    let test_environment = common::OwnedTestEnvironment::new();
+    let executor_bin = common::executor_binary_path();
+    let platform = test_environment
+        .with_isolated_roots(|| ExecutorClient::spawn_sync(&executor_bin).expect("spawn executor"));
     let temp_dir = std::env::temp_dir().join(format!("test_exec_wa_{}", std::process::id()));
     fs::create_dir_all(&temp_dir).unwrap();
 
@@ -139,9 +143,10 @@ int main() {
 
 #[test]
 fn test_cpp_compile_and_run_tle() {
-    let _test_environment = common::OwnedTestEnvironment::new();
-    common::ensure_test_environment();
-    let platform = _test_environment.with_isolated_roots(Platform::initialize);
+    let test_environment = common::OwnedTestEnvironment::new();
+    let executor_bin = common::executor_binary_path();
+    let platform = test_environment
+        .with_isolated_roots(|| ExecutorClient::spawn_sync(&executor_bin).expect("spawn executor"));
     let temp_dir = std::env::temp_dir().join(format!("test_exec_tle_{}", std::process::id()));
     fs::create_dir_all(&temp_dir).unwrap();
 
@@ -190,9 +195,10 @@ fn test_cpp_compile_and_run_tle() {
 
 #[test]
 fn test_cpp_compile_and_run_re() {
-    let _test_environment = common::OwnedTestEnvironment::new();
-    common::ensure_test_environment();
-    let platform = _test_environment.with_isolated_roots(Platform::initialize);
+    let test_environment = common::OwnedTestEnvironment::new();
+    let executor_bin = common::executor_binary_path();
+    let platform = test_environment
+        .with_isolated_roots(|| ExecutorClient::spawn_sync(&executor_bin).expect("spawn executor"));
     let temp_dir = std::env::temp_dir().join(format!("test_exec_re_{}", std::process::id()));
     fs::create_dir_all(&temp_dir).unwrap();
 
@@ -237,9 +243,10 @@ int main() {
 
 #[test]
 fn test_cpp_freopen_file_io() {
-    let _test_environment = common::OwnedTestEnvironment::new();
-    common::ensure_test_environment();
-    let platform = _test_environment.with_isolated_roots(Platform::initialize);
+    let test_environment = common::OwnedTestEnvironment::new();
+    let executor_bin = common::executor_binary_path();
+    let platform = test_environment
+        .with_isolated_roots(|| ExecutorClient::spawn_sync(&executor_bin).expect("spawn executor"));
     let temp_dir = std::env::temp_dir().join(format!("test_exec_freopen_{}", std::process::id()));
     fs::create_dir_all(&temp_dir).unwrap();
 
@@ -290,9 +297,10 @@ int main() {
 
 #[test]
 fn test_custom_checker_execution() {
-    let _test_environment = common::OwnedTestEnvironment::new();
-    common::ensure_test_environment();
-    let platform = _test_environment.with_isolated_roots(Platform::initialize);
+    let test_environment = common::OwnedTestEnvironment::new();
+    let executor_bin = common::executor_binary_path();
+    let platform = test_environment
+        .with_isolated_roots(|| ExecutorClient::spawn_sync(&executor_bin).expect("spawn executor"));
     let temp_dir =
         std::env::temp_dir().join(format!("test_exec_custom_chk_{}", std::process::id()));
     fs::create_dir_all(&temp_dir).unwrap();
@@ -382,9 +390,10 @@ int main(int argc, char* argv[]) {
 
 #[test]
 fn test_runner_c1_bai5_fixture_double_cr() {
-    let _test_environment = common::OwnedTestEnvironment::new();
-    common::ensure_test_environment();
-    let platform = _test_environment.with_isolated_roots(Platform::initialize);
+    let test_environment = common::OwnedTestEnvironment::new();
+    let executor_bin = common::executor_binary_path();
+    let platform = test_environment
+        .with_isolated_roots(|| ExecutorClient::spawn_sync(&executor_bin).expect("spawn executor"));
     let temp_dir = std::env::temp_dir().join(format!("test_exec_bai5_{}", std::process::id()));
     fs::create_dir_all(&temp_dir).unwrap();
 

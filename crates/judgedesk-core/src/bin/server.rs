@@ -1,3 +1,5 @@
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
+
 use judgedesk_core::server::start_embedded_server;
 use std::io::Write;
 

@@ -5,6 +5,10 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-10-05
+
+- Bổ sung cách thức nhận test mới: cặp file input và output cùng tên được tính là 1 test.
+
 ## [1.5.1] - 2026-09-23
 
 ### Sửa lỗi và cải tiến nhỏ (Bug fixes and small improvements)

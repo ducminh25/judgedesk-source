@@ -24,6 +24,7 @@ export interface NativeCompilationRecipe {
 }
 
 const MIB = 1024 * 1024;
+export const NATIVE_COMPILATION_TIMEOUT_MS = 15_000;
 
 export function isNativeCompiledLanguage(
   language: SubmissionLanguage,
@@ -58,7 +59,7 @@ export function buildNativeCompilationRecipe(
       // temp-path conversion from attempting to write an intermediate object at
       // the drive root. macOS Apple Clang compiles and links in a single unified step.
       splitCompilerPhases: platform === "win32",
-      timeoutMs: 60_000,
+      timeoutMs: NATIVE_COMPILATION_TIMEOUT_MS,
       maxGeneratedFileBytes: 32 * MIB,
     };
   }

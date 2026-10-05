@@ -35,16 +35,102 @@ export interface ExecutorClientOptions {
   shutdownExitTimeoutMs?: number;
 }
 
+export interface StandaloneTreeGuard {
+  environment: NodeJS.ProcessEnv;
+  cleanup(): void;
+}
+
+export function createStandaloneTreeGuard(): StandaloneTreeGuard {
+  const guardDir = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-node-tree-guard-"));
+  if (process.platform !== "win32") fs.chmodSync(guardDir, 0o700);
+  const generation = crypto.randomBytes(32).toString("hex");
+  const guardPath = path.join(guardDir, "process-tree.lock");
+  try {
+    fs.writeFileSync(
+      guardPath,
+      `JUDGEDESK_PROCESS_TREE/1\ngeneration=${generation}\n`,
+      { encoding: "utf8", flag: "wx", mode: 0o600 },
+    );
+  } catch (error) {
+    fs.rmSync(guardDir, { recursive: true, force: true });
+    throw error;
+  }
+  return {
+    environment: {
+      JUDGEDESK_TREE_GUARD_REQUIRED: "1",
+      JUDGEDESK_TREE_GUARD_PATH: guardPath,
+      JUDGEDESK_TREE_GUARD_GENERATION: generation,
+      JUDGEDESK_PARENT_PID: String(process.pid),
+    },
+    cleanup: () => {
+      try {
+        fs.rmSync(guardDir, { recursive: true, force: true });
+      } catch (error) {
+        console.error(`Failed to remove owned executor tree guard: ${String(error)}`);
+      }
+    },
+  };
+}
+
 interface PendingRequest {
   resolve(response: ExecutorResponse): void;
   reject(error: Error): void;
   timer: NodeJS.Timeout;
+  expectedResponseType: Exclude<ExecutorResponse["type"], "error">;
 }
 
 export class SecureRunnerError extends Error {
   constructor(public readonly code: string, message: string) {
     super(message);
     this.name = "SecureRunnerError";
+  }
+}
+
+function expectedResponseType(
+  request: ExecutorRequest,
+): Exclude<ExecutorResponse["type"], "error"> {
+  switch (request.type) {
+    case "health": return "health";
+    case "run": return "run_result";
+    case "interactive_run": return "interactive_run_result";
+    case "cancel": return "cancel_result";
+    case "shutdown": return "shutdown_result";
+  }
+}
+
+function responseMatchesPending(
+  response: ExecutorResponse,
+  expected: Exclude<ExecutorResponse["type"], "error">,
+): boolean {
+  if (response.type === "error") return true;
+  if (response.type !== expected) return false;
+  switch (response.type) {
+    case "health": return typeof response.health === "object" && response.health !== null;
+    case "run_result": return typeof response.result === "object" && response.result !== null;
+    case "interactive_run_result": return typeof response.result === "object" && response.result !== null;
+    case "cancel_result": return typeof response.runId === "string" && typeof response.cancelled === "boolean";
+    case "shutdown_result": return true;
+  }
+}
+
+function isExecutorResponse(value: unknown): value is ExecutorResponse {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const response = value as Record<string, unknown>;
+  if (typeof response.id !== "string" || typeof response.type !== "string") return false;
+  switch (response.type) {
+    case "health":
+      return typeof response.health === "object" && response.health !== null && !Array.isArray(response.health);
+    case "run_result":
+    case "interactive_run_result":
+      return typeof response.result === "object" && response.result !== null && !Array.isArray(response.result);
+    case "cancel_result":
+      return typeof response.runId === "string" && typeof response.cancelled === "boolean";
+    case "shutdown_result":
+      return true;
+    case "error":
+      return typeof response.code === "string" && typeof response.message === "string";
+    default:
+      return false;
   }
 }
 
@@ -61,6 +147,8 @@ export class ExecutorClient {
   private readonly shutdownRequestTimeoutMs: number;
   private readonly shutdownExitTimeoutMs: number;
   private readonly startupRetryChildren = new WeakSet<ChildProcessWithoutNullStreams>();
+  private ownedTreeGuardCleanup: (() => void) | null = null;
+  private guardedDrainChild: ChildProcessWithoutNullStreams | null = null;
 
   constructor(options: ExecutorClientOptions = {}) {
     this.platform = options.platform ?? process.platform;
@@ -70,7 +158,11 @@ export class ExecutorClient {
   }
 
   private getEnvironment(): NodeJS.ProcessEnv {
-    return this.explicitEnvironment ? { ...this.explicitEnvironment } : { ...process.env };
+    const environment = this.explicitEnvironment ? { ...this.explicitEnvironment } : { ...process.env };
+    // Native executor authenticates its direct kernel parent. When this legacy client runs
+    // under the Tauri sidecar, that parent is Node rather than the Tauri process.
+    environment.JUDGEDESK_PARENT_PID = String(process.pid);
+    return environment;
   }
 
   get health(): ExecutorHealth {
@@ -226,10 +318,10 @@ export class ExecutorClient {
         const detail = error instanceof Error ? error.message : String(error);
         const message =
           `Native executor did not exit after its shutdown request failed: ${detail}`;
-        this.finishShutdown(child, message);
+        this.finishShutdown(message);
         throw new SecureRunnerError("SECURE_RUNNER_UNAVAILABLE", message);
       }
-      this.finishShutdown(child, "Native executor was stopped after its shutdown request failed.");
+      this.finishShutdown("Native executor was stopped after its shutdown request failed.");
       return;
     }
 
@@ -243,10 +335,10 @@ export class ExecutorClient {
     }
     if (!childHasExited(child)) {
       const message = "Native executor acknowledged shutdown but did not exit.";
-      this.finishShutdown(child, message);
+      this.finishShutdown(message);
       throw new SecureRunnerError("SECURE_RUNNER_UNAVAILABLE", message);
     }
-    this.finishShutdown(child, "Native executor shut down.");
+    this.finishShutdown("Native executor shut down.");
   }
 
   private async startInternal(): Promise<ExecutorHealth> {
@@ -258,21 +350,41 @@ export class ExecutorClient {
       this.cachedHealth = unavailableHealth("SECURE_RUNNER_BINARY_MISSING");
       return this.cachedHealth;
     }
+    const env = { ...this.getEnvironment() };
+    if (env.JUDGEDESK_TREE_GUARD_REQUIRED !== "1") {
+      if (
+        env.JUDGEDESK_TREE_GUARD_REQUIRED !== undefined
+        || env.JUDGEDESK_TREE_GUARD_PATH !== undefined
+        || env.JUDGEDESK_TREE_GUARD_GENERATION !== undefined
+      ) {
+        this.cachedHealth = unavailableHealth("Partial or invalid executor tree guard environment.");
+        this.lifecycleState = "terminal";
+        return this.cachedHealth;
+      }
+      const guard = createStandaloneTreeGuard();
+      Object.assign(env, guard.environment);
+      this.ownedTreeGuardCleanup = guard.cleanup;
+    } else if (!env.JUDGEDESK_TREE_GUARD_PATH || !env.JUDGEDESK_TREE_GUARD_GENERATION) {
+      this.cachedHealth = unavailableHealth("Required executor tree guard environment is incomplete.");
+      this.lifecycleState = "terminal";
+      return this.cachedHealth;
+    }
     try {
       const startupStarted = performance.now();
       const child = spawn(executable, [], {
         stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
-        env: minimalExecutorEnvironment(this.getEnvironment()),
+        env: minimalExecutorEnvironment(env),
       });
       this.child = child;
+      this.guardedDrainChild = env.JUDGEDESK_TREE_GUARD_REQUIRED === "1" ? child : null;
       child.stdout.on("data", (chunk: Buffer) => this.receive(child, chunk));
       child.stderr.on("data", (chunk: Buffer) => {
         if (this.child !== child) return;
         const remaining = 16 * 1024 - Buffer.byteLength(this.stderrPreview);
         if (remaining > 0) this.stderrPreview += chunk.subarray(0, remaining).toString("utf8");
       });
-      child.once("error", (error) => this.executorExited(child, error));
+      child.once("error", (error) => this.executorErrored(child, error));
       child.once("close", (code, signal) => {
         this.executorExited(
           child,
@@ -295,6 +407,25 @@ export class ExecutorClient {
         clientStartupTimeMs: performance.now() - startupStarted,
       };
     } catch (error) {
+      const child = this.child;
+      if (child && !childHasExited(child)) {
+        child.stdin.end();
+        await waitForChildExit(child, this.shutdownExitTimeoutMs);
+      }
+      if (child && !childHasExited(child)) {
+        this.lifecycleState = "terminal";
+        this.cachedHealth = unavailableHealth(
+          `Native executor startup failed and its guarded drain is still in progress: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+        this.startPromise = Promise.resolve(this.cachedHealth);
+        return this.cachedHealth;
+      }
+      if (this.ownedTreeGuardCleanup) {
+        this.ownedTreeGuardCleanup();
+        this.ownedTreeGuardCleanup = null;
+      }
       this.cachedHealth = unavailableHealth(error instanceof Error ? error.message : String(error));
     }
     return this.cachedHealth;
@@ -320,16 +451,34 @@ export class ExecutorClient {
     if (!child) return;
     this.startupRetryChildren.add(child);
     try {
+      let shutdownAcknowledged = false;
       try {
-        await this.request(
+        const response = await this.request(
           { type: "shutdown", id: crypto.randomUUID() },
           Math.min(this.shutdownRequestTimeoutMs, 2_000),
         );
-      } catch {
+        if (response.type !== "shutdown_result") {
+          throw new SecureRunnerError(
+            "SECURE_RUNNER_PROTOCOL_ERROR",
+            `Unexpected ${response.type} response to startup-retry shutdown request.`,
+          );
+        }
+        shutdownAcknowledged = true;
+      } catch (error) {
+        if (this.requiresGuardedMacosDrain(child)) {
+          this.cachedHealth = unavailableHealth(
+            `Native executor startup retry could not prove guarded drain: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          this.lifecycleState = "terminal";
+          this.startPromise = Promise.resolve(this.cachedHealth);
+          return;
+        }
         child.kill();
       }
       await waitForChildExit(child, this.shutdownExitTimeoutMs);
-      if (!childHasExited(child)) {
+      if (!childHasExited(child) && shutdownAcknowledged) {
         child.kill();
         await waitForChildExit(child, this.shutdownExitTimeoutMs);
       }
@@ -343,7 +492,16 @@ export class ExecutorClient {
         }
         return;
       }
-      if (this.child === child) this.child = null;
+      if (this.child === child) {
+        await waitForChildClose(child, this.shutdownExitTimeoutMs);
+      }
+      if (this.child === child) {
+        this.cachedHealth = unavailableHealth(
+          "Native executor stdio did not close before a startup retry; restart JudgeDesk before retrying.",
+        );
+        this.lifecycleState = "terminal";
+        this.startPromise = Promise.resolve(this.cachedHealth);
+      }
     } finally {
       this.startupRetryChildren.delete(child);
     }
@@ -372,14 +530,15 @@ export class ExecutorClient {
           ),
         );
       }, timeoutMs);
-      this.pending.set(request.id, { resolve, reject, timer });
+      this.pending.set(request.id, {
+        resolve,
+        reject,
+        timer,
+        expectedResponseType: expectedResponseType(request),
+      });
       child.stdin.write(Buffer.concat([header, payload]), (error) => {
         if (!error) return;
-        const pending = this.pending.get(request.id);
-        if (!pending) return;
-        clearTimeout(pending.timer);
-        this.pending.delete(request.id);
-        pending.reject(error);
+        this.terminalizeLiveChild(child, error);
       });
     }).then((response) => {
       if (response.type === "error") throw new SecureRunnerError(response.code, response.message);
@@ -388,12 +547,12 @@ export class ExecutorClient {
   }
 
   private receive(child: ChildProcessWithoutNullStreams, chunk: Buffer): void {
-    if (this.child !== child) return;
+    if (this.child !== child || this.lifecycleState === "terminal") return;
     this.receiveBuffer = Buffer.concat([this.receiveBuffer, chunk]);
     while (this.receiveBuffer.length >= 4) {
       const length = this.receiveBuffer.readUInt32LE(0);
       if (length === 0 || length > MAX_FRAME_BYTES) {
-        this.executorExited(
+        this.terminalizeProtocol(
           child,
           new SecureRunnerError("SECURE_RUNNER_PROTOCOL_ERROR", "Executor sent an invalid frame length."),
         );
@@ -402,31 +561,90 @@ export class ExecutorClient {
       if (this.receiveBuffer.length < length + 4) return;
       const payload = this.receiveBuffer.subarray(4, 4 + length);
       this.receiveBuffer = this.receiveBuffer.subarray(4 + length);
-      let response: ExecutorResponse;
+      let decoded: unknown;
       try {
-        response = JSON.parse(payload.toString("utf8")) as ExecutorResponse;
+        decoded = JSON.parse(payload.toString("utf8")) as unknown;
       } catch (error) {
-        this.executorExited(
+        this.terminalizeProtocol(
           child,
           new SecureRunnerError("SECURE_RUNNER_PROTOCOL_ERROR", String(error)),
         );
         return;
       }
+      if (!isExecutorResponse(decoded)) {
+        this.terminalizeProtocol(
+          child,
+          new SecureRunnerError(
+            "SECURE_RUNNER_PROTOCOL_ERROR",
+            "Executor sent an invalid response envelope.",
+          ),
+        );
+        return;
+      }
+      const response = decoded;
       const pending = this.pending.get(response.id);
-      if (!pending) continue;
+      if (!pending) {
+        this.terminalizeProtocol(
+          child,
+          new SecureRunnerError(
+            "SECURE_RUNNER_PROTOCOL_ERROR",
+            `Executor sent an unknown correlation ID: ${response.id}.`,
+          ),
+        );
+        return;
+      }
+      if (!responseMatchesPending(response, pending.expectedResponseType)) {
+        this.terminalizeProtocol(
+          child,
+          new SecureRunnerError(
+            "SECURE_RUNNER_PROTOCOL_ERROR",
+            `Executor sent ${response.type} for a ${pending.expectedResponseType} request.`,
+          ),
+        );
+        return;
+      }
       clearTimeout(pending.timer);
       this.pending.delete(response.id);
       pending.resolve(response);
     }
   }
 
+  private terminalizeProtocol(child: ChildProcessWithoutNullStreams, error: Error): void {
+    this.terminalizeLiveChild(child, error);
+  }
+
+  private executorErrored(child: ChildProcessWithoutNullStreams, error: Error): void {
+    this.terminalizeLiveChild(child, error);
+  }
+
+  private terminalizeLiveChild(child: ChildProcessWithoutNullStreams, error: Error): void {
+    if (this.child !== child) return;
+    this.cachedHealth = unavailableHealth(error.message);
+    this.lifecycleState = "terminal";
+    this.startPromise = Promise.resolve(this.cachedHealth);
+    for (const pending of this.pending.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(error);
+    }
+    this.pending.clear();
+    // Native executor treats EOF as the ordered cancellation/drain boundary. Keep the
+    // child and its guard attached until its close event proves that drain completed.
+    child.stdin.end();
+  }
+
   private executorExited(child: ChildProcessWithoutNullStreams, error: Error): void {
     // An earlier executor may finish after a replacement has already started. Its delayed close
     // event must never clear the replacement or reject the replacement's requests.
     if (this.child !== child) return;
+    const guardedMacosDrain = this.requiresGuardedMacosDrain(child);
+    if (this.ownedTreeGuardCleanup) {
+      this.ownedTreeGuardCleanup();
+      this.ownedTreeGuardCleanup = null;
+    }
     const startupRetry = this.startupRetryChildren.has(child);
     this.cachedHealth = unavailableHealth(error.message);
     this.child = null;
+    if (this.guardedDrainChild === child) this.guardedDrainChild = null;
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer);
       pending.reject(error);
@@ -437,7 +655,7 @@ export class ExecutorClient {
       return;
     }
     if (
-      this.requiresGuardedMacosDrain()
+      guardedMacosDrain
       || this.lifecycleState === "draining"
       || this.lifecycleState === "terminal"
     ) {
@@ -449,18 +667,16 @@ export class ExecutorClient {
     }
   }
 
-  private finishShutdown(
-    child: ChildProcessWithoutNullStreams,
-    diagnostic: string,
-  ): void {
-    if (this.child === child && childHasExited(child)) this.child = null;
+  private finishShutdown(diagnostic: string): void {
+    // `exit` only proves that the process has stopped. Retain both references until `close`
+    // confirms that stdio has drained, because executorExited owns the guard cleanup.
     this.cachedHealth = unavailableHealth(diagnostic);
     this.lifecycleState = "terminal";
     this.startPromise = Promise.resolve(this.cachedHealth);
   }
 
-  private requiresGuardedMacosDrain(): boolean {
-    return this.platform === "darwin" && this.getEnvironment().JUDGEDESK_TREE_GUARD_REQUIRED === "1";
+  private requiresGuardedMacosDrain(child = this.child): boolean {
+    return this.platform === "darwin" && child !== null && this.guardedDrainChild === child;
   }
 
   private cannotStart(): boolean {
@@ -558,6 +774,18 @@ function waitForChildExit(child: ChildProcessWithoutNullStreams, timeoutMs: numb
     };
     const timer = setTimeout(done, timeoutMs);
     child.once("exit", done);
+  });
+}
+
+function waitForChildClose(child: ChildProcessWithoutNullStreams, timeoutMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      child.off("close", done);
+      resolve();
+    };
+    const timer = setTimeout(done, timeoutMs);
+    child.once("close", done);
   });
 }
 

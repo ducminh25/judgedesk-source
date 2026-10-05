@@ -519,7 +519,7 @@ impl WindowsPlatform {
             cancelled: Arc::clone(&cancelled),
         });
         {
-            let mut runs = active.lock().unwrap();
+            let mut runs = active.lock().unwrap_or_else(|p| p.into_inner());
             if runs.contains_key(&spec.run_id) {
                 unsafe {
                     TerminateJobObject(job.handle(), LIMIT_EXIT_CODE);
@@ -533,7 +533,10 @@ impl WindowsPlatform {
             setup_started.elapsed().as_micros().min(u64::MAX as u128) as u64;
         let started = Instant::now();
         if unsafe { ResumeThread(thread_handle.0) } == u32::MAX {
-            active.lock().unwrap().remove(&spec.run_id);
+            active
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .remove(&spec.run_id);
             unsafe {
                 TerminateJobObject(job.handle(), LIMIT_EXIT_CODE);
             }
@@ -641,7 +644,10 @@ impl WindowsPlatform {
             reason = RunReason::InternalError;
             diagnostic = Some("Job Object did not become empty during teardown".into());
         }
-        active.lock().unwrap().remove(&spec.run_id);
+        active
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove(&spec.run_id);
 
         let mut exit_code = 0_u32;
         let exit_code = if unsafe { GetExitCodeProcess(process_handle.0, &mut exit_code) } != 0 {
@@ -713,6 +719,7 @@ impl WindowsPlatform {
         let setup_started = Instant::now();
         let sub_paths = crate::request_validation::validate_run(root, &spec.submission)?;
         let inter_paths = crate::request_validation::validate_run(root, &spec.interactor)?;
+        crate::request_validation::validate_interactive_pair(spec, &sub_paths, &inter_paths)?;
 
         prepare_workspace_profile_directories(&sub_paths.workspace)?;
         let sub_workspace_sid = derive_workspace_capability_sid(&spec.submission.workspace_id)?;
@@ -862,7 +869,7 @@ impl WindowsPlatform {
         });
 
         {
-            let mut runs = active.lock().unwrap();
+            let mut runs = active.lock().unwrap_or_else(|p| p.into_inner());
             if runs.contains_key(&spec.run_id) {
                 unsafe {
                     TerminateJobObject(job_sub.handle(), LIMIT_EXIT_CODE);
@@ -877,7 +884,10 @@ impl WindowsPlatform {
         let started = Instant::now();
 
         if unsafe { ResumeThread(sub_thread.0) } == u32::MAX {
-            active.lock().unwrap().remove(&spec.run_id);
+            active
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .remove(&spec.run_id);
             unsafe {
                 TerminateJobObject(job_sub.handle(), LIMIT_EXIT_CODE);
                 TerminateJobObject(job_inter.handle(), LIMIT_EXIT_CODE);
@@ -888,7 +898,10 @@ impl WindowsPlatform {
             ));
         }
         if unsafe { ResumeThread(inter_thread.0) } == u32::MAX {
-            active.lock().unwrap().remove(&spec.run_id);
+            active
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .remove(&spec.run_id);
             unsafe {
                 TerminateJobObject(job_sub.handle(), LIMIT_EXIT_CODE);
                 TerminateJobObject(job_inter.handle(), LIMIT_EXIT_CODE);
@@ -991,7 +1004,10 @@ impl WindowsPlatform {
 
         let _ = wait_for_job_empty(job_sub.handle(), Duration::from_secs(2));
         let _ = wait_for_job_empty(job_inter.handle(), Duration::from_secs(2));
-        active.lock().unwrap().remove(&spec.run_id);
+        active
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove(&spec.run_id);
 
         let mut sub_code = 0_u32;
         let sub_exit_code = if unsafe { GetExitCodeProcess(sub_process.0, &mut sub_code) } != 0 {

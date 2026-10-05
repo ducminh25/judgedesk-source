@@ -30,3 +30,8 @@ scratch/
 *.pdf
 tools/**/*.exe
 
+
+# Local verification artifacts include build caches, runtime copies and toolchains.
+/docs/verification/**/artifacts/
+# Empty file left by a local command.
+/p.includes('teams')

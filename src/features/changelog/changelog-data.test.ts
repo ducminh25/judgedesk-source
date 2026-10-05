@@ -6,11 +6,12 @@ import {
   getChangelogForLanguage,
 } from "./changelog-data.js";
 
-test("changelog data contains versions from 1.5.1 down to 1.2.5 in descending order", () => {
+test("changelog data contains versions from 1.5.2 down to 1.2.5 in descending order", () => {
   const versionsVi = CHANGELOG_DATA_VI.map((r) => r.version);
   const versionsEn = CHANGELOG_DATA_EN.map((r) => r.version);
 
   const expectedVersions = [
+    "1.5.2",
     "1.5.1",
     "1.5.0",
     "1.4.46",
@@ -60,6 +61,6 @@ test("every version has sections and non-empty bullet items", () => {
 test("getChangelogForLanguage returns appropriate language release list", () => {
   const vi = getChangelogForLanguage("vi");
   const en = getChangelogForLanguage("en");
-  assert.equal(vi[0].sections[0].title, "Sửa lỗi và cải tiến nhỏ");
-  assert.equal(en[0].sections[0].title, "Bug fixes and small improvements");
+  assert.equal(vi[0].sections[0].title, "Nhận test từ cặp file cùng tên");
+  assert.equal(en[0].sections[0].title, "Test discovery from matching file pairs");
 });

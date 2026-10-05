@@ -87,6 +87,11 @@ export interface BuildMetadata {
   gitCommit: string;
   buildNumber: string;
   builtAt: string;
+  backend?: "node" | "rust";
+  target?: string;
+  features?: string[];
+  sourceState?: "clean" | "dirty" | "dev";
+  buildMode?: "development" | "packaged";
 }
 
 export interface RunMetadata {

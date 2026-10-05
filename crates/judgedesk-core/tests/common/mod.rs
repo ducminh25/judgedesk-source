@@ -46,6 +46,9 @@ impl OwnedTestEnvironment {
         std::fs::write(root.join(".judgedesk-test-root"), OWNERSHIP_MARKER)
             .expect("mark owned Rust core test root");
 
+        #[cfg(unix)]
+        let root = std::fs::canonicalize(&root).unwrap_or(root);
+
         Self { root, _lock: lock }
     }
 
@@ -59,6 +62,7 @@ impl OwnedTestEnvironment {
             ("APPDATA", self.root.join("roaming").into_os_string()),
             ("TEMP", self.root.join("temp").into_os_string()),
             ("TMP", self.root.join("temp").into_os_string()),
+            ("TMPDIR", self.root.join("temp").into_os_string()),
         ];
         let previous_environment = replacements
             .iter()
@@ -162,6 +166,39 @@ fn init_macos_tree_guard() {
     std::env::set_var("JUDGEDESK_TREE_GUARD_GENERATION", &generation);
 }
 
+#[allow(dead_code)]
+pub fn executor_binary_path() -> PathBuf {
+    ensure_test_environment();
+    if let Some(path) = std::env::var_os("JUDGEDESK_EXECUTOR_PATH") {
+        let p = PathBuf::from(path);
+        if p.is_file() {
+            return p;
+        }
+    }
+    let binary_name = if cfg!(windows) {
+        "judgedesk-native-executor.exe"
+    } else {
+        "judgedesk-native-executor"
+    };
+
+    let candidates = [
+        PathBuf::from(format!("../../native-executor/target/debug/{binary_name}")),
+        PathBuf::from(format!("../native-executor/target/debug/{binary_name}")),
+        PathBuf::from(format!("native-executor/target/debug/{binary_name}")),
+        PathBuf::from(format!("../../target/debug/{binary_name}")),
+        PathBuf::from(format!("../target/debug/{binary_name}")),
+    ];
+
+    for candidate in &candidates {
+        if candidate.is_file() {
+            if let Ok(abs) = std::fs::canonicalize(candidate) {
+                return abs;
+            }
+        }
+    }
+    panic!("judgedesk-native-executor binary not found; build native-executor first");
+}
+
 fn init_executor_binary() {
     if let Some(path) = std::env::var_os("JUDGEDESK_EXECUTOR_PATH") {
         if Path::new(&path).is_file() {
@@ -176,6 +213,8 @@ fn init_executor_binary() {
     };
 
     let candidates = [
+        PathBuf::from(format!("../native-executor/target/debug/{binary_name}")),
+        PathBuf::from(format!("../native-executor/target/release/{binary_name}")),
         PathBuf::from(format!("../../native-executor/target/debug/{binary_name}")),
         PathBuf::from(format!(
             "../../native-executor/target/release/{binary_name}"
@@ -195,7 +234,9 @@ fn init_executor_binary() {
         }
     }
 
-    let manifest_path = if Path::new("../../native-executor/Cargo.toml").is_file() {
+    let manifest_path = if Path::new("../native-executor/Cargo.toml").is_file() {
+        "../native-executor/Cargo.toml"
+    } else if Path::new("../../native-executor/Cargo.toml").is_file() {
         "../../native-executor/Cargo.toml"
     } else if Path::new("native-executor/Cargo.toml").is_file() {
         "native-executor/Cargo.toml"
@@ -204,7 +245,7 @@ fn init_executor_binary() {
     };
 
     let status = std::process::Command::new("cargo")
-        .args(["build", "--manifest-path", manifest_path])
+        .args(["build", "--locked", "--manifest-path", manifest_path])
         .status();
 
     if let Ok(status) = status {

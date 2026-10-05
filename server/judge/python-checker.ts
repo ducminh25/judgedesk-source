@@ -16,9 +16,8 @@ const CHECKER_MEMORY_BYTES = 256 * 1024 * 1024;
 const CHECKER_DIAGNOSTIC_LIMIT_BYTES = 256 * 1024;
 
 /**
- * Validate checker source through the exact receipt-verified managed runtime and sandbox role
- * used for execution. Quick local detection cannot establish a complete, sandbox-readable
- * interpreter support tree, so local/system runtimes are rejected before this point.
+ * Validate checker source through the same verified managed or strictly certified
+ * local runtime identity and sandbox role used for execution.
  */
 export async function validatePythonCheckerSource(
   pythonExecutablePath: string,
@@ -47,6 +46,7 @@ export async function validatePythonCheckerSource(
       args: ["-I", "-B", "-c", syntaxCheck, stagedChecker],
       environment: runtime.environment,
       toolchain: runtime.toolchain,
+      localToolchain: runtime.localToolchain,
       runtimeBacked: true,
       timeoutMs: CHECKER_TIMEOUT_MS,
       memoryBytes: CHECKER_MEMORY_BYTES,

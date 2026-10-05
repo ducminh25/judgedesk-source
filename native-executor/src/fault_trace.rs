@@ -7,6 +7,42 @@ use serde::Serialize;
 pub const FAULT_GATE_ENV: &str = "JUDGEDESK_RUN_GUARDIAN_FAULT_GATE";
 pub const FAULT_EVENT_LOG_ENV: &str = "JUDGEDESK_RUN_GUARDIAN_EVENT_LOG";
 pub const FAULT_TRACE_SCHEMA: &str = "JUDGEDESK_RUN_GUARDIAN_FAULT_GATE/2";
+#[cfg(any(target_os = "macos", test))]
+pub(crate) const INTERACTIVE_FAULT_PAUSE_ENV: &str = "JUDGEDESK_INTERACTIVE_FAULT_PAUSE";
+
+#[cfg(any(target_os = "macos", test))]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum InteractiveFaultPause {
+    SecondConfigure,
+    PairCommit,
+    FirstSpool,
+}
+
+#[cfg(any(target_os = "macos", test))]
+impl InteractiveFaultPause {
+    #[cfg(target_os = "macos")]
+    pub(crate) fn from_environment(traced: bool) -> Result<Option<Self>, String> {
+        Self::parse(
+            std::env::var_os(INTERACTIVE_FAULT_PAUSE_ENV).as_deref(),
+            traced,
+        )
+    }
+
+    fn parse(value: Option<&std::ffi::OsStr>, traced: bool) -> Result<Option<Self>, String> {
+        let Some(value) = value else {
+            return Ok(None);
+        };
+        if !traced {
+            return Err("INTERACTIVE_FAULT_PAUSE_REQUIRES_VALIDATED_TRACE".into());
+        }
+        match value.to_str() {
+            Some("second-configure") => Ok(Some(Self::SecondConfigure)),
+            Some("pair-commit") => Ok(Some(Self::PairCommit)),
+            Some("first-spool") => Ok(Some(Self::FirstSpool)),
+            _ => Err("INTERACTIVE_FAULT_PAUSE_INVALID_STAGE".into()),
+        }
+    }
+}
 
 #[cfg(any(target_os = "macos", test))]
 const MAX_RUN_ID_BYTES: usize = 96;
@@ -14,6 +50,10 @@ const MAX_RUN_ID_BYTES: usize = 96;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FaultTraceEvent {
     FaultGateReady,
+    InteractiveSpoolCreated,
+    InteractiveSecondConfigurePaused,
+    InteractiveParticipantEnrolled,
+    InteractivePairEnrolled,
     GuardianReady,
     SupervisorRegistered,
     SupervisorReady,
@@ -34,6 +74,10 @@ impl FaultTraceEvent {
     pub const fn phase(self) -> u8 {
         match self {
             Self::FaultGateReady => 1,
+            Self::InteractiveSpoolCreated => 5,
+            Self::InteractiveSecondConfigurePaused => 23,
+            Self::InteractiveParticipantEnrolled => 34,
+            Self::InteractivePairEnrolled => 35,
             Self::GuardianReady => 10,
             Self::SupervisorRegistered => 20,
             Self::SupervisorReady => 25,
@@ -52,6 +96,10 @@ impl FaultTraceEvent {
     pub const fn name(self) -> &'static str {
         match self {
             Self::FaultGateReady => "fault_gate_ready",
+            Self::InteractiveSpoolCreated => "interactive_spool_created",
+            Self::InteractiveSecondConfigurePaused => "interactive_second_configure_paused",
+            Self::InteractiveParticipantEnrolled => "interactive_participant_enrolled",
+            Self::InteractivePairEnrolled => "interactive_pair_enrolled",
             Self::GuardianReady => "guardian_ready",
             Self::SupervisorRegistered => "supervisor_registered",
             Self::SupervisorReady => "supervisor_ready",
@@ -70,7 +118,10 @@ impl FaultTraceEvent {
     #[cfg(any(target_os = "macos", test))]
     const fn identity_requirements(self) -> IdentityRequirements {
         match self {
-            Self::FaultGateReady => IdentityRequirements::NONE,
+            Self::FaultGateReady | Self::InteractiveSpoolCreated => IdentityRequirements::NONE,
+            Self::InteractiveSecondConfigurePaused => IdentityRequirements::GUARDIAN_AND_ANCHOR,
+            Self::InteractivePairEnrolled => IdentityRequirements::ANCHOR,
+            Self::InteractiveParticipantEnrolled => IdentityRequirements::ANCHOR,
             Self::GuardianReady => IdentityRequirements::GUARDIAN,
             Self::SupervisorRegistered | Self::SupervisorReady => IdentityRequirements::ANCHOR,
             Self::GuardianStarted
@@ -138,6 +189,7 @@ impl FaultTrace {
         let enabled = std::env::var_os(FAULT_GATE_ENV);
         let path = std::env::var_os(FAULT_EVENT_LOG_ENV);
         if enabled.is_none() && path.is_none() {
+            InteractiveFaultPause::from_environment(false)?;
             return Ok(None);
         }
         if enabled.as_deref() != Some(OsStr::new("1")) {
@@ -153,6 +205,7 @@ impl FaultTrace {
         }
         validate_generation(expected_generation)?;
         let file = macos::open_existing_trace_file(&path)?;
+        InteractiveFaultPause::from_environment(true)?;
         Ok(Some(Self {
             generation: expected_generation.into(),
             file: std::sync::Mutex::new(file),
@@ -428,6 +481,19 @@ mod macos {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn interactive_pause_requires_trace_and_only_the_three_named_stages() {
+        use super::InteractiveFaultPause;
+        use std::ffi::OsStr;
+        assert!(InteractiveFaultPause::parse(None, false).is_ok());
+        for stage in ["second-configure", "pair-commit", "first-spool"] {
+            assert!(InteractiveFaultPause::parse(Some(OsStr::new(stage)), false).is_err());
+            assert!(InteractiveFaultPause::parse(Some(OsStr::new(stage)), true).is_ok());
+        }
+        for stage in ["", "unknown", "pair-commit/../command", "3"] {
+            assert!(InteractiveFaultPause::parse(Some(OsStr::new(stage)), true).is_err());
+        }
+    }
     #[cfg(not(target_os = "macos"))]
     use super::FaultTrace;
     use super::{serialize_event, FaultTraceEvent, FAULT_TRACE_SCHEMA};

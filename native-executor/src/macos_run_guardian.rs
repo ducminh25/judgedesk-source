@@ -30,6 +30,36 @@ const STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 const CHILD_WAIT_POLL_INTERVAL: Duration = Duration::from_millis(2);
 
 #[cfg(any(target_os = "macos", test))]
+pub(crate) fn paired_launcher_nproc_ceiling(
+    user_process_baseline: u64,
+    inherited_nproc_max: u64,
+    process_count: u32,
+    peer_process_count: u32,
+) -> Result<u64, String> {
+    if !(1..=32).contains(&process_count) || peer_process_count > 32 {
+        return Err("RLIMIT_NPROC process budgets are outside their validated bounds".into());
+    }
+    let supervisor_count = if peer_process_count == 0 { 1 } else { 4 };
+    // One observable overflow and four processes of same-user daemon drift preserve the
+    // existing single-run allowance. Paired launches reserve the peer's exact budget,
+    // both supervisors and both executor-owned members. Group monitors exclude only
+    // their exact enrolled trusted identities and retain independent target limits.
+    let required = user_process_baseline
+        .checked_add(supervisor_count)
+        .and_then(|value| value.checked_add(u64::from(process_count)))
+        .and_then(|value| value.checked_add(u64::from(peer_process_count)))
+        .and_then(|value| value.checked_add(1))
+        .and_then(|value| value.checked_add(4))
+        .ok_or_else(|| "RLIMIT_NPROC launch headroom arithmetic overflow".to_string())?;
+    if required > inherited_nproc_max {
+        return Err(format!(
+            "RLIMIT_NPROC cannot provide safe launch headroom: baseline={user_process_baseline}, required={required}, hardMax={inherited_nproc_max}"
+        ));
+    }
+    Ok(required)
+}
+
+#[cfg(any(target_os = "macos", test))]
 fn is_allowed_guardian_environment_key(key: &OsStr) -> bool {
     let Some(key) = key.to_str() else {
         return false;
@@ -46,9 +76,11 @@ fn is_allowed_guardian_environment_key(key: &OsStr) -> bool {
             | crate::tree_guard::REQUIRED_ENV
             | crate::tree_guard::PATH_ENV
             | crate::tree_guard::GENERATION_ENV
+            | crate::tree_guard::PARENT_PID_ENV
             | crate::request_validation::BUILTIN_TOOLCHAINS_ENV
             | crate::fault_trace::FAULT_GATE_ENV
             | crate::fault_trace::FAULT_EVENT_LOG_ENV
+            | crate::fault_trace::INTERACTIVE_FAULT_PAUSE_ENV
     )
 }
 
@@ -59,6 +91,7 @@ mod imp {
         INTERNAL_DIRECT_FD, STARTUP_TIMEOUT,
     };
     use crate::fault_trace::{FaultTrace, FaultTraceEvent, FAULT_EVENT_LOG_ENV, FAULT_GATE_ENV};
+    use crate::guardian_io::{FrameRead, FrameReader};
     use crate::guardian_protocol::{
         authenticate_process_identity, read_authenticated_frame, write_authenticated_frame,
         CleanupCause, FrameIdentity, GuardianCommand, GuardianEvent, ProcessIdentity,
@@ -78,7 +111,7 @@ mod imp {
     use crate::tree_guard;
     use std::collections::BTreeMap;
     use std::ffi::{CString, OsStr, OsString};
-    use std::io;
+    use std::io::{self, Read};
     use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
     use std::os::unix::ffi::OsStrExt;
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
@@ -91,6 +124,8 @@ mod imp {
 
     const MIN_DUPLICATED_CHILD_FD: i32 = 64;
     const CONTROL_POLL_INTERVAL_MS: i32 = 2;
+    const SESSION_READ_TIMEOUT: Duration = Duration::from_millis(2);
+    const SESSION_WRITE_TIMEOUT: Duration = Duration::from_secs(2);
 
     #[derive(Debug)]
     pub struct GuardianChild {
@@ -200,6 +235,19 @@ mod imp {
     }
 
     pub fn try_run_internal_mode() -> Option<i32> {
+        if std::env::args_os().nth(1).as_deref()
+            == Some(OsStr::new(
+                crate::guardian_protocol::MACOS_PAIR_MEMBER_ARGUMENT,
+            ))
+        {
+            if std::env::args_os().nth(2).is_some() {
+                return Some(64);
+            }
+            return Some(match paired_member_main() {
+                Ok(()) => 0,
+                Err(_) => 70,
+            });
+        }
         if std::env::args_os().nth(1).as_deref() != Some(OsStr::new(MACOS_RUN_GUARDIAN_ARGUMENT)) {
             return None;
         }
@@ -221,6 +269,137 @@ mod imp {
         root: &Path,
         identity: &FrameIdentity,
     ) -> io::Result<SpawnedRunGuardian> {
+        spawn_run_guardian_with_failure(root, identity, || {})
+    }
+
+    pub(crate) struct SpawnedPairMember {
+        pub identity: ProcessIdentity,
+        pub child: GuardianChild,
+        pub control: UnixStream,
+    }
+
+    pub(crate) fn spawn_pair_member(
+        identity: &FrameIdentity,
+        group: ProcessIdentity,
+    ) -> io::Result<SpawnedPairMember> {
+        identity.validate()?;
+        crate::guardian_protocol::validate_supervisor_anchor(&group)?;
+        let (control, inherited) = cloexec_stream_pair()?;
+        control.set_read_timeout(Some(STARTUP_TIMEOUT))?;
+        control.set_write_timeout(Some(SESSION_WRITE_TIMEOUT))?;
+        let mut environment = inherited_tree_environment(&identity.generation)?;
+        for (key, value) in [
+            (GUARDIAN_TOKEN_ENV, identity.token.clone()),
+            (GUARDIAN_GENERATION_ENV, identity.generation.clone()),
+            (GUARDIAN_RUN_ID_ENV, identity.run_id.clone()),
+            (GUARDIAN_PARENT_PID_ENV, std::process::id().to_string()),
+            (
+                GUARDIAN_REGISTRATION_FD_ENV,
+                INTERNAL_CONTROL_FD.to_string(),
+            ),
+            (
+                crate::guardian_protocol::PAIR_MEMBER_GROUP_ENV,
+                serde_json::to_string(&group).map_err(io::Error::other)?,
+            ),
+        ] {
+            insert_text_environment(&mut environment, key, &value)?;
+        }
+        let mut child = spawn_internal_child(
+            &trusted_current_executable()?,
+            crate::guardian_protocol::MACOS_PAIR_MEMBER_ARGUMENT,
+            &environment,
+            &[(inherited.as_raw_fd(), INTERNAL_CONTROL_FD)],
+        )?;
+        drop(inherited);
+        let ready = (|| {
+            let event = read_authenticated_frame::<_, GuardianEvent>(&mut &control, identity)?;
+            let member = match event {
+                Some(GuardianEvent::Ready { guardian, .. }) => guardian,
+                _ => return Err(invalid("paired member did not authenticate ready")),
+            };
+            authenticate_process_identity(&member, &read_process_identity(child.pid())?)?;
+            crate::guardian_protocol::validate_target_identity(&member, &group)?;
+            Ok(member)
+        })();
+        match ready {
+            Ok(member) => Ok(SpawnedPairMember {
+                identity: member,
+                child,
+                control,
+            }),
+            Err(error) => {
+                terminate_startup_child(&mut child);
+                Err(error)
+            }
+        }
+    }
+
+    fn paired_member_main() -> io::Result<()> {
+        install_signal_policy()?;
+        for (key, _) in std::env::vars_os() {
+            if !super::is_allowed_guardian_environment_key(&key)
+                && key != OsStr::new(crate::guardian_protocol::PAIR_MEMBER_GROUP_ENV)
+            {
+                return Err(invalid(
+                    "paired member inherited an unexpected environment key",
+                ));
+            }
+        }
+        let identity = FrameIdentity::new(
+            required_text_environment(GUARDIAN_TOKEN_ENV)?,
+            required_text_environment(GUARDIAN_GENERATION_ENV)?,
+            required_text_environment(GUARDIAN_RUN_ID_ENV)?,
+        )?;
+        if required_positive_i32_environment(GUARDIAN_PARENT_PID_ENV)? != unsafe { libc::getppid() }
+        {
+            return Err(invalid("paired member parent is not its executor"));
+        }
+        let group: ProcessIdentity = serde_json::from_str(&required_text_environment(
+            crate::guardian_protocol::PAIR_MEMBER_GROUP_ENV,
+        )?)
+        .map_err(io::Error::other)?;
+        crate::guardian_protocol::validate_supervisor_anchor(&group)?;
+        authenticate_process_identity(&group, &read_process_identity(group.pid)?)?;
+        let _guard = tree_guard::acquire_from_environment().map_err(io::Error::other)?;
+        if required_text_environment(tree_guard::GENERATION_ENV)? != identity.generation {
+            return Err(invalid("paired member generation mismatch"));
+        }
+        let mut control = inherited_unix_stream(required_exact_fd_environment(
+            GUARDIAN_REGISTRATION_FD_ENV,
+            INTERNAL_CONTROL_FD,
+        )?)?;
+        if unsafe { libc::setpgid(0, group.pgid) } != 0 {
+            return Err(io::Error::last_os_error());
+        }
+        authenticate_process_identity(&group, &read_process_identity(group.pid)?)?;
+        let member = read_process_identity(std::process::id() as i32)?;
+        crate::guardian_protocol::validate_target_identity(&member, &group)?;
+        write_authenticated_frame(
+            &mut control,
+            &GuardianEvent::ready(&identity, member),
+            &identity,
+        )?;
+        // An inert source-bound member never forks or leaves its group. Parent EOF retires
+        // it; a stopped member is instead killed by the surviving group's owned authority.
+        let mut byte = [0_u8; 1];
+        loop {
+            match control.read(&mut byte) {
+                Ok(0) => return Ok(()),
+                Ok(_) => return Err(invalid("paired member received unexpected control data")),
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+                Err(error) => return Err(error),
+            }
+        }
+    }
+
+    pub fn spawn_run_guardian_with_failure<F>(
+        root: &Path,
+        identity: &FrameIdentity,
+        on_failure: F,
+    ) -> io::Result<SpawnedRunGuardian>
+    where
+        F: FnOnce(),
+    {
         identity.validate()?;
         let root = canonical_private_root(root)?;
         let tree_environment = inherited_tree_environment(&identity.generation)?;
@@ -228,6 +407,8 @@ mod imp {
         let executable = trusted_current_executable()?;
         let (control_parent, control_child) = cloexec_stream_pair()?;
         let (direct_parent, direct_child) = cloexec_stream_pair()?;
+        control_parent.set_write_timeout(Some(SESSION_WRITE_TIMEOUT))?;
+        direct_parent.set_write_timeout(Some(SESSION_WRITE_TIMEOUT))?;
 
         let mut environment = BTreeMap::new();
         insert_text_environment(&mut environment, GUARDIAN_TOKEN_ENV, &identity.token)?;
@@ -284,7 +465,7 @@ mod imp {
             let ready =
                 read_authenticated_frame::<_, GuardianEvent>(&mut &control_parent, identity);
             let ready = ready.map_err(|error| contextual(error, "read guardian_ready"))?;
-            let _ = control_parent.set_read_timeout(None);
+            control_parent.set_read_timeout(Some(SESSION_READ_TIMEOUT))?;
             let guardian = match ready {
                 Some(GuardianEvent::Ready { guardian, .. }) => guardian,
                 Some(GuardianEvent::Fatal { code, message, .. }) => {
@@ -319,6 +500,9 @@ mod imp {
         let guardian = match startup {
             Ok(guardian) => guardian,
             Err(error) => {
+                // Paired peers must observe cancellation before this child's bounded reap or
+                // an uncertain cleanup can retain the caller's generation guard forever.
+                on_failure();
                 terminate_startup_child(&mut child);
                 return Err(error);
             }
@@ -346,15 +530,19 @@ mod imp {
         guardian: ProcessIdentity,
         root: PathBuf,
         control: UnixStream,
+        control_reader: FrameReader,
         control_open: bool,
         supervisor_direct: Option<UnixStream>,
         trace: Option<FaultTrace>,
         containment_active: bool,
         sandbox_profile: Option<PathBuf>,
+        paired: bool,
+        pair_member: Option<ProcessIdentity>,
     }
 
     struct SupervisorRuntime {
         stream: UnixStream,
+        reader: FrameReader,
         anchor: ProcessIdentity,
         watcher: AnchorExitWatcher,
     }
@@ -362,6 +550,7 @@ mod imp {
     struct PendingSupervisor {
         child: GuardianChild,
         stream: UnixStream,
+        reader: FrameReader,
     }
 
     enum SessionInput {
@@ -390,13 +579,7 @@ mod imp {
             ));
         }
         let generation_guard = tree_guard::acquire_from_environment()
-            .map_err(|error| io::Error::new(io::ErrorKind::PermissionDenied, error))?
-            .ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::PermissionDenied,
-                    "run guardian requires an independent generation guard",
-                )
-            })?;
+            .map_err(|error| io::Error::new(io::ErrorKind::PermissionDenied, error))?;
         let tree_generation = std::env::var(tree_guard::GENERATION_ENV).map_err(|_| {
             io::Error::new(
                 io::ErrorKind::PermissionDenied,
@@ -413,16 +596,25 @@ mod imp {
         let guardian = read_process_identity(std::process::id() as i32)?;
         let trace = FaultTrace::from_environment(&environment.identity.generation)
             .map_err(io::Error::other)?;
+        environment
+            .control
+            .set_read_timeout(Some(SESSION_READ_TIMEOUT))?;
+        environment
+            .control
+            .set_write_timeout(Some(SESSION_WRITE_TIMEOUT))?;
         let mut session = GuardianSession {
             identity: environment.identity,
             guardian,
             root: environment.root,
             control: environment.control,
+            control_reader: FrameReader::new(),
             control_open: true,
             supervisor_direct: Some(environment.supervisor_direct),
             trace,
             containment_active: false,
             sandbox_profile: None,
+            paired: false,
+            pair_member: None,
         };
         session.emit_trace(FaultTraceEvent::GuardianReady, None, None)?;
         session.send_guardian_event(&GuardianEvent::ready(&session.identity, guardian))?;
@@ -460,86 +652,172 @@ mod imp {
 
     impl GuardianSession {
         fn run(&mut self) -> io::Result<()> {
-            let spec = match self.read_executor_command()? {
-                Some(GuardianCommand::Start { spec, .. }) => *spec,
-                Some(GuardianCommand::Cancel { .. }) | None => return Ok(()),
-                Some(command) => {
+            let deadline = checked_deadline(STARTUP_TIMEOUT)?;
+            let (spec, peer_process_count) = loop {
+                if Instant::now() >= deadline {
                     return Err(io::Error::new(
-                        io::ErrorKind::InvalidData,
-                        format!("expected guardian_start, received {}", command.kind()),
-                    ))
+                        io::ErrorKind::TimedOut,
+                        "guardian start handshake timed out",
+                    ));
+                }
+                match self.read_executor_command()? {
+                    FrameRead::Frame(GuardianCommand::Start {
+                        spec,
+                        peer_process_count,
+                        ..
+                    }) => break (*spec, peer_process_count),
+                    FrameRead::Frame(GuardianCommand::Cancel { .. }) | FrameRead::Eof => {
+                        return Ok(())
+                    }
+                    FrameRead::Pending => continue,
+                    FrameRead::Frame(command) => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            format!("expected guardian_start, received {}", command.kind()),
+                        ))
+                    }
                 }
             };
 
-            let launcher_spec =
-                crate::platform::macos::prepare_launcher_spec(&self.root, &spec, &self.identity)
-                    .map_err(|error| io::Error::other(error.to_string()))?;
+            let launcher_spec = crate::platform::macos::prepare_launcher_spec_with_peer(
+                &self.root,
+                &spec,
+                &self.identity,
+                peer_process_count,
+            )
+            .map_err(|error| io::Error::other(error.to_string()))?;
+            self.paired = peer_process_count != 0;
             self.sandbox_profile = Some(launcher_spec.sandbox_profile.clone());
             let pending = self.spawn_supervisor()?;
             self.containment_active = true;
             let (mut runtime, pending_cleanup) = self.wait_for_registration(pending)?;
-            if let Some(cause) = pending_cleanup {
-                return self.cleanup_and_finish(&mut runtime, cause);
-            }
+            let result = (|| -> io::Result<()> {
+                if let Some(cause) = pending_cleanup {
+                    return self.cleanup_and_finish(&mut runtime, cause);
+                }
 
-            self.send_supervisor_command(
-                &mut runtime.stream,
-                &SupervisorGuardianCommand::configure(&self.identity, launcher_spec),
-            )?;
-            let pending_cleanup = self.wait_for_supervisor_ready(&mut runtime)?;
-            if let Some(cause) = pending_cleanup {
-                return self.cleanup_and_finish(&mut runtime, cause);
-            }
-
-            self.send_guardian_event(&GuardianEvent::started(&self.identity, runtime.anchor))?;
-            self.emit_trace(FaultTraceEvent::GuardianStarted, Some(runtime.anchor), None)?;
-
-            let cause = self.wait_for_commit_or_cleanup(&mut runtime)?;
-            if let Some(cause) = cause {
-                return self.cleanup_and_finish(&mut runtime, cause);
-            }
-            self.emit_trace(FaultTraceEvent::GuardianGo, Some(runtime.anchor), None)?;
-            self.send_supervisor_command(
-                &mut runtime.stream,
-                &SupervisorGuardianCommand::go(&self.identity, runtime.anchor),
-            )?;
-
-            loop {
-                match self.next_input(&mut runtime)? {
-                    SessionInput::Executor(GuardianCommand::Cancel { cause, .. }) => {
-                        return self.cleanup_and_finish(&mut runtime, cause)
-                    }
-                    SessionInput::Executor(command) => {
-                        self.send_fatal(
-                            "GUARDIAN_PROTOCOL_FAILED",
-                            format!("out-of-order executor command {}", command.kind()),
-                        );
-                        return self
-                            .cleanup_and_finish(&mut runtime, CleanupCause::ProtocolViolation);
-                    }
-                    SessionInput::ExecutorEof => {
-                        self.control_open = false;
-                        return self
-                            .cleanup_and_finish(&mut runtime, CleanupCause::ExecutorDisconnected);
-                    }
-                    SessionInput::Supervisor(event) => {
-                        if let Some(cause) = self.forward_supervisor_event(&runtime, event)? {
-                            return self.cleanup_and_finish(&mut runtime, cause);
+                if self.paired
+                    && spec.role == crate::protocol::RunRole::Checker
+                    && crate::fault_trace::InteractiveFaultPause::from_environment(
+                        self.trace.is_some(),
+                    )
+                    .map_err(io::Error::other)?
+                        == Some(crate::fault_trace::InteractiveFaultPause::SecondConfigure)
+                {
+                    self.emit_trace(
+                        FaultTraceEvent::InteractiveSecondConfigurePaused,
+                        Some(runtime.anchor),
+                        None,
+                    )?;
+                    let until = Instant::now() + Duration::from_secs(2);
+                    while Instant::now() < until {
+                        match self.read_executor_command()? {
+                            FrameRead::Pending => {}
+                            FrameRead::Eof => {
+                                return self.cleanup_and_finish(
+                                    &mut runtime,
+                                    CleanupCause::ExecutorDisconnected,
+                                )
+                            }
+                            FrameRead::Frame(GuardianCommand::Cancel { cause, .. }) => {
+                                return self.cleanup_and_finish(&mut runtime, cause)
+                            }
+                            FrameRead::Frame(command) => {
+                                return Err(io::Error::new(
+                                    io::ErrorKind::InvalidData,
+                                    format!(
+                                    "unexpected command during interactive preparation pause: {}",
+                                    command.kind()
+                                ),
+                                ))
+                            }
                         }
                     }
-                    SessionInput::SupervisorEof => {
-                        return self.wait_for_exact_anchor_exit_after_channel_loss(
-                            &mut runtime,
-                            "supervisor channel closed before cleanup",
-                        )
-                    }
-                    SessionInput::AnchorExited => {
-                        return self.drain_early_anchor_exit(
-                            &mut runtime,
-                            "supervisor exited before preparing a result",
-                        )
+                }
+
+                self.send_supervisor_command(
+                    &mut runtime.stream,
+                    &SupervisorGuardianCommand::configure(&self.identity, launcher_spec),
+                )?;
+                let pending_cleanup = self.wait_for_supervisor_ready(&mut runtime)?;
+                if let Some(cause) = pending_cleanup {
+                    return self.cleanup_and_finish(&mut runtime, cause);
+                }
+
+                self.send_guardian_event(&GuardianEvent::started(&self.identity, runtime.anchor))?;
+                self.emit_trace(FaultTraceEvent::GuardianStarted, Some(runtime.anchor), None)?;
+
+                let cause = self.wait_for_commit_or_cleanup(&mut runtime)?;
+                if let Some(cause) = cause {
+                    return self.cleanup_and_finish(&mut runtime, cause);
+                }
+                self.emit_trace(FaultTraceEvent::GuardianGo, Some(runtime.anchor), None)?;
+                self.send_supervisor_command(
+                    &mut runtime.stream,
+                    &SupervisorGuardianCommand::go(&self.identity, runtime.anchor),
+                )?;
+
+                loop {
+                    match self.next_input(&mut runtime)? {
+                        SessionInput::Executor(GuardianCommand::Cancel { cause, .. }) => {
+                            return self.cleanup_and_finish(&mut runtime, cause)
+                        }
+                        SessionInput::Executor(command) => {
+                            self.send_fatal(
+                                "GUARDIAN_PROTOCOL_FAILED",
+                                format!("out-of-order executor command {}", command.kind()),
+                            );
+                            return self
+                                .cleanup_and_finish(&mut runtime, CleanupCause::ProtocolViolation);
+                        }
+                        SessionInput::ExecutorEof => {
+                            self.control_open = false;
+                            return self.cleanup_and_finish(
+                                &mut runtime,
+                                CleanupCause::ExecutorDisconnected,
+                            );
+                        }
+                        SessionInput::Supervisor(event) => {
+                            if let Some(cause) = self.forward_supervisor_event(&runtime, event)? {
+                                return self.cleanup_and_finish(&mut runtime, cause);
+                            }
+                        }
+                        SessionInput::SupervisorEof => {
+                            return self.wait_for_exact_anchor_exit_after_channel_loss(
+                                &mut runtime,
+                                "supervisor channel closed before cleanup",
+                            )
+                        }
+                        SessionInput::AnchorExited => {
+                            return self.drain_early_anchor_exit(
+                                &mut runtime,
+                                "supervisor exited before preparing a result",
+                            )
+                        }
                     }
                 }
+            })();
+            match result {
+                Err(error) if self.paired && self.containment_active => {
+                    // Every paired protocol failure with an established owned S pin funnels
+                    // through the same cleanup authority, including enrollment EOF and failed
+                    // grant publication. Only exact direct-child termination precedes the
+                    // existing exited-anchor whole-group capability; no channel is a PID handle.
+                    self.send_fatal("PAIRED_PROTOCOL_FAILED", error.to_string());
+                    self.control_open = false;
+                    let _ = self.control.shutdown(std::net::Shutdown::Both);
+                    runtime.watcher.terminate_for_paired_cleanup()?;
+                    self.await_pair_member_release(&mut runtime)?;
+                    stop_kill_anchor_group_and_reap(
+                        &mut runtime.watcher,
+                        crate::macos_process::DrainOptions::default(),
+                        |_| {},
+                    )?;
+                    self.emit_trace(FaultTraceEvent::GroupDrained, Some(runtime.anchor), None)?;
+                    self.containment_active = false;
+                    Ok(())
+                }
+                other => other,
             }
         }
 
@@ -551,11 +829,20 @@ mod imp {
                 )
             })?;
             let (guardian_parent, guardian_child) = cloexec_stream_pair()?;
+            guardian_parent.set_read_timeout(Some(SESSION_READ_TIMEOUT))?;
+            guardian_parent.set_write_timeout(Some(SESSION_WRITE_TIMEOUT))?;
             let executable = trusted_current_executable()?;
             let tree_environment = inherited_tree_environment(&self.identity.generation)?;
             let trace_environment = inherited_trace_environment()?;
             let mut environment = BTreeMap::new();
             insert_text_environment(&mut environment, SUPERVISOR_TOKEN_ENV, &self.identity.token)?;
+            if self.paired {
+                insert_text_environment(
+                    &mut environment,
+                    crate::guardian_protocol::PAIRED_SUPERVISOR_ENV,
+                    "1",
+                )?;
+            }
             insert_text_environment(
                 &mut environment,
                 SUPERVISOR_GENERATION_ENV,
@@ -598,6 +885,7 @@ mod imp {
             Ok(PendingSupervisor {
                 child,
                 stream: guardian_parent,
+                reader: FrameReader::new(),
             })
         }
 
@@ -672,6 +960,7 @@ mod imp {
                 Ok((anchor, watcher, pending_cleanup)) => Ok((
                     SupervisorRuntime {
                         stream: pending.stream,
+                        reader: pending.reader,
                         anchor,
                         watcher,
                     },
@@ -719,6 +1008,18 @@ mod imp {
                     self.emit_trace(FaultTraceEvent::SupervisorReady, Some(runtime.anchor), None)?;
                     Ok(None)
                 }
+                SessionInput::Supervisor(SupervisorEvent::Fatal {
+                    anchor,
+                    code,
+                    message,
+                    ..
+                }) => {
+                    if let Some(anchor) = anchor {
+                        authenticate_process_identity(&anchor, &runtime.anchor)?;
+                    }
+                    self.send_fatal(&code, message);
+                    Ok(Some(CleanupCause::InternalError))
+                }
                 SessionInput::Supervisor(SupervisorEvent::CleanupRequested {
                     anchor,
                     cause,
@@ -756,6 +1057,11 @@ mod imp {
             &mut self,
             runtime: &mut SupervisorRuntime,
         ) -> io::Result<Option<CleanupCause>> {
+            if self.paired {
+                if let Some(cause) = self.wait_for_pair_member(runtime)? {
+                    return Ok(Some(cause));
+                }
+            }
             let deadline = checked_deadline(STARTUP_TIMEOUT)?;
             let input = match self.next_input_until(runtime, Some(deadline)) {
                 Ok(input) => input,
@@ -815,6 +1121,119 @@ mod imp {
                         "supervisor was drained after exiting before executor commit",
                     ))
                 }
+            }
+        }
+
+        fn wait_for_pair_member(
+            &mut self,
+            runtime: &mut SupervisorRuntime,
+        ) -> io::Result<Option<CleanupCause>> {
+            let deadline = checked_deadline(STARTUP_TIMEOUT)?;
+            match self.next_input_until(runtime, Some(deadline))? {
+                SessionInput::Executor(GuardianCommand::RegisterPairPin {
+                    anchor, member, ..
+                }) => {
+                    authenticate_process_identity(&anchor, &runtime.anchor)?;
+                    if self.pair_member.is_some() || runtime.watcher.poll_exit_unreaped()? {
+                        return Err(invalid("invalid paired member enrollment state"));
+                    }
+                    crate::guardian_protocol::validate_target_identity(&member, &runtime.anchor)?;
+                    authenticate_process_identity(&member, &read_process_identity(member.pid)?)?;
+                    authenticate_process_identity(
+                        &runtime.anchor,
+                        &read_process_identity(runtime.anchor.pid)?,
+                    )?;
+                    self.pair_member = Some(member);
+                    self.send_guardian_event(&GuardianEvent::pair_pin_registered(
+                        &self.identity,
+                        runtime.anchor,
+                        member,
+                    ))?;
+                    Ok(None)
+                }
+                SessionInput::Executor(GuardianCommand::Cancel { cause, .. }) => Ok(Some(cause)),
+                SessionInput::ExecutorEof => {
+                    self.control_open = false;
+                    Ok(Some(CleanupCause::ExecutorDisconnected))
+                }
+                SessionInput::Supervisor(SupervisorEvent::CleanupRequested {
+                    anchor,
+                    cause,
+                    ..
+                }) => {
+                    authenticate_process_identity(&anchor, &runtime.anchor)?;
+                    self.forward_cleanup_requested(anchor, cause)?;
+                    Ok(Some(cause))
+                }
+                _ => Err(invalid("paired member was not enrolled before commit")),
+            }
+        }
+
+        fn await_pair_member_release(&mut self, runtime: &mut SupervisorRuntime) -> io::Result<()> {
+            let Some(member) = self.pair_member else {
+                return Ok(());
+            };
+            if !runtime.watcher.poll_exit_unreaped()? {
+                return Err(invalid("paired release requires terminal owned supervisor"));
+            }
+            let mut last = None;
+            let mut notified = false;
+            loop {
+                let snapshot =
+                    crate::macos_process::inventory_live_process_group(runtime.anchor.pgid)?;
+                if snapshot.members.is_empty()
+                    && snapshot
+                        .zombie_pids
+                        .iter()
+                        .all(|pid| *pid == runtime.anchor.pid || *pid == member.pid)
+                {
+                    if last.as_ref() == Some(&snapshot) {
+                        if !snapshot.zombie_pids.contains(&member.pid) {
+                            return Ok(());
+                        }
+                        if !notified && self.control_open {
+                            if self
+                                .send_guardian_event(&GuardianEvent::pair_quiescent(
+                                    &self.identity,
+                                    runtime.anchor,
+                                    member,
+                                ))
+                                .is_err()
+                            {
+                                // E can die after the inventory proof but before this write.
+                                // Retain S's real owned pin and wait for orphan A to disappear;
+                                // notification failure never substitutes for physical drain.
+                                self.control_open = false;
+                                let _ = self.control.shutdown(std::net::Shutdown::Both);
+                            }
+                            notified = true;
+                        }
+                    }
+                    last = Some(snapshot);
+                } else {
+                    last = None;
+                    crate::macos_process::signal_exited_anchor_group(
+                        &runtime.watcher,
+                        libc::SIGSTOP,
+                    )?;
+                    crate::macos_process::signal_exited_anchor_group(
+                        &runtime.watcher,
+                        libc::SIGKILL,
+                    )?;
+                }
+                if self.control_open {
+                    match self.read_executor_command() {
+                        Ok(FrameRead::Frame(GuardianCommand::Cancel { .. }))
+                        | Ok(FrameRead::Pending) => {}
+                        // Truncated/malformed EOF is still controller loss. S remains pinned;
+                        // close the channel and continue the physical orphan drain.
+                        _ => {
+                            self.control_open = false;
+                            let _ = self.control.shutdown(std::net::Shutdown::Both);
+                        }
+                    }
+                }
+                thread::sleep(CHILD_WAIT_POLL_INTERVAL);
             }
         }
 
@@ -934,6 +1353,7 @@ mod imp {
             runtime
                 .watcher
                 .wait_for_exit_unreaped(crate::macos_process::DrainOptions::default(), |_| {})?;
+            self.await_pair_member_release(runtime)?;
             stop_kill_anchor_group_and_reap(
                 &mut runtime.watcher,
                 crate::macos_process::DrainOptions::default(),
@@ -1052,6 +1472,7 @@ mod imp {
             runtime: &mut SupervisorRuntime,
             diagnostic: &str,
         ) -> io::Result<()> {
+            self.await_pair_member_release(runtime)?;
             stop_kill_anchor_group_and_reap(
                 &mut runtime.watcher,
                 crate::macos_process::DrainOptions::default(),
@@ -1088,6 +1509,7 @@ mod imp {
             runtime
                 .watcher
                 .wait_for_exit_unreaped(crate::macos_process::DrainOptions::default(), |_| {})?;
+            self.await_pair_member_release(runtime)?;
             stop_kill_anchor_group_and_reap(
                 &mut runtime.watcher,
                 crate::macos_process::DrainOptions::default(),
@@ -1141,21 +1563,21 @@ mod imp {
                     Some(&pending.stream),
                 )?;
                 if ready.control {
-                    return Ok(match self.read_executor_command()? {
-                        Some(command) => RegisteredInput::Executor(command),
-                        None => RegisteredInput::ExecutorEof,
-                    });
+                    match self.read_executor_command()? {
+                        FrameRead::Frame(command) => return Ok(RegisteredInput::Executor(command)),
+                        FrameRead::Eof => return Ok(RegisteredInput::ExecutorEof),
+                        FrameRead::Pending => {}
+                    }
                 }
                 if ready.supervisor {
-                    return Ok(
-                        match read_authenticated_frame::<_, SupervisorEvent>(
-                            &mut &pending.stream,
-                            &self.identity,
-                        )? {
-                            Some(event) => RegisteredInput::Supervisor(event),
-                            None => RegisteredInput::SupervisorEof,
-                        },
-                    );
+                    match pending
+                        .reader
+                        .receive::<_, SupervisorEvent>(&mut &pending.stream, &self.identity)?
+                    {
+                        FrameRead::Frame(event) => return Ok(RegisteredInput::Supervisor(event)),
+                        FrameRead::Eof => return Ok(RegisteredInput::SupervisorEof),
+                        FrameRead::Pending => {}
+                    }
                 }
             }
         }
@@ -1188,32 +1610,33 @@ mod imp {
                     Some(&runtime.stream),
                 )?;
                 if ready.control {
-                    return Ok(match self.read_executor_command()? {
-                        Some(command) => SessionInput::Executor(command),
-                        None => SessionInput::ExecutorEof,
-                    });
+                    match self.read_executor_command()? {
+                        FrameRead::Frame(command) => return Ok(SessionInput::Executor(command)),
+                        FrameRead::Eof => return Ok(SessionInput::ExecutorEof),
+                        FrameRead::Pending => {}
+                    }
                 }
                 if ready.supervisor {
-                    return Ok(
-                        match read_authenticated_frame::<_, SupervisorEvent>(
-                            &mut &runtime.stream,
-                            &self.identity,
-                        )? {
-                            Some(event) => SessionInput::Supervisor(event),
-                            None => SessionInput::SupervisorEof,
-                        },
-                    );
+                    match runtime
+                        .reader
+                        .receive::<_, SupervisorEvent>(&mut &runtime.stream, &self.identity)?
+                    {
+                        FrameRead::Frame(event) => return Ok(SessionInput::Supervisor(event)),
+                        FrameRead::Eof => return Ok(SessionInput::SupervisorEof),
+                        FrameRead::Pending => {}
+                    }
                 }
             }
         }
 
-        fn read_executor_command(&mut self) -> io::Result<Option<GuardianCommand>> {
+        fn read_executor_command(&mut self) -> io::Result<FrameRead<GuardianCommand>> {
             if !self.control_open {
-                return Ok(None);
+                return Ok(FrameRead::Eof);
             }
-            let command =
-                read_authenticated_frame::<_, GuardianCommand>(&mut self.control, &self.identity)?;
-            if command.is_none() {
+            let command = self
+                .control_reader
+                .receive(&mut self.control, &self.identity)?;
+            if matches!(command, FrameRead::Eof) {
                 self.control_open = false;
             }
             Ok(command)
@@ -1505,6 +1928,10 @@ mod imp {
                 OsString::from(tree_guard::GENERATION_ENV),
                 OsString::from(generation),
             ),
+            (
+                OsString::from(tree_guard::PARENT_PID_ENV),
+                OsString::from(std::process::id().to_string()),
+            ),
         ]))
     }
 
@@ -1513,10 +1940,23 @@ mod imp {
         let log = std::env::var_os(FAULT_EVENT_LOG_ENV);
         match (enabled, log) {
             (None, None) => Ok(BTreeMap::new()),
-            (Some(enabled), Some(log)) if enabled == OsStr::new("1") => Ok(BTreeMap::from([
-                (OsString::from(FAULT_GATE_ENV), enabled),
-                (OsString::from(FAULT_EVENT_LOG_ENV), log),
-            ])),
+            (Some(enabled), Some(log)) if enabled == OsStr::new("1") => {
+                crate::fault_trace::InteractiveFaultPause::from_environment(true)
+                    .map_err(io::Error::other)?;
+                let mut values = BTreeMap::from([
+                    (OsString::from(FAULT_GATE_ENV), enabled),
+                    (OsString::from(FAULT_EVENT_LOG_ENV), log),
+                ]);
+                if let Some(value) =
+                    std::env::var_os(crate::fault_trace::INTERACTIVE_FAULT_PAUSE_ENV)
+                {
+                    values.insert(
+                        OsString::from(crate::fault_trace::INTERACTIVE_FAULT_PAUSE_ENV),
+                        value,
+                    );
+                }
+                Ok(values)
+            }
             _ => Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
                 "run guardian fault trace environment is partial or invalid",
@@ -1620,7 +2060,7 @@ mod imp {
         environment: &BTreeMap<OsString, OsString>,
         mappings: &[(RawFd, RawFd)],
     ) -> io::Result<GuardianChild> {
-        validate_child_mappings(mappings)?;
+        validate_child_mappings(mode, mappings)?;
         let executable_c = path_cstring(executable)?;
         let mode_c = CString::new(mode).map_err(|_| invalid("internal mode contains NUL"))?;
         let argv_storage = [executable_c.clone(), mode_c];
@@ -1640,7 +2080,8 @@ mod imp {
         environment_pointers.push(std::ptr::null_mut());
 
         let mut file_actions = PosixSpawnFileActions::new()?;
-        let devnull = CString::new("/dev/null").expect("static /dev/null path has no NUL");
+        let devnull = CString::new("/dev/null")
+            .map_err(|error| io::Error::other(format!("invalid static /dev/null path: {error}")))?;
         for descriptor in [libc::STDIN_FILENO, libc::STDOUT_FILENO, libc::STDERR_FILENO] {
             file_actions.add_open(descriptor, &devnull, libc::O_RDWR | libc::O_NOFOLLOW, 0)?;
         }
@@ -1684,7 +2125,7 @@ mod imp {
         })
     }
 
-    fn validate_child_mappings(mappings: &[(RawFd, RawFd)]) -> io::Result<()> {
+    fn validate_child_mappings(mode: &str, mappings: &[(RawFd, RawFd)]) -> io::Result<()> {
         let mut destinations = std::collections::BTreeSet::new();
         for (source, destination) in mappings {
             if *source < 0
@@ -1694,11 +2135,20 @@ mod imp {
                 return Err(invalid("internal child FD mapping is invalid"));
             }
         }
-        if destinations.len() == 2 {
+        let required = match mode {
+            crate::guardian_protocol::MACOS_PAIR_MEMBER_ARGUMENT => {
+                std::collections::BTreeSet::from([INTERNAL_CONTROL_FD])
+            }
+            MACOS_RUN_GUARDIAN_ARGUMENT | MACOS_RUN_SUPERVISOR_ARGUMENT => {
+                std::collections::BTreeSet::from([INTERNAL_CONTROL_FD, INTERNAL_DIRECT_FD])
+            }
+            _ => return Err(invalid("unknown internal child mode")),
+        };
+        if destinations == required {
             Ok(())
         } else {
             Err(invalid(
-                "internal child requires distinct control and direct FD mappings",
+                "internal child FD mappings do not match its trusted mode",
             ))
         }
     }
@@ -1894,7 +2344,17 @@ mod imp {
     }
 
     fn terminate_startup_child(child: &mut GuardianChild) {
-        let _ = child.terminate_and_wait(STARTUP_TIMEOUT);
+        match child.terminate_and_wait(STARTUP_TIMEOUT) {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                eprintln!("JudgeDesk internal startup child could not be reaped; generation guard remains held");
+                hold_generation_guard_forever();
+            }
+            Err(error) => {
+                eprintln!("JudgeDesk internal startup child cleanup failed: {error}; generation guard remains held");
+                hold_generation_guard_forever();
+            }
+        }
     }
 
     fn require_group_signal_sent(
@@ -1944,6 +2404,27 @@ mod imp {
         use std::os::fd::{FromRawFd, OwnedFd};
         use std::time::{SystemTime, UNIX_EPOCH};
 
+        #[test]
+        fn internal_child_descriptors_are_exact_for_each_trusted_mode() {
+            let member = crate::guardian_protocol::MACOS_PAIR_MEMBER_ARGUMENT;
+            let control = [(10, INTERNAL_CONTROL_FD)];
+            let both = [(10, INTERNAL_CONTROL_FD), (11, INTERNAL_DIRECT_FD)];
+            assert!(validate_child_mappings(member, &control).is_ok());
+            assert!(validate_child_mappings(member, &both).is_err());
+            for mode in [MACOS_RUN_GUARDIAN_ARGUMENT, MACOS_RUN_SUPERVISOR_ARGUMENT] {
+                assert!(validate_child_mappings(mode, &both).is_ok());
+                assert!(validate_child_mappings(mode, &control).is_err());
+            }
+            assert!(validate_child_mappings("unknown", &both).is_err());
+            assert!(validate_child_mappings(member, &[(-1, INTERNAL_CONTROL_FD)]).is_err());
+            assert!(validate_child_mappings(member, &[(10, INTERNAL_DIRECT_FD)]).is_err());
+            assert!(validate_child_mappings(
+                member,
+                &[(10, INTERNAL_CONTROL_FD), (11, INTERNAL_CONTROL_FD)]
+            )
+            .is_err());
+        }
+
         struct TestDirectory(PathBuf);
 
         impl TestDirectory {
@@ -1968,12 +2449,84 @@ mod imp {
         }
 
         #[test]
+        fn guardian_control_preserves_fragmented_frames_between_session_polls() {
+            use crate::guardian_io::{FrameRead, FrameReader};
+            use std::io::Write;
+
+            let identity =
+                FrameIdentity::new("11".repeat(32), "22".repeat(32), "fragmented-cancel".into())
+                    .expect("frame identity");
+            let mut frame = Vec::new();
+            write_authenticated_frame(
+                &mut frame,
+                &GuardianCommand::cancel(&identity, CleanupCause::Cancelled),
+                &identity,
+            )
+            .expect("encode cancel");
+            for split in [1, 2, 3, 4, frame.len() - 1] {
+                let (control, mut sender) = UnixStream::pair().expect("control pair");
+                control
+                    .set_read_timeout(Some(Duration::from_millis(2)))
+                    .expect("bounded session read");
+                let mut session = GuardianSession {
+                    identity: identity.clone(),
+                    guardian: ProcessIdentity {
+                        pid: 10,
+                        pgid: 10,
+                        start_abstime: 1,
+                    },
+                    root: std::env::temp_dir(),
+                    control,
+                    control_reader: FrameReader::new(),
+                    control_open: true,
+                    supervisor_direct: None,
+                    trace: None,
+                    containment_active: false,
+                    sandbox_profile: None,
+                    paired: false,
+                    pair_member: None,
+                };
+                sender
+                    .write_all(&frame[..split])
+                    .expect("write frame prefix");
+                assert!(matches!(
+                    session
+                        .read_executor_command()
+                        .expect("partial command yields"),
+                    FrameRead::Pending
+                ));
+                sender
+                    .write_all(&frame[split..])
+                    .expect("write frame suffix");
+                assert!(matches!(
+                    session.read_executor_command().expect("resume command"),
+                    FrameRead::Frame(GuardianCommand::Cancel {
+                        cause: CleanupCause::Cancelled,
+                        ..
+                    })
+                ));
+                // Parallel containment tests fork; their transient inherited copies must not
+                // postpone this fixture's EOF. shutdown acts on the socket endpoint itself.
+                sender
+                    .shutdown(std::net::Shutdown::Write)
+                    .expect("close sender write half");
+                drop(sender);
+                assert!(matches!(
+                    session.read_executor_command().expect("frame boundary EOF"),
+                    FrameRead::Eof
+                ));
+                assert!(!session.control_open);
+            }
+        }
+
+        #[test]
         fn posix_spawn_closes_ambient_descriptors_and_preserves_only_mappings() {
             let directory = TestDirectory::new();
             let script = directory.0.join("inspect-fds.sh");
             fs::write(
                 &script,
                 concat!(
+                    "#!/bin/sh\n",
                     "if [ -e \"/dev/fd/$AMBIENT_FD\" ]; then\n",
                     "  printf 'ambient-open\\n' >&3\n",
                     "  exit 91\n",
@@ -1983,6 +2536,8 @@ mod imp {
                 ),
             )
             .expect("write descriptor inspection script");
+            fs::set_permissions(&script, fs::Permissions::from_mode(0o500))
+                .expect("make owned descriptor inspection script executable");
 
             let source = File::open("/dev/null").expect("open ambient descriptor source");
             let ambient_raw = unsafe { libc::fcntl(source.as_raw_fd(), libc::F_DUPFD, 99) };
@@ -2010,8 +2565,8 @@ mod imp {
             )]);
 
             let mut child = spawn_internal_child(
-                Path::new("/bin/sh"),
-                script.to_str().expect("Unicode test script path"),
+                &script,
+                MACOS_RUN_SUPERVISOR_ARGUMENT,
                 &environment,
                 &[
                     (control_child.as_raw_fd(), INTERNAL_CONTROL_FD),
@@ -2047,6 +2602,11 @@ pub use imp::{
     spawn_run_guardian, trusted_current_executable, try_run_internal_mode, GuardianChild,
     SpawnedRunGuardian,
 };
+
+#[cfg(target_os = "macos")]
+pub(crate) use imp::spawn_run_guardian_with_failure;
+#[cfg(target_os = "macos")]
+pub(crate) use imp::{spawn_pair_member, SpawnedPairMember};
 
 #[cfg(not(target_os = "macos"))]
 pub fn trusted_current_executable() -> io::Result<std::path::PathBuf> {
@@ -2116,6 +2676,47 @@ mod tests {
     use super::*;
 
     #[test]
+    fn paired_nproc_ceiling_reserves_both_targets_and_supervisors() {
+        assert_eq!(
+            paired_launcher_nproc_ceiling(100, 1_000, 1, 0).expect("ordinary run"),
+            107
+        );
+        assert_eq!(
+            paired_launcher_nproc_ceiling(100, 1_000, 1, 32).expect("paired run"),
+            142
+        );
+        assert_eq!(
+            paired_launcher_nproc_ceiling(100, 173, 32, 32).expect("exact hard limit"),
+            173
+        );
+        let error = paired_launcher_nproc_ceiling(100, 172, 32, 32)
+            .expect_err("cannot fit pair below hard limit");
+        assert!(error.contains("required=173"), "{error}");
+        assert!(error.contains("hardMax=172"), "{error}");
+    }
+
+    #[test]
+    fn paired_nproc_ceiling_rejects_invalid_budgets_and_arithmetic_overflow() {
+        for (own, peer) in [(0, 1), (33, 1), (1, 33), (u32::MAX, u32::MAX)] {
+            assert!(paired_launcher_nproc_ceiling(100, 1_000, own, peer).is_err());
+        }
+        assert!(paired_launcher_nproc_ceiling(u64::MAX, u64::MAX, 1, 1).is_err());
+        assert!(paired_launcher_nproc_ceiling(u64::MAX, u64::MAX, 1, 0).is_err());
+    }
+
+    #[test]
+    fn paired_nproc_reserves_the_two_trusted_executor_owned_members() {
+        assert_eq!(
+            paired_launcher_nproc_ceiling(100, 173, 32, 32).expect("pair fits exactly"),
+            173
+        );
+        assert!(
+            paired_launcher_nproc_ceiling(100, 172, 32, 32).is_err(),
+            "member helpers cannot consume reserved target headroom"
+        );
+    }
+
+    #[test]
     fn guardian_environment_allowlist_is_exact() {
         let required = [
             crate::guardian_protocol::GUARDIAN_TOKEN_ENV,
@@ -2128,6 +2729,7 @@ mod tests {
             crate::tree_guard::REQUIRED_ENV,
             crate::tree_guard::PATH_ENV,
             crate::tree_guard::GENERATION_ENV,
+            crate::tree_guard::PARENT_PID_ENV,
             crate::request_validation::BUILTIN_TOOLCHAINS_ENV,
             crate::fault_trace::FAULT_GATE_ENV,
             crate::fault_trace::FAULT_EVENT_LOG_ENV,

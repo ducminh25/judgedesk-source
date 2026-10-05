@@ -1993,11 +1993,12 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tower-http",
+ "uuid",
 ]
 
 [[package]]
 name = "judgedesk-native-executor"
-version = "1.5.1"
+version = "1.5.2"
 dependencies = [
  "libc",
  "serde",
@@ -4124,7 +4125,7 @@ dependencies = [
 
 [[package]]
 name = "themis-v2"
-version = "1.5.1"
+version = "1.5.2"
 dependencies = [
  "dirs",
  "fs4",

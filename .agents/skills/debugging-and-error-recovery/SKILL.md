@@ -135,6 +135,19 @@ Root cause fix (good):
 
 Ask: "Why does this happen?" until you reach the actual cause, not just where it manifests.
 
+#### Caller Audit Before Patching (Grep All Call Sites)
+A bug report usually names only one symptom or one call site. Before editing:
+1. **Grep every caller** of the function, endpoint, or struct you are modifying across all 4 tiers (`src/`, `server/`, `shared/`, `native-executor/`).
+2. **Fix at the shared root**: A guard or invariant enforced at the shared function/type fixes the issue for all callers at once, avoiding scattered symptom patches.
+3. **Verify all siblings**: Confirm that fixing the shared root does not break expected behaviors of other callers.
+
+#### Architectural Boundary Discipline
+Place the fix in the tier that owns the responsibility:
+- Low-level OS pipes, process isolation, AppContainer $\to$ `native-executor/` (Rust).
+- Submission queuing, scoring, contest state $\to$ `server/judge/` / `shared/`.
+- UI view rendering & user interaction $\to$ `src/`.
+Never monkey-patch across tier boundaries for expediency, as this creates technical debt and complicates planned Rust core migrations.
+
 ### Step 5: Guard Against Recurrence
 
 Write a test that catches this specific failure:

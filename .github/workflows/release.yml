@@ -53,7 +53,9 @@ jobs:
           npm run test:executor
           cargo fmt --check --manifest-path src-tauri/Cargo.toml
           cargo fmt --check --manifest-path native-executor/Cargo.toml
+          cargo fmt --check --manifest-path crates/judgedesk-core/Cargo.toml
           cargo test --locked --manifest-path src-tauri/Cargo.toml
+          cargo test --locked --manifest-path crates/judgedesk-core/Cargo.toml
 
 # Final installers are intentionally assembled outside this workflow:
 # - Windows Core/Full are built on the validated Windows host and updater-signed

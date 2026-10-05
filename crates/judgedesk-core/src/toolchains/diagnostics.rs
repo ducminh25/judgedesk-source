@@ -1,8 +1,7 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
@@ -18,6 +17,35 @@ use super::discovery::{normalize_language_kind, resolve_toolchain_for_profile};
 
 static DIAGNOSTIC_COUNTER: AtomicU64 = AtomicU64::new(1);
 pub const PROBE_TOKEN_MARKER: &str = "JUDGEDESK_PROBE_OK";
+
+const DEFAULT_DIAGNOSTIC_WALL_TIME_MS: u64 = 3_000;
+const SCRATCH_DIAGNOSTIC_WALL_TIME_MS: u64 = 5_000;
+const PYTHON_DIAGNOSTIC_WALL_TIME_MS: u64 = 10_000;
+const JAVA_DIAGNOSTIC_WALL_TIME_MS: u64 = 15_000;
+
+// Diagnostics verify managed runtimes through a fresh sandbox, so their startup
+// budget is deliberately separate from a contestant submission's time limit.
+fn diagnostic_wall_time_ms(kind: &str) -> u64 {
+    match kind {
+        "python" => PYTHON_DIAGNOSTIC_WALL_TIME_MS,
+        "java" => JAVA_DIAGNOSTIC_WALL_TIME_MS,
+        "scratch" => SCRATCH_DIAGNOSTIC_WALL_TIME_MS,
+        _ => DEFAULT_DIAGNOSTIC_WALL_TIME_MS,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::diagnostic_wall_time_ms;
+
+    #[test]
+    fn managed_runtime_diagnostics_have_cold_start_headroom() {
+        assert_eq!(diagnostic_wall_time_ms("python"), 10_000);
+        assert_eq!(diagnostic_wall_time_ms("java"), 15_000);
+        assert_eq!(diagnostic_wall_time_ms("cpp"), 3_000);
+        assert_eq!(diagnostic_wall_time_ms("scratch"), 5_000);
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -84,9 +112,38 @@ fn get_probe_source(kind: &str) -> (&'static str, &'static str) {
     }
 }
 
+#[cfg(target_os = "macos")]
+fn resolve_macos_sdk_path() -> Option<String> {
+    if let Ok(sdk) = std::env::var("SDKROOT") {
+        if !sdk.trim().is_empty() && std::path::Path::new(&sdk).is_dir() {
+            return Some(sdk);
+        }
+    }
+    if let Ok(out) = std::process::Command::new("xcrun")
+        .args(["--show-sdk-path"])
+        .output()
+    {
+        if out.status.success() {
+            let sdk = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !sdk.is_empty() && std::path::Path::new(&sdk).is_dir() {
+                return Some(sdk);
+            }
+        }
+    }
+    let default_sdk = "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk";
+    if std::path::Path::new(default_sdk).is_dir() {
+        return Some(default_sdk.to_string());
+    }
+    let xcode_sdk = "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk";
+    if std::path::Path::new(xcode_sdk).is_dir() {
+        return Some(xcode_sdk.to_string());
+    }
+    None
+}
+
 pub async fn diagnose_language_profile(
     profile_id: &str,
-    platform: &crate::executor_client::ExecutorClient,
+    platform: &ExecutorClient,
     preferred_mode: Option<&str>,
     preferred_path: Option<&str>,
 ) -> ToolchainDiagnosticResult {
@@ -186,11 +243,21 @@ pub async fn diagnose_language_profile(
             cmd.arg("-O2");
             if kind == "cpp" {
                 cmd.arg("-std=c++14");
+                let exe_str = toolchain.executable_path.to_string_lossy();
+                if exe_str.ends_with("clang") || exe_str.ends_with("clang.exe") {
+                    cmd.arg("-lc++");
+                }
             } else {
                 cmd.arg("-std=c11");
             }
             if !cfg!(target_os = "macos") {
                 cmd.arg("-static");
+            }
+            #[cfg(target_os = "macos")]
+            {
+                if let Some(sdk) = resolve_macos_sdk_path() {
+                    cmd.arg("-isysroot").arg(sdk);
+                }
             }
             cmd.arg("-o").arg(&staged_exe).arg(&source_path);
 
@@ -253,6 +320,12 @@ pub async fn diagnose_language_profile(
             if cfg!(windows) {
                 cmd.arg("-WR").arg("-Xs").arg("-Cs66060288");
             }
+            #[cfg(target_os = "macos")]
+            {
+                if let Some(sdk) = resolve_macos_sdk_path() {
+                    cmd.arg(format!("-XR{sdk}"));
+                }
+            }
             cmd.arg(format!("-o{}", staged_exe.display()))
                 .arg(&source_path);
 
@@ -264,6 +337,14 @@ pub async fn diagnose_language_profile(
                         "PATH",
                         format!("{}{delimiter}{}", bin_dir.display(), current_path),
                     );
+                }
+                #[cfg(target_os = "macos")]
+                {
+                    let units_dir = pkg_root.join("units").join("aarch64-darwin");
+                    if units_dir.is_dir() {
+                        cmd.arg(format!("-Fu{}", units_dir.join("*").display()));
+                        cmd.arg(format!("-Fu{}", units_dir.join("rtl").display()));
+                    }
                 }
             }
 
@@ -365,11 +446,7 @@ pub async fn diagnose_language_profile(
     let stderr_path = workspace_dir.join("stderr.txt");
 
     let limits = RunLimits {
-        wall_time_ms: if kind == "java" || kind == "scratch" {
-            5000
-        } else {
-            3000
-        },
+        wall_time_ms: diagnostic_wall_time_ms(kind),
         memory_bytes: if kind == "java" || kind == "scratch" {
             512 * 1024 * 1024
         } else {
@@ -566,7 +643,7 @@ pub async fn diagnose_language_profile(
                     &receipt,
                 ) {
                     Ok(cached_root) => {
-                        let cache_id = super::discovery::managed_cache_id(
+                        let _cache_id = super::discovery::managed_cache_id(
                             &receipt.package_id,
                             &receipt.version,
                         );
@@ -591,11 +668,18 @@ pub async fn diagnose_language_profile(
                             run_id: run_id.clone(),
                             role: RunRole::Submission,
                             workspace_id: workspace_id.clone(),
-                            executable_id: format!("toolchains/{cache_id}/{relative_exe}"),
+                            executable_id: format!("local-toolchain/{relative_exe}"),
                             args: vec![
                                 "-XX:+UseSerialGC".to_string(),
                                 "-XX:ActiveProcessorCount=1".to_string(),
-                                "-Xmx64m".to_string(),
+                                "-XX:+ExitOnOutOfMemoryError".to_string(),
+                                "-XX:MaxRAM=536870912".to_string(),
+                                "-XX:MaxRAMPercentage=65.0".to_string(),
+                                "-Dfile.encoding=UTF-8".to_string(),
+                                "-Duser.language=en".to_string(),
+                                "-Duser.country=US".to_string(),
+                                "-Djava.io.tmpdir=.".to_string(),
+                                "-Duser.home=.".to_string(),
                                 "-cp".to_string(),
                                 ".".to_string(),
                                 "Main".to_string(),
@@ -604,13 +688,13 @@ pub async fn diagnose_language_profile(
                             stdout_file: "stdout.txt".to_string(),
                             stderr_file: "stderr.txt".to_string(),
                             environment: env,
-                            toolchain: Some(judgedesk_native_executor::protocol::ToolchainGrant {
-                                package_id: receipt.package_id.clone(),
-                                package_digest: receipt.archive_sha256.clone(),
-                                component_id: "java.runtime".to_string(),
+                            toolchain: None,
+                            local_toolchain: Some(LocalToolchainGrant {
+                                root_path: cached_root.to_string_lossy().into_owned(),
+                                executable_relative_path: relative_exe.to_string(),
+                                isolation: LocalToolchainIsolation::ResourceOnly,
                                 role: ToolchainGrantRole::SubmissionRuntime,
                             }),
-                            local_toolchain: None,
                             limits,
                         }
                     }
@@ -654,7 +738,14 @@ pub async fn diagnose_language_profile(
                             args: vec![
                                 "-XX:+UseSerialGC".to_string(),
                                 "-XX:ActiveProcessorCount=1".to_string(),
-                                "-Xmx64m".to_string(),
+                                "-XX:+ExitOnOutOfMemoryError".to_string(),
+                                "-XX:MaxRAM=536870912".to_string(),
+                                "-XX:MaxRAMPercentage=65.0".to_string(),
+                                "-Dfile.encoding=UTF-8".to_string(),
+                                "-Duser.language=en".to_string(),
+                                "-Duser.country=US".to_string(),
+                                "-Djava.io.tmpdir=.".to_string(),
+                                "-Duser.home=.".to_string(),
                                 "-cp".to_string(),
                                 ".".to_string(),
                                 "Main".to_string(),
@@ -716,7 +807,14 @@ pub async fn diagnose_language_profile(
                     args: vec![
                         "-XX:+UseSerialGC".to_string(),
                         "-XX:ActiveProcessorCount=1".to_string(),
-                        "-Xmx64m".to_string(),
+                        "-XX:+ExitOnOutOfMemoryError".to_string(),
+                        "-XX:MaxRAM=536870912".to_string(),
+                        "-XX:MaxRAMPercentage=65.0".to_string(),
+                        "-Dfile.encoding=UTF-8".to_string(),
+                        "-Duser.language=en".to_string(),
+                        "-Duser.country=US".to_string(),
+                        "-Djava.io.tmpdir=.".to_string(),
+                        "-Duser.home=.".to_string(),
                         "-cp".to_string(),
                         ".".to_string(),
                         "Main".to_string(),
@@ -876,7 +974,7 @@ pub async fn diagnose_language_profile(
         }
     };
 
-    let validated = match validate_run(&platform.root(), &spec) {
+    let _validated = match validate_run(&platform.root(), &spec) {
         Ok(v) => v,
         Err(err) => {
             let _ = fs::remove_dir_all(&workspace_dir);
@@ -896,7 +994,25 @@ pub async fn diagnose_language_profile(
         }
     };
 
-    let run_result = platform.run_sync(Box::new(spec.clone())).expect("run");
+    let run_result = match platform.run_sync(Box::new(spec.clone())) {
+        Ok(r) => r,
+        Err(e) => {
+            let _ = fs::remove_dir_all(&workspace_dir);
+            return ToolchainDiagnosticResult {
+                success: false,
+                profile_id: profile_id.to_string(),
+                language: kind.to_string(),
+                source_mode: Some(toolchain.source_mode),
+                version: Some(toolchain.version),
+                phase: "execution".to_string(),
+                compile_time_ms,
+                execution_time_ms: None,
+                peak_memory_kb: None,
+                stdout: None,
+                error: Some(format!("Executor error: {e}")),
+            };
+        }
+    };
 
     let stdout = if stdout_path.is_file() {
         fs::read_to_string(&stdout_path).unwrap_or_default()

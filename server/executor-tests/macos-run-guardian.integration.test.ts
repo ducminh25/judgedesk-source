@@ -13,6 +13,17 @@ import type {
   ExecutorRunSpec,
 } from "../executor/protocol.js";
 
+// Shared only by the paired lifecycle fault gate; retain the same identity and
+// conservative cleanup checks for both suites.
+export {
+  withGateRuntime, startLongRun, cancelRun, waitForTrace, requireIdentity,
+  assertKernelIdentity, assertExactGuardianCommand, assertGroupEmpty,
+  assertGroupContains, assertNoRunProfileArtifacts, waitForGenerationExclusive,
+  generationExclusiveAvailable, waitForProcessGone, gateId, sanitizedExecutorEnvironment,
+  traceEvents, readTraceEvents, restartGateHarness,
+};
+export type { GateRuntime, InteractiveFaultPause, GateFaultEnvironment };
+
 /*
  * Destructive Apple-Silicon fault gate.
  *
@@ -36,7 +47,11 @@ import type {
  *            "guardian_started" | "executor_active_committed" |
  *            "guardian_go" | "target_started" | "cleanup_requested" |
  *            "executor_fallback_drain_started" | "group_drained" |
- *            "supervisor_prepared" | "guardian_cleaned",
+ *            "supervisor_prepared" | "guardian_cleaned" |
+ *            "interactive_spool_created" |
+ *            "interactive_second_configure_paused" |
+ *            "interactive_participant_enrolled" |
+ *            "interactive_pair_enrolled",
  *   "runId": <run ID, or "executor" for fault_gate_ready>,
  *   "generation": <64 lowercase hex>,
  *   "guardian"?: { "pid": n, "pgid": n, "startAbstime": "n" },
@@ -84,6 +99,10 @@ interface ObservedProcessIdentity {
 
 type TraceEventName =
   | "fault_gate_ready"
+  | "interactive_spool_created"
+  | "interactive_second_configure_paused"
+  | "interactive_participant_enrolled"
+  | "interactive_pair_enrolled"
   | "guardian_ready"
   | "supervisor_registered"
   | "supervisor_ready"
@@ -99,6 +118,10 @@ type TraceEventName =
 
 const TRACE_PHASE_BY_EVENT: Record<TraceEventName, number> = {
   fault_gate_ready: 1,
+  interactive_spool_created: 5,
+  interactive_second_configure_paused: 23,
+  interactive_participant_enrolled: 34,
+  interactive_pair_enrolled: 35,
   guardian_ready: 10,
   supervisor_registered: 20,
   supervisor_ready: 25,
@@ -196,6 +219,10 @@ class NativeExecutorHarness {
       this.child.exitCode !== null ||
       this.child.signalCode !== null
     );
+  }
+
+  get stderrDiagnostic(): string {
+    return this.stderrPreview;
   }
 
   async health(): Promise<ExecutorHealth> {
@@ -314,6 +341,9 @@ interface GateCleanupContext {
   generation: string;
   executorRoot: string;
   executorPid?: number;
+  // Paired reproductions cannot recover via numeric group signals until the
+  // executor proves ownership with a retained pin. Preserve evidence instead.
+  signalRecordedGroups?: boolean;
 }
 
 interface GateRuntime extends GateCleanupContext {
@@ -325,6 +355,13 @@ interface GateRuntime extends GateCleanupContext {
   workspacePath: string;
   artifactPath: string;
   executableId: string;
+  faultEnvironment: GateFaultEnvironment;
+}
+
+type InteractiveFaultPause = "second-configure" | "pair-commit" | "first-spool";
+
+interface GateFaultEnvironment {
+  JUDGEDESK_INTERACTIVE_FAULT_PAUSE?: InteractiveFaultPause;
 }
 
 interface CleanupReport {
@@ -546,7 +583,11 @@ test(
   },
 );
 
-async function createGateRuntime(): Promise<GateRuntime> {
+async function createGateRuntime(
+  signalRecordedGroups = true,
+  faultEnvironment: GateFaultEnvironment = {},
+): Promise<GateRuntime> {
+  validateGateFaultEnvironment(faultEnvironment);
   assert.ok(
     fs.existsSync(helperBinary),
     `Build the native executor before the fault gate: ${helperBinary}`,
@@ -578,8 +619,10 @@ async function createGateRuntime(): Promise<GateRuntime> {
     JUDGEDESK_TREE_GUARD_REQUIRED: "1",
     JUDGEDESK_TREE_GUARD_PATH: generationPath,
     JUDGEDESK_TREE_GUARD_GENERATION: generation,
+    JUDGEDESK_PARENT_PID: String(process.pid),
     JUDGEDESK_RUN_GUARDIAN_FAULT_GATE: "1",
     JUDGEDESK_RUN_GUARDIAN_EVENT_LOG: eventLog,
+    JUDGEDESK_INTERACTIVE_FAULT_PAUSE: faultEnvironment.JUDGEDESK_INTERACTIVE_FAULT_PAUSE,
   }));
 
   try {
@@ -631,8 +674,11 @@ async function createGateRuntime(): Promise<GateRuntime> {
       workspacePath,
       artifactPath,
       executableId: `artifacts/${artifactName}`,
+      signalRecordedGroups,
+      faultEnvironment: { ...faultEnvironment },
     };
   } catch (error) {
+    const beforeCleanup = captureGateTrace(eventLog);
     await harness.forceStop();
     const cleanup = await cleanupObservedProcesses({
       directory,
@@ -640,6 +686,7 @@ async function createGateRuntime(): Promise<GateRuntime> {
       generation,
       executorRoot: expectedExecutorRoot,
       executorPid: harness.child.pid,
+      signalRecordedGroups,
     });
     const cleanupError = cleanupReportError(
       {
@@ -648,15 +695,19 @@ async function createGateRuntime(): Promise<GateRuntime> {
         generation,
         executorRoot: expectedExecutorRoot,
         executorPid: harness.child.pid,
+        signalRecordedGroups,
       },
       cleanup,
     );
-    if (!cleanupError) {
+    const evidenceError = persistGateEvidence({ directory, eventLog, generation,
+      executorRoot: expectedExecutorRoot, executorPid: harness.child.pid },
+      cleanup, harness.stderrDiagnostic, beforeCleanup);
+    if (!cleanupError && !evidenceError) {
       removeGateDirectory(directory);
     } else {
       throw new AggregateError(
-        [error, cleanupError],
-        `gate initialization failed and cleanup was incomplete; preserved ${directory}`,
+        [error, cleanupError, evidenceError].filter((failure) => failure !== undefined),
+        `gate initialization, cleanup or evidence preservation failed; preserved ${directory}`,
       );
     }
     throw error;
@@ -665,8 +716,10 @@ async function createGateRuntime(): Promise<GateRuntime> {
 
 async function withGateRuntime(
   operation: (runtime: GateRuntime) => Promise<void>,
+  signalRecordedGroups = true,
+  faultEnvironment: GateFaultEnvironment = {},
 ): Promise<void> {
-  const runtime = await createGateRuntime();
+  const runtime = await createGateRuntime(signalRecordedGroups, faultEnvironment);
   let operationError: unknown;
   try {
     await operation(runtime);
@@ -674,13 +727,19 @@ async function withGateRuntime(
     operationError = error;
   }
 
+  const beforeCleanup = captureGateTrace(runtime.eventLog);
   await runtime.harness.forceStop();
   const cleanup = await cleanupObservedProcesses(runtime);
   const cleanupError = cleanupReportError(runtime, cleanup);
-  if (!cleanupError) {
+  const evidenceError = persistGateEvidence(runtime, cleanup, runtime.harness.stderrDiagnostic, beforeCleanup);
+  if (!cleanupError && !evidenceError) {
     removeGateDirectory(runtime.directory);
   }
 
+  if (evidenceError) {
+    throw new AggregateError([operationError, cleanupError, evidenceError].filter((failure) => failure !== undefined),
+      `gate evidence preservation failed after cleanup; preserved ${runtime.directory}`);
+  }
   if (operationError && cleanupError) {
     throw new AggregateError(
       [operationError, cleanupError],
@@ -689,6 +748,103 @@ async function withGateRuntime(
   }
   if (operationError) throw operationError;
   if (cleanupError) throw cleanupError;
+}
+
+function captureGateTrace(eventLog: string): Buffer | Error | undefined {
+  if (process.env.JUDGEDESK_RUN_GUARDIAN_EVIDENCE_DIRECTORY === undefined) return undefined;
+  try {
+    return fs.readFileSync(eventLog);
+  } catch (error) {
+    return error instanceof Error ? error : new Error(String(error));
+  }
+}
+
+function persistGateEvidence(runtime: GateCleanupContext, cleanup: CleanupReport,
+  stderr: string, beforeCleanup: Buffer | Error | undefined): Error | undefined {
+  const supplied = process.env.JUDGEDESK_RUN_GUARDIAN_EVIDENCE_DIRECTORY;
+  if (supplied === undefined) return undefined;
+  try {
+    if (beforeCleanup instanceof Error) throw beforeCleanup;
+    assert.ok(beforeCleanup, "missing pre-cleanup evidence snapshot");
+    assert.ok(path.isAbsolute(supplied), "evidence directory must be absolute");
+    const destination = path.resolve(supplied);
+    assert.equal(fs.realpathSync(destination), destination, "evidence directory must be canonical without links");
+    const directoryStat = fs.lstatSync(destination);
+    assert.ok(directoryStat.isDirectory() && !directoryStat.isSymbolicLink());
+    const markerPath = path.join(destination, ".judgedesk-run-guardian-evidence-owner");
+    const markerStat = fs.lstatSync(markerPath);
+    assert.ok(markerStat.isFile() && !markerStat.isSymbolicLink(), "evidence owner marker must be a regular file");
+    assert.equal(fs.readFileSync(markerPath, "utf8"), "JUDGEDESK_RUN_GUARDIAN_EVIDENCE/1\n");
+    assert.match(runtime.generation, /^[0-9a-f]{64}$/);
+    const prefix = path.join(destination, runtime.generation);
+    const binaryPath = fs.realpathSync(helperBinary);
+    const binaryStat = fs.statSync(binaryPath);
+    const binarySha256 = crypto.createHash("sha256").update(fs.readFileSync(binaryPath)).digest("hex");
+    const options = { flag: "wx", mode: 0o600 };
+    fs.writeFileSync(`${prefix}.jsonl`, fs.readFileSync(runtime.eventLog), options);
+    fs.writeFileSync(`${prefix}.stderr.log`, stderr, options);
+    fs.writeFileSync(`${prefix}.json`, JSON.stringify({
+      schema: "JUDGEDESK_RUN_GUARDIAN_EVIDENCE/1", generation: runtime.generation,
+      runtimeDirectory: runtime.directory, executorRoot: runtime.executorRoot, executorPid: runtime.executorPid,
+      beforeCleanupTrace: beforeCleanup.toString("utf8"), cleanup,
+      binary: { path: binaryPath, sha256: binarySha256, bytes: binaryStat.size, dev: binaryStat.dev, ino: binaryStat.ino },
+    }, null, 2) + "\n", options);
+    const restartArchive = `${runtime.eventLog}.before-restart`;
+    if (fs.existsSync(restartArchive)) {
+      assert.ok(fs.lstatSync(restartArchive).isFile() && !fs.lstatSync(restartArchive).isSymbolicLink());
+      fs.writeFileSync(`${prefix}.before-restart.jsonl`, fs.readFileSync(restartArchive), options);
+    }
+    return undefined;
+  } catch (error) {
+    return error instanceof Error ? error : new Error(String(error));
+  }
+}
+
+function validateGateFaultEnvironment(environment: GateFaultEnvironment): void {
+  assert.ok(Object.keys(environment).every((key) => key === "JUDGEDESK_INTERACTIVE_FAULT_PAUSE"),
+    "fault gate environment cannot override the controlled runtime, generation, or trace root");
+  const pause = environment.JUDGEDESK_INTERACTIVE_FAULT_PAUSE;
+  assert.ok(pause === undefined || ["second-configure", "pair-commit", "first-spool"].includes(pause),
+    "invalid interactive fault pause enum");
+}
+
+async function restartGateHarness(runtime: GateRuntime): Promise<void> {
+  validateGateFaultEnvironment(runtime.faultEnvironment);
+  assert.equal(runtime.faultEnvironment.JUDGEDESK_INTERACTIVE_FAULT_PAUSE, "first-spool",
+    "controlled restart is restricted to the otherwise-idle first-spool reproduction");
+  assert.equal(runtime.harness.hasExited, true, "cannot restart beside a live executor");
+  await runtime.harness.waitForExit();
+  const events = readTraceEvents(runtime.eventLog)
+    .filter((event) => event.generation === runtime.generation);
+  const groups = new Set(events.flatMap((event) => event.anchor ? [event.anchor.pgid] : []));
+  for (const pgid of groups) await assertGroupEmpty(pgid);
+  await waitForGenerationExclusive(runtime.generationPath, 5_000);
+  assert.equal(fs.realpathSync(runtime.executorRoot),
+    fs.realpathSync(path.join(runtime.temporaryDirectory, "JudgeDeskExecutor")));
+
+  // Preserve the original authenticated evidence and give the restarted executor
+  // its own log: fault_gate_ready is unique within each parsed trace stream.
+  const archivedTrace = `${runtime.eventLog}.before-restart`;
+  assert.equal(fs.existsSync(archivedTrace), false, "gate runtime supports one controlled restart");
+  fs.renameSync(runtime.eventLog, archivedTrace);
+  fs.writeFileSync(runtime.eventLog, "", { encoding: "utf8", mode: 0o600, flag: "wx" });
+  runtime.harness = new NativeExecutorHarness(sanitizedExecutorEnvironment({
+    TMPDIR: runtime.temporaryDirectory,
+    JUDGEDESK_TREE_GUARD_REQUIRED: "1",
+    JUDGEDESK_TREE_GUARD_PATH: runtime.generationPath,
+    JUDGEDESK_TREE_GUARD_GENERATION: runtime.generation,
+    JUDGEDESK_PARENT_PID: String(process.pid),
+    JUDGEDESK_RUN_GUARDIAN_FAULT_GATE: "1",
+    JUDGEDESK_RUN_GUARDIAN_EVENT_LOG: runtime.eventLog,
+    JUDGEDESK_INTERACTIVE_FAULT_PAUSE: runtime.faultEnvironment.JUDGEDESK_INTERACTIVE_FAULT_PAUSE,
+  }));
+  runtime.executorPid = runtime.harness.pid;
+  const health = await runtime.harness.health();
+  assert.equal(health.ready, true, health.diagnostics.join("; "));
+  assert.equal(fs.realpathSync(health.executorRoot), fs.realpathSync(runtime.executorRoot),
+    "restart escaped the controlled executor root");
+  runtime.health = health;
+  await waitForTrace(runtime, "executor", "fault_gate_ready", 3_000);
 }
 
 function startLongRun(
@@ -1118,7 +1274,7 @@ async function cleanupObservedProcesses(
     }
 
     for (const row of rows) {
-      if (runtime.executorPid === row.pid) {
+      if (runtime.signalRecordedGroups !== false && runtime.executorPid === row.pid) {
         try {
           process.kill(row.pid, "SIGKILL");
         } catch {
@@ -1152,6 +1308,12 @@ async function cleanupObservedProcesses(
     }
 
     for (const pgid of recordedGroups) {
+      if (runtime.signalRecordedGroups === false) {
+        if (rows.some((row) => row.pgid === pgid)) {
+          diagnostics.add(`preserved group ${pgid}: paired recovery refuses numeric group signals without an owned pin`);
+        }
+        continue;
+      }
       safeKillRecordedGroup(
         runtime,
         pgid,

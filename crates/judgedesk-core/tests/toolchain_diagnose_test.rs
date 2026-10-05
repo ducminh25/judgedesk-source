@@ -1,4 +1,4 @@
-use judgedesk_core::server::{start_embedded_server_with_state, AppState};
+use judgedesk_core::server::{start_embedded_server_with_state, AppState, ProfileSelection};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
@@ -49,180 +49,311 @@ async fn http_request(
     (status_code, body_part)
 }
 
-#[tokio::test]
-async fn test_genuine_toolchain_diagnostics_all_languages() {
+async fn run_single_profile_test(profile: &str, is_compiled: bool) {
     let _test_environment = common::OwnedTestEnvironment::new();
     common::ensure_test_environment();
     let state = _test_environment.with_isolated_roots(AppState::default);
     assert!(state.platform.root().starts_with(_test_environment.root()));
-    let (addr, _server_task) = start_embedded_server_with_state(0, state)
+    let platform = state.platform.clone();
+    let (addr, server_task) = start_embedded_server_with_state(0, state)
         .await
         .expect("Failed to start embedded server");
     let port = addr.port();
 
-    // 1. C++
-    println!("--- Testing C++ Diagnostic ---");
     let (_status, body) = http_request(
         port,
         "POST",
-        "/api/toolchains/profiles/cpp/diagnose",
+        &format!("/api/toolchains/profiles/{profile}/diagnose"),
         None,
         None,
     )
     .await;
-    let json: serde_json::Value = serde_json::from_str(&body).expect("Valid JSON for C++");
-    assert_eq!(json["success"], true, "C++ diagnostic failed: {body}");
-    let diag = &json["diagnostic"];
-    assert_eq!(diag["success"], true);
-    assert_eq!(diag["profileId"], "cpp");
-    assert_eq!(diag["language"], "cpp");
-    assert_eq!(diag["phase"], "execution");
-    let cpp_compile = diag["compileTimeMs"].as_u64().expect("valid compileTimeMs");
-    let cpp_exec = diag["executionTimeMs"]
-        .as_u64()
-        .expect("valid executionTimeMs");
-    let cpp_mem = diag["peakMemoryKb"].as_u64().expect("valid peakMemoryKb");
-    assert!(cpp_compile > 0, "C++ compileTimeMs must be > 0");
-    assert!(cpp_exec > 0, "C++ executionTimeMs must be > 0");
-    assert!(cpp_mem > 0, "C++ peakMemoryKb must be > 0");
-    println!("C++ OK: compile={cpp_compile}ms, exec={cpp_exec}ms, mem={cpp_mem}KB");
 
-    // 2. C
-    println!("--- Testing C Diagnostic ---");
-    let (_status, body) = http_request(
-        port,
-        "POST",
-        "/api/toolchains/profiles/c/diagnose",
-        None,
-        None,
-    )
-    .await;
-    let json: serde_json::Value = serde_json::from_str(&body).expect("Valid JSON for C");
-    assert_eq!(json["success"], true, "C diagnostic failed: {body}");
+    let json: serde_json::Value =
+        serde_json::from_str(&body).unwrap_or_else(|_| panic!("Valid JSON for {profile}: {body}"));
+    assert_eq!(json["success"], true, "{profile} diagnostic failed: {body}");
     let diag = &json["diagnostic"];
-    assert_eq!(diag["success"], true);
-    assert_eq!(diag["profileId"], "c");
-    assert_eq!(diag["language"], "c");
-    assert_eq!(diag["phase"], "execution");
-    let c_compile = diag["compileTimeMs"].as_u64().expect("valid compileTimeMs");
-    let c_exec = diag["executionTimeMs"]
-        .as_u64()
-        .expect("valid executionTimeMs");
-    let c_mem = diag["peakMemoryKb"].as_u64().expect("valid peakMemoryKb");
-    assert!(c_compile > 0, "C compileTimeMs must be > 0");
-    assert!(c_exec > 0, "C executionTimeMs must be > 0");
-    assert!(c_mem > 0, "C peakMemoryKb must be > 0");
-    println!("C OK: compile={c_compile}ms, exec={c_exec}ms, mem={c_mem}KB");
-
-    // 3. Python
-    println!("--- Testing Python Diagnostic ---");
-    let (_status, body) = http_request(
-        port,
-        "POST",
-        "/api/toolchains/profiles/python/diagnose",
-        None,
-        None,
-    )
-    .await;
-    let json: serde_json::Value = serde_json::from_str(&body).expect("Valid JSON for Python");
-    assert_eq!(json["success"], true, "Python diagnostic failed: {body}");
-    let diag = &json["diagnostic"];
-    assert_eq!(diag["success"], true);
-    assert_eq!(diag["profileId"], "python");
-    assert_eq!(diag["language"], "python");
-    assert_eq!(diag["phase"], "execution");
-    assert!(
-        diag["compileTimeMs"].is_null(),
-        "Python should not report compileTimeMs"
+    assert_eq!(
+        diag["success"], true,
+        "{profile} diagnostic.success was not true"
     );
-    let py_exec = diag["executionTimeMs"]
+    assert_eq!(diag["profileId"], profile);
+    assert_eq!(diag["language"], profile);
+    assert_eq!(diag["phase"], "execution");
+
+    if is_compiled {
+        let compile_ms = diag["compileTimeMs"].as_u64().expect("valid compileTimeMs");
+        assert!(compile_ms > 0, "{profile} compileTimeMs must be > 0");
+    } else {
+        assert!(
+            diag["compileTimeMs"].is_null(),
+            "{profile} should not report compileTimeMs"
+        );
+    }
+
+    let exec_ms = diag["executionTimeMs"]
         .as_u64()
         .expect("valid executionTimeMs");
-    let py_mem = diag["peakMemoryKb"].as_u64().expect("valid peakMemoryKb");
-    assert!(py_exec > 0, "Python executionTimeMs must be > 0");
-    assert!(py_mem > 0, "Python peakMemoryKb must be > 0");
-    println!("Python OK: exec={py_exec}ms, mem={py_mem}KB");
+    let peak_kb = diag["peakMemoryKb"].as_u64().expect("valid peakMemoryKb");
+    assert!(exec_ms > 0, "{profile} executionTimeMs must be > 0");
+    assert!(peak_kb > 0, "{profile} peakMemoryKb must be > 0");
 
-    // 4. Pascal
-    println!("--- Testing Pascal Diagnostic ---");
-    let (_status, body) = http_request(
-        port,
-        "POST",
-        "/api/toolchains/profiles/pascal/diagnose",
-        None,
-        None,
-    )
-    .await;
-    let json: serde_json::Value = serde_json::from_str(&body).expect("Valid JSON for Pascal");
-    assert_eq!(json["success"], true, "Pascal diagnostic failed: {body}");
-    let diag = &json["diagnostic"];
-    assert_eq!(diag["success"], true);
-    assert_eq!(diag["profileId"], "pascal");
-    assert_eq!(diag["language"], "pascal");
-    assert_eq!(diag["phase"], "execution");
-    let pas_compile = diag["compileTimeMs"].as_u64().expect("valid compileTimeMs");
-    let pas_exec = diag["executionTimeMs"]
-        .as_u64()
-        .expect("valid executionTimeMs");
-    let pas_mem = diag["peakMemoryKb"].as_u64().expect("valid peakMemoryKb");
-    assert!(pas_compile > 0, "Pascal compileTimeMs must be > 0");
-    assert!(pas_exec > 0, "Pascal executionTimeMs must be > 0");
-    assert!(pas_mem > 0, "Pascal peakMemoryKb must be > 0");
-    println!("Pascal OK: compile={pas_compile}ms, exec={pas_exec}ms, mem={pas_mem}KB");
+    server_task.abort();
+    let _ = server_task.await;
+    platform
+        .shutdown()
+        .await
+        .expect("drain diagnostic executor");
+}
 
-    // 5. Java
-    println!("--- Testing Java Diagnostic ---");
-    let (_status, body) = http_request(
-        port,
-        "POST",
-        "/api/toolchains/profiles/java/diagnose",
-        None,
-        None,
-    )
-    .await;
-    let json: serde_json::Value = serde_json::from_str(&body).expect("Valid JSON for Java");
-    assert_eq!(json["success"], true, "Java diagnostic failed: {body}");
-    let diag = &json["diagnostic"];
-    assert_eq!(diag["success"], true);
-    assert_eq!(diag["profileId"], "java");
-    assert_eq!(diag["language"], "java");
-    assert_eq!(diag["phase"], "execution");
-    let java_compile = diag["compileTimeMs"].as_u64().expect("valid compileTimeMs");
-    let java_exec = diag["executionTimeMs"]
-        .as_u64()
-        .expect("valid executionTimeMs");
-    let java_mem = diag["peakMemoryKb"].as_u64().expect("valid peakMemoryKb");
-    assert!(java_compile > 0, "Java compileTimeMs must be > 0");
-    assert!(java_exec > 0, "Java executionTimeMs must be > 0");
-    assert!(java_mem > 0, "Java peakMemoryKb must be > 0");
-    println!("Java OK: compile={java_compile}ms, exec={java_exec}ms, mem={java_mem}KB");
+#[tokio::test]
+async fn test_genuine_toolchain_diagnostics_cpp() {
+    run_single_profile_test("cpp", true).await;
+}
 
-    // 6. Scratch
-    println!("--- Testing Scratch Diagnostic ---");
-    let (_status, body) = http_request(
-        port,
-        "POST",
-        "/api/toolchains/profiles/scratch/diagnose",
-        None,
-        None,
-    )
-    .await;
-    let json: serde_json::Value = serde_json::from_str(&body).expect("Valid JSON for Scratch");
-    assert_eq!(json["success"], true, "Scratch diagnostic failed: {body}");
-    let diag = &json["diagnostic"];
-    assert_eq!(diag["success"], true);
-    assert_eq!(diag["profileId"], "scratch");
-    assert_eq!(diag["language"], "scratch");
-    assert_eq!(diag["phase"], "execution");
-    assert!(
-        diag["compileTimeMs"].is_null(),
-        "Scratch should not report compileTimeMs"
+#[tokio::test]
+async fn test_genuine_toolchain_diagnostics_c() {
+    run_single_profile_test("c", true).await;
+}
+
+#[tokio::test]
+async fn test_genuine_toolchain_diagnostics_python() {
+    run_single_profile_test("python", false).await;
+}
+
+#[tokio::test]
+async fn test_genuine_toolchain_diagnostics_pascal() {
+    run_single_profile_test("pascal", true).await;
+}
+
+#[tokio::test]
+async fn test_genuine_toolchain_diagnostics_java() {
+    run_single_profile_test("java", true).await;
+}
+
+#[tokio::test]
+async fn test_genuine_toolchain_diagnostics_scratch() {
+    run_single_profile_test("scratch", false).await;
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+struct DiagnosticRow {
+    profile: String,
+    status_code: u16,
+    response_success: bool,
+    diagnostic: Option<judgedesk_core::toolchains::diagnostics::ToolchainDiagnosticResult>,
+    response_error: Option<String>,
+    passed: bool,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+struct DiagnosticReport {
+    rows: Vec<DiagnosticRow>,
+    exit_code: i32,
+}
+
+async fn run_diagnostic_orchestrator(state: AppState) -> DiagnosticReport {
+    let platform = state.platform.clone();
+    let (addr, server_task) = start_embedded_server_with_state(0, state)
+        .await
+        .expect("start diagnostic server");
+    let profiles = [
+        ("cpp", true),
+        ("c", true),
+        ("python", false),
+        ("pascal", true),
+        ("java", true),
+        ("scratch", false),
+    ];
+    #[derive(serde::Deserialize)]
+    struct DiagnosticResponse {
+        success: bool,
+        diagnostic: judgedesk_core::toolchains::diagnostics::ToolchainDiagnosticResult,
+    }
+    let mut rows = Vec::new();
+    for (profile, compiled) in profiles {
+        let (status_code, body) = http_request(
+            addr.port(),
+            "POST",
+            &format!("/api/toolchains/profiles/{profile}/diagnose"),
+            None,
+            None,
+        )
+        .await;
+        let row = match serde_json::from_str::<DiagnosticResponse>(&body) {
+            Ok(response) => {
+                let diagnostic = response.diagnostic;
+                let passed = status_code == 200
+                    && response.success
+                    && diagnostic.success
+                    && diagnostic.profile_id == profile
+                    && diagnostic.language == profile
+                    && diagnostic.phase == "execution"
+                    && if compiled {
+                        diagnostic.compile_time_ms.is_some_and(|ms| ms > 0)
+                    } else {
+                        diagnostic.compile_time_ms.is_none()
+                    }
+                    && diagnostic.execution_time_ms.is_some_and(|ms| ms > 0)
+                    && diagnostic.peak_memory_kb.is_some_and(|kb| kb > 0);
+                DiagnosticRow {
+                    profile: profile.to_string(),
+                    status_code,
+                    response_success: response.success,
+                    diagnostic: Some(diagnostic),
+                    response_error: None,
+                    passed,
+                }
+            }
+            Err(error) => DiagnosticRow {
+                profile: profile.to_string(),
+                status_code,
+                response_success: false,
+                diagnostic: None,
+                response_error: Some(format!("Invalid response: {error}; {body}")),
+                passed: false,
+            },
+        };
+        println!(
+            "TOOLCHAIN_DIAGNOSTIC_ROW={}",
+            serde_json::to_string(&row).expect("serialize diagnostic row")
+        );
+        rows.push(row);
+    }
+    server_task.abort();
+    let _ = server_task.await;
+    platform
+        .shutdown()
+        .await
+        .expect("drain diagnostic executor");
+    let exit_code = i32::from(rows.iter().any(|row| !row.passed));
+    let report = DiagnosticReport { rows, exit_code };
+    println!(
+        "TOOLCHAIN_DIAGNOSTIC_ORCHESTRATOR_SUMMARY={}",
+        serde_json::to_string(&report).expect("serialize diagnostic report")
     );
-    let scr_exec = diag["executionTimeMs"]
-        .as_u64()
-        .expect("valid executionTimeMs");
-    let scr_mem = diag["peakMemoryKb"].as_u64().expect("valid peakMemoryKb");
-    assert!(scr_exec > 0, "Scratch executionTimeMs must be > 0");
-    assert!(scr_mem > 0, "Scratch peakMemoryKb must be > 0");
-    println!("Scratch OK: exec={scr_exec}ms, mem={scr_mem}KB");
+    report
+}
+
+#[tokio::test]
+async fn test_genuine_toolchain_diagnostics_orchestrator() {
+    let environment = common::OwnedTestEnvironment::new();
+    common::ensure_test_environment();
+    let state = environment.with_isolated_roots(AppState::default);
+    assert!(state.platform.root().starts_with(environment.root()));
+    let report = run_diagnostic_orchestrator(state).await;
+    assert_eq!(report.exit_code, 0, "{report:#?}");
+    assert_eq!(report.rows.len(), 6);
+    assert!(report.rows.iter().all(|row| row.passed));
+}
+
+struct CIncludePathRestore {
+    include_path: Option<std::ffi::OsString>,
+    cpath: Option<std::ffi::OsString>,
+}
+
+impl Drop for CIncludePathRestore {
+    fn drop(&mut self) {
+        match self.include_path.take() {
+            Some(value) => std::env::set_var("C_INCLUDE_PATH", value),
+            None => std::env::remove_var("C_INCLUDE_PATH"),
+        }
+        match self.cpath.take() {
+            Some(value) => std::env::set_var("CPATH", value),
+            None => std::env::remove_var("CPATH"),
+        }
+    }
+}
+
+#[tokio::test]
+async fn test_genuine_toolchain_diagnostics_orchestrator_continues_after_profile_failure() {
+    let environment = common::OwnedTestEnvironment::new();
+    common::ensure_test_environment();
+    let state = environment.with_isolated_roots(AppState::default);
+    assert!(state.platform.root().starts_with(environment.root()));
+    let compiler =
+        judgedesk_core::toolchains::discovery::resolve_toolchain_for_profile("c", None, None);
+    assert!(compiler.ready, "a real C compiler is required");
+    assert!(compiler.executable_path.is_file());
+    let include_dir = environment.root().join("owned-c-include");
+    std::fs::create_dir(&include_dir).expect("create owned include directory");
+    const FAILURE_MARKER: &str = "JUDGEDESK_OWNED_C_INCLUDE_FAILURE";
+    std::fs::write(
+        include_dir.join("stdio.h"),
+        format!("#error {FAILURE_MARKER}\n"),
+    )
+    .expect("write owned invalid C header");
+    let previous = std::env::var_os("C_INCLUDE_PATH");
+    let previous_cpath = std::env::var_os("CPATH");
+    let restore = CIncludePathRestore {
+        include_path: previous.clone(),
+        cpath: previous_cpath.clone(),
+    };
+    std::env::remove_var("CPATH");
+    std::env::set_var("C_INCLUDE_PATH", &include_dir);
+    {
+        let mut toolchains = state.toolchains.write().expect("toolchain state lock");
+        toolchains.selections.insert(
+            "c".to_string(),
+            ProfileSelection {
+                mode: "local_path".to_string(),
+                local_path: Some(compiler.executable_path.to_string_lossy().into_owned()),
+            },
+        );
+    }
+    let report = run_diagnostic_orchestrator(state).await;
+    drop(restore);
+    assert_eq!(std::env::var_os("C_INCLUDE_PATH"), previous);
+    assert_eq!(std::env::var_os("CPATH"), previous_cpath);
+    assert_eq!(
+        report.exit_code, 1,
+        "required profile failure must fail the runner"
+    );
+    assert_eq!(
+        report
+            .rows
+            .iter()
+            .map(|row| row.profile.as_str())
+            .collect::<Vec<_>>(),
+        vec!["cpp", "c", "python", "pascal", "java", "scratch"]
+    );
+    assert_eq!(
+        report
+            .rows
+            .iter()
+            .filter(|row| !row.passed)
+            .map(|row| row.profile.as_str())
+            .collect::<Vec<_>>(),
+        vec!["c"]
+    );
+    for row in &report.rows {
+        let diagnostic = row.diagnostic.as_ref().expect("real diagnostic response");
+        assert_eq!(row.status_code, 200);
+        assert_eq!(diagnostic.profile_id, row.profile);
+        assert_eq!(diagnostic.language, row.profile);
+        if row.profile == "c" {
+            assert!(!row.response_success);
+            assert!(!diagnostic.success);
+            assert_eq!(diagnostic.source_mode.as_deref(), Some("local_path"));
+            assert_eq!(diagnostic.phase, "compilation");
+            assert!(diagnostic.compile_time_ms.is_some());
+            let error = diagnostic
+                .error
+                .as_deref()
+                .expect("real compiler diagnostic");
+            assert!(
+                error.contains(FAILURE_MARKER),
+                "unexpected failure: {error}"
+            );
+            assert!(
+                error.contains("stdio.h"),
+                "owned header must cause failure: {error}"
+            );
+            assert!(!error.contains("unknown proxy name"));
+            assert!(diagnostic.execution_time_ms.is_none());
+            assert!(diagnostic.peak_memory_kb.is_none());
+        } else {
+            assert!(row.passed, "{row:#?}");
+        }
+    }
 }

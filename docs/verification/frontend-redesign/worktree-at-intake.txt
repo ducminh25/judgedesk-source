@@ -1,0 +1,127 @@
+ M .agents/skills/code-simplification/SKILL.md
+ M .agents/skills/debugging-and-error-recovery/SKILL.md
+ M .github/workflows/ci.yml
+ M .github/workflows/release.yml
+ M AGENTS.md
+ M CONSTRAINTS.md
+ M codemagic.yaml
+ M crates/judgedesk-core/Cargo.lock
+ M crates/judgedesk-core/Cargo.toml
+ M crates/judgedesk-core/src/bin/server.rs
+ M crates/judgedesk-core/src/bin/test_server.rs
+ M crates/judgedesk-core/src/discovery/testcase.rs
+ M crates/judgedesk-core/src/engine/runner.rs
+ M crates/judgedesk-core/src/engine/session.rs
+ M crates/judgedesk-core/src/lib.rs
+ M crates/judgedesk-core/src/server/mod.rs
+ M crates/judgedesk-core/src/toolchains/diagnostics.rs
+ M crates/judgedesk-core/tests/common/mod.rs
+ M crates/judgedesk-core/tests/discovery_test.rs
+ M crates/judgedesk-core/tests/engine_execution_test.rs
+ M crates/judgedesk-core/tests/server_test.rs
+ M crates/judgedesk-core/tests/toolchain_diagnose_test.rs
+ M docs/pure-rust-core-antigravity-handoff.md
+ M docs/pure-rust-core-detailed-implementation-plan.md
+ M docs/pure-rust-core-migration-plan.md
+ M docs/pure-rust-core-start-here.md
+ M docs/verification/pure-rust-core/STATUS.md
+ M docs/verification/pure-rust-core/WORKLOG.md
+ M docs/verification/pure-rust-core/wp0.4-executor-boundary.md
+ M guidelines.md
+ M native-executor/src/guardian_protocol.rs
+ M native-executor/src/lib.rs
+ M native-executor/src/macos_launcher.rs
+ M native-executor/src/macos_run_controller.rs
+ M native-executor/src/macos_run_guardian.rs
+ M native-executor/src/main.rs
+ M native-executor/src/platform/macos.rs
+ M native-executor/src/platform/mod.rs
+ M native-executor/src/platform/windows.rs
+ M native-executor/src/request_validation.rs
+ M native-executor/src/security_probe.rs
+ M native-executor/src/tree_guard.rs
+ M package.json
+ M scripts/build-macos-arm64-sidecar.sh
+ M scripts/build-server-lib.js
+ M scripts/build-windows-release-variants.ps1
+ M scripts/check-quality-gate.js
+ M scripts/macos-process-supervisor-gate.sh
+ M scripts/single-instance-contract.test.js
+ M scripts/verify-macos-arm64-bundle.sh
+ M server.ts
+ M server/executor-tests/macos-run-guardian.integration.test.ts
+ M server/executor/client.test.ts
+ M server/executor/client.ts
+ M server/judge/background-prewarm.ts
+ M server/judge/compiler.test.ts
+ M server/judge/compiler.ts
+ M server/judge/discovery.test.ts
+ M server/judge/judge-session.ts
+ M server/judge/language-adapters.test.ts
+ M server/judge/language-adapters.ts
+ M server/judge/testcase-discovery.ts
+ M server/routes/problem-routes.ts
+ M shared/contracts.ts
+ M src-tauri/Cargo.lock
+ M src-tauri/build.rs
+ M src-tauri/src/backend.rs
+ M src-tauri/src/contest_archive.rs
+ M src-tauri/src/process_supervisor.rs
+?? .gitattributes
+?? crates/judgedesk-core/build.rs
+?? crates/judgedesk-core/build_support.rs
+?? crates/judgedesk-core/src/build_metadata.rs
+?? crates/judgedesk-core/src/executor_client.rs
+?? crates/judgedesk-core/tests/build_identity_test.rs
+?? crates/judgedesk-core/tests/executor_boundary_test.rs
+?? docs/adr/
+?? docs/frontend-redesign-plan.md
+?? docs/pure-rust-core-efficient-execution.md
+?? docs/pure-rust-core-review-workflow.md
+?? docs/verification/frontend-redesign/
+?? docs/verification/pure-rust-core/artifacts/n0/
+?? docs/verification/pure-rust-core/artifacts/plan-conflict-audit-20261002/
+?? docs/verification/pure-rust-core/artifacts/plan-rewrite-20261001/
+?? docs/verification/pure-rust-core/artifacts/prompt-preparation-20261002/
+?? docs/verification/pure-rust-core/artifacts/wp0.3/independent-review-log0047-codex-20260925/
+?? docs/verification/pure-rust-core/artifacts/wp0.3/remediation-log0048-codex-20260925/
+?? docs/verification/pure-rust-core/artifacts/wp0.4/
+?? docs/verification/pure-rust-core/artifacts/wp0.5/
+?? docs/verification/pure-rust-core/artifacts/wp0.6/
+?? docs/verification/pure-rust-core/expected-skips.json
+?? docs/verification/pure-rust-core/n0-native-interactive-baseline.md
+?? docs/verification/pure-rust-core/n0-plan-conflict-resolution-20261002.md
+?? docs/verification/pure-rust-core/next-prompts-20261002.md
+?? docs/verification/pure-rust-core/plan-rewrite-audit-20261001.md
+?? docs/verification/pure-rust-core/plan-streamlining-review.md
+?? docs/verification/pure-rust-core/prompts/
+?? docs/verification/pure-rust-core/proposed-ledger-20261001.md
+?? docs/verification/pure-rust-core/proposed-roadmap-20261001.json
+?? docs/verification/pure-rust-core/wp0.5-rust-gates-ci-expected-skips.md
+?? docs/verification/pure-rust-core/wp0.6-blocker-next-step-proposal.md
+?? docs/verification/pure-rust-core/wp0.6-version-build-identity-lockfile-policy.md
+?? native-executor/build.rs
+?? native-executor/src/guardian_io.rs
+?? native-executor/src/macos_interactive.rs
+?? native-executor/src/macos_stdio.rs
+?? native-executor/src/native_build.rs
+?? scripts/build-identity.test.js
+?? scripts/build-metadata.js
+?? scripts/build-packaged.js
+?? scripts/check-entry-point-graph.js
+?? scripts/check-expected-skips.js
+?? scripts/check-rust-runtime-invariants.js
+?? scripts/check-scoring-boundary.js
+?? scripts/expected-skips.schema.json
+?? scripts/prepare-build-environment.js
+?? scripts/release-version.test.js
+?? scripts/run-rust-gates.js
+?? scripts/structural-gates.test.ts
+?? scripts/test-build-feature-identity.mjs
+?? server/judge/background-prewarm.regression.test.ts
+?? server/judge/exact-award.regression.test.ts
+?? server/judge/scratch-runtime.zip-validation.test.ts
+?? server/routes/problem-routes.test.ts
+?? server/test-fixtures/corpus/corpus-gates.regression.test.ts
+?? server/test-fixtures/corpus/generated/edge_case_structure/tests/
+?? server/test-fixtures/corpus/generated/rational_proportional_boundary/

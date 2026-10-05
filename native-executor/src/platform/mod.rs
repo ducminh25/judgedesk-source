@@ -90,12 +90,12 @@ impl Platform {
         }
     }
 
-    pub fn run(&self, spec: &RunSpec, validated: &ValidatedRun, active: &ActiveRuns) -> RunResult {
+    pub fn run(&self, spec: &RunSpec, validated: &ValidatedRun, _active: &ActiveRuns) -> RunResult {
         match &self.inner {
             #[cfg(windows)]
-            PlatformInner::Windows(inner) => inner.run(spec, validated, active),
+            PlatformInner::Windows(inner) => inner.run(spec, validated, _active),
             #[cfg(target_os = "macos")]
-            PlatformInner::Macos(inner) => inner.run(&self.root, spec, validated, active),
+            PlatformInner::Macos(inner) => inner.run(&self.root, spec, validated, _active),
             PlatformInner::Unsupported(error) => {
                 failure(spec, RunReason::SandboxDenied, error.clone())
             }
@@ -105,22 +105,27 @@ impl Platform {
     pub fn run_interactive(
         &self,
         spec: &crate::protocol::InteractiveRunSpec,
-        active: &ActiveRuns,
+        _active: &ActiveRuns,
     ) -> crate::protocol::InteractiveRunResult {
         match &self.inner {
             #[cfg(windows)]
-            PlatformInner::Windows(inner) => inner.run_interactive(&self.root, spec, active),
+            PlatformInner::Windows(inner) => inner.run_interactive(&self.root, spec, _active),
             #[cfg(target_os = "macos")]
-            PlatformInner::Macos(_inner) => interactive_failure(
-                spec,
-                "interactive runner is only supported on Windows in this build".into(),
-            ),
+            PlatformInner::Macos(inner) => match inner.validate_interactive(&self.root, spec) {
+                Ok(()) => crate::macos_interactive::run(&self.root, spec, _active),
+                Err(error) => interactive_failure(spec, error),
+            },
             PlatformInner::Unsupported(error) => interactive_failure(spec, error.clone()),
         }
     }
 
     pub fn shutdown(&self, active: &ActiveRuns) {
-        let runs: Vec<_> = active.lock().unwrap().values().cloned().collect();
+        let runs: Vec<_> = active
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .values()
+            .cloned()
+            .collect();
         for run in runs {
             run.cancel();
         }

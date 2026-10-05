@@ -8,7 +8,7 @@
 
 ## 1. Floor Invariants (Always Enforced, Never Weakened)
 
-These five floor rules are strictly enforced by `scripts/check-quality-gate.js` and must never be bypassed to achieve a passing build:
+These floor rules are strictly enforced and must never be bypassed to achieve a passing build:
 
 1. **Zero Suppression Comments:** No `@ts-ignore` or `@ts-nocheck`. Fix type errors at the root.
 2. **Zero Unimplemented Stubs:** No `throw new Error("Not implemented")` and no silent empty `catch {}` blocks.
@@ -19,6 +19,8 @@ These five floor rules are strictly enforced by `scripts/check-quality-gate.js` 
    - No diffuse colored glows (`shadow-*-500/*`). Use crisp neutral structural shadows.
    - No bouncy animations (`animate-bounce`).
    - Dynamic figures must use `font-mono tabular-nums`.
+6. **Zero Dependency Inflation & Built-ins First:** Prefer Node.js built-ins (`node:fs/promises`, `node:path`, `node:crypto`) and Rust standard library (`std`) over new external packages. Never add dependencies to `package.json` or `Cargo.toml` without explicit user approval. Never hand-roll insecure ad-hoc crypto/sandbox code to avoid existing dependencies.
+7. **Architectural Tier Integrity (4-Tier Separation):** Never bypass tier boundaries (React UI <-> Express Server <-> Tauri Core <-> Rust Native Executor) for brevity or fewer lines. Pure shared logic and cross-tier types belong in `shared/`. Never leak runtime internals across tiers.
 
 ---
 

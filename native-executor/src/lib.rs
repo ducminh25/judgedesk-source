@@ -1,7 +1,13 @@
+#![cfg_attr(not(test), deny(clippy::unwrap_used, clippy::expect_used))]
+
 #[cfg(feature = "executor")]
 pub mod fault_trace;
+#[cfg(all(feature = "executor", any(target_os = "macos", test)))]
+pub(crate) mod guardian_io;
 #[cfg(feature = "executor")]
 pub mod guardian_protocol;
+#[cfg(all(feature = "executor", any(target_os = "macos", test)))]
+pub(crate) mod macos_interactive;
 #[cfg(feature = "executor")]
 pub mod macos_launcher;
 #[cfg(feature = "executor")]
@@ -10,6 +16,10 @@ pub mod macos_process;
 pub mod macos_run_controller;
 #[cfg(feature = "executor")]
 pub mod macos_run_guardian;
+#[cfg(all(feature = "executor", target_os = "macos"))]
+pub mod macos_stdio;
+#[cfg(feature = "executor")]
+pub mod native_build;
 #[cfg(feature = "executor")]
 pub mod platform;
 pub mod protocol;

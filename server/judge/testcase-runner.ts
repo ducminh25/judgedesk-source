@@ -467,6 +467,9 @@ async function executeInteractiveTestCase(
     } else if (result.verdict === "MLE") {
       status = "MLE";
       score = 0;
+    } else if (result.verdict === "OLE") {
+      status = "OLE";
+      score = 0;
     } else if (result.verdict === "RTE" || result.verdict === "RE") {
       status = "RE";
       score = 0;

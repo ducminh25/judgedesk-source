@@ -112,8 +112,16 @@ function Get-Sha256([string]$FilePath) {
 }
 
 Push-Location $repoRoot
+$previousBuildEnvironment = @{}
 try {
     if (-not $FinalizeOnly) {
+        $buildEnvironmentJson = & node scripts/prepare-build-environment.js
+        if ($LASTEXITCODE -ne 0) { throw "Packaged build provenance validation failed." }
+        $buildEnvironment = $buildEnvironmentJson | ConvertFrom-Json
+        foreach ($field in $buildEnvironment.PSObject.Properties) {
+            $previousBuildEnvironment[$field.Name] = [Environment]::GetEnvironmentVariable($field.Name, 'Process')
+            [Environment]::SetEnvironmentVariable($field.Name, [string]$field.Value, 'Process')
+        }
         if (-not (Test-Path -LiteralPath $outputRoot)) {
             New-Item -ItemType Directory -Path $outputRoot | Out-Null
         }
@@ -134,7 +142,7 @@ try {
             }
 
             $configPath = "src-tauri/tauri.windows.$variant.local.conf.json"
-            & npx.cmd tauri build --config $configPath --target x86_64-pc-windows-msvc
+            & npx.cmd tauri build --config $configPath --target x86_64-pc-windows-msvc -- --locked
             if ($LASTEXITCODE -ne 0) { throw "Building the Windows $variant MSI failed." }
 
             $msiDirectory = Join-Path $targetBundleRoot "msi"
@@ -187,5 +195,8 @@ try {
     Get-Content -LiteralPath (Join-Path $outputRoot "SHA256SUMS-windows")
 }
 finally {
+    foreach ($name in $previousBuildEnvironment.Keys) {
+        [Environment]::SetEnvironmentVariable($name, $previousBuildEnvironment[$name], 'Process')
+    }
     Pop-Location
 }

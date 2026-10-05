@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::io::{self, Read, Write};
 
+pub const EXECUTOR_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub const MAX_FRAME_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
