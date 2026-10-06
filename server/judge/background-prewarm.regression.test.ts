@@ -25,30 +25,38 @@ test("C++ and C requirements preserve deterministic prewarm order", () => {
   );
 });
 
-function dependencies(compiled: ToolchainKind[]): PrewarmDependencies {
+function dependencies(prepared: ToolchainKind[]): PrewarmDependencies {
   return {
     waitForToolchainDiscovery: async () => ({
       schemaVersion: 2, registryRevision: 1, status: "complete", refreshing: false,
       completedAt: new Date().toISOString(), profiles: {},
     }),
     resolveNativeProtectedToolchain: (kind) => ({
-      kind, source: "custom", ready: true, executablePath: `/${kind}/compiler`, version: "test",
-      localToolchain: { rootPath: `/${kind}`, executableRelativePath: "compiler", isolation: "strict" },
+      kind, source: "managed", packageOrigin: "built-in", ready: true,
+      executablePath: `/${kind}/compiler`, version: "test",
     }),
     ensureUniversalCppPch: async () => null,
-    compileSubmission: async (options) => {
-      compiled.push(options.language);
-      return { executablePath: "probe", compileStatus: "OK", compileError: "", compileTime: 0 };
-    },
+    prepareManagedToolchainComponent: async (kind) => { prepared.push(kind); },
+    ensureManagedCCompilerWarmup: async () => {},
   };
 }
 
-test("background startup warms C++ without compiling C", async (t) => {
+test("background startup prepares C++ without preparing C", async (t) => {
   t.mock.method(executorClient, "start", async () => ({ ...executorClient.health, ready: true }));
   resetJudgePrewarmStateForTests();
   t.after(resetJudgePrewarmStateForTests);
   const compiled: ToolchainKind[] = [];
   await startBackgroundJudgePrewarm(false, dependencies(compiled));
+  assert.deepEqual(compiled, ["cpp"]);
+});
+
+test("macOS prewarm keeps the textual compatibility header without generating unused GCC PCH", async (t) => {
+  t.mock.property(process, "platform", "darwin");
+  t.mock.method(executorClient, "start", async () => ({ ...executorClient.health, ready: true }));
+  const compiled: ToolchainKind[] = [];
+  const deps = dependencies(compiled);
+  deps.ensureUniversalCppPch = async () => { throw new Error("CLANG_GCH_MUST_NOT_BE_GENERATED"); };
+  assert.deepEqual(await executeJudgePrewarm(deps, ["cpp"]), { status: "completed" });
   assert.deepEqual(compiled, ["cpp"]);
 });
 
@@ -74,10 +82,10 @@ test("C++ session completes while unrelated C warmup is blocked", async (t) => {
   await startBackgroundJudgePrewarm(false, deps);
   let releaseC: () => void = () => {};
   const blockedC = new Promise<void>((resolve) => { releaseC = resolve; });
-  const compile = deps.compileSubmission!;
-  deps.compileSubmission = async (options) => {
-    if (options.language === "c") await blockedC;
-    return compile(options);
+  const prepare = deps.prepareManagedToolchainComponent!;
+  deps.prepareManagedToolchainComponent = async (...args) => {
+    if (args[0] === "c") await blockedC;
+    return prepare(...args);
   };
   const cTask = startBackgroundJudgePrewarm(false, deps, ["c"]);
   try {
@@ -86,7 +94,7 @@ test("C++ session completes while unrelated C warmup is blocked", async (t) => {
       cppReady.then(() => true),
       new Promise<boolean>((resolve) => setImmediate(() => resolve(false))),
     ]);
-    assert.equal(completed, true, "C++ must not wait for the C probe");
+    assert.equal(completed, true, "C++ must not wait for C preparation");
     assert.deepEqual(compiled, ["cpp"]);
   } finally {
     releaseC();
@@ -94,19 +102,19 @@ test("C++ session completes while unrelated C warmup is blocked", async (t) => {
   }
 });
 
-test("mixed warmup retains ownership of pending C after C++ rejects", async (t) => {
+test("mixed warmup retains ownership of pending C preparation after C++ rejects", async (t) => {
   t.mock.method(executorClient, "start", async () => ({ ...executorClient.health, ready: true }));
   resetJudgePrewarmStateForTests();
   t.after(resetJudgePrewarmStateForTests);
   const deps = dependencies([]);
-  const failure = new Error("CPP_PROBE_FAILED");
+  const failure = new Error("CPP_PREPARATION_FAILED");
   let releaseC: () => void = () => {};
   const blockedC = new Promise<void>((resolve) => { releaseC = resolve; });
-  const compile = deps.compileSubmission!;
-  deps.compileSubmission = async (options) => {
-    if (options.language === "cpp") throw failure;
+  const prepare = deps.prepareManagedToolchainComponent!;
+  deps.prepareManagedToolchainComponent = async (...args) => {
+    if (args[0] === "cpp") throw failure;
     await blockedC;
-    return compile(options);
+    return prepare(...args);
   };
   let settled = false;
   const mixed = startBackgroundJudgePrewarm(false, deps, ["cpp", "c"]);
@@ -128,10 +136,10 @@ test("a cached C++ failure does not prevent a C-only session from warming", asyn
   const compiled: ToolchainKind[] = [];
   const deps = dependencies(compiled);
   const failure = new Error("CPP_STARTUP_FAILED");
-  const compile = deps.compileSubmission!;
-  deps.compileSubmission = async (options) => {
-    if (options.language === "cpp") throw failure;
-    return compile(options);
+  const prepare = deps.prepareManagedToolchainComponent!;
+  deps.prepareManagedToolchainComponent = async (...args) => {
+    if (args[0] === "cpp") throw failure;
+    return prepare(...args);
   };
   await assert.rejects(startBackgroundJudgePrewarm(false, deps), (error: unknown) => error === failure);
   await ensureJudgePrewarmReady(undefined, undefined, undefined, deps, ["c"]);
@@ -139,20 +147,20 @@ test("a cached C++ failure does not prevent a C-only session from warming", asyn
   await assert.rejects(ensureJudgePrewarmReady(), (error: unknown) => error === failure);
 });
 
-test("mixed native probes do not overlap", async (t) => {
+test("mixed native preparation does not overlap", async (t) => {
   t.mock.method(executorClient, "start", async () => ({ ...executorClient.health, ready: true }));
   resetJudgePrewarmStateForTests();
   t.after(resetJudgePrewarmStateForTests);
   const compiled: ToolchainKind[] = [];
   const deps = dependencies(compiled);
-  const compile = deps.compileSubmission!;
+  const prepare = deps.prepareManagedToolchainComponent!;
   let compiling = false;
-  deps.compileSubmission = async (options) => {
-    assert.equal(compiling, false, "native probes must share the single-run budget");
+  deps.prepareManagedToolchainComponent = async (...args) => {
+    assert.equal(compiling, false, "native preparation must share the single-run budget");
     compiling = true;
     try {
       await new Promise<void>((resolve) => setImmediate(resolve));
-      return await compile(options);
+      return await prepare(...args);
     } finally {
       compiling = false;
     }

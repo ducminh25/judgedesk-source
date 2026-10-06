@@ -1,6 +1,6 @@
 {
   "build": {
-    "appVersion": "1.5.0",
+    "appVersion": "1.5.3",
     "buildNumber": "local",
     "builtAt": "development",
     "gitCommit": "unknown"
