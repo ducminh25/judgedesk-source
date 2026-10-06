@@ -59,7 +59,8 @@ import {
   resolveJavaSubmissionStaging,
 } from "./language-adapters.js";
 import type { PreparedSubmissionProgram } from "./prepared-program.js";
-import { getPchDirectoryForToolchain } from "./universal-pch.js";
+import { getPchCompilerFlags, stageCppPch } from "./universal-pch.js";
+import { logJudgeDiagnostic, measureDiagnosticPhase } from "../diagnostics.js";
 
 declare const __JUDGEDESK_TESTLIB__: string;
 
@@ -796,7 +797,7 @@ export function requiresManagedCCompilerWarmup(
     && toolchain.ready;
 }
 
-async function ensureManagedCCompilerWarmup(
+export async function ensureManagedCCompilerWarmup(
   toolchain: ResolvedToolchain,
   compilerPath: string,
 ): Promise<void> {
@@ -880,16 +881,17 @@ export async function runCompilerWithLimits(
   adapterEnvironment: Readonly<Record<string, string>> = {},
   pinnedToolchain?: Readonly<ResolvedToolchain>,
 ): Promise<ExecutorRunResult> {
+  const started = performance.now();
   const workspace = await createExecutorWorkspace();
   const runId = `compile_${crypto.randomUUID().replaceAll("-", "_")}`;
   try {
     attachExecutorRun(jobId, runId);
-    const compiler = await prepareCompiler(
+    const compiler = await measureDiagnosticPhase({ phase: "compiler-prepare", jobId, runId, kind }, () => prepareCompiler(
       workspace,
       compilerPath,
       kind,
       pinnedToolchain,
-    );
+    ));
     if (kind === "go") {
       if (!pinnedToolchain) {
         throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
@@ -937,7 +939,7 @@ export async function runCompilerWithLimits(
     ) {
       const programDirectory = findGccProgramDirectory(compiler.root, kind);
       // A relocated GCC driver otherwise remembers the source installation prefix and reports
-      // "cannot execute cc1plus" inside LPAC. -B and COMPILER_PATH keep every compiler child in
+      // "cannot execute cc1plus" inside AppContainer. -B and COMPILER_PATH keep every compiler child in
       // the verified read-only toolchain cache and the same Job Object.
       stagedArgs.unshift(`-B${programDirectory}${path.sep}`);
       stagedArgs.unshift(
@@ -947,12 +949,19 @@ export async function runCompilerWithLimits(
       environment.COMPILER_PATH = [programDirectory, path.dirname(compiler.executablePath)].join(path.delimiter);
       environment.LIBRARY_PATH = findGccLibraryDirectories(compiler.root).join(path.delimiter);
     }
-    if (kind === "cpp" && !stagedArgs.some((arg) => arg.startsWith("--test-"))) {
+    // Clang does not auto-load an adjacent .gch via -isystem. Keep its packaged
+    // compatibility header until explicit, relocatable Clang PCH is validated.
+    const pchFlags = kind === "cpp" && process.platform !== "darwin" ? getPchCompilerFlags(args) : null;
+    if (pchFlags) {
       const effectiveToolchain = pinnedToolchain ?? resolveToolchain("cpp");
-      const universalPchDir = getPchDirectoryForToolchain(effectiveToolchain);
+      const universalPchDir = await measureDiagnosticPhase(
+        { phase: "compiler-pch-stage", jobId, runId },
+        async () => stageCppPch(workspace, effectiveToolchain, pchFlags),
+      );
       if (universalPchDir) {
         stagedArgs.unshift("-isystem", universalPchDir);
       }
+      logJudgeDiagnostic({ phase: "compiler-pch-selection", jobId, runId, selected: !!universalPchDir });
     }
     const result = await runReservedExecutor(jobId, buildCompilerExecutorRunSpec({
       runId,
@@ -977,6 +986,7 @@ export async function runCompilerWithLimits(
   } finally {
     detachExecutorRun(jobId, runId);
     workspace.dispose();
+    logJudgeDiagnostic({ phase: "compiler-total", kind, jobId, runId, durationMs: performance.now() - started });
   }
 }
 
@@ -1010,6 +1020,7 @@ export async function runCompilerPipelineWithLimits(
   const objectPath = `${outputPath}.${crypto.randomUUID().slice(0, 8)}.o`;
   const phases = buildCompilerPhases(args, outputPath, objectPath);
   try {
+    const frontendStarted = performance.now();
     const compilation = await runPhase(
       compilerPath,
       phases.compile,
@@ -1021,8 +1032,11 @@ export async function runCompilerPipelineWithLimits(
       adapterEnvironment,
       pinnedToolchain,
     );
+    logJudgeDiagnostic({ phase: "compiler-frontend", kind, jobId, runId: compilation.runId,
+      durationMs: performance.now() - frontendStarted, nativeWallMs: compilation.wallTimeUs / 1_000 });
     const remaining = remainingCompilerTimeMs(limits.timeoutMs, compilation);
-    await runPhase(
+    const linkerStarted = performance.now();
+    const linked = await runPhase(
       compilerPath,
       phases.link,
       cwd,
@@ -1033,6 +1047,8 @@ export async function runCompilerPipelineWithLimits(
       adapterEnvironment,
       pinnedToolchain,
     );
+    logJudgeDiagnostic({ phase: "compiler-link", kind, jobId, runId: linked.runId,
+      durationMs: performance.now() - linkerStarted, nativeWallMs: linked.wallTimeUs / 1_000 });
   } finally {
     fs.rmSync(objectPath, { force: true });
   }

@@ -18,6 +18,7 @@ import type {
   ExecutorRunResult,
   ExecutorRunSpec,
 } from "./protocol.js";
+import { logJudgeDiagnostic, measureDiagnosticPhase } from "../diagnostics.js";
 
 const MAX_FRAME_BYTES = 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 45_000;
@@ -208,7 +209,11 @@ export class ExecutorClient {
     // cancellation either blocks this submit or observes a started run that it
     // can cancel through the same ordered executor pipe.
     beforeSubmit?.();
-    const response = await this.request({ type: "run", id: crypto.randomUUID(), spec }, spec.limits.wallTimeMs + 30_000);
+    const context = { phase: "native-run", runId: spec.runId, role: spec.role, executorPid: this.child?.pid };
+    logJudgeDiagnostic({ ...context, status: "started", wallLimitMs: spec.limits.wallTimeMs });
+    const response = await measureDiagnosticPhase(context, () => this.request({ type: "run", id: crypto.randomUUID(), spec },
+      spec.limits.wallTimeMs + 30_000,
+    ));
     if (response.type !== "run_result") {
       throw new SecureRunnerError("SECURE_RUNNER_PROTOCOL_ERROR", `Unexpected ${response.type} response to run request.`);
     }
@@ -218,6 +223,15 @@ export class ExecutorClient {
         `Executor result runId mismatch: expected ${spec.runId}, received ${response.result.runId}.`,
       );
     }
+    logJudgeDiagnostic({
+      ...context, phase: "native-result", reason: response.result.reason,
+      exitCode: response.result.exitCode ?? undefined,
+      securitySetupMs: response.result.securitySetupTimeUs / 1_000,
+      nativeWallMs: response.result.wallTimeUs / 1_000,
+      collectionMs: response.result.resultCollectionTimeUs / 1_000,
+      userCpuMs: response.result.userCpuTimeUs === undefined ? undefined : response.result.userCpuTimeUs / 1_000,
+      kernelCpuMs: response.result.kernelCpuTimeUs === undefined ? undefined : response.result.kernelCpuTimeUs / 1_000,
+    });
     return response.result;
   }
 
@@ -234,10 +248,14 @@ export class ExecutorClient {
     }
     beforeSubmit?.();
     const timeoutMs = (spec.submission.limits.wallTimeMs * 2) + 30_000;
-    const response = await this.request(
+    const context = { phase: "native-interactive-run", runId: spec.runId,
+      submissionRunId: spec.submission.runId, interactorRunId: spec.interactor.runId,
+      executorPid: this.child?.pid };
+    logJudgeDiagnostic({ ...context, status: "started" });
+    const response = await measureDiagnosticPhase(context, () => this.request(
       { type: "interactive_run", id: crypto.randomUUID(), spec },
       timeoutMs,
-    );
+    ));
     if (response.type !== "interactive_run_result") {
       throw new SecureRunnerError(
         "SECURE_RUNNER_PROTOCOL_ERROR",
@@ -250,6 +268,10 @@ export class ExecutorClient {
         `Executor result runId mismatch: expected ${spec.runId}, received ${response.result.runId}.`,
       );
     }
+    logJudgeDiagnostic({ ...context, phase: "native-interactive-result", verdict: response.result.verdict,
+      submissionReason: response.result.submissionResult.reason, interactorReason: response.result.interactorResult.reason,
+      submissionWallMs: response.result.submissionResult.wallTimeUs / 1_000,
+      interactorWallMs: response.result.interactorResult.wallTimeUs / 1_000 });
     return response.result;
   }
 

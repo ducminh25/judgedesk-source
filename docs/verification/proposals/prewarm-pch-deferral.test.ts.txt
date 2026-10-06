@@ -1,0 +1,47 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { executorClient } from "../executor/client.js";
+import {
+  ensureJudgePrewarmReady,
+  resetJudgePrewarmStateForTests,
+  type PrewarmDependencies,
+} from "./background-prewarm.js";
+
+test("cold optional PCH cannot delay authenticated managed C++ judge readiness", async (t) => {
+  t.mock.property(process, "platform", "win32");
+  t.mock.method(executorClient, "start", async () => ({ ...executorClient.health, ready: true }));
+  resetJudgePrewarmStateForTests();
+  t.after(resetJudgePrewarmStateForTests);
+  let releasePch: () => void = () => {};
+  const pchBarrier = new Promise<void>((resolve) => { releasePch = resolve; });
+  let prepared = false;
+  let pchStarted = false;
+  const dependencies: PrewarmDependencies = {
+    waitForToolchainDiscovery: async () => ({
+      schemaVersion: 2, registryRevision: 1, status: "complete", refreshing: false,
+      completedAt: "2026-10-05T00:00:00.000Z", profiles: {},
+    }),
+    resolveNativeProtectedToolchain: (kind) => ({
+      kind, source: "managed", packageOrigin: "built-in", ready: true,
+      executablePath: "/managed/compiler", version: "14.2.0",
+    }),
+    prepareManagedToolchainComponent: async () => { prepared = true; },
+    ensureUniversalCppPch: async () => {
+      pchStarted = true;
+      await pchBarrier;
+      return null;
+    },
+  };
+  let ready = false;
+  const readiness = ensureJudgePrewarmReady(undefined, undefined, "cold-pch-job", dependencies);
+  const observed = readiness.then(() => { ready = true; });
+  try {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(ready, true, "optional cold PCH must not block a real judge job");
+    assert.equal(prepared, true, "authenticated package preparation must remain mandatory");
+    assert.equal(pchStarted, false, "readiness must not launch PCH concurrently with judging");
+  } finally {
+    releasePch();
+    await Promise.allSettled([readiness, observed]);
+  }
+});

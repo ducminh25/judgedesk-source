@@ -278,12 +278,13 @@ Users configure the toolchain source independently for each language:
 - **Java**: Compiled via `javac` into an isolated output folder; executed via main class.
 - **Python**: Syntax pre-checked (`py_compile`) before direct execution under the isolated interpreter.
 - **Universal C++ PCH (`server/judge/universal-pch.ts`)**:
-  - Automatically identifies and generates a precompiled header for `<bits/stdc++.h>` across any C++ compiler (Managed GCC, MinGW-w64, MSYS2 UCRT64, Apple Clang).
-  - Employs a robust 16-hex fingerprint based on canonical executable path, file size, mtime, and compiler version string.
-  - Automatically injects `-isystem <cached_pch_dir>` to accelerate C++ compilation times by up to ~16.5x (from ~3.6s down to ~0.23s).
+  - Generates GCC `<bits/stdc++.h>` PCH through the bounded, verified compiler runner. Apple Clang uses the packaged textual compatibility header; automatic adjacent `.gch` loading is unsupported and explicit Clang PCH remains deferred.
+  - Fingerprints the actual execution binary's canonical path, size, mtime, version, platform, flags and verified package/snapshot digest. A usable cache contains both regular header and PCH files.
+  - Copies matching cached inputs into each compiler workspace and injects that workspace's include directory. Never grants compiler access to application data or writes generated PCH into a toolchain package.
 - **Background Judge Pre-warming (`server/judge/background-prewarm.ts`)**:
   - Automatically initializes compiler caches and native sandbox runners in the background upon application startup.
-  - Ensures seamless, zero-latency judging as soon as the user triggers the first grading job.
+  - Readiness waits for discovery, executor health, verified package preparation and certified-local C++ session validation. Windows managed C retains its existing cached compatibility warm-up; readiness no longer compiles and links an additional generic C/C++ submission. A cold C++ PCH cache still requires generation.
+  - Opt-in `JUDGEDESK_JUDGE_TRACE=1` logs preparation, compiler frontend/link timing and backend/executor PID, job and run correlations without source, arguments or environment data.
 
 ### 5.6. Checkers, Interactors & Scoring Models
 - **Standard Checkers**: Built-in implementations for `wcmp` (word-by-word), `lcmp` (line-by-line), `fcmp` (exact file), `yesno` (case-insensitive YES/NO), `floats` (floating-point with $\epsilon$ precision), `token`, `huge_int`, and `ncmp`.

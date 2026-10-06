@@ -1,33 +1,35 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import { getAppDataDir } from "../toolchains/storage.js";
 import { RESOURCE_ROOT } from "../runtime.js";
 import type { ResolvedToolchain } from "../toolchains/types.js";
 import { getExecutableVersion } from "../toolchains/resolver.js";
-import { resolveDarwinCompilerSupport } from "./compiler.js";
-
-const execFileAsync = promisify(execFile);
+import { runCompilerWithLimits } from "./compiler.js";
+import { getCompileFlags } from "../../shared/compile-config.js";
+import type { ExecutorWorkspace } from "../executor/workspace.js";
 
 export function computeCompilerHash(
   canonicalPath: string,
   size: number,
   mtimeMs: number,
   version: string,
+  compilerFlags: readonly string[] = getCompileFlags(undefined, "cpp"),
+  toolchainDigest = "",
 ): string {
   const normalizedPath = process.platform === "win32"
     ? canonicalPath.toLowerCase()
     : canonicalPath;
   const payload = [
+    "cpp-pch-v2",
     normalizedPath,
     size.toString(),
     Math.round(mtimeMs).toString(),
     version,
     process.platform,
     process.arch,
+    JSON.stringify(compilerFlags),
+    toolchainDigest,
   ].join(":");
   return crypto.createHash("sha256").update(payload).digest("hex").slice(0, 16);
 }
@@ -69,52 +71,106 @@ export function findToolchainStdcxxBitsDir(toolchainRoot: string): string | null
 }
 
 export function getPchDirectoryForToolchain(
-  toolchain?: ResolvedToolchain,
+  toolchain?: Readonly<ResolvedToolchain>,
+  compilerFlags: readonly string[] = getCompileFlags(undefined, "cpp"),
 ): string | null {
   if (!toolchain || toolchain.kind !== "cpp" || !toolchain.executablePath) {
     return null;
   }
   try {
-    const canonicalExe = fs.realpathSync(toolchain.executablePath);
+    const canonicalExe = fs.realpathSync(toolchain.executionPath || toolchain.executablePath);
     if (!fs.existsSync(canonicalExe)) return null;
     const stats = fs.statSync(canonicalExe);
     const version = toolchain.version || getExecutableVersion(canonicalExe, "cpp") || "";
-    const hash = computeCompilerHash(canonicalExe, stats.size, stats.mtimeMs, version);
+    const hash = computeCompilerHash(canonicalExe, stats.size, stats.mtimeMs, version, compilerFlags, toolchain.snapshotDigest || toolchain.packageDigest);
     const pchDir = path.join(getAppDataDir(), "pch-cache", hash);
-    const pchFile = path.join(pchDir, "bits", "stdc++.h.gch");
-    if (fs.existsSync(pchFile) && fs.statSync(pchFile).size > 1024) {
+    if (isCompletePchCache(pchDir)) {
       return pchDir;
     }
   } catch {}
   return null;
 }
 
+function isCompletePchCache(directory: string): boolean {
+  const bitsDirectory = path.join(directory, "bits");
+  for (const candidate of [directory, bitsDirectory]) {
+    const metadata = fs.lstatSync(candidate, { throwIfNoEntry: false });
+    if (!metadata?.isDirectory() || metadata.isSymbolicLink()) return false;
+  }
+  for (const file of ["stdc++.h", "stdc++.h.gch"]) {
+    const metadata = fs.lstatSync(path.join(bitsDirectory, file), { throwIfNoEntry: false });
+    if (!metadata?.isFile() || metadata.isSymbolicLink() || metadata.size === 0) return false;
+    if (file.endsWith(".gch") && (metadata.size <= 1024 || metadata.size > 512 * 1024 * 1024)) return false;
+  }
+  return true;
+}
+
+/** PCH is an owned compiler input. Copy it into this run's sandbox, never grant AppData access. */
+export function stageCppPch(
+  workspace: Pick<ExecutorWorkspace, "stage">,
+  toolchain: Readonly<ResolvedToolchain>,
+  compilerFlags: readonly string[] = getCompileFlags(undefined, "cpp"),
+): string | null {
+  const directory = getPchDirectoryForToolchain(toolchain, compilerFlags);
+  if (!directory) return null;
+  const header = workspace.stage(path.join(directory, "bits", "stdc++.h"), "compiler-pch/bits/stdc++.h");
+  workspace.stage(path.join(directory, "bits", "stdc++.h.gch"), "compiler-pch/bits/stdc++.h.gch");
+  return path.dirname(path.dirname(header));
+}
+
+/** Retain semantic flags in order; omit only JudgeDesk's source/output and platform plumbing. */
+export function getPchCompilerFlags(
+  args: readonly string[],
+  platform: NodeJS.Platform = process.platform,
+): string[] | null {
+  // Checkers/interactors provide problem-local and testlib include roots.
+  // Preserve their textual-header path rather than guessing compatibility.
+  if (args.some((argument) => argument.startsWith("-I"))) return null;
+  const languageIndex = args.indexOf("-x");
+  if (languageIndex < 0 || args[languageIndex + 1] !== "c++") return null;
+  const flags: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    if (argument === "-x" || argument === "-o") { index += 1; continue; }
+    if (!argument.startsWith("-")) continue;
+    if (argument === "-c" || argument === "-s" || argument === "-static" || argument === "-lm"
+      || argument.startsWith("-Wl,")
+      || (platform === "darwin" && (argument === "-fsanitize=integer-divide-by-zero"
+        || argument === "-fsanitize-trap=integer-divide-by-zero"))) continue;
+    flags.push(argument);
+  }
+  return flags;
+}
+
 export async function ensureUniversalCppPch(
-  toolchain: ResolvedToolchain,
+  toolchain: Readonly<ResolvedToolchain>,
+  compilerFlags: readonly string[] = getCompileFlags(undefined, "cpp"),
+  runCompiler: typeof runCompilerWithLimits = runCompilerWithLimits,
 ): Promise<string | null> {
   if (toolchain.kind !== "cpp" || !toolchain.executablePath) {
     return null;
   }
-  if (!fs.existsSync(toolchain.executablePath)) {
+  const executablePath = toolchain.executionPath || toolchain.executablePath;
+  if (!fs.existsSync(executablePath)) {
     return null;
   }
 
-  const canonicalExe = fs.realpathSync(toolchain.executablePath);
+  const canonicalExe = fs.realpathSync(executablePath);
   const stats = fs.statSync(canonicalExe);
   const version = toolchain.version || getExecutableVersion(canonicalExe, "cpp") || "";
-  const hash = computeCompilerHash(canonicalExe, stats.size, stats.mtimeMs, version);
+  const hash = computeCompilerHash(canonicalExe, stats.size, stats.mtimeMs, version, compilerFlags, toolchain.snapshotDigest || toolchain.packageDigest);
   const pchDir = path.join(getAppDataDir(), "pch-cache", hash);
-  const pchFile = path.join(pchDir, "bits", "stdc++.h.gch");
 
-  // If already compiled and intact (> 1 KB), reuse cache
-  if (fs.existsSync(pchFile) && fs.statSync(pchFile).size > 1024) {
+  // A PCH is usable only with its matching header and compiler flags.
+  if (isCompletePchCache(pchDir)) {
     return pchDir;
   }
 
   // Determine toolchain root
-  const inferredRoot = toolchain.packageRoot
-    || toolchain.localToolchain?.rootPath
-    || path.dirname(path.dirname(canonicalExe));
+  const inferredRoot = (toolchain.executionRoot && toolchain.snapshotDigest
+    ? path.join(toolchain.executionRoot, "payload") : toolchain.executionRoot)
+    || (toolchain.executionPath ? path.dirname(path.dirname(canonicalExe))
+      : toolchain.packageRoot || toolchain.localToolchain?.rootPath || path.dirname(path.dirname(canonicalExe)));
 
   // Determine source stdc++.h
   let sourceHeaderPath: string | null = null;
@@ -128,8 +184,9 @@ export async function ensureUniversalCppPch(
     }
   }
 
-  // Fallback to JudgeDesk bundled compatibility header
-  if (!sourceHeaderPath) {
+  // Only Apple Clang uses the packaged compatibility umbrella. Do not replace
+  // a configured GCC header with a different library's header when discovery fails.
+  if (!sourceHeaderPath && process.platform === "darwin") {
     const bundled = path.join(
       RESOURCE_ROOT,
       "compiler-compat",
@@ -163,52 +220,20 @@ export async function ensureUniversalCppPch(
 
   const started = performance.now();
   try {
-    if (process.platform === "darwin") {
-      const darwin = resolveDarwinCompilerSupport(canonicalExe, "cpp");
-      await execFileAsync(
-        canonicalExe,
-        [
-          ...darwin.argumentPrefix,
-          "-std=c++14",
-          "-O2",
-          "-x",
-          "c++-header",
-          stagedHeader,
-          "-o",
-          tmpPchFile,
-        ],
-        {
-          timeout: 45_000,
-          env: {
-            ...process.env,
-            ...darwin.environment,
-            TMPDIR: tmpBitsDir,
-          },
-        },
-      );
-    } else {
-      await execFileAsync(
-        canonicalExe,
-        [
-          "-std=c++14",
-          "-O2",
-          "-pipe",
-          "-x",
-          "c++-header",
-          stagedHeader,
-          "-o",
-          tmpPchFile,
-        ],
-        {
-          windowsHide: true,
-          timeout: 45_000,
-          env: {
-            ...process.env,
-            TMPDIR: tmpBitsDir,
-          },
-        },
-      );
-    }
+    // Reuse the verified compiler runner, including GCC relocation, AppContainer/
+    // Seatbelt and Job limits. Only this owned header gets the larger output cap;
+    // submission compilation retains its existing 32 MiB artifact budget.
+    await runCompiler(
+      executablePath,
+      [...compilerFlags, "-x", "c++-header", stagedHeader, "-o", tmpPchFile],
+      tmpDir,
+      tmpPchFile,
+      undefined,
+      { timeoutMs: 45_000, maxGeneratedFileBytes: 128 * 1024 * 1024 },
+      "cpp",
+      {},
+      toolchain,
+    );
 
     if (!fs.existsSync(tmpPchFile) || fs.statSync(tmpPchFile).size <= 1024) {
       throw new Error("PCH generation produced an empty or missing .gch file");
@@ -225,6 +250,8 @@ export async function ensureUniversalCppPch(
           version,
           platform: process.platform,
           arch: process.arch,
+          compilerFlags,
+          toolchainDigest: toolchain.snapshotDigest || toolchain.packageDigest,
           createdAt: new Date().toISOString(),
           compileDurationMs: Math.round(performance.now() - started),
           pchSizeBytes: fs.statSync(tmpPchFile).size,

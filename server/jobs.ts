@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import type { Express } from "express";
 import { executorClient } from "./executor/client.js";
+import { logJudgeDiagnostic } from "./diagnostics.js";
 import type {
   ExecutorInteractiveRunResult,
   ExecutorInteractiveRunSpec,
@@ -320,6 +321,7 @@ export function runReservedExecutor(
   jobId: string | undefined,
   spec: ExecutorRunSpec,
 ): Promise<ExecutorRunResult> {
+  logJudgeDiagnostic({ phase: "job-native-run", jobId, runId: spec.runId, role: spec.role });
   return executorClient.run(
     spec,
     () => judgeJobRegistry.startExecutorRun(jobId, spec.runId),
@@ -332,6 +334,8 @@ export function runReservedInteractiveExecutor(
   jobId: string | undefined,
   spec: ExecutorInteractiveRunSpec,
 ): Promise<ExecutorInteractiveRunResult> {
+  logJudgeDiagnostic({ phase: "job-interactive-run", jobId, runId: spec.runId,
+    submissionRunId: spec.submission.runId, interactorRunId: spec.interactor.runId });
   return executorClient.runInteractive(
     spec,
     () => judgeJobRegistry.startExecutorRun(jobId, spec.runId),
