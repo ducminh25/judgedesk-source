@@ -280,6 +280,7 @@ function Scoreboard({
                       onClick={() => setContestantSort((previous) => previous === "default" ? "asc" : previous === "asc" ? "desc" : "default")}
                       className={`flex h-6 w-6 flex-none items-center justify-center rounded hover:bg-surface-hover ${contestantSort === "asc" || contestantSort === "desc" ? "text-indigo-500" : "text-text-muted"}`}
                       title={t("scoreboard.sortAlphabetically")}
+                      aria-label={t("scoreboard.sortAlphabetically")}
                     >
                       <ArrowUpDown className="h-3.5 w-3.5" />
                     </button>
