@@ -353,6 +353,65 @@ async fn test_flat_problem_routes_write_config_to_synthetic_path() {
 }
 
 #[tokio::test]
+async fn test_polygon_validation_preview_and_failed_save_never_write_config() {
+    let environment = common::OwnedTestEnvironment::new();
+    let problem_dir = environment.root().join("SUM");
+    fs::create_dir_all(&problem_dir).unwrap();
+    fs::write(problem_dir.join("1.inp"), b"1  2\n").unwrap();
+    fs::write(problem_dir.join("1.out"), b"3\n").unwrap();
+    let original = b"{\"testWellFormed\": false}\n";
+    fs::write(problem_dir.join("Config.cfg"), original).unwrap();
+    let (port, server_task) = start_discovery_test_server(&environment).await;
+    for (preview, expected_status) in [(true, 200), (false, 422)] {
+        let payload = serde_json::to_vec(&serde_json::json!({
+            "path": problem_dir,
+            "config": { "testWellFormed": true },
+            "validateOnly": preview,
+        }))
+        .unwrap();
+        let (status, body) = http_request(
+            port,
+            "POST",
+            "/api/polygon-config",
+            Some(&payload),
+            Some("application/json"),
+        )
+        .await;
+        assert_eq!(status, expected_status, "{body}");
+        let response: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(response["data"]["tests"], 1);
+        assert_eq!(
+            response["data"]["issues"][0],
+            serde_json::json!({
+                "code": "consecutive_spaces", "line": 1, "column": 3,
+                "testName": "1", "fileName": "1.inp",
+            })
+        );
+        assert_eq!(fs::read(problem_dir.join("Config.cfg")).unwrap(), original);
+        assert_eq!(fs::read(problem_dir.join("1.inp")).unwrap(), b"1  2\n");
+    }
+    fs::write(problem_dir.join("1.inp"), b"1 2\r\n").unwrap();
+    let payload = serde_json::to_vec(&serde_json::json!({
+        "path": problem_dir, "config": { "testWellFormed": true },
+    }))
+    .unwrap();
+    let (status, body) = http_request(
+        port,
+        "POST",
+        "/api/polygon-config",
+        Some(&payload),
+        Some("application/json"),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let stored: serde_json::Value =
+        serde_json::from_slice(&fs::read(problem_dir.join("Config.cfg")).unwrap()).unwrap();
+    assert_eq!(stored["testWellFormed"], true);
+    assert_eq!(fs::read_dir(&problem_dir).unwrap().count(), 3);
+    server_task.abort();
+}
+
+#[tokio::test]
 async fn test_flat_problem_routes_preview_selected_layout_and_reject_missing_child() {
     let environment = common::OwnedTestEnvironment::new();
     let problem_dir = environment.root().join("SUM");

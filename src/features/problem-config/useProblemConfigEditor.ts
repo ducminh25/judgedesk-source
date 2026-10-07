@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { apiFetch } from "../../api";
 import { PolygonConfig, PolygonTestConfig, ProblemConfig } from "../../types";
 import { normalizeCompileConfig } from "../../../shared/compile-config.js";
+import type { ProblemWellFormedIssue, TestInputValidationResult } from "../../../shared/contracts.js";
 import {
   addRational,
   createRational,
@@ -10,9 +12,11 @@ import {
 } from "../../../shared/rational";
 import {
   applyTestEdit,
+  assignTestsToGroup,
   createEmptyPolygonConfig,
   createsGroupCycle,
   distributeTotalScore,
+  editGroupTests,
   setGroupDependency,
   TestDetail,
   TestEditPopover
@@ -26,7 +30,15 @@ interface EditorOptions {
   onClose: () => void;
 }
 
+function sumVisiblePoints(config: PolygonConfig, details: readonly TestDetail[]): string {
+  return formatRational(details.reduce(
+    (total, test) => addRational(total, parseRational(Object.hasOwn(config.tests, test.name) ? config.tests[test.name].points : 1)),
+    createRational(0),
+  ));
+}
+
 export function useProblemConfigEditor({ problemName, testPath, initialConfig, onSave, onClose }: EditorOptions) {
+  const { t } = useTranslation();
   const [config, setConfig] = useState<ProblemConfig>({
     ...initialConfig,
     memoryLimit: initialConfig.memoryLimit ?? 256,
@@ -40,6 +52,9 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
   const [isSaving, setIsSaving] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [saveError, setSaveError] = useState("");
+  const [wellFormedIssues, setWellFormedIssues] = useState<ProblemWellFormedIssue[]>([]);
+  const [wellFormedChecking, setWellFormedChecking] = useState(false);
+  const [wellFormedChecked, setWellFormedChecked] = useState(false);
   const [useStdIn, setUseStdIn] = useState(initialConfig.useStdIn ?? initialConfig.useStdIO ?? false);
   const [useStdOut, setUseStdOut] = useState(initialConfig.useStdOut ?? initialConfig.useStdIO ?? false);
   const [inputFile, setInputFile] = useState(initialConfig.inputFile || `${problemName}.inp`);
@@ -68,7 +83,9 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
             }
           : createEmptyPolygonConfig();
         for (const test of details) {
-          loaded.tests[test.name] ??= { points: initialConfig.defaultScore ?? 1 };
+          if (!Object.hasOwn(loaded.tests, test.name)) {
+            Object.defineProperty(loaded.tests, test.name, { value: { points: initialConfig.defaultScore ?? 1 }, enumerable: true, configurable: true, writable: true });
+          }
         }
 
         const loadedTotalScore = configData.data?.totalScore ?? initialConfig.totalScore;
@@ -118,14 +135,52 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
 
   const totalPoints = useMemo(
     () => {
-      const rat = (Object.values(polygonConfig.tests) as PolygonTestConfig[]).reduce(
-        (total, test) => addRational(total, parseRational(test.points)),
-        createRational(0)
-      );
-      return formatRational(rat);
+      return sumVisiblePoints(polygonConfig, testDetails);
     },
-    [polygonConfig.tests]
+    [polygonConfig.tests, testDetails]
   );
+
+  const updateGroups = (next: PolygonConfig) => {
+    setPolygonConfig(next);
+    setConfig(previous => ({ ...previous, totalScore: sumVisiblePoints(next, testDetails) }));
+    setSaveError("");
+  };
+
+  const assignGroup = (testNames: readonly string[], groupName: string) => {
+    updateGroups(assignTestsToGroup(polygonConfig, testNames, groupName));
+  };
+
+  const editGroup = (groupName: string, testNames: readonly string[], total?: string) => {
+    updateGroups(editGroupTests(polygonConfig, groupName, testNames, total));
+  };
+
+  const validateWellFormed = async (): Promise<boolean> => {
+    setWellFormedChecking(true);
+    setWellFormedChecked(false);
+    try {
+      const response = await apiFetch("/api/polygon-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: problemDirPath, config: { testWellFormed: true, isInteractive: config.isInteractive ?? false }, validateOnly: true }),
+      });
+      const body: { success: boolean; data: TestInputValidationResult } = await response.json();
+      if (!body.success || !Array.isArray(body.data?.issues)) throw new Error("Failed to validate test inputs.");
+      const issues = body.data.issues;
+      setWellFormedIssues(issues);
+      setWellFormedChecked(true);
+      return issues.length === 0;
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Failed to validate test inputs.");
+      return false;
+    } finally {
+      setWellFormedChecking(false);
+    }
+  };
+
+  useEffect(() => {
+    if (config.testWellFormed) void validateWellFormed();
+    else { setWellFormedIssues([]); setWellFormedChecked(false); setSaveError(""); }
+  }, [config.testWellFormed, config.isInteractive, problemDirPath]);
 
   const toggleTest = (name: string) => {
     setSelectedTests(previous => {
@@ -182,6 +237,21 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
     setIsSaving(true);
     setSaveError("");
     try {
+      if (config.testWellFormed && !await validateWellFormed()) {
+        setSaveError(t("problemConfig.wellFormedSaveBlocked"));
+        return;
+      }
+      if (polygonConfig.enableGroups) {
+        for (const name of Object.keys(polygonConfig.groups)) {
+          for (const dependency of polygonConfig.groups[name].dependencies) {
+            if (!Object.hasOwn(polygonConfig.groups, dependency)
+              || !testDetails.some(test => polygonConfig.tests[test.name]?.group === dependency)) {
+              setSaveError(t("problemConfig.groupDependencyBlocked", { name, dependency }));
+              return;
+            }
+          }
+        }
+      }
       const finalTotalScore = config.totalScore !== null && config.totalScore !== undefined && String(config.totalScore).trim() !== ""
         ? config.totalScore
         : totalPoints;
@@ -193,6 +263,7 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
       }
       const configToSave = {
         ...polygonConfig,
+        testWellFormed: config.testWellFormed ?? false,
         checkerType: config.checkerType || "C1",
         memoryLimit: config.memoryLimit ?? 256,
         totalScore: finalTotalScore,
@@ -245,6 +316,9 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
     isSaving,
     loadError,
     saveError,
+    wellFormedIssues,
+    wellFormedChecking,
+    wellFormedChecked,
     useStdIn,
     setUseStdIn,
     useStdOut,
@@ -257,6 +331,9 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
     toggleTest,
     toggleAllTests,
     applyEdit,
+    assignGroup,
+    editGroup,
+    validateWellFormed,
     addDependency,
     removeDependency,
     save

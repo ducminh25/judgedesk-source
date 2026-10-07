@@ -114,6 +114,21 @@ export function getDownloadedToolchainsDir(): string {
   return dir;
 }
 
+export function getExecutorCacheToolchainsDir(): string {
+  const override = process.env.JUDGEDESK_EXECUTOR_TOOLCHAINS_DIR;
+  if (override) return path.resolve(override);
+  if (process.env.THEMIS_APP_DATA_DIR) {
+    return path.join(process.env.THEMIS_APP_DATA_DIR, "executor-toolchains");
+  }
+  const platform = os.platform();
+  if (platform === "win32") {
+    const localAppData =
+      process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local");
+    return path.join(localAppData, "JudgeDesk", "JudgeDeskExecutor", "toolchains");
+  }
+  return path.join(os.tmpdir(), "JudgeDeskExecutor", "toolchains");
+}
+
 /**
  * Compatibility alias. New code should use getDownloadedToolchainsDir() so a
  * per-user downloaded pack is never confused with a read-only pack bundled by
@@ -185,58 +200,71 @@ function isUsablePackageRoot(
   kind: ToolchainKind,
   receiptRequired: boolean,
 ): boolean {
-  const packagePath = path.join(root, descriptor.id);
-  let packageRoot: string;
-  try {
-    const metadata = fs.lstatSync(packagePath);
-    if (!metadata.isDirectory() || metadata.isSymbolicLink()) return false;
-    packageRoot = fs.realpathSync(packagePath);
-  } catch {
-    return false;
-  }
-  const entrypoint = descriptor.entrypoints.find(
-    (candidate) => candidate.kind === kind,
-  );
-  if (
-    !entrypoint
-    || !isRegularPackagePath(
-      packageRoot,
-      entrypoint.executableRelativePath,
-      "file",
-    )
-  ) {
-    return false;
-  }
-
-  const receiptPath = path.join(packageRoot, ".judgedesk-package.json");
-  if (!fs.existsSync(receiptPath)) return !receiptRequired;
-  try {
-    const bytes = fs.readFileSync(receiptPath);
-    if (bytes.byteLength === 0 || bytes.byteLength > 16 * 1024) return false;
-    const receipt = JSON.parse(bytes.toString("utf8")) as Record<string, unknown>;
-    const blueprint = TOOLCHAIN_RELEASE_BLUEPRINTS[descriptor.id];
-    if (
-      !blueprint
-      || receipt.schemaVersion !== 1
-      || receipt.packageId !== descriptor.id
-      || receipt.version !== blueprint.version
-      || typeof receipt.archiveSha256 !== "string"
-      || !/^[a-f0-9]{64}$/.test(receipt.archiveSha256)
-      || receipt.entrypointComponentId !== blueprint.entrypointComponentId
-      || JSON.stringify(receipt.components) !== JSON.stringify(blueprint.components)
-    ) {
-      return false;
+  if (!fs.existsSync(root)) return false;
+  const candidateNames = [
+    descriptor.id,
+    `${descriptor.id}_${descriptor.version}`,
+    `${descriptor.id}-${descriptor.version}`,
+  ];
+  for (const name of candidateNames) {
+    const packagePath = path.join(root, name);
+    let packageRoot: string;
+    try {
+      const metadata = fs.lstatSync(packagePath);
+      if (!metadata.isDirectory() || metadata.isSymbolicLink()) continue;
+      packageRoot = fs.realpathSync(packagePath);
+    } catch {
+      continue;
     }
-    return blueprint.components.every((component) =>
-      isRegularPackagePath(
-        packageRoot,
-        component.relativePath,
-        component.kind === "executable" ? "file" : "directory",
-      )
+    const entrypoint = descriptor.entrypoints.find(
+      (candidate) => candidate.kind === kind,
     );
-  } catch {
-    return false;
+    if (
+      !entrypoint
+      || !isRegularPackagePath(
+        packageRoot,
+        entrypoint.executableRelativePath,
+        "file",
+      )
+    ) {
+      continue;
+    }
+
+    const receiptPath = path.join(packageRoot, ".judgedesk-package.json");
+    if (!fs.existsSync(receiptPath)) {
+      if (!receiptRequired) return true;
+      continue;
+    }
+    try {
+      const bytes = fs.readFileSync(receiptPath);
+      if (bytes.byteLength === 0 || bytes.byteLength > 16 * 1024) continue;
+      const receipt = JSON.parse(bytes.toString("utf8")) as Record<string, unknown>;
+      const blueprint = TOOLCHAIN_RELEASE_BLUEPRINTS[descriptor.id];
+      if (
+        !blueprint
+        || receipt.schemaVersion !== 1
+        || receipt.packageId !== descriptor.id
+        || receipt.version !== blueprint.version
+        || typeof receipt.archiveSha256 !== "string"
+        || !/^[a-f0-9]{64}$/.test(receipt.archiveSha256)
+        || receipt.entrypointComponentId !== blueprint.entrypointComponentId
+        || JSON.stringify(receipt.components) !== JSON.stringify(blueprint.components)
+      ) {
+        continue;
+      }
+      const allComponentsValid = blueprint.components.every((component) =>
+        isRegularPackagePath(
+          packageRoot,
+          component.relativePath,
+          component.kind === "executable" ? "file" : "directory",
+        )
+      );
+      if (allComponentsValid) return true;
+    } catch {
+      continue;
+    }
   }
+  return false;
 }
 
 function isBuiltInManagedPackageAvailable(kind: ToolchainKind): boolean {
@@ -255,6 +283,11 @@ function isAnyManagedPackageAvailable(kind: ToolchainKind): boolean {
     true,
   ) || isUsablePackageRoot(
     getDownloadedToolchainsDir(),
+    descriptor,
+    kind,
+    false,
+  ) || isUsablePackageRoot(
+    getExecutorCacheToolchainsDir(),
     descriptor,
     kind,
     false,

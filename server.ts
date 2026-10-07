@@ -12,7 +12,10 @@ import { registerOsdRoutes } from "./server/routes/osd-routes.js";
 import { startParentWatchdog } from "./server/platform/parent-watchdog.js";
 import { startInitialToolchainDiscovery } from "./server/toolchains/discovery.js";
 import { startBackgroundJudgePrewarm } from "./server/judge/background-prewarm.js";
-import { migrateLegacyExecutionPolicy } from "./server/toolchains/migration.js";
+import {
+  migrateLegacyBundledToolchains,
+  migrateLegacyExecutionPolicy,
+} from "./server/toolchains/migration.js";
 import { serverLifecycle } from "./server/platform/server-lifecycle.js";
 import { BUILD_METADATA } from "./server/build-metadata.js";
 
@@ -29,10 +32,16 @@ startParentWatchdog(process.env.JUDGEDESK_PARENT_PID, async () => {
 
 async function startServer() {
   try {
+    const migrationResult = migrateLegacyBundledToolchains();
+    if (migrationResult.migratedPackages.length > 0) {
+      console.log(
+        `[Toolchain Migration] Migrated toolchains to canonical storage: ${migrationResult.migratedPackages.join(", ")} (freed ${Math.round(migrationResult.freedBytes / (1024 * 1024))}MB)`,
+      );
+    }
     migrateLegacyExecutionPolicy();
   } catch (error) {
     console.error(
-      `[Toolchain Migration] Policy migration warning: ${error instanceof Error ? error.message : String(error)}`,
+      `[Toolchain Migration] Migration warning: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
   const serverStartupStarted = performance.now();

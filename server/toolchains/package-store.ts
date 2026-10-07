@@ -6,7 +6,10 @@ import {
   RESOURCE_ROOT,
 } from "../runtime.js";
 import { loadBundledOfficialManifestSync } from "./manifest.js";
-import { getDownloadedToolchainsDir } from "./storage.js";
+import {
+  getDownloadedToolchainsDir,
+  getExecutorCacheToolchainsDir,
+} from "./storage.js";
 import type {
   ToolchainCatalogEntry,
   ToolchainDescriptor,
@@ -177,6 +180,7 @@ export function inspectInstalledToolchainPackage(
   options: {
     builtInRoot?: string;
     downloadedRoot?: string;
+    executorCacheRoot?: string;
     kind?: ToolchainKind;
   } = {},
 ): InstalledToolchainPackageState {
@@ -204,29 +208,44 @@ export function inspectInstalledToolchainPackage(
       ),
       receiptRequired: false,
     },
+    {
+      origin: "downloaded",
+      root: normalizeWindowsVerbatimPath(
+        options.executorCacheRoot ?? getExecutorCacheToolchainsDir(),
+      ),
+      receiptRequired: true,
+    },
   ];
 
   for (const candidate of roots) {
-    const packageRoot = path.join(candidate.root, entry.id);
-    if (!fs.existsSync(packageRoot)) continue;
-    try {
-      return {
-        status: "installed",
-        package: inspectPackageRoot(
-          entry,
-          packageRoot,
-          candidate.origin,
-          candidate.receiptRequired,
-          requestedEntrypoint,
-        ),
-      };
-    } catch (error) {
-      return {
-        status: "corrupt",
-        origin: candidate.origin,
-        root: packageRoot,
-        diagnostic: error instanceof Error ? error.message : String(error),
-      };
+    if (!fs.existsSync(candidate.root)) continue;
+    const candidateNames = [
+      entry.id,
+      `${entry.id}_${entry.version}`,
+      `${entry.id}-${entry.version}`,
+    ];
+    for (const name of candidateNames) {
+      const packageRoot = path.join(candidate.root, name);
+      if (!fs.existsSync(packageRoot)) continue;
+      try {
+        return {
+          status: "installed",
+          package: inspectPackageRoot(
+            entry,
+            packageRoot,
+            candidate.origin,
+            candidate.receiptRequired,
+            requestedEntrypoint,
+          ),
+        };
+      } catch (error) {
+        return {
+          status: "corrupt",
+          origin: candidate.origin,
+          root: packageRoot,
+          diagnostic: error instanceof Error ? error.message : String(error),
+        };
+      }
     }
   }
   return { status: "not_installed" };

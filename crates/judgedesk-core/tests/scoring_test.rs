@@ -279,3 +279,49 @@ fn test_fractional_points_exact_rational_accumulation() {
     assert_eq!(summary.score, 2.0);
     assert_eq!(summary.max_score, 2.0);
 }
+
+#[test]
+fn group_max_score_ignores_stale_tests_and_missing_dependencies_block_points() {
+    let mut test_cases = vec![
+        test_case("1", "AC", json!("1/3")),
+        test_case("2", "AC", json!(1)),
+    ];
+    let config = ProblemScoringConfig {
+        polygon_config: Some(PolygonScoringConfig {
+            enable_groups: true,
+            groups: HashMap::from([(
+                "group".to_string(),
+                PolygonGroupConfig {
+                    dependencies: vec!["missing".to_string()],
+                    policy: Some("EACH_TEST".to_string()),
+                },
+            )]),
+            tests: HashMap::from([
+                (
+                    "1".to_string(),
+                    PolygonTestConfig {
+                        group: Some("group".to_string()),
+                        points: Some(json!("1/3")),
+                    },
+                ),
+                (
+                    "stale".to_string(),
+                    PolygonTestConfig {
+                        group: None,
+                        points: Some(json!(100)),
+                    },
+                ),
+            ]),
+        }),
+        ..Default::default()
+    };
+    let summary = calculate_problem_summary(
+        "OK",
+        &mut test_cases,
+        &["1".to_string(), "2".to_string()],
+        &config,
+    );
+    assert_eq!(summary.max_score, 1.3333333333333333);
+    assert_eq!(test_cases[0].score, json!(0));
+    assert_eq!(test_cases[1].score, json!(1));
+}

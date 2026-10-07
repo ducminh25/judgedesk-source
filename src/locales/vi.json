@@ -28,7 +28,7 @@
     "loadTests": "Nạp danh sách bài thi",
     "loadContestants": "Nạp danh sách thí sinh",
     "refresh": "Tải lại",
-    "reloadHint": "Nạp lại bài thi và thí sinh",
+    "reloadHint": "Tải lại bài thi và thí sinh",
     "stop": "Dừng",
     "run": "Chấm bài",
     "toggleTheme": "Đổi nền",
@@ -43,7 +43,7 @@
       "ready": "Sẵn sàng",
       "inPath": "Đã tìm thấy",
       "notInPath": "Không tìm thấy",
-      "submissionReady": "Sẵn sàng chấm submission",
+      "submissionReady": "Sẵn sàng chấm bài",
       "checkerOnly": "Chỉ dùng cho checker",
       "managedRequired": "Cần runtime được quản lý",
       "activeRunner": "Trình chạy hoạt động",
@@ -76,9 +76,9 @@
     "noResults": "Chưa có kết quả chấm",
     "missingData": "Cần nạp cả bài thi và thí sinh",
     "noSelection": "Cần chọn ít nhất một thí sinh và một bài thi để chấm",
-    "runnerUnavailable": "Trình bảo vệ hệ thống (Native Protection) chưa sẵn sàng",
+    "runnerUnavailable": "Trình bảo vệ hệ thống chưa sẵn sàng",
     "unavailableWhileJudging": "Không khả dụng khi đang chấm bài",
-    "unavailableWhileBusy": "Không khả dụng khi đang chấm hoặc lưu kỳ thi",
+    "unavailableWhileBusy": "Không khả dụng khi đang chấm hoặc đang lưu kỳ thi",
     "confirmDeleteTitle": "Xóa kết quả chấm?",
     "confirmDelete": "Xóa điểm",
     "confirmDeleteSelectedMessage": "Xóa các điểm hiện có của {{contestants}} thí sinh và {{problems}} bài đã chọn? Thao tác này không thể hoàn tác.",
@@ -100,7 +100,7 @@
     "compilingChecker": "Đang biên dịch bộ chấm (Checker)...",
     "compilingInteractor": "Đang biên dịch bộ tương tác (Interactor)...",
     "locating": "Đang tìm bài làm thí sinh...",
-    "judgingTest": "Đang chấm test {{current}} / {{total}}"
+    "judgingTest": "Đang chấm test {{current}} trên tổng {{total}}"
   },
   "scoreboard": {
     "contestants": "Thí sinh",
@@ -152,8 +152,18 @@
     "totalScorePlaceholder": "Tùy chọn (vd: 100/3, 10)",
     "polygonStandard": "Chuẩn Polygon testlib.h",
     "interactor": "Trình tương tác (Interactor)",
-    "enableGroups": "Bật nhóm test?",
-    "showContent": "Hiện nội dung?",
+    "testWellFormed": "Test well-formed",
+    "wellFormedHint": "Chỉ kiểm tra tệp input: không rỗng; mỗi dòng kết thúc bằng EOL; không có ký tự điều khiển, dấu cách đầu/cuối dòng, nhiều dấu cách liên tiếp hoặc dòng rỗng ở đầu/cuối tệp. Không sửa tệp.",
+    "wellFormedChecking": "Đang kiểm tra input của các test...",
+    "wellFormedPassed": "Tất cả input đều đúng định dạng.",
+    "wellFormedSaveBlocked": "Input của test chưa đúng định dạng. Hãy xem mục Tests.",
+    "groupDependencyBlocked": "Nhóm {{name}} phụ thuộc vào nhóm {{dependency}} đang rỗng hoặc không tồn tại.",
+    "wellFormedIssue": "{{file}} (test {{test}}), dòng {{line}}, cột {{column}}: {{reason}}",
+    "wellFormedReasons": { "empty": "tệp rỗng", "missing_eol": "thiếu EOL ở cuối tệp", "control_character": "ký tự điều khiển", "edge_space": "dấu cách ở đầu hoặc cuối dòng", "consecutive_spaces": "nhiều dấu cách liên tiếp", "edge_empty_line": "dòng rỗng ở đầu hoặc cuối tệp" },
+    "enableGroups": "Nhóm test",
+    "showContent": "Hiện nội dung",
+    "quickGroup": { "selection": "Số thứ tự test", "groupName": "Tên nhóm", "apply": "Áp dụng", "example": "VD: 1-8, 10, 12-19", "hint": "Dùng cột #. Để trống tên nhóm để loại các test này khỏi nhóm.", "invalid": "Hãy nhập số thứ tự test hợp lệ." },
+    "groupEdit": { "title": "Sửa nhóm {{name}}", "description": "Sửa toàn bộ danh sách test. Khi đổi điểm, tổng điểm được chia đều; chỉ đổi danh sách thì giữ điểm từng test.", "total": "Tổng điểm nhóm", "each": "Điểm mỗi test", "mixed": "Điểm không đồng đều", "invalid": "Hãy nhập số thứ tự test và điểm không âm hợp lệ." },
     "cancel": "Hủy",
     "saving": "Đang lưu...",
     "confirmSaveTitle": "Lưu cấu hình và xóa kết quả?",
@@ -224,18 +234,19 @@
       "loading": "Đang tải test..."
     },
     "groupPolicy": {
-      "title": "Chính sách Nhóm & Phụ thuộc",
+      "title": "Điểm, quy tắc và phụ thuộc nhóm",
       "name": "Tên Nhóm",
       "tests": "Số Test",
       "points": "Tổng Điểm",
       "policy": "Cách Tính Điểm",
       "dependencies": "Phụ thuộc",
       "noGroups": "Chưa có nhóm nào. Vui lòng gán test vào một nhóm trước.",
-      "add": "+ Thêm..."
+      "add": "+ Thêm...",
+      "edit": "Sửa"
     },
     "tabs": {
       "basic": "Cơ bản",
-      "tests": "Testcases & nhóm",
+      "tests": "Tests",
       "compile": "Biên dịch"
     },
     "summary": "{{count}} test · Tổng điểm {{points}} · {{io}}",
@@ -256,8 +267,8 @@
       "themis": "Máy chấm Themis C1-C5",
       "polygon": "Polygon / Testlib"
     },
-    "viewSource": "Xem source",
-    "sourceOpenFailed": "Không thể mở source checker",
+    "viewSource": "Xem nguồn",
+    "sourceOpenFailed": "Không thể mở nguồn checker",
     "customDescription": "Checker tùy chỉnh {{name}} trong thư mục bài. JudgeDesk chỉ nhận source C++ (.cpp) và Python (.py); file .exe không được hỗ trợ.",
     "entries": {
       "C1": {
@@ -403,7 +414,7 @@
     },
     "backendConnection": {
       "title": "Không thể kết nối dịch vụ chấm bài",
-      "reason": "Dịch vụ xử lý nền (Backend Service) chưa sẵn sàng hoặc bị chặn bởi phần mềm bảo mật.",
+      "reason": "Backend service chưa sẵn sàng hoặc bị chặn bởi phần mềm bảo mật.",
       "action": "Hãy kiểm tra quyền ứng dụng và khởi động lại JudgeDesk."
     },
     "missingContestantsPath": {

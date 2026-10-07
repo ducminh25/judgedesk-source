@@ -23,6 +23,7 @@ export function normalizeProblemMemoryLimit(
 
 export function createDefaultProblemConfig(problemName: string): NormalizedProblemConfig {
   return {
+    testWellFormed: false,
     useStdIO: false,
     useStdIn: false,
     useStdOut: false,
@@ -62,6 +63,7 @@ export function normalizeProblemConfig(
   const totalScoreValue = stored.totalScore ?? request.totalScore ?? defaults.totalScore;
 
   return {
+    testWellFormed: Boolean(stored.testWellFormed ?? request.testWellFormed ?? defaults.testWellFormed),
     useStdIO,
     useStdIn: isInteractive ? true : (stored.useStdIn ?? stored.useStdIO ?? request.useStdIn ?? request.useStdIO ?? defaults.useStdIn),
     useStdOut: isInteractive ? true : (stored.useStdOut ?? stored.useStdIO ?? request.useStdOut ?? request.useStdIO ?? defaults.useStdOut),

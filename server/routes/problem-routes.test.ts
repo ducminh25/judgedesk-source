@@ -68,6 +68,33 @@ test("direct flat problem config reads and writes its own directory", async t =>
   assert.equal(fs.existsSync(syntheticPath), false);
 });
 
+test("well-formed preview never writes Config.cfg; invalid save is atomic", async t => {
+  const { root, url } = await setup(t);
+  const problem = path.join(root, "SUM");
+  fs.mkdirSync(problem);
+  fs.writeFileSync(path.join(problem, "1.inp"), "1  2\n");
+  fs.writeFileSync(path.join(problem, "1.out"), "3\n");
+  const configPath = path.join(problem, "Config.cfg");
+  fs.writeFileSync(configPath, JSON.stringify({ totalScore: 99 }));
+  const original = fs.readFileSync(configPath, "utf8");
+  const post = (validateOnly: boolean) => fetch(`${url}/api/polygon-config`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: problem, config: { testWellFormed: true, totalScore: 1 }, validateOnly }),
+  });
+  const preview = await post(true);
+  assert.equal(preview.status, 200);
+  const previewBody = await preview.json();
+  assert.equal(previewBody.data.issues[0].code, "consecutive_spaces");
+  assert.equal(fs.readFileSync(configPath, "utf8"), original);
+  const rejected = await post(false);
+  assert.equal(rejected.status, 422);
+  assert.equal(fs.readFileSync(configPath, "utf8"), original);
+  fs.writeFileSync(path.join(problem, "1.inp"), "1 2\n");
+  const accepted = await post(false);
+  assert.equal(accepted.status, 200);
+  assert.equal(JSON.parse(fs.readFileSync(configPath, "utf8")).testWellFormed, true);
+});
+
 test("missing problem paths never read or overwrite the parent configuration", async t => {
   const { root, url } = await setup(t);
   const configPath = path.join(root, "Config.cfg");

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PolygonConfig } from "../../types";
-import { applyTestEdit, createsGroupCycle, distributeTotalScore, setGroupDependency } from "./editor-state";
+import { applyTestEdit, assignTestsToGroup, editGroupTests, createsGroupCycle, distributeTotalScore, setGroupDependency } from "./editor-state";
 
 const baseConfig = (): PolygonConfig => ({
   enableGroups: true,
@@ -109,5 +109,37 @@ test("distributeTotalScore supports fractional division", () => {
   assert.equal(result.tests["01"].points, "10/3");
   assert.equal(result.tests["02"].points, "10/3");
   assert.equal(result.tests["03"].points, "10/3");
+});
+
+test("bulk membership is additive, reassigns safely and leaves points and limits unchanged", () => {
+  const config = baseConfig();
+  config.tests["01"] = { points: "1/3", group: "old", timeLimit: 2 };
+  config.groups.old = { policy: "COMPLETE_GROUP", dependencies: [] };
+  const result = assignTestsToGroup(config, ["01"], "constructor");
+  assert.deepEqual(result.tests["01"], { points: "1/3", group: "constructor", timeLimit: 2 });
+  assert.deepEqual(result.groups.constructor, { policy: "EACH_TEST", dependencies: [] });
+  assert.equal(config.tests["01"].group, "old");
+  const removed = assignTestsToGroup(result, ["01", "02"], " ");
+  assert.equal(removed.tests["01"].group, undefined);
+  assert.equal(removed.tests["01"].points, "1/3");
+  assert.equal(removed.tests["02"].group, undefined);
+  assert.ok(Object.hasOwn(removed.groups, "old"));
+});
+
+test("group edit replaces membership and preserves nonuniform points unless a score is entered", () => {
+  const original = assignTestsToGroup(baseConfig(), ["01"], "A");
+  original.tests["02"].points = 3;
+  const result = editGroupTests(original, "A", ["02"]);
+  assert.equal(result.tests["01"].group, undefined);
+  assert.equal(result.tests["01"].points, 1);
+  assert.equal(result.tests["02"].group, "A");
+  assert.equal(result.tests["02"].points, 3);
+  const divided = editGroupTests(result, "A", ["01", "02"], "1/3");
+  assert.equal(divided.tests["01"].points, "1/6");
+  assert.equal(divided.tests["02"].points, "1/6");
+  assert.throws(() => editGroupTests(result, "A", ["02"], "1/0"));
+  assert.throws(() => editGroupTests(result, "A", ["02"], "-1"));
+  assert.equal(editGroupTests(result, "A", ["02"], "0").tests["02"].points, 0);
+  assert.equal(editGroupTests(result, "A", []).tests["02"].group, undefined);
 });
 

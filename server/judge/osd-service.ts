@@ -5,6 +5,7 @@ import { OsdWatcher } from "./osd-watcher.js";
 import { writeOsdLog } from "./osd-log-writer.js";
 import { sharedJudgeSessionGate } from "./resource-policy.js";
 import { resolveProblemConfig } from "../problems/problem-config-repository.js";
+import { validateProblemTestInputs } from "../problems/test-wellformed.js";
 import { planProblemTestCases } from "./judge-session.js";
 import {
   compileSubmission,
@@ -299,6 +300,13 @@ export class OsdService {
       problemDir,
       this.problemConfigs[job.problem],
     );
+    if (config.testWellFormed) {
+      const validation = await validateProblemTestInputs(problemDir, config.isInteractive);
+      if (validation.issues.length > 0) {
+        const first = validation.issues[0];
+        throw new Error(`Test input is not well-formed: ${first.testName}/${first.fileName}:${first.line}:${first.column} (${first.code}); ${validation.issues.length} issue(s)`);
+      }
+    }
     const plannedTests = planProblemTestCases(problemDir, config);
 
     // Resolve pinned toolchains

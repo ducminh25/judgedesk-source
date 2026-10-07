@@ -3,8 +3,8 @@
 Requested by user 2026-10-07: integrate config modal UI into main and bump source
 version to 1.5.5. No release preparation, packaging, tag, push or publication.
 
-Status: AUTHORIZED; user granted a scoped check:full exception on 2026-10-07.
-Create two scoped commits, then fast-forward main with local backend/VI preserved.
+Status: COMPLETE on main; source version 1.5.5. User-authorized scoped
+check:full exception applied only to this integration.
 
 ## Scope and preservation
 
@@ -56,10 +56,37 @@ Create two scoped commits, then fast-forward main with local backend/VI preserve
 - Previous Windows desktop behavior evidence remains in modal implementation log
   and FR4-modal manifest; no new UI behavior added in this integration/version step.
 
+## Integration result
+
+- Commit 1: 66988969dd3db4d6d8064e02f219d659461a5f18 — accessible Problem Config UI, tests and related docs (17 files).
+- Commit 2: 70b8411c1bf1149e448bf8d700204bca36f6a0ab — version lockstep, derived lock and API golden snapshots (11 files / 13 metadata lines).
+- Original main fast-forwarded from 23290be to Commit 2; no extra merge commit.
+- Five backend hashes match before.json byte-for-byte. All 609 previous VI leaf
+  values preserved; local VI delta remains uncommitted. Neither commit includes
+  any of the five backend files or the local VI translation edits.
+- Git initially refused overlapping working copies. Only verified UI/version/docs
+  candidates were backed up and temporarily restored to base; refreshing those
+  baseline index entries without content changes allowed the normal fast-forward.
+  Protected backend files were never staged/restored. Exact merged VI bytes were
+  restored in finally. Recovery copies remain under artifacts/merge-155/.
+- STATUS/WORKLOG and this record updated after both commits on main. These final
+  completion log edits remain local/uncommitted to retain exactly two scoped
+  commits; copies also updated in redesign worktree for recovery.
+- No push, tags, installers, packaging, publication or release activation.
+
 ## Resume
 
-Apply the authorized exception, inspect scoped staging,
-commit UI and version separately
-on redesign branch. Fast-forward main while restoring preserved local VI contents;
-verify backend hashes and JSON changes against before.json. Update STATUS/WORKLOG
-and this record. Do not include generated src-tauri/toolchains/ in any commit.
+Main is now the v1.5.5 source baseline with this modal UI. Wider frontend redesign
+remains partial. Read STATUS/WORKLOG before choosing the next UI batch; preserve
+uncommitted backend/VI work. This exception does not apply to a future commit,
+push or release: resolve or obtain an explicit decision on outstanding full-gate
+failures before such work. Do not stage generated src-tauri/toolchains/ or ignored
+verification artifacts.
+
+- Post-merge final observation: storage.ts received an independent local backend
+  edit after the merge-time hash verification: getExecutorCacheToolchainsDir now
+  honors THEMIS_APP_DATA_DIR before OS defaults (three added lines). This agent did
+  not write/stage/restore it; newest contents remain uncommitted and excluded from
+  both commits. Other four backend hashes still match before.json. Local evidence:
+  artifacts/merge-155/post-merge-external-storage.ts; observed SHA256 c89e5f316d4bd2be424ba75eb9dd0c70a8e5453719fee12cd2c7345414ae63b9.
+- Final checks on main PASS: check:fast and release:check-version (1.5.5).

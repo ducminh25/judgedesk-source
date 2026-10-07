@@ -19,6 +19,10 @@ for (const language of ["vi", "en"] as const) {
     assert.equal((markup.match(/role="tab"/g) ?? []).length, 3);
     assert.equal((markup.match(/role="tabpanel"/g) ?? []).length, 3);
     assert.equal((markup.match(/aria-selected="true"/g) ?? []).length, 1);
+    assert.match(markup, />Tests<\/button>/);
+    assert.match(markup, /Test well-formed/);
+    assert.match(markup, language === "vi" ? /Nhóm test/ : /Enable groups/);
+    assert.match(markup, language === "vi" ? /Hiện nội dung/ : /Show content/);
     assert.match(markup, /id="problem-compile-settings-title"/);
     assert.match(markup, language === "vi" ? /Tổng điểm 0/ : /Total score 0/);
     assert.match(markup, /role="status"/);

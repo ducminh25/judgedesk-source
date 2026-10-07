@@ -10,6 +10,7 @@ import type {
   TestCaseRun,
 } from "../types.js";
 import { resolveProblemConfig } from "../problems/problem-config-repository.js";
+import { validateProblemTestInputs } from "../problems/test-wellformed.js";
 import {
   compileSubmission,
   resolveChecker,
@@ -154,6 +155,13 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
     percent: 0,
   });
   for (const problem of plannedProblems.values()) {
+    if (problem.config.testWellFormed) {
+      const validation = await validateProblemTestInputs(problem.directory.path, problem.config.isInteractive);
+      if (validation.issues.length > 0) {
+        const first = validation.issues[0];
+        throw new Error(`Test input is not well-formed: ${first.testName}/${first.fileName}:${first.line}:${first.column} (${first.code}); ${validation.issues.length} issue(s)`);
+      }
+    }
     problem.tests = planProblemTestCases(problem.directory.path, problem.config);
   }
   console.info("[Judge] Toolchain pin", {

@@ -2,7 +2,7 @@
   "manifestRoutesCount": 29,
   "nodeRoutesCount": 29,
   "rustRoutesCount": 29,
-  "frontendCallersCount": 33,
+  "frontendCallersCount": 34,
   "nodeRoutes": [
     {
       "method": "DELETE",
@@ -400,6 +400,12 @@
       "method": "POST"
     },
     {
+      "file": "src/features/problem-config/useProblemConfigEditor.ts",
+      "rawUrl": "/api/polygon-config",
+      "basePath": "/api/polygon-config",
+      "method": "POST"
+    },
+    {
       "file": "src/features/toolchains/ToolchainManager.tsx",
       "rawUrl": "/api/toolchains/prewarm",
       "basePath": "/api/toolchains/prewarm",
@@ -715,7 +721,7 @@
         500
       ],
       "concurrencyGates": [],
-      "persistence": "Reads polygon-config.json or legacy Config.cfg",
+      "persistence": "Reads Config.cfg or legacy config.json",
       "rustParityGaps": null,
       "nodeImplementation": {
         "file": "server/routes/problem-routes.ts",
@@ -734,10 +740,11 @@
       "statusCodes": [
         200,
         400,
+        422,
         500
       ],
       "concurrencyGates": [],
-      "persistence": "Writes polygon-config.json and legacy Config.cfg",
+      "persistence": "Atomically replaces Config.cfg after validation; validateOnly does not write",
       "rustParityGaps": null,
       "nodeImplementation": {
         "file": "server/routes/problem-routes.ts",

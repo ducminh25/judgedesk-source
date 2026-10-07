@@ -11,7 +11,7 @@
 ## 1. Inventory Summary
 
 - **Contracted Routes in Manifest:** 29
-- **Frontend API Callers Discovered:** 33
+- **Frontend API Callers Discovered:** 34
 - **Node Backend Routes Discovered:** 29
 - **Rust Backend Routes Discovered:** 29
 
@@ -29,8 +29,8 @@
 | `fetch-problems-get` | **GET** | `/api/fetch-problems` | `none` | `200, 400, 404, 500` | `src/features/workspace/useContestWorkspace.ts` | — | — | ✅ Parity in design |
 | `fetch-tests-get` | **GET** | `/api/fetch-tests` | `none` | `200, 400, 404, 500` | *Backend/Tauri internal* | — | — | ✅ Parity in design |
 | `fetch-polygon-tests-get` | **GET** | `/api/fetch-polygon-tests` | `none` | `200, 400, 404, 500` | `src/features/problem-config/useProblemConfigEditor.ts` | — | — | ⚠️ Rust byte slice on UTF-8 testcase inputs can panic at character boundaries without safe char boundary truncation. |
-| `polygon-config-get` | **GET** | `/api/polygon-config` | `none` | `200, 400, 500` | `src/features/problem-config/useProblemConfigEditor.ts` | — | Reads polygon-config.json or legacy Config.cfg | ✅ Parity in design |
-| `polygon-config-post` | **POST** | `/api/polygon-config` | `none` | `200, 400, 500` | `src/features/problem-config/useProblemConfigEditor.ts` | — | Writes polygon-config.json and legacy Config.cfg | ✅ Parity in design |
+| `polygon-config-get` | **GET** | `/api/polygon-config` | `none` | `200, 400, 500` | `src/features/problem-config/useProblemConfigEditor.ts` | — | Reads Config.cfg or legacy config.json | ✅ Parity in design |
+| `polygon-config-post` | **POST** | `/api/polygon-config` | `none` | `200, 400, 422, 500` | `src/features/problem-config/useProblemConfigEditor.ts` | — | Atomically replaces Config.cfg after validation; validateOnly does not write | ✅ Parity in design |
 | `open-excel-post` | **POST** | `/api/open-excel` | `none` | `200, 400, 413, 500` | `src/features/export/useScoreboardExport.ts` | — | Extracts Book.xlsx and diagnostics.json to TEMP_ROOT/exports/<uuid>/ | ⚠️ Rust decodes payload without full score export bundle parity checks. |
 | `toolchains-get` | **GET** | `/api/toolchains` | `none` | `200` | `src/App.tsx`, `src/features/toolchains/useToolchains.ts`, `src/features/toolchains/useThemisPromptModal.ts`, `src/features/toolchains/useScratchPromptModal.ts` | — | — | ⚠️ Rust returns in-memory mock toolchains and preferences without persistent revision tracking or recovery document status. |
 | `toolchains-rescan-post` | **POST** | `/api/toolchains/rescan` | `none` | `202, 409` | `src/features/toolchains/useToolchains.ts` | toolchainMutationsBlocked() | — | ⚠️ Rust does not block rescan when judging session is active. |

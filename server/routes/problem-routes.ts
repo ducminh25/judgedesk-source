@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { validateProblemTestInputs } from "../problems/test-wellformed.js";
 import type { Express } from "express";
 import { naturalSort } from "../file-utils.js";
 import {
@@ -141,14 +142,24 @@ export function registerProblemRoutes(app: Express): void {
     }
   });
 
-  app.post("/api/polygon-config", (req, res) => {
-    const dirPath = req.body.path as string;
-    const config = req.body.config;
-    if (!dirPath || !config) {
+  app.post("/api/polygon-config", async (req, res) => {
+    const dirPath = req.body?.path as string;
+    const config = req.body?.config;
+    if (typeof dirPath !== "string" || !dirPath || !config || typeof config !== "object" || Array.isArray(config)) {
       return res.status(400).json({ success: false, code: "PARAMS_REQUIRED", message: "Path and config required" });
+    }
+    if (req.body?.validateOnly === true && config.testWellFormed !== true) {
+      return res.status(400).json({ success: false, code: "VALIDATION_REQUIRED", message: "Enable well-formed validation for a preview" });
     }
     try {
       const resolved = resolveProblemDirectoryPath(dirPath);
+      if (config.testWellFormed === true) {
+        const validation = await validateProblemTestInputs(resolved, config.isInteractive === true);
+        if (req.body?.validateOnly === true) return res.json({ success: true, data: validation });
+        if (validation.issues.length > 0) {
+          return res.status(422).json({ success: false, code: "TEST_NOT_WELL_FORMED", message: "Test inputs are not well-formed", data: validation });
+        }
+      }
       writeStoredProblemConfig(resolved, config);
       return res.json({ success: true });
     } catch (error: any) {

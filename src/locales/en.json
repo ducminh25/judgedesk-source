@@ -152,8 +152,18 @@
     "totalScorePlaceholder": "Optional (e.g. 100/3, 10)",
     "polygonStandard": "Polygon testlib.h standard",
     "interactor": "Interactor",
-    "enableGroups": "Enable groups?",
-    "showContent": "Show content?",
+    "testWellFormed": "Test well-formed",
+    "wellFormedHint": "Checks input files only: nonempty; every line ends with EOL; no control characters, edge spaces, repeated spaces, or leading/trailing empty lines. Files are never changed.",
+    "wellFormedChecking": "Checking test inputs...",
+    "wellFormedPassed": "All test inputs are well-formed.",
+    "wellFormedSaveBlocked": "Test inputs are not well-formed. Review the Tests tab.",
+    "groupDependencyBlocked": "Group {{name}} depends on empty or missing group {{dependency}}.",
+    "wellFormedIssue": "{{file}} (test {{test}}), line {{line}}, column {{column}}: {{reason}}",
+    "wellFormedReasons": { "empty": "file is empty", "missing_eol": "missing final EOL", "control_character": "control character", "edge_space": "leading or trailing space", "consecutive_spaces": "consecutive spaces", "edge_empty_line": "leading or trailing empty line" },
+    "enableGroups": "Enable groups",
+    "showContent": "Show content",
+    "quickGroup": { "selection": "Test numbers", "groupName": "Group name", "apply": "Apply", "example": "e.g. 1-8, 10, 12-19", "hint": "Use the # column. Leave group name blank to remove these tests from groups.", "invalid": "Enter valid test numbers." },
+    "groupEdit": { "title": "Edit group {{name}}", "description": "Edit the full test list. Changing points distributes the total evenly; changing the list alone keeps each test's score.", "total": "Group total points", "each": "Points per test", "mixed": "Mixed scores", "invalid": "Enter valid test numbers and non-negative points." },
     "cancel": "Cancel",
     "saving": "Saving...",
     "confirmSaveTitle": "Save configuration and clear results?",
@@ -224,18 +234,19 @@
       "loading": "Loading tests..."
     },
     "groupPolicy": {
-      "title": "Groups Policy & Dependencies",
+      "title": "Group points, policies and dependencies",
       "name": "Name",
       "tests": "Tests",
       "points": "Points",
       "policy": "Points Policy",
       "dependencies": "Dependencies",
       "noGroups": "No groups defined. Assign tests to a group first.",
-      "add": "+ Add..."
+      "add": "+ Add...",
+      "edit": "Edit"
     },
     "tabs": {
       "basic": "Basic",
-      "tests": "Testcases & groups",
+      "tests": "Tests",
       "compile": "Compilation"
     },
     "summary_one": "{{count}} test · Total score {{points}} · {{io}}",

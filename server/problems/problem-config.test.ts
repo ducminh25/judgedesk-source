@@ -25,6 +25,7 @@ test("problem config retains supported decimal score spellings", () => {
 
 test("problem config defaults use the problem name and safe grading defaults", () => {
   assert.deepEqual(createDefaultProblemConfig("SUM"), {
+    testWellFormed: false,
     useStdIO: false,
     useStdIn: false,
     useStdOut: false,
@@ -47,6 +48,11 @@ test("problem config defaults use the problem name and safe grading defaults", (
     isInteractive: false,
     interactor: "interactor.cpp",
   });
+});
+
+test("well-formed setting uses the saved value when present", () => {
+  assert.equal(normalizeProblemConfig("SUM", { testWellFormed: true }).testWellFormed, true);
+  assert.equal(normalizeProblemConfig("SUM", { testWellFormed: true }, { testWellFormed: false }).testWellFormed, false);
 });
 
 test("stored config overrides request config and legacy useStdIO is normalized", () => {

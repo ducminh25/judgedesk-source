@@ -97,6 +97,7 @@ Reads `Config.cfg` or Polygon subtask configuration for the problem.
     "inputFile": "",
     "outputFile": "",
     "isInteractive": false,
+    "testWellFormed": false,
     "interactorType": "cpp",
     "interactorFile": "",
     "totalScore": 100,
@@ -126,7 +127,7 @@ Reads `Config.cfg` or Polygon subtask configuration for the problem.
 *(Note: `memoryLimit` accepts values from 8 MB to 1024 MB with 256 MB as default).*
 
 #### `POST /api/polygon-config`
-Writes updated problem configuration back to `Config.cfg`.
+Atomically writes updated problem configuration back to `Config.cfg`. `testWellFormed` defaults to false; when true, both backends validate discovered input files before saving and judging. Validation is read-only: nonempty file, LF/CRLF at the end of every line, no other bytes below 32, no leading/trailing or consecutive ASCII spaces, no leading/trailing empty lines. Diagnostics use one-based line and byte column.
 * **Request Body**:
 ```json
 {
@@ -135,6 +136,10 @@ Writes updated problem configuration back to `Config.cfg`.
 }
 ```
 * **Response (200 OK)**: `{ "success": true }`
+
+For a read-only preview, send `validateOnly: true` with `config.testWellFormed: true` and optional `config.isInteractive`. Response (200): `{ "success": true, "data": { "tests": 5, "issues": [{ "code": "edge_space", "testName": "test01", "fileName": "sum.inp", "line": 1, "column": 1 }] } }`. Preview never writes config or test content. A normal save with invalid inputs returns 422, code `TEST_NOT_WELL_FORMED`, and the same diagnostics; existing `Config.cfg` stays intact.
+
+The Tests editor keeps group assignment, membership, points, policies and dependencies in its draft until the outer Save. Range indices refer to the one-based, naturally sorted visible test list. Duplicates are deduplicated and reversed ranges accepted; invalid/out-of-range selections apply nothing. Group points are the rational sum of member test points. Group scoring counts only discovered tests and blocks points when a required group is missing or empty.
 
 ---
 
