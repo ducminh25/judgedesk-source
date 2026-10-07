@@ -1998,7 +1998,7 @@ dependencies = [
 
 [[package]]
 name = "judgedesk-native-executor"
-version = "1.5.3"
+version = "1.5.5"
 dependencies = [
  "libc",
  "serde",
@@ -4125,7 +4125,7 @@ dependencies = [
 
 [[package]]
 name = "themis-v2"
-version = "1.5.3"
+version = "1.5.5"
 dependencies = [
  "dirs",
  "fs4",
