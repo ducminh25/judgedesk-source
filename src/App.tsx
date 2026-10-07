@@ -512,7 +512,6 @@ export default function App() {
 
     onCloseActionMenu: () => setActionMenu(null),
     onCloseActiveDetails: () => setActiveDetails(null),
-    onCloseActiveConfigProblem: () => setActiveConfigProblem(null),
     onCloseActiveLog: () => setActiveLog(null),
     onCloseLoadModal: () => setLoadModal(null),
     onCloseHelpSection: () => setHelpSection(null),

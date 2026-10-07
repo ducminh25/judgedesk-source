@@ -232,6 +232,22 @@
       "dependencies": "Phụ thuộc",
       "noGroups": "Chưa có nhóm nào. Vui lòng gán test vào một nhóm trước.",
       "add": "+ Thêm..."
+    },
+    "tabs": {
+      "basic": "Cơ bản",
+      "tests": "Testcases & nhóm",
+      "compile": "Biên dịch"
+    },
+    "summary": "{{count}} test · Tổng điểm {{points}} · {{io}}",
+    "summaryLoading": "Đang tải cấu hình…",
+    "summaryUnavailable": "Không tải được cấu hình",
+    "reviewCompile": "Xem lỗi biên dịch",
+    "ioModes": {
+      "standard": "Standard I/O",
+      "file": "File I/O",
+      "stdinFile": "stdin / file đầu ra",
+      "fileStdout": "File đầu vào / stdout",
+      "interactive": "Interactive"
     }
   },
   "checkers": {

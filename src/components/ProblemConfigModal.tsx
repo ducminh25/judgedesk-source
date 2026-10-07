@@ -1,16 +1,14 @@
-import { useEffect, useState } from "react";
-import { AlertCircle, Settings, X } from "lucide-react";
-import { ProblemConfig } from "../types";
+import { useEffect, useId, useRef, useState } from "react";
+import { AlertCircle, X } from "lucide-react";
+import type { ProblemConfig } from "../types";
 import { BasicProblemSettings } from "../features/problem-config/BasicProblemSettings";
 import { GroupPolicyTable } from "../features/problem-config/GroupPolicyTable";
 import { TestConfigurationTable } from "../features/problem-config/TestConfigurationTable";
 import { TestEditPopover } from "../features/problem-config/TestEditPopover";
-import { TestEditPopover as PopoverState } from "../features/problem-config/editor-state";
+import type { TestEditPopover as PopoverState } from "../features/problem-config/editor-state";
 import { useProblemConfigEditor } from "../features/problem-config/useProblemConfigEditor";
-import {
-  CompileProblemSettings,
-  withProblemCompileConfig,
-} from "../features/problem-config/CompileProblemSettings";
+import { CompileProblemSettings, withProblemCompileConfig } from "../features/problem-config/CompileProblemSettings";
+import { CONFIG_TABS, nextConfigTab, problemIoMode, problemScoreSummary, type ConfigTab } from "../features/problem-config/modal-navigation.js";
 import { useTranslation } from "react-i18next";
 import ProblemConfigSaveConfirmDialog from "./ProblemConfigSaveConfirmDialog";
 
@@ -26,43 +24,68 @@ interface Props {
   saveDisabled?: boolean;
 }
 
-export default function ProblemConfigModal({
-  problemName,
-  testPath,
-  initialConfig,
-  hasScoredResults = false,
-  onSave,
-  onClose,
-  customCheckers = [],
-  interactors = [],
-  saveDisabled = false,
-}: Props) {
+const focusStyle = "focus-visible:outline-2 focus-visible:outline-[#246a5d] dark:focus-visible:outline-emerald-400 focus-visible:outline-offset-2";
+
+export default function ProblemConfigModal({ problemName, testPath, initialConfig, hasScoredResults = false, onSave, onClose, customCheckers = [], interactors = [], saveDisabled = false }: Props) {
   const { t } = useTranslation();
-  const editor = useProblemConfigEditor({
-    problemName,
-    testPath,
-    initialConfig,
-    onSave,
-    onClose,
-  });
+  const editor = useProblemConfigEditor({ problemName, testPath, initialConfig, onSave, onClose });
+  const [activeTab, setActiveTab] = useState<ConfigTab>("basic");
   const [showContent, setShowContent] = useState(false);
   const [popover, setPopover] = useState<PopoverState | null>(null);
   const [popoverInput, setPopoverInput] = useState("");
   const [batchPointsTotal, setBatchPointsTotal] = useState("");
   const [confirmingSave, setConfirmingSave] = useState(false);
   const [compileConfigValid, setCompileConfigValid] = useState(true);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const tabRefs = useRef<Partial<Record<ConfigTab, HTMLButtonElement>>>({});
+  const nestedReturnRef = useRef<HTMLElement | null>(null);
+  const id = useId();
+
+  useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    // The menu item that opens this modal is removed; retain the scoreboard trigger.
+    const triggerLabel = t("scoreboard.actionsFor", { name: problemName });
+    const trigger = [...document.querySelectorAll<HTMLButtonElement>('button[aria-label]')]
+      .find((button) => button.getAttribute("aria-label") === triggerLabel);
+    tabRefs.current.basic?.focus();
+    return () => {
+      const target = previous?.isConnected && previous.tabIndex >= 0 ? previous : trigger;
+      if (target?.isConnected) target.focus();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!confirmingSave && !popover) return;
+    const target = nestedReturnRef.current;
+    if (confirmingSave) rootRef.current?.querySelector<HTMLElement>('[role="alertdialog"] button')?.focus();
+    return () => {
+      if (target?.isConnected && target.getClientRects().length) target.focus();
+    };
+  }, [confirmingSave, popover]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      const visibleDialogs = [...document.querySelectorAll<HTMLElement>('[aria-modal="true"]')]
+        .filter((dialog) => dialog.getClientRects().length > 0);
+      const topDialog = visibleDialogs[visibleDialogs.length - 1];
+      if (topDialog && !rootRef.current?.contains(topDialog)) return;
       if (event.key === "Escape") {
         event.preventDefault();
-        event.stopPropagation();
-        if (confirmingSave) {
-          setConfirmingSave(false);
-        } else if (popover) {
-          setPopover(null);
-        } else {
-          onClose();
+        event.stopImmediatePropagation();
+        if (confirmingSave) setConfirmingSave(false);
+        else if (popover) setPopover(null);
+        else onClose();
+      } else if (event.key === "Tab") {
+        const dialogs = rootRef.current?.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"]');
+        const scope = dialogs?.[dialogs.length - 1];
+        const controls: HTMLElement[] = scope ? [...scope.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]')]
+          .filter((element) => element.tabIndex >= 0 && element.getClientRects().length > 0) : [];
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (!first) { event.preventDefault(); scope?.focus(); return; }
+        if (!scope?.contains(document.activeElement) || (event.shiftKey && document.activeElement === first) || (!event.shiftKey && document.activeElement === last)) {
+          event.preventDefault();
+          (event.shiftKey ? last : first).focus();
         }
       }
     };
@@ -70,6 +93,10 @@ export default function ProblemConfigModal({
     return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [confirmingSave, onClose, popover]);
 
+  const handleTabChange = (tab: ConfigTab) => {
+    if (tab !== activeTab) setPopover(null);
+    setActiveTab(tab);
+  };
   const closePopover = () => setPopover(null);
   const savePopover = () => {
     if (!popover) return;
@@ -77,185 +104,100 @@ export default function ProblemConfigModal({
     closePopover();
   };
   const requestSave = () => {
-    if (!compileConfigValid) return;
+    if (editor.isSaving || saveDisabled || !compileConfigValid) return;
     if (hasScoredResults) {
+      nestedReturnRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       setConfirmingSave(true);
-      return;
-    }
-    void editor.save();
+    } else void editor.save();
   };
+  const showCompileError = () => {
+    handleTabChange("compile");
+    requestAnimationFrame(() => {
+      const invalid = rootRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
+      (invalid ?? tabRefs.current.compile)?.focus();
+    });
+  };
+  const io = problemIoMode(editor.config.isInteractive ?? false, editor.useStdIn, editor.useStdOut);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div
-        className="bg-surface border border-surface-border rounded-lg w-full max-w-6xl shadow-lg flex flex-col max-h-[95vh]"
-        onClick={() => popover && closePopover()}
-      >
-        <div className="flex items-center justify-between p-4 border-b border-surface-border bg-surface-elevated">
-          <h3 className="text-text-primary font-bold tracking-wider uppercase text-xs flex items-center gap-2">
-            <Settings className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
-            {t("problemConfig.title")}:{" "}
-            <span className="text-indigo-500 dark:text-indigo-400">
-              {problemName}
-            </span>
-          </h3>
-          <button
-            onClick={onClose}
-            className="text-text-muted hover:text-text-primary transition"
-            aria-label={t("problemConfig.close")}
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="p-4 border-b border-surface-border space-y-3 bg-surface-elevated">
-          {editor.loadError && (
-            <div className="flex items-center gap-2 border border-rose-300 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/20 px-3 py-2 text-xs text-rose-600 dark:text-rose-300 rounded">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />{" "}
-              {editor.loadError}
+    <div ref={rootRef} className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/80 p-4">
+      <div role="dialog" aria-modal="true" aria-labelledby={`${id}-title`} tabIndex={-1}
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-6xl flex-col rounded-md border border-surface-border bg-surface shadow-sm"
+        onClick={() => popover && closePopover()}>
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-surface-border bg-surface-elevated p-4 rounded-t-md">
+          <div className="min-w-0">
+            <h3 id={`${id}-title`} className="break-words text-sm font-semibold text-text-primary">{t("problemConfig.title")}: {problemName}</h3>
+            <div className="mt-1 font-mono tabular-nums text-xs text-text-muted" aria-live="polite">
+              {editor.isLoading ? t("problemConfig.summaryLoading") : editor.loadError ? t("problemConfig.summaryUnavailable") : t("problemConfig.summary", {
+                count: editor.testDetails.length,
+                points: problemScoreSummary(editor.config.totalScore, editor.totalPoints),
+                io: t(`problemConfig.ioModes.${io}`),
+              })}
             </div>
-          )}
-          {saveDisabled && (
-            <div className="flex items-center gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300">
-              <AlertCircle className="h-4 w-4 flex-none" />
-              {t("problemConfig.readOnlyWhileBusy")}
-            </div>
-          )}
-          <BasicProblemSettings
-            problemName={problemName}
-            config={editor.config}
-            setConfig={editor.setConfig}
-            customCheckers={customCheckers}
-            interactors={interactors}
-            useStdIn={editor.useStdIn}
-            setUseStdIn={editor.setUseStdIn}
-            useStdOut={editor.useStdOut}
-            setUseStdOut={editor.setUseStdOut}
-            inputFile={editor.inputFile}
-            setInputFile={editor.setInputFile}
-            outputFile={editor.outputFile}
-            setOutputFile={editor.setOutputFile}
-            setTotalScore={editor.setTotalScore}
-          />
+          </div>
+          <button type="button" onClick={onClose} className={`flex-none rounded p-1 text-text-muted hover:bg-surface-hover hover:text-text-primary ${focusStyle}`} aria-label={t("problemConfig.close")}><X className="h-5 w-5" /></button>
         </div>
-
-        <div className="p-5 flex-1 overflow-y-auto font-sans text-xs space-y-5 bg-surface">
-          <div className="rounded-lg border border-surface-border bg-surface-elevated/50 p-4 shadow-xs">
-            <CompileProblemSettings
-              value={editor.config.compile}
-              onChange={(compile) => {
-                editor.setConfig((previous) => withProblemCompileConfig(previous, compile));
+        <div role="tablist" aria-label={t("problemConfig.title")} className="flex shrink-0 gap-1 overflow-x-auto border-b border-surface-border bg-surface-elevated px-4 select-none">
+          {CONFIG_TABS.map((tab) => (
+            <button key={tab} type="button" role="tab" id={`${id}-tab-${tab}`} aria-controls={`${id}-panel-${tab}`}
+              aria-selected={activeTab === tab} tabIndex={activeTab === tab ? 0 : -1}
+              ref={(element) => { if (element) tabRefs.current[tab] = element; }}
+              onClick={() => handleTabChange(tab)}
+              onKeyDown={(event) => {
+                const next = nextConfigTab(tab, event.key);
+                if (next) { event.preventDefault(); handleTabChange(next); tabRefs.current[next]?.focus(); }
               }}
-              onValidityChange={setCompileConfigValid}
-            />
+              className={`whitespace-nowrap border-b-2 px-4 py-2.5 text-xs cursor-pointer ${focusStyle} focus-visible:outline-offset-[-3px] ${activeTab === tab ? "border-[#285f54] font-semibold text-[#285f54] dark:border-emerald-400 dark:text-emerald-400" : "border-transparent font-medium text-text-muted hover:text-text-primary"}`}>
+              {t(`problemConfig.tabs.${tab}`)}
+            </button>
+          ))}
+        </div>
+        {(editor.loadError || saveDisabled) && <div className="shrink-0 space-y-2 px-4 pt-3">
+          {editor.loadError && <div role="alert" className="flex items-center gap-2 rounded border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-700 dark:border-rose-900 dark:bg-rose-950 dark:text-rose-300"><AlertCircle className="h-4 w-4 flex-none" />{editor.loadError}</div>}
+          {saveDisabled && <div role="status" className="flex items-center gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"><AlertCircle className="h-4 w-4 flex-none" />{t("problemConfig.readOnlyWhileBusy")}</div>}
+        </div>}
+        <div className="min-h-0 flex-1 overflow-y-auto p-5 text-xs">
+          {/* Keep panels mounted: invalid compile drafts and child state survive tab changes. */}
+          <div role="tabpanel" id={`${id}-panel-basic`} aria-labelledby={`${id}-tab-basic`} className={activeTab === "basic" ? "space-y-4" : "hidden"}>
+            <BasicProblemSettings problemName={problemName} config={editor.config} setConfig={editor.setConfig} customCheckers={customCheckers} interactors={interactors}
+              useStdIn={editor.useStdIn} setUseStdIn={editor.setUseStdIn} useStdOut={editor.useStdOut} setUseStdOut={editor.setUseStdOut}
+              inputFile={editor.inputFile} setInputFile={editor.setInputFile} outputFile={editor.outputFile} setOutputFile={editor.setOutputFile} setTotalScore={editor.setTotalScore} />
           </div>
-
-          <div className="rounded-lg border border-surface-border bg-surface-elevated/50 p-4 shadow-xs space-y-4">
-            <div className="flex items-center gap-6">
-              <label className="flex items-center gap-2 text-text-primary font-medium cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={editor.polygonConfig.enableGroups}
-                  onChange={(event) =>
-                    editor.setPolygonConfig((previous) => ({
-                      ...previous,
-                      enableGroups: event.target.checked,
-                    }))
-                  }
-                  className="w-4 h-4 bg-input-bg border-surface-border-strong rounded text-indigo-500 focus:ring-indigo-500"
-                />
-                {t("problemConfig.enableGroups")}
-              </label>
-              <label className="flex items-center gap-2 text-text-primary font-medium cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={showContent}
-                  onChange={(event) => setShowContent(event.target.checked)}
-                  className="w-4 h-4 bg-input-bg border-surface-border-strong rounded text-indigo-500 focus:ring-indigo-500"
-                />
-                {t("problemConfig.showContent")}
-              </label>
+          <div role="tabpanel" id={`${id}-panel-tests`} aria-labelledby={`${id}-tab-tests`} className={activeTab === "tests" ? "space-y-4" : "hidden"}>
+            <div className="flex flex-wrap items-center gap-6">
+              <label className="flex cursor-pointer select-none items-center gap-2 font-medium text-text-primary"><input type="checkbox" checked={editor.polygonConfig.enableGroups}
+                onChange={(event) => editor.setPolygonConfig((previous) => ({ ...previous, enableGroups: event.target.checked }))}
+                className={`h-4 w-4 accent-[#285f54] dark:accent-emerald-400 ${focusStyle}`} />{t("problemConfig.enableGroups")}</label>
+              <label className="flex cursor-pointer select-none items-center gap-2 font-medium text-text-primary"><input type="checkbox" checked={showContent} onChange={(event) => setShowContent(event.target.checked)}
+                className={`h-4 w-4 accent-[#285f54] dark:accent-emerald-400 ${focusStyle}`} />{t("problemConfig.showContent")}</label>
             </div>
-
-            <TestConfigurationTable
-              config={editor.polygonConfig}
-              tests={editor.testDetails}
-              selectedTests={editor.selectedTests}
-              showContent={showContent}
-              isLoading={editor.isLoading}
-              totalPoints={editor.totalPoints}
-              onToggleAll={editor.toggleAllTests}
-              onToggleTest={editor.toggleTest}
-              onOpenEdit={(nextPopover, input, batchTotal) => {
-                setPopover(nextPopover);
-                setPopoverInput(input);
-                if (batchTotal !== undefined) setBatchPointsTotal(batchTotal);
-              }}
-            />
+            <TestConfigurationTable config={editor.polygonConfig} tests={editor.testDetails} selectedTests={editor.selectedTests} showContent={showContent} isLoading={editor.isLoading} totalPoints={editor.totalPoints}
+              onToggleAll={editor.toggleAllTests} onToggleTest={editor.toggleTest} onOpenEdit={(nextPopover, input, batchTotal) => {
+                nestedReturnRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+                setPopover(nextPopover); setPopoverInput(input); if (batchTotal !== undefined) setBatchPointsTotal(batchTotal);
+              }} />
+            <GroupPolicyTable config={editor.polygonConfig} onConfigChange={editor.setPolygonConfig} onAddDependency={editor.addDependency} onRemoveDependency={editor.removeDependency} />
           </div>
-
-          <div className="rounded-lg border border-surface-border bg-surface-elevated/50 p-4 shadow-xs">
-            <GroupPolicyTable
-              config={editor.polygonConfig}
-              onConfigChange={editor.setPolygonConfig}
-              onAddDependency={editor.addDependency}
-              onRemoveDependency={editor.removeDependency}
-            />
+          <div role="tabpanel" id={`${id}-panel-compile`} aria-labelledby={`${id}-tab-compile`} className={activeTab === "compile" ? "space-y-4" : "hidden"}>
+            <CompileProblemSettings value={editor.config.compile} onChange={(compile) => editor.setConfig((previous) => withProblemCompileConfig(previous, compile))} onValidityChange={setCompileConfigValid} />
           </div>
         </div>
-
-        <div className="p-4 border-t border-surface-border bg-surface-elevated flex justify-end gap-3 z-10">
-          {editor.saveError && (
-            <span className="mr-auto self-center text-xs text-rose-500 dark:text-rose-400">
-              {editor.saveError}
-            </span>
-          )}
-          {!compileConfigValid && !editor.saveError && (
-            <span className="mr-auto self-center text-xs text-rose-500 dark:text-rose-400">
-              {t("problemConfig.compile.saveBlocked")}
-            </span>
-          )}
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold text-text-muted hover:text-text-primary transition"
-          >
-            {t("problemConfig.cancel")}
-          </button>
-          <button
-            disabled={editor.isSaving || saveDisabled || !compileConfigValid}
-            onClick={requestSave}
-            className="px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 rounded shadow transition"
-          >
-            {editor.isSaving
-              ? t("problemConfig.saving")
-              : t("problemConfig.save")}
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-3 rounded-b-md border-t border-surface-border bg-surface-elevated p-4">
+          {(editor.saveError || !compileConfigValid) && <div className="mr-auto space-y-1 text-xs text-rose-700 dark:text-rose-300">
+            {editor.saveError && <div role="alert">{editor.saveError}</div>}
+            {!compileConfigValid && <div role="status">{t("problemConfig.compile.saveBlocked")}{" "}<button type="button" onClick={showCompileError} className={`rounded underline ${focusStyle}`}>{t("problemConfig.reviewCompile")}</button></div>}
+          </div>}
+          <button type="button" onClick={onClose} className={`select-none rounded border border-surface-border bg-surface px-4 py-2 text-xs font-semibold text-text-primary hover:bg-surface-hover ${focusStyle}`}>{t("problemConfig.cancel")}</button>
+          <button type="button" disabled={editor.isSaving || saveDisabled || !compileConfigValid} onClick={requestSave}
+            className={`select-none rounded bg-[#285f54] px-5 py-2 text-xs font-semibold text-white hover:bg-[#204d44] dark:bg-emerald-800 dark:hover:bg-emerald-700 disabled:opacity-50 ${focusStyle}`}>
+            {editor.isSaving ? t("problemConfig.saving") : t("problemConfig.save")}
           </button>
         </div>
-
-        {popover && (
-          <TestEditPopover
-            popover={popover}
-            input={popoverInput}
-            batchPointsTotal={batchPointsTotal}
-            selectedCount={editor.selectedTests.size}
-            onInputChange={setPopoverInput}
-            onBatchPointsTotalChange={setBatchPointsTotal}
-            onCancel={closePopover}
-            onSave={savePopover}
-          />
-        )}
+        {popover && <TestEditPopover popover={popover} input={popoverInput} batchPointsTotal={batchPointsTotal} selectedCount={editor.selectedTests.size} onInputChange={setPopoverInput} onBatchPointsTotalChange={setBatchPointsTotal} onCancel={closePopover} onSave={savePopover} />}
       </div>
-      {confirmingSave && (
-        <ProblemConfigSaveConfirmDialog
-          disabled={editor.isSaving || saveDisabled || !compileConfigValid}
-          problemName={problemName}
-          onCancel={() => setConfirmingSave(false)}
-          onConfirm={() => {
-            setConfirmingSave(false);
-            void editor.save();
-          }}
-        />
-      )}
+      {confirmingSave && <ProblemConfigSaveConfirmDialog disabled={editor.isSaving || saveDisabled || !compileConfigValid} problemName={problemName} onCancel={() => setConfirmingSave(false)} onConfirm={() => {
+        setConfirmingSave(false); void editor.save();
+      }} />}
     </div>
   );
 }
