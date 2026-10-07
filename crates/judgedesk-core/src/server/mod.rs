@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::io::Read;
+use std::io::{Read, Write};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -549,24 +549,79 @@ async fn handle_get_polygon_config(Query(q): Query<PathQuery>) -> Response {
 struct SavePolygonConfigPayload {
     path: String,
     config: serde_json::Value,
+    #[serde(rename = "validateOnly", default)]
+    validate_only: bool,
 }
 
 async fn handle_save_polygon_config(Json(body): Json<SavePolygonConfigPayload>) -> Response {
+    match tokio::task::spawn_blocking(move || save_polygon_config(body)).await {
+        Ok((status, response)) => (status, Json(response)).into_response(),
+        Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "success": false, "code": "CONFIG_WRITE_ERROR", "message": "Failed to write problem configuration" }))).into_response(),
+    }
+}
+
+fn save_polygon_config(body: SavePolygonConfigPayload) -> (StatusCode, serde_json::Value) {
+    if body.path.is_empty() || !body.config.is_object() {
+        return (
+            StatusCode::BAD_REQUEST,
+            json!({ "success": false, "code": "PARAMS_REQUIRED", "message": "Path and config required" }),
+        );
+    }
+    let well_formed = body.config.get("testWellFormed").and_then(|v| v.as_bool()) == Some(true);
+    if body.validate_only && !well_formed {
+        return (
+            StatusCode::BAD_REQUEST,
+            json!({ "success": false, "code": "VALIDATION_REQUIRED", "message": "Enable well-formed validation for a preview" }),
+        );
+    }
     let p = resolve_problem_directory_path(&body.path);
-    let config_path = p.join("Config.cfg");
-    let tmp_path = p.join("Config.cfg.tmp");
-    if let Ok(content) = serde_json::to_string_pretty(&body.config) {
-        if std::fs::write(&tmp_path, &content).is_ok()
-            && std::fs::rename(&tmp_path, &config_path).is_ok()
-        {
-            return Json(json!({ "success": true })).into_response();
+    if well_formed {
+        let interactive = body.config.get("isInteractive").and_then(|v| v.as_bool()) == Some(true);
+        match crate::discovery::test_wellformed::validate_problem_test_inputs(&p, interactive) {
+            Ok(validation) => {
+                if body.validate_only {
+                    return (
+                        StatusCode::OK,
+                        json!({ "success": true, "data": validation }),
+                    );
+                }
+                if !validation.issues.is_empty() {
+                    return (
+                        StatusCode::UNPROCESSABLE_ENTITY,
+                        json!({ "success": false, "code": "TEST_NOT_WELL_FORMED", "message": "Test inputs are not well-formed", "data": validation }),
+                    );
+                }
+            }
+            Err(_) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    json!({ "success": false, "code": "CONFIG_WRITE_ERROR", "message": "Failed to validate test inputs" }),
+                )
+            }
         }
     }
+    let config_path = p.join("Config.cfg");
+    let tmp_path = p.join(format!("Config.cfg.{}.tmp", uuid::Uuid::new_v4()));
+    let write_result = (|| -> Result<(), Box<dyn std::error::Error>> {
+        let content = serde_json::to_vec_pretty(&body.config)?;
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp_path)?;
+        file.write_all(&content)?;
+        file.sync_all()?;
+        drop(file);
+        std::fs::rename(&tmp_path, &config_path)?;
+        Ok(())
+    })();
+    if write_result.is_ok() {
+        return (StatusCode::OK, json!({ "success": true }));
+    }
+    let _ = std::fs::remove_file(&tmp_path);
     (
         StatusCode::INTERNAL_SERVER_ERROR,
-        Json(json!({ "success": false, "message": "Failed to write Config.cfg" })),
+        json!({ "success": false, "code": "CONFIG_WRITE_ERROR", "message": "Failed to write Config.cfg" }),
     )
-        .into_response()
 }
 
 #[derive(Deserialize)]

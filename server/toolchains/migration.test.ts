@@ -111,6 +111,166 @@ test("migrateLegacyBundledToolchains handles missing or empty roots gracefully",
   });
 });
 
+test("migrateLegacyBundledToolchains migrates toolchain from executorCacheRoot to downloadedRoot when builtInRoot is absent", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "toolchain-migration-exec-"));
+  const downloadedRoot = path.join(root, "downloaded-toolchains");
+  const executorCacheRoot = path.join(root, "executor-toolchains");
+  fs.mkdirSync(downloadedRoot, { recursive: true });
+  fs.mkdirSync(executorCacheRoot, { recursive: true });
+
+  try {
+    const packageId = "gcc-windows-x64";
+    const cacheDirName = `${packageId}_14.2.0`;
+    const cachedPackageDir = path.join(executorCacheRoot, cacheDirName);
+
+    fs.mkdirSync(path.join(cachedPackageDir, "bin"), { recursive: true });
+    fs.writeFileSync(path.join(cachedPackageDir, "bin", "g++.exe"), "compiler-binary");
+    fs.writeFileSync(
+      path.join(cachedPackageDir, TOOLCHAIN_PACKAGE_RECEIPT),
+      JSON.stringify({
+        schemaVersion: 1,
+        packageId,
+        version: "14.2.0",
+        archiveSha256: "0da7f5ce533705777ab711871777e09fb8232987c2144547054c726dd00e1a36",
+        entrypointComponentId: "gcc.cxx",
+        components: [
+          {
+            id: "gcc.cxx",
+            kind: "executable",
+            relativePath: "bin/g++.exe",
+            roles: ["compiler"],
+          },
+        ],
+      }),
+    );
+
+    const result = migrateLegacyBundledToolchains({
+      builtInRoot: path.join(root, "non-existent-builtin"),
+      downloadedRoot,
+      executorCacheRoot,
+    });
+
+    assert.equal(result.errors.length, 0);
+    assert.deepEqual(result.migratedPackages, [packageId]);
+
+    // Destination in downloadedRoot must now exist with the canonical packageId name
+    const canonicalDir = path.join(downloadedRoot, packageId);
+    assert.ok(fs.existsSync(canonicalDir));
+    assert.ok(fs.existsSync(path.join(canonicalDir, TOOLCHAIN_PACKAGE_RECEIPT)));
+    assert.ok(fs.existsSync(path.join(canonicalDir, "bin", "g++.exe")));
+
+    // Source in executorCacheRoot was moved or removed
+    assert.ok(!fs.existsSync(cachedPackageDir));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("migrateLegacyBundledToolchains deduplicates multiple copies and frees disk space", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "toolchain-migration-dedup-"));
+  const downloadedRoot = path.join(root, "downloaded-toolchains");
+  const executorCacheRoot = path.join(root, "executor-toolchains");
+  fs.mkdirSync(downloadedRoot, { recursive: true });
+  fs.mkdirSync(executorCacheRoot, { recursive: true });
+
+  try {
+    const packageId = "python-windows-x64";
+    const canonicalDir = path.join(downloadedRoot, packageId);
+    const staleDuplicateDir = path.join(executorCacheRoot, `${packageId}-3.12.13`);
+
+    // Setup valid canonical in downloadedRoot
+    fs.mkdirSync(path.join(canonicalDir, "bin"), { recursive: true });
+    fs.writeFileSync(path.join(canonicalDir, "bin", "python.exe"), "python-canonical");
+    fs.writeFileSync(
+      path.join(canonicalDir, TOOLCHAIN_PACKAGE_RECEIPT),
+      JSON.stringify({
+        schemaVersion: 1,
+        packageId,
+        version: "3.12.13",
+        archiveSha256: "4c2ae1e91234567890abcdef1234567890abcdef1234567890abcdef12345678",
+        entrypointComponentId: "python.exe",
+        components: [
+          {
+            id: "python.exe",
+            kind: "executable",
+            relativePath: "bin/python.exe",
+            roles: ["submission-runtime"],
+          },
+        ],
+      }),
+    );
+
+    // Setup duplicate in executorCacheRoot
+    fs.mkdirSync(path.join(staleDuplicateDir, "bin"), { recursive: true });
+    fs.writeFileSync(path.join(staleDuplicateDir, "bin", "python.exe"), "python-duplicate");
+    fs.writeFileSync(
+      path.join(staleDuplicateDir, TOOLCHAIN_PACKAGE_RECEIPT),
+      JSON.stringify({
+        schemaVersion: 1,
+        packageId,
+        version: "3.12.13",
+        archiveSha256: "4c2ae1e91234567890abcdef1234567890abcdef1234567890abcdef12345678",
+        entrypointComponentId: "python.exe",
+        components: [
+          {
+            id: "python.exe",
+            kind: "executable",
+            relativePath: "bin/python.exe",
+            roles: ["submission-runtime"],
+          },
+        ],
+      }),
+    );
+
+    const result = migrateLegacyBundledToolchains({
+      builtInRoot: path.join(root, "non-existent-builtin"),
+      downloadedRoot,
+      executorCacheRoot,
+    });
+
+    assert.equal(result.errors.length, 0);
+    assert.ok(result.freedBytes > 0);
+
+    // Canonical remains intact
+    assert.ok(fs.existsSync(canonicalDir));
+    // Stale duplicate is removed
+    assert.ok(!fs.existsSync(staleDuplicateDir));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("migrateLegacyBundledToolchains ignores external directories lacking receipt", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "toolchain-migration-external-"));
+  const downloadedRoot = path.join(root, "downloaded-toolchains");
+  const executorCacheRoot = path.join(root, "executor-toolchains");
+  fs.mkdirSync(downloadedRoot, { recursive: true });
+  fs.mkdirSync(executorCacheRoot, { recursive: true });
+
+  try {
+    // External MinGW folder without receipt
+    const externalDir = path.join(executorCacheRoot, "mingw64");
+    fs.mkdirSync(path.join(externalDir, "bin"), { recursive: true });
+    fs.writeFileSync(path.join(externalDir, "bin", "gcc.exe"), "external-gcc");
+
+    const result = migrateLegacyBundledToolchains({
+      builtInRoot: path.join(root, "non-existent-builtin"),
+      downloadedRoot,
+      executorCacheRoot,
+    });
+
+    assert.equal(result.errors.length, 0);
+    assert.deepEqual(result.migratedPackages, []);
+    assert.equal(result.freedBytes, 0);
+
+    // External dir must remain untouched
+    assert.ok(fs.existsSync(externalDir));
+    assert.ok(!fs.existsSync(path.join(downloadedRoot, "mingw64")));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("migrateLegacyExecutionPolicy migrates false to true automatically", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "policy-migration-test-"));
   try {

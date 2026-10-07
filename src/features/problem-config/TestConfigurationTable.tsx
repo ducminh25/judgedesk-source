@@ -42,8 +42,8 @@ export function TestConfigurationTable(props: Props) {
           </div>
         </div>
       )}
-      <div className="border border-surface-border rounded-lg overflow-hidden bg-surface-elevated relative">
-        <table className="w-full text-left border-collapse">
+      <div className="border border-surface-border rounded-lg overflow-x-auto bg-surface-elevated relative">
+        <table className={`w-full ${props.showContent && props.config.enableGroups ? "min-w-[1100px]" : props.showContent || props.config.enableGroups ? "min-w-[950px]" : "min-w-[800px]"} text-left border-collapse`}>
           <thead>
             <tr className="bg-surface text-[10px] uppercase tracking-wider text-text-muted border-b border-surface-border">
               <th className="p-3 w-10 text-center">
@@ -51,19 +51,20 @@ export function TestConfigurationTable(props: Props) {
                   {props.selectedTests.size === props.tests.length && props.tests.length > 0 ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
                 </button>
               </th>
+              <th className="p-3 w-10 text-center">#</th>
               <th className="p-3 w-32">{t("problemConfig.testConfig.testName")}</th>
               {props.showContent && <th className="p-3">{t("problemConfig.testConfig.content")}</th>}
               <th className="p-3 w-24">{t("problemConfig.testConfig.size")}</th>
               <th className="p-3 w-28">{t("problemConfig.testConfig.timeLimit")}</th>
               {props.config.enableGroups && <th className="p-3 w-32">{t("problemConfig.testConfig.group")}</th>}
               <th className="p-3 w-24 text-right"><div>{t("problemConfig.testConfig.points")}</div><div className="text-indigo-500 dark:text-indigo-400 text-2xs normal-case">{props.totalPoints} {t("problemConfig.testConfig.total")}</div></th>
-              <th className="p-3 w-36 text-center">{t("problemConfig.testConfig.actions")}</th>
+              <th className="min-w-40 p-3 text-center">{t("problemConfig.testConfig.actions")}</th>
             </tr>
           </thead>
           <tbody>
             {props.isLoading ? (
-              <tr><td colSpan={8} className="p-8 text-center text-text-muted animate-pulse">{t("problemConfig.testConfig.loading")}</td></tr>
-            ) : props.tests.map(test => {
+              <tr><td colSpan={props.showContent && props.config.enableGroups ? 9 : props.showContent || props.config.enableGroups ? 8 : 7} className="p-8 text-center text-text-muted animate-pulse">{t("problemConfig.testConfig.loading")}</td></tr>
+            ) : props.tests.map((test, index) => {
               const testConfig = props.config.tests[test.name] || { points: 1 };
               const timeLimit = testConfig.timeLimit !== undefined ? testConfig.timeLimit : 1.0;
               return (
@@ -73,14 +74,15 @@ export function TestConfigurationTable(props: Props) {
                       {props.selectedTests.has(test.name) ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
                     </button>
                   </td>
+                  <td className="p-3 text-center font-mono tabular-nums text-text-muted">{index + 1}</td>
                   <td className="p-3 font-mono text-text-primary">{test.name}</td>
                   {props.showContent && <td className="p-3 font-mono text-text-muted text-2xs truncate max-w-[200px]" title={test.preview}>{test.preview}</td>}
                   <td className="p-3 text-text-muted text-2xs">{formatTestSize(test.size)}</td>
                   <td className="p-3 font-mono text-text-primary">{timeLimit.toFixed(3)}s</td>
-                  {props.config.enableGroups && <td className="p-3 text-indigo-600 dark:text-indigo-400 font-bold">{testConfig.group || "-"}</td>}
-                  <td className="p-3 text-right text-emerald-600 dark:text-emerald-400 font-mono font-bold">{formatScore(testConfig.points)}</td>
+                  {props.config.enableGroups && <td className="max-w-32 truncate p-3 text-indigo-600 dark:text-indigo-400 font-bold" title={testConfig.group || ""}>{testConfig.group || "-"}</td>}
+                  <td className="p-3 text-right text-emerald-700 dark:text-emerald-400 font-mono font-bold">{formatScore(testConfig.points)}</td>
                   <td className="p-3 text-center">
-                    <div className="flex items-center justify-center gap-2">
+                    <div className="flex items-center justify-center gap-2 whitespace-nowrap">
                       <EditButton label={t("problemConfig.testConfig.points")} onClick={event => openTest(event, "points", test.name, (testConfig.points ?? 1).toString())} />
                       <EditButton label={t("problemConfig.testConfig.timeLimit")} onClick={event => openTest(event, "time", test.name, testConfig.timeLimit?.toString() ?? "1.0")} />
                       {props.config.enableGroups && <EditButton label={t("problemConfig.testConfig.group")} onClick={event => openTest(event, "group", test.name, testConfig.group || "")} />}

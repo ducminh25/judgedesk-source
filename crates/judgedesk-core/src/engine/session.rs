@@ -166,6 +166,13 @@ pub async fn run_judge_session(
             };
 
             let cfg_val = read_stored_problem_config(&problem_dir.path);
+            if let Err(message) = crate::discovery::test_wellformed::validate_configured_test_inputs(
+                &problem_dir.path,
+                cfg_val.as_ref(),
+            ) {
+                let _ = event_tx.send(JudgeStreamEvent::Error { message });
+                return;
+            }
 
             let scoring_config: ProblemScoringConfig = cfg_val
                 .as_ref()

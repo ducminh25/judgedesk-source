@@ -5,6 +5,26 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 ## [Unreleased]
 
+## [1.5.5] - 2026-10-07
+
+### Tái cấu trúc Cấu hình bài thi, Phân nhóm Nhanh, Kiểm tra Định dạng Test & Tối ưu Bộ nhớ Compiler
+
+- **Giao diện Cấu hình bài thi theo Tab (`Problem Config Tabs`)**:
+  - Tái cấu trúc cửa sổ Cài đặt bài thi thành 3 tab chuyên biệt: **Cơ bản**, **Tests** và **Biên dịch**.
+  - Cải thiện đáng kể không gian hiển thị danh sách testcase và chính sách nhóm; hỗ trợ điều hướng bàn phím hoàn chỉnh và bảo lưu toàn bộ dữ liệu nháp khi chuyển tab.
+- **Phân nhóm test nhanh & Hộp thoại Sửa nhóm chuyên sâu (`Quick Grouping & Group Editor`)**:
+  - Bổ sung thanh công cụ phân nhóm nhanh: nhập dải số thứ tự test theo cột `#` (ví dụ: `1-8, 10, 12-19`) để gán vào nhóm trong 1 thao tác hoặc để trống tên nhóm để hủy gán nhóm.
+  - Hộp thoại **Sửa nhóm** mới: cho phép chỉnh sửa danh mục test theo dải số, tự động phân bổ đồng đều giữa "Tổng điểm nhóm" và "Điểm mỗi test" bằng công cụ số hữu tỉ chính xác tuyệt đối.
+  - Bảo toàn điểm số riêng của từng test khi chỉ thay đổi thành viên nhóm mà không chỉnh sửa điểm.
+- **Kiểm tra định dạng test chuẩn tắc (`Test Well-Formed Validation`)**:
+  - Tích hợp công cụ phát hiện lỗi định dạng input testcase theo tiêu chuẩn Polygon/Codeforces (tệp rỗng, thiếu ký tự xuống dòng cuối tệp, ký tự điều khiển lạ, khoảng trắng đầu/cuối dòng, nhiều dấu cách liên tiếp hoặc dòng trống thừa).
+  - Hoạt động theo cơ chế chỉ đọc an toàn (Read-only, tuyệt đối không chỉnh sửa tệp dữ liệu gốc), hiển thị vị trí lỗi chính xác tới từng dòng và cột.
+- **Tự động Dọn dẹp & Di trú Trình biên dịch (`Toolchain Storage Deduplication`)**:
+  - Tự động phát hiện, di chuyển và hợp nhất các gói compiler được quản lý vào thư mục chuẩn `%LOCALAPPDATA%/ThemisV2/toolchains` khi cập nhật ứng dụng.
+  - Dọn dẹp an toàn các bản sao trùng lặp giữa bản Core và bản Full, giải phóng hàng trăm megabyte bộ nhớ lưu trữ.
+- **Ghi cấu hình đĩa an toàn (Atomic File Persistence)**:
+  - Áp dụng cơ chế ghi tệp tạm độc quyền và `fsync` trước khi đổi tên sang `Config.cfg`, triệt tiêu hoàn toàn rủi ro hư hỏng file cấu hình khi ứng dụng bị tắt đột ngột.
+
 ## [1.5.3] - 2026-10-06
 
 - Bổ sung cách thức nhận test mới: cặp file input và output cùng tên được tính là 1 test.

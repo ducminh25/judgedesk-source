@@ -54,13 +54,14 @@ export function calculateProblemSummary({
   const status = calculateProblemStatus(compileStatus, testCases);
   const polygonConfig = config.polygonConfig;
   const hasConfiguredPolygonPoints = testDirectories.some(
-    (testDirectory) => polygonConfig?.tests?.[testDirectory]?.points !== undefined
+    (testDirectory) => Object.hasOwn(polygonConfig?.tests || {}, testDirectory)
+      && polygonConfig?.tests?.[testDirectory]?.points !== undefined
   );
   let maxScoreRat = createRational(0);
 
   if (polygonConfig?.enableGroups) {
-    maxScoreRat = Object.values(polygonConfig.tests || {}).reduce(
-      (total, test) => addRational(total, parseRational(test.points)),
+    maxScoreRat = testDirectories.reduce(
+      (total, name) => addRational(total, parseRational((Object.hasOwn(polygonConfig.tests || {}, name) ? polygonConfig.tests?.[name]?.points : undefined) ?? config.defaultScore ?? 1)),
       createRational(0)
     );
   } else if (config.totalScore !== undefined && config.totalScore !== null && config.totalScore !== "") {
@@ -101,19 +102,20 @@ export function calculateProblemSummary({
 function applyGroupScoring(testCases: TestCaseRun[], polygonConfig?: PolygonScoringConfig): void {
   if (!polygonConfig?.enableGroups || !polygonConfig.groups || testCases.length === 0) return;
 
-  const groupResults: Record<string, GroupResult> = {};
+  const groupResults = new Map<string, GroupResult>();
   for (const [groupName, groupConfig] of Object.entries(polygonConfig.groups)) {
-    const tests = testCases.filter((test) => polygonConfig.tests?.[test.name]?.group === groupName);
-    groupResults[groupName] = {
+    const tests = testCases.filter((test) => Object.hasOwn(polygonConfig.tests || {}, test.name)
+      && polygonConfig.tests?.[test.name]?.group === groupName);
+    groupResults.set(groupName, {
       allAccepted: tests.length > 0 && tests.every((test) => test.status === "AC"),
       tests,
       config: groupConfig
-    };
+    });
   }
 
-  for (const groupResult of Object.values(groupResults)) {
+  for (const groupResult of groupResults.values()) {
     const dependenciesPassed = (groupResult.config.dependencies || []).every(
-      (dependency) => !groupResults[dependency] || groupResults[dependency].allAccepted
+      (dependency) => groupResults.get(dependency)?.allAccepted === true
     );
     for (const test of groupResult.tests) {
       if (!dependenciesPassed || (groupResult.config.policy === "COMPLETE_GROUP" && !groupResult.allAccepted)) {

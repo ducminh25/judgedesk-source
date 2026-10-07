@@ -155,3 +155,26 @@ test("group rejection clears the exact awarded score with its display", () => {
   calculateProblemSummary({ compileStatus: "OK", testCases: runs, testDirectories: ["01", "02"], config: { polygonConfig: { enableGroups: true, groups: { A: { policy: "COMPLETE_GROUP" } }, tests: { "01": { group: "A", points: "1/3" }, "02": { group: "A", points: "1/3" } } } } });
   assert.deepEqual(runs[0].scoreExact, createRational(0));
 });
+
+test("group scoring ignores stale configured tests and handles built-in-like group names", () => {
+  const runs = [testCase("01", "AC", 2), testCase("02", "WA", 0)];
+  const summary = calculateProblemSummary({
+    compileStatus: "OK", testCases: runs, testDirectories: ["01", "02"],
+    config: { polygonConfig: {
+      enableGroups: true,
+      groups: { constructor: { policy: "COMPLETE_GROUP" } },
+      tests: { "01": { points: 2, group: "constructor" }, "02": { points: 3, group: "constructor" }, stale: { points: 100 } },
+    } },
+  });
+  assert.equal(summary.maxScore, 5);
+  assert.equal(summary.score, 0);
+  assert.equal(runs[0].score, 0);
+});
+
+test("group-only test configuration uses default points for its maximum", () => {
+  const summary = calculateProblemSummary({
+    compileStatus: "OK", testCases: [testCase("01", "AC", 2)], testDirectories: ["01"],
+    config: { defaultScore: 2, polygonConfig: { enableGroups: true, tests: { "01": { group: "A" } } } },
+  });
+  assert.equal(summary.maxScore, 2);
+});

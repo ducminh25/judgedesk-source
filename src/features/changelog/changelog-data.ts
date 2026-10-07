@@ -11,6 +11,22 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
   {
+    version: "1.5.5",
+    date: "2026-10-07",
+    sections: [
+      {
+        title: "Tái cấu trúc Cấu hình bài thi, Phân nhóm Nhanh, Kiểm tra Định dạng Test & Tối ưu Bộ nhớ Compiler",
+        items: [
+          "Tái cấu trúc cửa sổ Cài đặt bài thi thành 3 tab chuyên biệt: Cơ bản, Tests và Biên dịch; cải thiện không gian hiển thị danh sách testcase và bảo lưu dữ liệu nháp khi chuyển tab.",
+          "Thanh công cụ phân nhóm nhanh theo dải số thứ tự (ví dụ: 1-8, 10, 12-19) và hộp thoại Sửa nhóm chuyên sâu với công cụ tính điểm phân số hữu tỉ tự động.",
+          "Công cụ kiểm tra định dạng test input chuẩn tắc (Test Well-Formed) theo chuẩn Polygon/Codeforces, hoạt động chỉ đọc an toàn và hiển thị lỗi chính xác tới dòng và cột.",
+          "Tự động di trú và dọn dẹp các gói compiler trùng lặp vào thư mục chuẩn %LOCALAPPDATA%/ThemisV2/toolchains, giải phóng bộ nhớ lưu trữ khi cập nhật.",
+          "Ghi tệp cấu hình đĩa Config.cfg an toàn với cơ chế file tạm độc quyền và fsync trước khi atomic rename.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.3",
     date: "2026-10-06",
     sections: [
@@ -549,6 +565,22 @@ export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
 ];
 
 export const CHANGELOG_DATA_EN: ChangelogRelease[] = [
+  {
+    version: "1.5.5",
+    date: "2026-10-07",
+    sections: [
+      {
+        title: "Problem Config Tabs, Quick Grouping, Test Well-Formed Validation & Toolchain Storage Deduplication",
+        items: [
+          "Reorganized the Problem Configuration dialog into three accessible tabs: Basic, Tests, and Compilation, preserving drafts and compile validation across tab switches.",
+          "Quick test grouping toolbar supporting range syntax (e.g. 1-8, 10, 12-19) and dedicated Edit Group dialog with automatic rational scoring redistribution.",
+          "Strict read-only Polygon/Codeforces-compliant test input well-formed validation with exact line and column diagnostics.",
+          "Automatic migration and deduplication of managed toolchains into %LOCALAPPDATA%/ThemisV2/toolchains, reclaiming disk space across updates.",
+          "Crash-resilient atomic Config.cfg file persistence using exclusive temporary files and fsync before atomic renaming.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.5.3",
     date: "2026-10-06",

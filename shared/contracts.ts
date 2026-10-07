@@ -168,6 +168,7 @@ export interface ProblemCompileConfig {
 }
 
 export interface ProblemConfig {
+  testWellFormed?: boolean;
   useStdIO: boolean;
   useStdIn?: boolean;
   useStdOut?: boolean;
@@ -259,6 +260,24 @@ export interface BatchJudgeRequest {
   problemConfigs: Record<string, ProblemConfig>;
   targetContestants: string[];
   targetProblems: string[];
+}
+
+export type WellFormedCode = "empty" | "missing_eol" | "control_character" | "edge_space" | "consecutive_spaces" | "edge_empty_line";
+
+export interface WellFormedIssue {
+  code: WellFormedCode;
+  line: number;
+  column: number;
+}
+
+export interface ProblemWellFormedIssue extends WellFormedIssue {
+  testName: string;
+  fileName: string;
+}
+
+export interface TestInputValidationResult {
+  tests: number;
+  issues: ProblemWellFormedIssue[];
 }
 
 export type JudgeStreamEvent =

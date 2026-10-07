@@ -322,7 +322,7 @@
       "eventOrder": null,
       "statusCodes": [200, 400, 500],
       "concurrencyGates": [],
-      "persistence": "Reads polygon-config.json or legacy Config.cfg",
+      "persistence": "Reads Config.cfg or legacy config.json",
       "requestSchema": {
         "headers": {},
         "query": { "path": "string (required)" },
@@ -358,17 +358,18 @@
       },
       "streaming": "none",
       "eventOrder": null,
-      "statusCodes": [200, 400, 500],
+      "statusCodes": [200, 400, 422, 500],
       "concurrencyGates": [],
-      "persistence": "Writes polygon-config.json and legacy Config.cfg",
+      "persistence": "Atomically replaces Config.cfg after validation; validateOnly does not write",
       "requestSchema": {
         "headers": { "Content-Type": "application/json" },
         "query": {},
-        "body": { "path": "string (required)", "config": "ProblemConfig (required)" }
+        "body": { "path": "string (required)", "config": "ProblemConfig (required)", "validateOnly": "boolean? (requires config.testWellFormed=true)" }
       },
       "responseSchema": {
         "type": "object",
-        "required": ["success"]
+        "required": ["success"],
+        "validationData": "Preview (200) and invalid save (422): data.tests count, data.issues[{code,line,column,testName,fileName}]"
       },
       "goldenSuccessFixture": "server/test-fixtures/api-contracts/post-polygon-config.json",
       "goldenFailureFixtures": [

@@ -107,12 +107,16 @@ pub fn calculate_problem_summary(
 
     let max_score_rat = if polygon_config.is_some_and(|p| p.enable_groups) {
         if let Some(p) = polygon_config {
-            p.tests.values().fold(Rational::ZERO, |total, test| {
-                if let Some(pts) = &test.points {
-                    add_rational(total, parse_rational_value(pts))
-                } else {
-                    total
-                }
+            test_directories.iter().fold(Rational::ZERO, |total, name| {
+                let points = p
+                    .tests
+                    .get(name)
+                    .and_then(|test| test.points.as_ref())
+                    .or(config.default_score.as_ref());
+                add_rational(
+                    total,
+                    points.map(parse_rational_value).unwrap_or(Rational::ONE),
+                )
             })
         } else {
             Rational::ZERO
@@ -254,7 +258,7 @@ fn apply_group_scoring(
             .config
             .dependencies
             .iter()
-            .all(|dep| group_results.get(dep).is_none_or(|r| r.all_accepted));
+            .all(|dep| group_results.get(dep).is_some_and(|r| r.all_accepted));
 
         for &test_idx in &group_result.test_indices {
             let policy_complete = group_result.config.policy.as_deref() == Some("COMPLETE_GROUP");

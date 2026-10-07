@@ -1,5 +1,6 @@
 pub mod natural_sort;
 pub mod submission;
+pub mod test_wellformed;
 pub mod testcase;
 
 pub use natural_sort::natural_cmp;

@@ -46,7 +46,7 @@ export function applyTestEdit(
       : [];
 
   for (const testName of targets) {
-    const test = next.tests[testName] ?? { points: 1 };
+    const test = Object.hasOwn(next.tests, testName) ? next.tests[testName] : { points: 1 };
     next.tests[testName] = test;
 
     if (edit.type === "points" || edit.type === "batchPoints") {
@@ -66,11 +66,79 @@ export function applyTestEdit(
         continue;
       }
       test.group = groupName;
-      next.groups[groupName] ??= { policy: "EACH_TEST", dependencies: [] };
+      if (!Object.hasOwn(next.groups, groupName)) {
+        next.groups = { ...next.groups, [groupName]: { policy: "EACH_TEST", dependencies: [] } };
+      }
     }
   }
 
   return next;
+}
+
+export function assignTestsToGroup(
+  config: PolygonConfig,
+  testNames: readonly string[],
+  rawGroupName: string,
+): PolygonConfig {
+  const groupName = rawGroupName.trim();
+  const tests = { ...config.tests };
+  for (const name of testNames) {
+    const previous = Object.hasOwn(tests, name) ? tests[name] : { points: 1 };
+    const next = { ...previous };
+    if (groupName) next.group = groupName;
+    else delete next.group;
+    Object.defineProperty(tests, name, { value: next, writable: true, enumerable: true, configurable: true });
+  }
+  return {
+    ...config,
+    tests,
+    groups: groupName && !Object.hasOwn(config.groups, groupName)
+      ? { ...config.groups, [groupName]: { policy: "EACH_TEST", dependencies: [] } }
+      : config.groups,
+  };
+}
+
+/** A group's Edit list is its full membership; existing per-test scores survive list-only edits. */
+export function editGroupTests(
+  config: PolygonConfig,
+  groupName: string,
+  testNames: readonly string[],
+  totalPoints?: string,
+): PolygonConfig {
+  if (!Object.hasOwn(config.groups, groupName)) throw new Error("Group does not exist");
+  const selected = new Set(testNames);
+  const tests = { ...config.tests };
+  for (const [name, current] of Object.entries(config.tests)) {
+    if (current.group === groupName && !selected.has(name)) {
+      Object.defineProperty(tests, name, { value: { ...current, group: undefined }, writable: true, enumerable: true, configurable: true });
+    }
+  }
+  const reassigned = assignTestsToGroup({ ...config, tests }, testNames, groupName);
+  if (totalPoints === undefined) return reassigned;
+  const total = parseNonNegativePointInput(totalPoints);
+  if (testNames.length === 0 && BigInt(total.n) !== 0n) throw new Error("An empty group cannot have points");
+  const each = testNames.length ? toCanonicalPointValue(divideRational(total, createRational(testNames.length))) : 0;
+  const withPoints = { ...reassigned.tests };
+  for (const name of testNames) {
+    Object.defineProperty(withPoints, name, { value: { ...withPoints[name], points: each }, writable: true, enumerable: true, configurable: true });
+  }
+  return { ...reassigned, tests: withPoints };
+}
+
+/** parseRational intentionally returns zero on invalid text; editor inputs must be strict. */
+export function parseNonNegativePointInput(input: string): Rational {
+  const text = input.trim();
+  const decimal = "(?:\\d+(?:\\.\\d*)?|\\.\\d+)";
+  if (text.length > 1024 || !new RegExp(`^(?:${decimal}|${decimal}/${decimal})$`).test(text)) {
+    throw new Error("Enter a non-negative number or fraction");
+  }
+  const [, denominator] = text.split("/");
+  if (denominator !== undefined && BigInt(parseRational(denominator).n) === 0n) {
+    throw new Error("The denominator must be greater than zero");
+  }
+  const value = parseRational(text);
+  if (BigInt(value.n) < 0n) throw new Error("Points cannot be negative");
+  return value;
 }
 
 export function createsGroupCycle(groups: PolygonConfig["groups"], startGroup: string, newDependency: string): boolean {

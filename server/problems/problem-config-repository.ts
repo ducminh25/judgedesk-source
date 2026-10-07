@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { randomBytes } from "node:crypto";
 import type { NormalizedProblemConfig, ProblemConfig } from "../../shared/contracts.js";
 import { normalizeCompileConfig } from "../../shared/compile-config.js";
 import {
@@ -25,11 +26,21 @@ export function writeStoredProblemConfig(problemDirectory: string, config: Probl
     ...config,
     compile: normalizeCompileConfig(config.compile),
   };
-  fs.writeFileSync(
-    getProblemConfigPath(problemDirectory),
-    JSON.stringify(persistedConfig, null, 2),
-    "utf8",
-  );
+  const destination = getProblemConfigPath(problemDirectory);
+  const temporary = `${destination}.${randomBytes(8).toString("hex")}.tmp`;
+  try {
+    const handle = fs.openSync(temporary, "wx");
+    try {
+      fs.writeFileSync(handle, JSON.stringify(persistedConfig, null, 2), "utf8");
+      fs.fsyncSync(handle);
+    } finally {
+      fs.closeSync(handle);
+    }
+    fs.renameSync(temporary, destination);
+  } catch (error) {
+    try { fs.unlinkSync(temporary); } catch { /* A rename already removed the temporary path. */ }
+    throw error;
+  }
 }
 
 export function resolveProblemConfig(
