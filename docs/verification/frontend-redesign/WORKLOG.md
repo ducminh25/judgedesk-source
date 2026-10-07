@@ -95,3 +95,53 @@ Append entries; không viết lại kết quả cũ thành PASS.
 - FR1 remains IN_PROGRESS for preference/render validation. Recommend A: dense
   table + horizontal config sections. Native test:desktop required for each later
   production frontend batch; not run for documentation/prototype alone.
+
+## FR-LOG-0006 — 2026-10-07 — ProblemConfigModal tabs implemented
+
+- User accepted direction A and plan critique; amended problem-config-modal-plan.md
+  before implementation: isolation, accessibility, validation/error visibility,
+  viewport bounds, exact summary, palette contrast and verification limits.
+- Managed worktree C:\Users\mon\.codex\worktrees\judgedesk-frontend\judgedesk,
+  branch codex/frontend-redesign at 23290be (v1.5.3). Original main backend/vi.json
+  dirty changes retained; production frontend untouched there. No commit/merge.
+- Three CSS-hidden mounted tabs reuse children/save hook. VI/EN summary, helper/SSR
+  tests added; no dependency/lock changes.
+- Native RED found global Escape closing main behind popup. Centralized config
+  keyboard ownership, removed duplicate nested listeners, respected Help above it.
+  Review fixes keep both errors visible and tab focus rings inset.
+- Native RED found removed menu opener could not regain focus. Saved scoreboard
+  trigger fallback; fresh 960x600 build verified return focus.
+- Native QA: invalid compile draft/Save blocker across tabs, retained editor state,
+  keyboard/nested dialogs, rational save on fixture copy, Light/Dark VI/EN and
+  short viewport. Restored copy Config.cfg; did not clear scored results.
+- Final check:fast PASS; test:server 780 tests / 770 pass / 0 fail / 10 existing skips;
+  API contracts 48/48 PASS; version lockstep PASS unchanged 1.5.3; diff check PASS.
+  Prior timeout and direct-node environment error documented; no gate weakened.
+  check:full pending before future commit/push.
+- Independent review complete; user skipped cross-model review. Native macOS,
+  fault/busy injection and long-name checks NOT_RUN.
+- Details: problem-config-modal-implementation.md; Escape RED/GREEN:
+  modal-escape-regression.md; evidence: artifacts/FR4-modal/manifest.json.
+- Preview left running light/VI Basic A_plus_B on stress baseline 9x20, results
+  retained. Reacquire native window; never reuse old handles/indexes.
+- FR4 remains PARTIAL overall: modal tab batch done; child polish/results remain.
+
+## FR-LOG-0007 — 2026-10-07 — Main integration / source 1.5.5 (pending)
+
+- User authorized merge into main and source-only version bump; explicitly excluded
+  release preparation/activation. No packaging, tag, push, release notes or publishing.
+- Prepared actual main candidate before commits; retained five dirty backend files
+  byte-for-byte and all 609 previous VI translation values. Local before snapshots
+  and JSON-key merge saved in ignored artifacts/merge-155/.
+- Eight authority version files synchronized to 1.5.5. Core lock dependency reference
+  and two API snapshot appVersion fields also synchronized, no dependency upgrades.
+- Version and fast gates PASS. Checker parity PASS in all four tiers (67 fixtures).
+- Full gate hit derived lock mismatch, then core harness failures: stale1.5.3 binary,
+  frozen SHA requirements and owned-root assumptions. Native/Tauri fmt/clippy/tests
+  and core fmt/clippy PASS. No freeze/security/test policy changed to get green.
+- Server UI/version-only suite PASS: 780 tests, 770 pass, 0 fail, 10 existing skips.
+  Combined main suite has five failures in its existing backend work (783 tests).
+  User explicitly authorized a scoped check:full exception for this integration.
+  Create separate UI/docs and version commits; exclude five backend files and keep
+  local VI changes; no push, tags or packaging. Final status follows after main
+  advances. Detailed state and logs in merge-main-155.md.

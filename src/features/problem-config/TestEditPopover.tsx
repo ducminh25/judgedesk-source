@@ -1,4 +1,4 @@
-import { useEffect, type FormEvent } from "react";
+import { type FormEvent } from "react";
 import { Clock, Coins, FolderTree, X } from "lucide-react";
 import { TestEditPopover as PopoverState } from "./editor-state";
 import { useTranslation } from "react-i18next";
@@ -24,16 +24,6 @@ interface Props {
 export function TestEditPopover(props: Props) {
   const { popover } = props;
   const { t } = useTranslation();
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        props.onCancel();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [props]);
 
   const handleSubmit = (event?: FormEvent) => {
     if (event) event.preventDefault();
@@ -102,6 +92,9 @@ export function TestEditPopover(props: Props) {
       onClick={props.onCancel}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={header.title}
         className="w-full max-w-sm rounded-lg border border-surface-border bg-surface shadow-lg overflow-hidden flex flex-col"
         onClick={(event) => event.stopPropagation()}
       >

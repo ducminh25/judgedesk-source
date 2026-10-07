@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { Save, TriangleAlert } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -17,17 +16,6 @@ export default function ProblemConfigSaveConfirmDialog({
 }: Props) {
   const { t } = useTranslation();
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !disabled) {
-        event.preventDefault();
-        event.stopPropagation();
-        onCancel();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown, true);
-    return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [disabled, onCancel]);
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-4">
       <div

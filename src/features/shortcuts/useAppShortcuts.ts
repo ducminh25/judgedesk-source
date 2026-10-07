@@ -38,7 +38,6 @@ export interface UseAppShortcutsOptions {
   // Close handlers
   onCloseActionMenu: () => void;
   onCloseActiveDetails: () => void;
-  onCloseActiveConfigProblem: () => void;
   onCloseActiveLog: () => void;
   onCloseLoadModal: () => void;
   onCloseHelpSection: () => void;
@@ -96,7 +95,6 @@ export function useAppShortcuts({
 
   onCloseActionMenu,
   onCloseActiveDetails,
-  onCloseActiveConfigProblem,
   onCloseActiveLog,
   onCloseLoadModal,
   onCloseHelpSection,
@@ -134,6 +132,8 @@ export function useAppShortcuts({
 
         // Escape closes any active modal or menu in order
         if (action === "escape") {
+          // Configuration owns its nested popup/confirmation Escape priority.
+          if (activeConfigProblem) return;
           if (actionMenu) {
             event.preventDefault();
             onCloseActionMenu();
@@ -142,11 +142,6 @@ export function useAppShortcuts({
           if (activeDetails) {
             event.preventDefault();
             onCloseActiveDetails();
-            return;
-          }
-          if (activeConfigProblem) {
-            event.preventDefault();
-            onCloseActiveConfigProblem();
             return;
           }
           if (activeLog) {
@@ -324,7 +319,6 @@ export function useAppShortcuts({
     isContestDirty,
     loadModal,
     onCloseActionMenu,
-    onCloseActiveConfigProblem,
     onCloseActiveDetails,
     onCloseActiveLog,
     onCloseHelpSection,

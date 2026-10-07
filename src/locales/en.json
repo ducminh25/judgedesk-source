@@ -232,6 +232,23 @@
       "dependencies": "Dependencies",
       "noGroups": "No groups defined. Assign tests to a group first.",
       "add": "+ Add..."
+    },
+    "tabs": {
+      "basic": "Basic",
+      "tests": "Testcases & groups",
+      "compile": "Compilation"
+    },
+    "summary_one": "{{count}} test · Total score {{points}} · {{io}}",
+    "summary_other": "{{count}} tests · Total score {{points}} · {{io}}",
+    "summaryLoading": "Loading configuration…",
+    "summaryUnavailable": "Configuration unavailable",
+    "reviewCompile": "Review compilation errors",
+    "ioModes": {
+      "standard": "Standard I/O",
+      "file": "File I/O",
+      "stdinFile": "stdin / output file",
+      "fileStdout": "Input file / stdout",
+      "interactive": "Interactive"
     }
   },
   "checkers": {
