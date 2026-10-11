@@ -37,6 +37,8 @@ Với điểm không có biểu diễn thập phân hữu hạn, ví dụ `1/3`,
 
 ## Danh tính nguồn và vòng đời
 
+Phân loại lỗi compiler là metadata backend; đợt này OSD sử dụng nó để tách lỗi host khỏi CE. Các consumer chấm thủ công/batch vẫn giữ hành vi hiện có, không được xem là đã sửa toàn bộ vấn đề CE/JE ở mọi luồng.
+
 Nhận bài bằng rename cùng filesystem vào thư mục riêng `.judgedesk-osd-*` **trước** khi chờ ổn định. Đọc bằng descriptor của file đã claim, kiểm tra inode/device, size, mtime và ctime, copy theo chunk, hash SHA-256. Mỗi job có path riêng. Trước khi chấm, kiểm tra lại ownership, metadata và hash.
 
 `Contestants/HS01/SUM.cpp` chỉ là bản nguồn mới nhất để xem trên desktop, không phải source của job. Các bản desktop cũ chuyển sang `$History` với tên UUID. Failed admission được giữ ở `Rejected` nếu ghi được; nếu thư mục phục hồi không an toàn/không ghi được, file riêng được giữ lại và báo lỗi, không quét xóa toàn inbox.
@@ -90,6 +92,15 @@ Job failed được báo qua SSE hiện có. Chưa thêm màn hình lịch sử,
 7. Không thay sandbox hoặc các policy resource-only đang có. Kết quả phân tích trước đó vẫn cần được xử lí/kiểm chứng độc lập trước khi cho thí sinh không tin cậy truy cập một host online công khai.
 8. Đây là backend Node. Backend pure-Rust thử nghiệm chưa được bổ sung OSD và không được tuyên bố cùng mức tương thích.
 
+### Cách thử thay engine trên host kiểm soát
+
+- Dùng bản sao contest và dữ liệu web, không chạy thử trên kỳ thi đang hoạt động. Chọn backend Node hiện tại.
+- Dừng listener Themis; đặt OSD của JudgeDesk vào đúng thư mục submit mà web đang dùng, bật log, chọn Contestants và đề/test đã kiểm tra.
+- Giữ nguyên basename producer và đường dẫn logs của web. Chỉ cấu hình đường dẫn và compiler/runtime sẵn có của JudgeDesk; không cần đổi producer/reader chỉ để thử hợp đồng này.
+- Nộp AC, WA, CE, TLE và RE; so source, testcase, score và log web với desktop. Sau đó thử nộp lại cùng tên và đổi ngôn ngữ.
+- Trước khi thoát app hoặc chuyển engine, dừng intake rồi chờ queueLength = 0, currentJob = null và mọi pending claim settle. Chưa có durable shutdown/recovery contract cho hàng đợi OSD.
+- Nếu lỗi host xảy ra, không chấp nhận 0 của scoreboard web cũ làm kết quả thi chính thức; sửa chính sách infrastructure-error/retry trên web trước bước vận hành thật.
+
 ## Review và xác minh
 
 Áp dụng TDD (các lỗi trọng tâm có RED trước sửa), security-and-hardening (trust boundaries + host-only ACL), doubt-driven-development (review độc lập, người dùng chọn bỏ qua cross-model), code-review-and-quality và hợp đồng CONSTRAINTS hiện có. Không hạ gate, thêm suppression, dependency hay bỏ test. Assertions log cũ được cập nhật vì hợp đồng wire thay đổi; các ý nghĩa rejected/completed/atomic-write được giữ và mở rộng.
@@ -98,5 +109,25 @@ Các findings phản biện về score presentation, scoreExact bị mất, lỗ
 
 Review cuối còn chỉ ra pending-claim restart race, stale contest overrides, filesystem aliases và cleanup retry; mỗi lỗi có regression RED → GREEN.
 
-Kết quả verification sẽ được ghi tại đây sau khi các lệnh hoàn tất.
+### Kết quả đã chạy trên Windows x64
+
+| Lệnh/phép kiểm | Kết quả |
+|---|---|
+| 8 file test OSD/compiler-errors/rational liên quan | **52/52 pass**, 0 fail, 0 skip; chạy sau toàn bộ sửa từ review |
+| `npm run check:fast` | Pass: TypeScript + architecture/quality floor |
+| `npm run test:server`, lượt đầu | 122 files; 839 tests: 829 pass, 0 fail, 10 skip có sẵn; lượt này chạy trước các regression bổ sung cuối |
+| `npm run test:server`, lượt cuối | 122 files; 844 tests: 833 pass, **1 fail**, 10 skip có sẵn; lỗi golden API ở `post-toolchain-diagnose`, không phải test OSD |
+| Golden API rerun cô lập qua runner chính thức và trực tiếp | Diagnose không còn mismatch; tái hiện mismatch version `get-status` / `post-batch-judge`: normalized actual 1.5.0, expected 1.5.5. Chưa sửa expected/normalizer |
+| `npm run check:full` | **Fail** tại Rust gate: 8/9 bước pass, core `executor_boundary_test` fail; các stage sau `test:rust` không được coi là đã chạy trong lệnh này |
+| Frozen executor identity test chạy riêng | Fail: actual SHA-256 `1D1F8E390B2333402C5DEFF5F65651A9F169B21FFFE254733A3455D7A4861AC9`, expected `EAB2EDDA46C732585E38AAA08E1E0DA2248818F803376E032CA63EB7D8918622` |
+| `npm run test:themis-parity` chạy riêng | Pass 67 fixtures trên 4 tiers; **static parity**, không phải live Themis DLL oracle |
+| `npm run release:check-version` chạy riêng | 8 file đồng bộ 1.5.5 |
+| `npm run build:server`, `npm run build:frontend` | Pass. Build có cảnh báo injection/signature và frontend chunk/dynamic import; không coi là installer đã ký/xác minh |
+| `git diff --check` trong phạm vi thay đổi | Pass |
+
+Không được gộp các kết quả thành “full gate xanh”. Test API đã có version normalizer chỉ canonicalize một số version cũ/development, trong khi fixture chứa 1.5.5; các rerun cho thấy sự không thống nhất này. Lỗi diagnose của lượt full chưa được tái hiện lại, nên không tự kết luận nguyên nhân là timeout hay thay đổi OSD. Cần xử lí tính xác định của API gate riêng.
+
+Frozen executor mismatch đã xuất hiện trong đánh giá trước triển khai và được xác minh lại; không cập nhật hash để che lỗi. Hai nhóm gate này phải được giải quyết trước commit/release tiếp theo đạt chuẩn toàn dự án. Đợt triển khai là bản sửa có test tập trung và giới hạn rõ, **chưa nghiệm thu release/public deployment**.
+
+Không chạy native desktop UX/installer end-to-end hay macOS. Giao diện không bị sửa. Workspace có các thay đổi/commit đồng thời từ công việc khác; không reset, stage, commit hoặc push những thay đổi đó trong đợt này.
 
