@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import vm from "node:vm";
 import { describe, it } from "node:test";
-import { formatOsdLog } from "./osd-log-writer.js";
+import { formatOsdLog, writeOsdLog } from "./osd-log-writer.js";
 import type { ProblemResult, TestCaseRun } from "../types.js";
 
 interface LegacyLog {
@@ -12,29 +13,37 @@ interface LegacyLog {
   details: string | Array<{ id: string; score: number; time: number; verdict: string }>;
 }
 
+interface LegacyReader {
+  (user: string, problem: string, ext: string, callback: (log: { content: LegacyLog } | null) => void): void;
+  Log: { filename(user: string, problem: string, ext: string): string; __parse(user: string, problem: string, contents: string): unknown };
+}
+
 // This is the fixed upstream module, not a reimplementation of its parser.
 // Locale formatting/persistence are deliberately out of scope; see fixture README.
 const reader = fs.readFileSync(new URL("../test-fixtures/themis-web-interface/judgelog.cjs", import.meta.url), "utf8");
 assert.equal(crypto.createHash("sha256").update(reader).digest("hex"), "78f1d4ec941c459410cbd12902e509e87034b4f687f55916283953d282ae4c2a");
-const moduleFixture: { exports: unknown } = { exports: {} };
 const numberParser = () => (value: string) => /^[+-]?\d+(?:\.\d+)?$/.test(value) ? Number(value) : Number.NaN;
 const globalizeFixture = Object.assign(() => ({ numberParser }), { load: () => undefined });
-vm.runInNewContext(reader, {
-  module: moduleFixture,
-  process: { cwd: () => process.cwd() },
-  require: (name: string): unknown => {
-    if (name === "fs") return fs;
-    if (name === "path") return path;
-    if (name === "debug") return () => () => undefined;
-    if (name === "globalize") return globalizeFixture;
-    if (name === "escape-string-regexp") return (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    if (name === "./scoring") return { add: () => undefined };
-    if (name === "./userlog") return { addScore: () => undefined };
-    if (name.startsWith("./cldr-data/")) return {};
-    throw new Error(`Unexpected pinned-reader dependency: ${name}`);
-  },
-}, { timeout: 1000 });
-const upstream = moduleFixture.exports as { Log: { __parse(user: string, problem: string, contents: string): unknown } };
+function loadReader(cwd: string): LegacyReader {
+  const moduleFixture: { exports: unknown } = { exports: {} };
+  vm.runInNewContext(reader, {
+    module: moduleFixture,
+    process: { cwd: () => cwd },
+    require: (name: string): unknown => {
+      if (name === "fs") return fs;
+      if (name === "path") return path;
+      if (name === "debug") return () => () => undefined;
+      if (name === "globalize") return globalizeFixture;
+      if (name === "escape-string-regexp") return (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (name === "./scoring") return { add: () => undefined };
+      if (name === "./userlog") return { addScore: () => undefined };
+      if (name.startsWith("./cldr-data/")) return {};
+      throw new Error(`Unexpected pinned-reader dependency: ${name}`);
+    },
+  }, { timeout: 1000 });
+  return moduleFixture.exports as LegacyReader;
+}
+const upstream = loadReader(process.cwd());
 
 function readResult(result: ProblemResult): LegacyLog {
   const contents = formatOsdLog({ osdPath: "/unused", originalFileName: "0[HS01][SUM]cpp", contestant: "HS01", problem: "SUM", result });
@@ -48,6 +57,22 @@ function resultFor(tests: TestCaseRun[]): ProblemResult {
 }
 
 describe("Themis web OSD output contract", () => {
+  it("the real reader locates and reads JudgeDesk's dotless log from its expected filesystem path", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-osd-legacy-reader-"));
+    const inbox = path.join(root, "data", "submit");
+    fs.mkdirSync(inbox, { recursive: true });
+    try {
+      const upstreamReader = loadReader(root);
+      const logPath = writeOsdLog({ osdPath: inbox, originalFileName: "0[HS01][SUM]cpp", contestant: "HS01", problem: "SUM",
+        result: resultFor([{ name: "Test01", status: "AC", executionTime: 125, score: 1 }]) });
+      assert.equal(logPath, upstreamReader.Log.filename("HS01", "SUM", "cpp"));
+      const parsed = await new Promise<{ content: LegacyLog } | null>(resolve => upstreamReader("HS01", "SUM", "cpp", resolve));
+      assert.equal(parsed?.content.verdict, 1);
+      assert.ok(Array.isArray(parsed?.content.details));
+      assert.equal(parsed.content.details[0].time, 0.125);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
+
   it("the pinned real reader accepts normal, TLE, RE and multiline checker details", () => {
     const result = resultFor([
       { name: "Test01", status: "AC", executionTime: 125, score: 1 },
