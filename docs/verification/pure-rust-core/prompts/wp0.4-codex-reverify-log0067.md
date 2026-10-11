@@ -31,7 +31,7 @@ Chạy các gate phù hợp theo AGENTS.md sau khi intake hợp lệ: npm run ch
 
 cargo test --locked --manifest-path crates/judgedesk-core/Cargo.toml hiện có failure trong toolchain_diagnose_test: isolated test root không có managed Scratch runtime. Không đổi test, skip, hay chuyển sang AppData thật để làm nó xanh. Xác định test đó có phải WP0.4 exit requirement hay không và ghi chính xác trạng thái; không gọi nó PASS.
 
-Mac ARM64 all-target cargo check/Clippy đã pass trong submission, nhưng macOS executor, Seatbelt, guardian, cancellation, updater và packaged runtime đều là NOT_RUN. SSH tới Tailscale judgedesk-mac (100.78.209.71:22) trước đây timeout; thử kết nối lại nếu môi trường phiên mới cho phép. Cross-target compile hoặc Windows runtime không thay thế Mac runtime. Nếu tiêu chí WP0.4 yêu cầu Mac runtime, thiếu run thì không được DONE.
+Mac ARM64 all-target cargo check/Clippy đã pass trong submission, nhưng macOS executor, Seatbelt, guardian, cancellation, updater và packaged runtime đều là NOT_RUN. SSH tới host judgedesk-mac (<remote-mac-host>:22) trước đây timeout; thử kết nối lại nếu môi trường phiên mới cho phép. Cross-target compile hoặc Windows runtime không thay thế Mac runtime. Nếu tiêu chí WP0.4 yêu cầu Mac runtime, thiếu run thì không được DONE.
 
 ## Verdict và cập nhật hồ sơ
 

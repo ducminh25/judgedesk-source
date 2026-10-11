@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Response } from "express";
 import { OsdWatcher } from "./osd-watcher.js";
+import { ensureOsdDirectory } from "./osd-files.js";
+import type { OsdSource } from "./osd-source.js";
 import { writeOsdLog } from "./osd-log-writer.js";
 import { sharedJudgeSessionGate } from "./resource-policy.js";
 import { resolveProblemConfig } from "../problems/problem-config-repository.js";
@@ -28,8 +30,22 @@ import type {
   ProblemConfig,
   TestCaseRun,
   SubmissionLanguage,
+  NormalizedProblemConfig,
 } from "../types.js";
 import type { PinnedJudgeToolchains } from "./toolchain-preflight.js";
+
+interface OsdJobContext {
+  source: OsdSource;
+  config: Readonly<OsdConfig>;
+  problemConfig: NormalizedProblemConfig;
+}
+
+interface OsdJudgeDependencies {
+  compileSubmission: typeof compileSubmission;
+  resolveCompilationToolchain: typeof resolveCompilationToolchain;
+  resolveChecker: typeof resolveChecker;
+  runTestCase: typeof runTestCase;
+}
 
 export class OsdService {
   private config: OsdConfig | null = null;
@@ -43,6 +59,14 @@ export class OsdService {
   private sseClients = new Set<Response>();
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private problemConfigs: Record<string, ProblemConfig> = {};
+  private contexts = new Map<string, OsdJobContext>();
+  private latestJobs = new Map<string, string>();
+  private retryTimer: NodeJS.Timeout | null = null;
+  private readonly judge: OsdJudgeDependencies;
+
+  constructor(dependencies: Partial<OsdJudgeDependencies> = {}) {
+    this.judge = { compileSubmission, resolveCompilationToolchain, resolveChecker, runTestCase, ...dependencies };
+  }
 
   public get isActive(): boolean {
     return this.watcher !== null && this.watcher.isActive;
@@ -68,6 +92,19 @@ export class OsdService {
   }
 
   public start(config: OsdConfig, problemConfigs?: Record<string, ProblemConfig>): { success: boolean; message?: string } {
+    if (this.isJudging || this.queue.length > 0 || this.watcher?.hasPendingSubmissions) {
+      return { success: false, message: "Đang nhận/chấm bài hoặc còn bài trong hàng đợi; hãy đợi xử lí xong trước khi đổi phiên OSD." };
+    }
+    // Terminal jobs whose cleanup failed retain their ownership capability.
+    // Retry only those owned leaves, never a recursive sweep of the inbox.
+    for (const [jobId, context] of this.contexts) {
+      try {
+        context.source.dispose();
+        this.contexts.delete(jobId);
+      } catch (error) {
+        return { success: false, message: `Không thể dọn nguồn OSD ${jobId}; kiểm tra quyền truy cập/file đang bị khóa rồi thử lại: ${String(error)}` };
+      }
+    }
     if (this.isActive) {
       this.stop();
     }
@@ -85,28 +122,37 @@ export class OsdService {
     if (!fs.existsSync(resolvedOsd)) {
       try {
         fs.mkdirSync(resolvedOsd, { recursive: true });
-      } catch (err: any) {
-        return { success: false, message: `Không thể tạo thư mục OSD: ${err.message}` };
+      } catch (err) {
+        return { success: false, message: `Không thể tạo thư mục OSD: ${String(err)}` };
       }
     }
 
-    this.config = {
-      osdPath: resolvedOsd,
-      contestantsPath: resolvedContestants,
-      testPath: resolvedTest,
-      enableLog: config.enableLog !== false,
-      pollIntervalMs: config.pollIntervalMs ?? 2000,
-    };
-
-    if (problemConfigs) {
-      this.problemConfigs = problemConfigs;
+    let session: Readonly<OsdConfig>;
+    try {
+      session = Object.freeze({
+        osdPath: ensureOsdDirectory(resolvedOsd),
+        contestantsPath: ensureOsdDirectory(resolvedContestants),
+        testPath: ensureOsdDirectory(resolvedTest),
+        enableLog: config.enableLog !== false,
+        pollIntervalMs: config.pollIntervalMs ?? 2000,
+      });
+    } catch (error) {
+      return { success: false, message: `Thư mục OSD không an toàn: ${String(error)}` };
     }
+    this.config = session;
+
+    this.problemConfigs = structuredClone(problemConfigs ?? {});
+    this.latestJobs.clear();
 
     this.watcher = new OsdWatcher({
       osdPath: this.config.osdPath,
       contestantsPath: this.config.contestantsPath,
       getValidProblems: () => this.getValidProblemList(),
-      onSubmissionIngested: (job, isNewContestant) => {
+      onSubmissionIngested: (job, isNewContestant, source) => {
+        const problemDirectory = ensureOsdDirectory(session.testPath, job.problem);
+        const problemConfig = structuredClone(resolveProblemConfig(job.problem, problemDirectory, this.problemConfigs[job.problem]));
+        this.contexts.set(job.id, { source, config: session, problemConfig });
+        this.latestJobs.set(this.resultKey(job), job.id);
         if (isNewContestant) {
           this.broadcastEvent({
             type: "osd_contestant_added",
@@ -135,7 +181,13 @@ export class OsdService {
       pollIntervalMs: this.config.pollIntervalMs,
     });
 
-    this.watcher.start();
+    try {
+      this.watcher.start();
+    } catch (error) {
+      this.watcher.stop();
+      this.watcher = null;
+      return { success: false, message: `Không thể bắt đầu OSD: ${String(error)}` };
+    }
 
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
     this.heartbeatTimer = setInterval(() => {
@@ -156,13 +208,14 @@ export class OsdService {
   public stop(): void {
     if (this.watcher) {
       this.watcher.stop();
-      this.watcher = null;
     }
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
     this.isPaused = false;
+    // Stop intake only. Already accepted jobs keep their source and session.
+    void this.processNextInQueue();
     this.broadcastEvent({
       type: "osd_status",
       data: this.getStatus(),
@@ -222,7 +275,7 @@ export class OsdService {
     try {
       return fs.readdirSync(this.config.testPath).filter((name) => {
         try {
-          return fs.statSync(path.join(this.config!.testPath, name)).isDirectory();
+          return fs.lstatSync(path.join(this.config!.testPath, name)).isDirectory();
         } catch {
           return false;
         }
@@ -239,13 +292,15 @@ export class OsdService {
 
     if (!sharedJudgeSessionGate.tryAcquire()) {
       // Manual judge or another session is busy; retry shortly
-      setTimeout(() => {
+      if (!this.retryTimer) this.retryTimer = setTimeout(() => {
+        this.retryTimer = null;
         void this.processNextInQueue();
       }, 300);
       return;
     }
 
     const job = this.queue.shift()!;
+    const context = this.contexts.get(job.id);
     this.isJudging = true;
     this.currentJob = job;
     job.status = "judging";
@@ -260,16 +315,31 @@ export class OsdService {
     });
 
     try {
-      await this.judgeSingleSubmission(job);
-    } catch (err: any) {
+      if (!context) throw new Error("OSD_JOB_CONTEXT_MISSING");
+      await this.judgeSingleSubmission(job, context);
+    } catch (err) {
       job.status = "failed";
       job.error = err instanceof Error ? err.message : String(err);
+      if (context && context.config.enableLog !== false && this.isLatestJob(job)) {
+        try {
+          writeOsdLog({ osdPath: context.config.osdPath, originalFileName: job.originalFileName,
+            contestant: job.contestant, problem: job.problem, errorKind: "judge", errorReason: job.error });
+        } catch (error) {
+          this.broadcastEvent({ type: "osd_error", data: { message: `Không thể ghi log lỗi OSD: ${String(error)}` } });
+        }
+      }
       this.broadcastEvent({
         type: "osd_job_failed",
         data: { job, message: job.error },
       });
     } finally {
       sharedJudgeSessionGate.release();
+      try {
+        context?.source.dispose();
+        this.contexts.delete(job.id);
+      } catch (error) {
+        this.broadcastEvent({ type: "osd_error", data: { message: `Không thể dọn nguồn OSD ${job.id}: ${String(error)}` } });
+      }
       this.isJudging = false;
       this.lastProcessedJob = job;
       this.currentJob = null;
@@ -287,19 +357,20 @@ export class OsdService {
     }
   }
 
-  private async judgeSingleSubmission(job: OsdJob): Promise<void> {
-    if (!this.config) return;
+  private resultKey(job: OsdJob): string { return JSON.stringify([job.contestant, job.problem]); }
 
-    const problemDir = path.join(this.config.testPath, job.problem);
+  private isLatestJob(job: OsdJob): boolean { return this.latestJobs.get(this.resultKey(job)) === job.id; }
+
+  private async judgeSingleSubmission(job: OsdJob, context: OsdJobContext): Promise<void> {
+    context.source.assertIntegrity();
+    const session = context.config;
+    const problemDir = ensureOsdDirectory(session.testPath, job.problem);
     if (!fs.existsSync(problemDir)) {
       throw new Error(`Problem directory not found: ${problemDir}`);
     }
 
-    const config = resolveProblemConfig(
-      job.problem,
-      problemDir,
-      this.problemConfigs[job.problem],
-    );
+    const config = context.problemConfig;
+    if (config.isInteractive) throw new Error("OSD_INTERACTIVE_NOT_SUPPORTED: dùng phiên chấm thủ công cho bài interactive.");
     if (config.testWellFormed) {
       const validation = await validateProblemTestInputs(problemDir, config.isInteractive);
       if (validation.issues.length > 0) {
@@ -308,12 +379,14 @@ export class OsdService {
       }
     }
     const plannedTests = planProblemTestCases(problemDir, config);
+    if (plannedTests.length === 0) throw new Error("OSD_PROBLEM_HAS_NO_TESTS");
+    if (plannedTests.some(test => !test.inputIsText)) throw new Error("OSD_UNREADABLE_TEST_INPUT");
 
     // Resolve pinned toolchains
     const pinnedEntries = await Promise.all(
       listRegisteredLanguageProfiles().map(async (entry) => [
         entry.toolchainKind,
-        Object.freeze(await resolveCompilationToolchain(entry.toolchainKind)),
+        Object.freeze(await this.judge.resolveCompilationToolchain(entry.toolchainKind)),
       ] as const),
     );
     const pinnedToolchains = Object.freeze(
@@ -322,52 +395,14 @@ export class OsdService {
 
     const submissionToolchain = pinnedToolchains[job.language as SubmissionLanguage];
     if (!submissionToolchain || !submissionToolchain.ready) {
-      // Compiler/Runtime not available; produce CE problem result
-      const ceResult: ProblemResult = {
-        problemName: job.problem,
-        language: job.language,
-        compileStatus: "CE",
-        compileError: `Trình biên dịch/runtime '${job.language}' chưa được thiết lập trên máy chủ.`,
-        testCases: [],
-        summary: {
-          total: plannedTests.length,
-          passed: 0,
-          score: 0,
-          maxScore: plannedTests.reduce((acc, t) => acc + t.score, 0),
-          status: "CE",
-        },
-      };
-
-      job.status = "completed";
-      job.result = ceResult;
-
-      if (this.config.enableLog !== false) {
-        writeOsdLog({
-          osdPath: this.config.osdPath,
-          originalFileName: job.originalFileName,
-          contestant: job.contestant,
-          problem: job.problem,
-          language: job.language,
-          result: ceResult,
-        });
-      }
-
-      this.broadcastEvent({
-        type: "osd_problem_completed",
-        data: {
-          contestant: job.contestant,
-          problemResult: ceResult,
-          originalFileName: job.originalFileName,
-        },
-      });
-      return;
+      throw new Error(`Trình biên dịch/runtime '${job.language}' chưa được thiết lập trên máy chủ.`);
     }
 
     const workspace = createRunWorkspace();
     let checker: CompiledChecker | undefined;
 
     try {
-      const compilation = await compileSubmission({
+      const compilation = await this.judge.compileSubmission({
         language: job.language,
         contestantName: job.contestant,
         problemName: job.problem,
@@ -379,12 +414,15 @@ export class OsdService {
         pythonToolchain: pinnedToolchains.python,
         toolchains: pinnedToolchains,
       });
+      if (compilation.compileStatus !== "OK" && compilation.failureKind !== "submission") {
+        throw new Error(compilation.compileError || "OSD_COMPILER_INFRASTRUCTURE_FAILURE");
+      }
 
       const tcRuns: TestCaseRun[] = [];
       const checkerType = config.checkerType;
 
       if (compilation.compileStatus === "OK") {
-        checker = await resolveChecker({
+        checker = await this.judge.resolveChecker({
           checkerType,
           problemName: job.problem,
           problemDirectory: problemDir,
@@ -394,16 +432,9 @@ export class OsdService {
         });
 
         for (const plannedTest of plannedTests) {
-          if (!this.isActive) break;
           const testFiles = plannedTest.files;
 
-          if (!plannedTest.inputIsText) {
-            compilation.compileStatus = "CE";
-            compilation.compileError = `Unreadable input file: ${testFiles.inputFileName}. Only text files are allowed.`;
-            break;
-          }
-
-          const tcRes = await runTestCase({
+          const tcRes = await this.judge.runTestCase({
             contestant: job.contestant,
             problemName: job.problem,
             testName: testFiles.name,
@@ -413,16 +444,20 @@ export class OsdService {
             inputPath: testFiles.inputPath,
             expectedOutputPath: testFiles.outputPath,
             expectedOutputPreview: plannedTest.expectedOutputPreview,
-            testRoot: this.config.testPath,
-            contestantsRoot: this.config.contestantsPath,
+            testRoot: session.testPath,
+            contestantsRoot: session.contestantsPath,
             tempDirectory: workspace.path,
             pythonCommand: job.language === "python" ? compilation.executablePath : "",
             timeLimitMs: plannedTest.timeLimitMs,
             score: plannedTest.score,
+            scoreExact: plannedTest.scoreExact,
             config,
             checker,
             program: compilation.program,
           });
+          if (tcRes.status === "JE" || tcRes.status === "FAIL") {
+            throw new Error(tcRes.errorDetail || tcRes.checkerMessage || `OSD_TEST_INFRASTRUCTURE_FAILURE: ${tcRes.name}`);
+          }
 
           tcRuns.push(tcRes);
         }
@@ -445,12 +480,9 @@ export class OsdService {
         summary,
       };
 
-      job.status = "completed";
-      job.result = problemResult;
-
-      if (this.config.enableLog !== false) {
+      if (session.enableLog !== false && this.isLatestJob(job)) {
         writeOsdLog({
-          osdPath: this.config.osdPath,
+          osdPath: session.osdPath,
           originalFileName: job.originalFileName,
           contestant: job.contestant,
           problem: job.problem,
@@ -458,7 +490,9 @@ export class OsdService {
           result: problemResult,
         });
       }
-
+      job.status = "completed";
+      job.result = problemResult;
+      if (!this.isLatestJob(job)) return;
       this.broadcastEvent({
         type: "osd_problem_completed",
         data: {

@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const stressRoot = "d:/Minh/Code/stress_test_judge";
-const serverUrl = "http://127.0.0.1:3000";
+const stressRoot = process.env.STRESS_TEST_ROOT || path.resolve(process.cwd(), "../stress_test_judge");
+const serverUrl = process.env.JUDGEDESK_SERVER_URL || "http://127.0.0.1:3000";
 
 console.log("Sending batch-judge request for AC_cpp / A_plus_B...");
 const startTime = Date.now();

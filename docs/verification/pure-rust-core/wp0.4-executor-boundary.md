@@ -792,7 +792,7 @@ The implementer’s latest focused run reports all 24 executor-boundary tests pa
 | (i) Updater waits for native process-tree release | `updater_exclusive_handoff_waits_for_native_tree` | PASS |
 | (j) Node rollback reaches the packaged boundary | Node rollback tests with path override removed | PASS |
 
-**macOS executor, Seatbelt, guardian, and packaged runtime:** NOT_RUN. The implementation session’s SSH attempt to Tailscale host `judgedesk-mac` (`100.78.209.71:22`) timed out; the alias ping returned NXDOMAIN and direct IP ping timed out. Cross-target `cargo check` and Clippy do not substitute for a live Mac run. The fresh reviewer must decide whether the WP0.4 exit contract requires that platform run; if it does, do not mark DONE without it.
+**macOS executor, Seatbelt, guardian, and packaged runtime:** NOT_RUN. The implementation session’s SSH attempt to host `judgedesk-mac` (`<remote-mac-host>:22`) timed out; the alias ping returned NXDOMAIN and direct IP ping timed out. Cross-target `cargo check` and Clippy do not substitute for a live Mac run. The fresh reviewer must decide whether the WP0.4 exit contract requires that platform run; if it does, do not mark DONE without it.
 
 ### Fresh-review note — packaged `--test-*` dispatch
 

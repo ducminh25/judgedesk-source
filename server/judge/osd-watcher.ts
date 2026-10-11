@@ -3,13 +3,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseOsdFileName } from "./osd-parser.js";
 import { writeOsdLog } from "./osd-log-writer.js";
+import { ensureOsdDirectory, writeOsdFile } from "./osd-files.js";
+import { claimOsdSource, type OsdSource } from "./osd-source.js";
 import type { OsdJob } from "./osd-types.js";
 
 export interface OsdWatcherOptions {
   osdPath: string;
   contestantsPath: string;
   getValidProblems: () => string[];
-  onSubmissionIngested: (job: OsdJob, isNewContestant: boolean) => void;
+  /** The receiver owns the snapshot after this synchronous callback returns. */
+  onSubmissionIngested: (job: OsdJob, isNewContestant: boolean, source: OsdSource) => void;
   onError?: (error: Error | string) => void;
   enableLog?: boolean;
   pollIntervalMs?: number;
@@ -20,272 +23,134 @@ export interface OsdWatcherOptions {
 const IGNORED_NAMES = new Set(["logs", "rejected", "$history", ".ds_store", "thumbs.db"]);
 
 export class OsdWatcher {
+  private readonly options: OsdWatcherOptions;
   private osdPath: string;
   private contestantsPath: string;
-  private getValidProblems: () => string[];
-  private onSubmissionIngested: (job: OsdJob, isNewContestant: boolean) => void;
-  private onError?: (error: Error | string) => void;
-  private enableLog: boolean;
-  private pollIntervalMs: number;
-  private debounceMs: number;
-  private maxLockRetries: number;
-
   private active = false;
+  private generation = 0;
   private fsWatcher: fs.FSWatcher | null = null;
   private pollTimer: NodeJS.Timeout | null = null;
-  private processingFiles = new Set<string>();
+  private processingFiles = new Map<string, Promise<void>>();
 
   constructor(options: OsdWatcherOptions) {
+    this.options = options;
     this.osdPath = path.resolve(options.osdPath);
     this.contestantsPath = path.resolve(options.contestantsPath);
-    this.getValidProblems = options.getValidProblems;
-    this.onSubmissionIngested = options.onSubmissionIngested;
-    this.onError = options.onError;
-    this.enableLog = options.enableLog !== false;
-    this.pollIntervalMs = options.pollIntervalMs ?? 2000;
-    this.debounceMs = options.debounceMs ?? 150;
-    this.maxLockRetries = options.maxLockRetries ?? 5;
   }
 
-  public get isActive(): boolean {
-    return this.active;
-  }
+  public get isActive(): boolean { return this.active; }
+  public get hasPendingSubmissions(): boolean { return this.processingFiles.size > 0; }
 
   public start(): void {
     if (this.active) return;
-    if (!fs.existsSync(this.osdPath)) {
-      fs.mkdirSync(this.osdPath, { recursive: true });
+    for (const root of [this.osdPath, this.contestantsPath]) {
+      if (!fs.existsSync(root)) fs.mkdirSync(root, { recursive: true });
     }
-    if (!fs.existsSync(this.contestantsPath)) {
-      fs.mkdirSync(this.contestantsPath, { recursive: true });
-    }
-
+    this.osdPath = ensureOsdDirectory(this.osdPath);
+    this.contestantsPath = ensureOsdDirectory(this.contestantsPath);
     this.active = true;
-
+    ++this.generation;
     try {
-      this.fsWatcher = fs.watch(this.osdPath, (_eventType, fileName) => {
-        if (!this.active || !fileName) return;
-        void this.handleCandidate(fileName.toString());
+      this.fsWatcher = fs.watch(this.osdPath, (_event, fileName) => {
+        if (this.active && fileName) void this.handleCandidate(fileName.toString());
       });
-      this.fsWatcher.on("error", (err) => {
-        this.onError?.(err);
-      });
-    } catch (err: any) {
-      this.onError?.(`FSWatcher warning: ${err.message}. Relying on polling fallback.`);
+      this.fsWatcher.on("error", error => this.options.onError?.(error));
+    } catch (error) {
+      this.options.onError?.(`FSWatcher warning: ${String(error)}. Relying on polling fallback.`);
     }
-
-    this.pollTimer = setInterval(() => {
-      if (!this.active) return;
-      void this.scanDirectory();
-    }, this.pollIntervalMs);
-
-    // Initial scan
+    this.pollTimer = setInterval(() => { void this.scanDirectory(); }, this.options.pollIntervalMs ?? 2000);
     void this.scanDirectory();
   }
 
   public stop(): void {
     this.active = false;
-    if (this.fsWatcher) {
-      try {
-        this.fsWatcher.close();
-      } catch {
-        // ignore close errors
-      }
-      this.fsWatcher = null;
-    }
-    if (this.pollTimer) {
-      clearInterval(this.pollTimer);
-      this.pollTimer = null;
-    }
-    this.processingFiles.clear();
+    ++this.generation;
+    this.fsWatcher?.close();
+    this.fsWatcher = null;
+    if (this.pollTimer) clearInterval(this.pollTimer);
+    this.pollTimer = null;
   }
 
   public async scanDirectory(): Promise<void> {
-    if (!this.active || !fs.existsSync(this.osdPath)) return;
+    if (!this.active) return;
     try {
-      const entries = fs.readdirSync(this.osdPath, { withFileTypes: true });
-      for (const entry of entries) {
+      ensureOsdDirectory(this.osdPath);
+      for (const entry of fs.readdirSync(this.osdPath, { withFileTypes: true })) {
         if (!this.active) break;
-        if (entry.isFile() || (entry.isSymbolicLink() && fs.statSync(path.join(this.osdPath, entry.name)).isFile())) {
-          await this.handleCandidate(entry.name);
-        }
+        if (!entry.isDirectory()) await this.handleCandidate(entry.name);
       }
-    } catch (err: any) {
-      this.onError?.(`Scan error: ${err.message}`);
+      await Promise.all(this.processingFiles.values());
+    } catch (error) {
+      this.options.onError?.(`Scan error: ${String(error)}`);
     }
   }
 
-  private async handleCandidate(fileName: string): Promise<void> {
-    const lowerName = fileName.toLowerCase();
-    if (IGNORED_NAMES.has(lowerName) || fileName.startsWith(".")) return;
-    if (this.processingFiles.has(fileName)) return;
+  private handleCandidate(fileName: string): Promise<void> {
+    if (!this.active || IGNORED_NAMES.has(fileName.toLowerCase()) || fileName.startsWith(".")
+      || /\.(tmp|part)$/i.test(fileName)) return Promise.resolve();
+    const pending = this.processingFiles.get(fileName);
+    if (pending) return pending;
+    const generation = this.generation;
+    const operation = this.processSubmissionFile(fileName, generation).catch(error => {
+      this.options.onError?.(`Error processing ${fileName}: ${String(error)}`);
+    }).finally(() => { this.processingFiles.delete(fileName); });
+    this.processingFiles.set(fileName, operation);
+    return operation;
+  }
 
-    const sourcePath = path.join(this.osdPath, fileName);
-    if (!fs.existsSync(sourcePath)) return;
-
+  private async processSubmissionFile(fileName: string, generation: number): Promise<void> {
+    if (!fs.existsSync(path.join(this.osdPath, fileName))) return;
+    const parsed = parseOsdFileName(fileName, this.options.getValidProblems());
+    const source = await claimOsdSource(this.osdPath, fileName,
+      parsed.valid ? `${parsed.problem}.${parsed.extension}` : "rejected.source", {
+        debounceMs: this.options.debounceMs ?? 150,
+        maxRetries: this.options.maxLockRetries ?? 5,
+        isActive: () => this.active && this.generation === generation,
+      });
+    if (!source) return;
+    let transferred = false;
+    let preserved = false;
     try {
-      const stat = fs.statSync(sourcePath);
-      if (stat.isDirectory()) return;
-    } catch {
-      return;
-    }
-
-    this.processingFiles.add(fileName);
-
-    try {
-      await this.processSubmissionFile(fileName, sourcePath);
-    } catch (err: any) {
-      this.onError?.(`Error processing ${fileName}: ${err.message}`);
-    } finally {
-      this.processingFiles.delete(fileName);
-    }
-  }
-
-  private async waitForFileStability(sourcePath: string): Promise<boolean> {
-    let attempts = 0;
-    let delayMs = this.debounceMs;
-
-    while (attempts < this.maxLockRetries) {
-      attempts++;
-      if (!fs.existsSync(sourcePath)) return false;
-
-      let fd: number | null = null;
-      try {
-        // Try opening read-write to verify no other process is actively writing/locking
-        try {
-          fd = fs.openSync(sourcePath, "r+");
-        } catch {
-          // If read-write fails, try read-only (for read-only file systems)
-          fd = fs.openSync(sourcePath, "r");
-        }
-
-        const initialStat = fs.fstatSync(fd);
-        fs.closeSync(fd);
-        fd = null;
-
-        await new Promise((resolve) => setTimeout(resolve, delayMs));
-
-        if (!fs.existsSync(sourcePath)) return false;
-        const finalStat = fs.statSync(sourcePath);
-
-        if (initialStat.size === finalStat.size && finalStat.size >= 0) {
-          return true;
-        }
-      } catch (err: any) {
-        if (fd !== null) {
-          try {
-            fs.closeSync(fd);
-          } catch {
-            // ignore
-          }
-        }
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, delayMs));
-      delayMs = Math.min(delayMs * 1.5, 1000);
-    }
-
-    return fs.existsSync(sourcePath);
-  }
-
-  private async processSubmissionFile(fileName: string, sourcePath: string): Promise<void> {
-    const isStable = await this.waitForFileStability(sourcePath);
-    if (!isStable || !fs.existsSync(sourcePath)) return;
-
-    const validProblems = this.getValidProblems();
-    const parsed = parseOsdFileName(fileName, validProblems);
-
-    if (!parsed.valid) {
-      // Reject file
-      const rejectedDir = path.join(this.osdPath, "Rejected");
-      if (!fs.existsSync(rejectedDir)) {
-        fs.mkdirSync(rejectedDir, { recursive: true });
-      }
-      const targetRejectedPath = path.join(rejectedDir, fileName);
-      try {
-        if (fs.existsSync(targetRejectedPath)) {
-          fs.unlinkSync(targetRejectedPath);
-        }
-        fs.renameSync(sourcePath, targetRejectedPath);
-      } catch {
-        try {
-          fs.copyFileSync(sourcePath, targetRejectedPath);
-          fs.unlinkSync(sourcePath);
-        } catch {
-          // ignore
-        }
-      }
-
-      if (this.enableLog) {
-        writeOsdLog({
-          osdPath: this.osdPath,
-          originalFileName: fileName,
-          errorReason: parsed.errorReason,
+      source.assertIntegrity();
+      if (!parsed.valid) {
+        writeOsdFile(this.osdPath, ["Rejected"], fileName, { sourcePath: source.filePath });
+        preserved = true;
+        if (this.options.enableLog !== false) writeOsdLog({
+          osdPath: this.osdPath, originalFileName: fileName, errorReason: parsed.errorReason,
         });
+        return;
       }
-      return;
-    }
-
-    // Valid submission: move into Contestants/[contestant]/[problem].[ext]
-    const contestantDir = path.join(this.contestantsPath, parsed.contestant);
-    const isNewContestant = !fs.existsSync(contestantDir);
-    if (isNewContestant) {
-      fs.mkdirSync(contestantDir, { recursive: true });
-    }
-
-    // Check for existing submissions of the same problem to archive into $History/
-    try {
-      const existingEntries = fs.readdirSync(contestantDir, { withFileTypes: true });
-      const targetProblemLower = parsed.problem.toLowerCase();
-      for (const entry of existingEntries) {
-        if (!entry.isFile() && !(entry.isSymbolicLink() && fs.statSync(path.join(contestantDir, entry.name)).isFile())) {
-          continue;
+      const exists = fs.existsSync(path.join(this.contestantsPath, parsed.contestant));
+      if (exists && !fs.readdirSync(this.contestantsPath).includes(parsed.contestant)) {
+        throw new Error("OSD_CONTESTANT_IDENTITY_ALIAS: tên thí sinh trùng thư mục với cách viết khác.");
+      }
+      const isNew = !exists;
+      const directory = ensureOsdDirectory(this.contestantsPath, parsed.contestant);
+      for (const name of fs.readdirSync(directory)) {
+        const extension = path.extname(name);
+        if (name.slice(0, name.length - extension.length).toLowerCase() !== parsed.problem.toLowerCase()) continue;
+        const previous = path.join(directory, name);
+        const metadata = fs.lstatSync(previous);
+        if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.nlink !== 1) {
+          throw new Error("OSD_HISTORY_LINKED_OR_NOT_REGULAR");
         }
-        const ext = path.extname(entry.name);
-        const base = entry.name.slice(0, entry.name.length - ext.length);
-        if (base.toLowerCase() === targetProblemLower) {
-          const historyDir = path.join(contestantDir, "$History");
-          if (!fs.existsSync(historyDir)) {
-            fs.mkdirSync(historyDir, { recursive: true });
-          }
-          const timestamp = Date.now();
-          const archivedName = `${timestamp}_${entry.name}`;
-          const currentPath = path.join(contestantDir, entry.name);
-          const historyPath = path.join(historyDir, archivedName);
-          try {
-            fs.renameSync(currentPath, historyPath);
-          } catch {
-            fs.copyFileSync(currentPath, historyPath);
-            fs.unlinkSync(currentPath);
-          }
-        }
+        writeOsdFile(this.contestantsPath, [parsed.contestant, "$History"], `${crypto.randomUUID()}_${name}`, { sourcePath: previous });
+        fs.unlinkSync(previous);
       }
-    } catch (err: any) {
-      this.onError?.(`History archive warning: ${err.message}`);
-    }
-
-    const finalSubmissionPath = path.join(contestantDir, `${parsed.problem}.${parsed.extension}`);
-    try {
-      if (fs.existsSync(finalSubmissionPath)) {
-        fs.unlinkSync(finalSubmissionPath);
+      writeOsdFile(this.contestantsPath, [parsed.contestant], `${parsed.problem}.${parsed.extension}`, { sourcePath: source.filePath });
+      const job: OsdJob = {
+        id: `osd_${crypto.randomUUID()}`, filePath: source.filePath, originalFileName: fileName,
+        contestant: parsed.contestant, problem: parsed.problem, language: parsed.language,
+        arrivedAt: Date.now(), status: "queued",
+      };
+      this.options.onSubmissionIngested(job, isNew, source);
+      transferred = true;
+    } finally {
+      if (!transferred) {
+        // Preserve failed admissions; never delete the current inbox pathname.
+        if (!preserved) writeOsdFile(this.osdPath, ["Rejected"], `${crypto.randomUUID()}.source`, { sourcePath: source.filePath });
+        source.dispose();
       }
-      fs.renameSync(sourcePath, finalSubmissionPath);
-    } catch {
-      fs.copyFileSync(sourcePath, finalSubmissionPath);
-      fs.unlinkSync(sourcePath);
     }
-
-    const job: OsdJob = {
-      id: `osd_${crypto.randomUUID()}`,
-      filePath: finalSubmissionPath,
-      originalFileName: fileName,
-      contestant: parsed.contestant,
-      problem: parsed.problem,
-      language: parsed.language,
-      arrivedAt: Date.now(),
-      status: "queued",
-    };
-
-    this.onSubmissionIngested(job, isNewContestant);
   }
 }

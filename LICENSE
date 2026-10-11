@@ -1,0 +1,73 @@
+JUDGEDESK SOURCE CODE LICENSE
+Version 1.0
+
+Copyright (c) 2026 Mon (JudgeDesk Project). All Rights Reserved.
+Project repository: https://github.com/ducminh25/judgedesk-source
+Official distribution: https://github.com/ducminh25/judgedesk
+
+==============================================================================
+TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+==============================================================================
+
+1. DEFINITIONS
+
+"Software" means the source code, build scripts, tests, and accompanying
+documentation in this repository (JudgeDesk Source).
+
+"You" (or "Your") means an individual or legal entity exercising permissions
+granted by this License.
+
+"Non-Commercial Purpose" means personal study, competitive programming practice,
+classroom education, academic research, and non-profit contest organization
+where no fees, subscriptions, or commercial charges of any kind are assessed.
+
+"Derivative Work" means any work based upon or derived from the Software,
+including modifications, enhancements, ports, adaptations, or translations.
+
+2. GRANT OF LICENSE
+
+Subject to the terms and conditions of this License, the Author hereby grants
+You a non-exclusive, worldwide, royalty-free license to:
+  a) Inspect, study, copy, and modify the Software;
+  b) Compile and execute the Software locally;
+  c) Distribute unmodified or modified source code copies solely for Non-Commercial
+     Purposes and in strict compliance with Section 3 and Section 4.
+
+3. COPYLEFT & SHARE-ALIKE OBLIGATION (MANDATORY OPEN SOURCE)
+
+If You distribute, publish, or publicly deploy the Software or any Derivative
+Work (whether in source or binary form, locally or over a network):
+  a) You MUST make the complete corresponding source code freely and publicly
+     available under the exact same terms of this License;
+  b) You MUST retain all copyright, patent, trademark, and attribution notices
+     from the original Software;
+  c) You MUST document all modifications made to the original Software.
+You may NOT apply any additional terms, restrictive licenses, or digital rights
+management (DRM) that restrict the rights granted under this License.
+
+4. COMMERCIAL RESTRICTIONS
+
+You may NOT use, sell, lease, sublicense, distribute, or bundle the Software
+or any Derivative Work for any commercial purpose or paid service without
+prior written permission from the Author. This includes, but is not limited to:
+  a) Selling the Software, Derivative Works, or binary builds;
+  b) Using the Software as a core component of a paid tutoring center, commercial
+     contest platform, or fee-charging examination service;
+  c) Embedding the Software into commercial hardware or software bundles.
+
+5. TRADEMARKS & BRANDING
+
+This License does not grant permission to use the trade name "JudgeDesk",
+the JudgeDesk logo, application icon, or associated branding for any derivative
+works or public distributions. If You distribute a Derivative Work, You MUST
+rename the project and replace all branding to prevent user confusion with the
+official JudgeDesk releases.
+
+6. DISCLAIMER OF WARRANTY & LIMITATION OF LIABILITY
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHOR OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY,
+WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

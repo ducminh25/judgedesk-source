@@ -2,9 +2,10 @@
 ## JUDGEDESK END USER LICENSE AGREEMENT
 
 **Phiên bản:** 1.5.0  
-**Tác giả & Bản quyền:** © 2026 Mon (JudgeDesk Project). Bảo lưu mọi quyền (All Rights Reserved).
+**Tác giả & Bản quyền:** © 2026 Mon (JudgeDesk Project). Bảo lưu mọi quyền (All Rights Reserved).  
+**Phạm vi áp dụng:** Thỏa thuận EULA này áp dụng cho các gói cài đặt nhị phân đóng gói chính thức (Binary Packages `.msi` / `.dmg`) được phát hành tại repository [`ducminh25/judgedesk`](https://github.com/ducminh25/judgedesk). Đối với việc xem, nghiên cứu và biên dịch từ mã nguồn, vui lòng xem [Giấy phép mã nguồn (LICENSE)](LICENSE) tại repository [`ducminh25/judgedesk-source`](https://github.com/ducminh25/judgedesk-source).
 
-Vui lòng đọc kỹ Thỏa thuận Giấy phép Người dùng Cuối này ("EULA" hoặc "Thỏa thuận") trước khi tải về, cài đặt hoặc sử dụng ứng dụng **JudgeDesk** ("Phần mềm"). Bằng việc cài đặt hoặc sử dụng Phần mềm, bạn ("Người dùng") đồng ý bị ràng buộc bởi các điều khoản và điều kiện sau đây:
+Vui lòng đọc kỹ Thỏa thuận Giấy phép Người dùng Cuối này ("EULA" hoặc "Thỏa thuận") trước khi tải về, cài đặt hoặc sử dụng gói cài đặt nhị phân ứng dụng **JudgeDesk** ("Phần mềm"). Bằng việc cài đặt hoặc sử dụng Phần mềm, bạn ("Người dùng") đồng ý bị ràng buộc bởi các điều khoản và điều kiện sau đây:
 
 ---
 

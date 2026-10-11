@@ -5,8 +5,8 @@ JudgeDesk là ứng dụng desktop chấm bài lập trình cục bộ phục v�
 Hệ thống chấm hỗ trợ 6 ngôn ngữ: C++, C, Python, Pascal, Java và Scratch (.sb3, .sb2, .sb) thông qua trình thực thi an toàn (native runner) của từng hệ điều hành, không tự động chuyển đổi sang compiler khác khi gặp lỗi cấu hình.
 
 ### Mô hình Hai Kho Lưu Trữ (Dual-Repository Model)
-- **Mã nguồn riêng tư & CI/CD:** [`ducminh25/judgedesk-source`](https://github.com/ducminh25/judgedesk-source) (chứa mã nguồn, lịch sử git, pipeline CI CodeMagic & GitHub Actions).
-- **Phân phối & Hỗ trợ công khai:** [`ducminh25/judgedesk`](https://github.com/ducminh25/judgedesk) (chứa bộ cài đặt `.msi`/`.dmg`, checksums SHA256, manifest cập nhật tự động `latest.json`, managed toolchains và tài liệu công khai).
+- **Mã nguồn & Kỹ thuật:** [`ducminh25/judgedesk-source`](https://github.com/ducminh25/judgedesk-source) — Chứa toàn bộ mã nguồn ứng dụng, runner sandbox an toàn, kiến trúc và pipeline CI/CD. Nơi dành cho lập trình viên và người muốn nghiên cứu, đóng góp hoặc tự build từ mã nguồn.
+- **Phân phối chính thức & Hỗ trợ:** [`ducminh25/judgedesk`](https://github.com/ducminh25/judgedesk) — Chứa các bộ cài đặt phát hành chính thức (`.msi`/`.dmg`), mã băm SHA-256, kênh phân phối managed toolchains và tài liệu hỗ trợ người dùng cuối.
 
 ## Điểm Nổi Bật (Tính Đến Phiên Bản v1.5.0)
 
@@ -73,7 +73,7 @@ npm run test:desktop
 Chạy stress test kiểm tra tải chấm:
 
 ```powershell
-$env:STRESS_TEST_ROOT='D:\Minh\Code\stress_test_judge'
+$env:STRESS_TEST_ROOT='..\stress_test_judge' # hoặc đường dẫn tới thư mục stress_test_judge
 npm run test:stress
 ```
 

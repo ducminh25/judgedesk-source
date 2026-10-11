@@ -6,6 +6,7 @@ import {
   divideRational,
   floatToRational,
   formatRational,
+  formatRationalDecimal,
   formatScore,
   gcd,
   multiplyRational,
@@ -13,6 +14,16 @@ import {
   rationalToNumber,
   toCanonicalPointValue,
 } from "./rational.js";
+
+test("decimal protocol presentation rounds rationals without losing large integers", () => {
+  assert.equal(formatRationalDecimal(createRational(1, 8), 6), "0.125000");
+  assert.equal(formatRationalDecimal(createRational(1, 3), 6), "0.333333");
+  assert.equal(formatRationalDecimal(createRational(2, 3), 6), "0.666667");
+  assert.equal(formatRationalDecimal(parseRational("9007199254740993.125"), 6), "9007199254740993.125000");
+  assert.equal(formatRationalDecimal(createRational(-1, 8), 2), "-0.12");
+  assert.equal(formatRationalDecimal(createRational(0), 0), "0");
+  assert.throws(() => formatRationalDecimal(createRational(1), 11), /precision/);
+});
 
 test("gcd calculates greatest common divisor", () => {
   assert.equal(gcd(12, 18), 6);

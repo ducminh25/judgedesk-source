@@ -2,12 +2,20 @@ import { getRegisteredProfileForExtension } from "../languages/registry.js";
 import type { SubmissionLanguage } from "../types.js";
 import type { OsdParsedSubmission } from "./osd-types.js";
 
-// Standard Themis convention: *[Contestant][Problem].ext
+// Themis web writes 0[Contestant][Problem]ext; dotted OSD names also remain valid.
 // Examples:
 // - [HS01][BAI1].cpp
 // - 001[LeVanA][SUM].pas
 // - 20260821_143000[Mon][PROB1].py
-const THEMIS_OSD_REGEX = /^(?:.*)\[([^\[\]]+)\]\[([^\[\]]+)\]\.([a-zA-Z0-9]+)$/;
+const THEMIS_OSD_REGEX = /^([^\[\]]*)\[([^\[\]]+)\]\[([^\[\]]+)\]\.?(\w+)$/;
+
+export function isSafeOsdComponent(value: string): boolean {
+  return value.length > 0 && value.length <= 255
+    && value.trim() === value && !/[. ]$/.test(value)
+    && value !== "." && value !== ".."
+    && !/[\x00-\x1F\x7F\\/:*?"<>|‣]/.test(value)
+    && !/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)/i.test(value);
+}
 
 export function sanitizeContestantName(raw: string): string {
   if (!raw) return "";
@@ -40,10 +48,11 @@ export function parseOsdFileName(
   fileName: string,
   validProblemNames?: Iterable<string>,
 ): OsdParsedSubmission {
-  const trimmedName = fileName.trim();
-  const match = trimmedName.match(THEMIS_OSD_REGEX);
+  const match = fileName.match(THEMIS_OSD_REGEX);
 
-  if (!match) {
+  if (!match || fileName.trim() !== fileName || fileName.length > 240
+    || /[\x00-\x1F\x7F]/.test(fileName)
+    || /[\\/:*?"<>|]/.test(match[1])) {
     return {
       originalFileName: fileName,
       contestant: "",
@@ -51,16 +60,16 @@ export function parseOsdFileName(
       extension: "",
       language: "cpp",
       valid: false,
-      errorReason: "INVALID_FILENAME_FORMAT: File name must match *[Contestant][Problem].ext format",
+      errorReason: "INVALID_FILENAME_FORMAT: Expected *[Contestant][Problem]ext or *[Contestant][Problem].ext",
     };
   }
 
-  const [, rawContestant, rawProblem, rawExt] = match;
-  const contestant = sanitizeContestantName(rawContestant);
-  const problemCandidate = sanitizeProblemName(rawProblem);
+  const [, , rawContestant, rawProblem, rawExt] = match;
+  const contestant = rawContestant;
+  const problemCandidate = rawProblem;
   const extension = rawExt.toLowerCase();
 
-  if (!contestant || /^_+$/.test(contestant)) {
+  if (!isSafeOsdComponent(contestant)) {
     return {
       originalFileName: fileName,
       contestant: "",
@@ -72,7 +81,7 @@ export function parseOsdFileName(
     };
   }
 
-  if (!problemCandidate || /^_+$/.test(problemCandidate)) {
+  if (!isSafeOsdComponent(problemCandidate)) {
     return {
       originalFileName: fileName,
       contestant,
@@ -104,7 +113,7 @@ export function parseOsdFileName(
     const candidateLower = problemCandidate.toLowerCase();
     let found = false;
     for (const validName of validProblemNames) {
-      if (validName.toLowerCase() === candidateLower) {
+      if (isSafeOsdComponent(validName) && validName.toLowerCase() === candidateLower) {
         resolvedProblem = validName;
         found = true;
         break;

@@ -38,7 +38,9 @@ interface NormalizedExpectation {
   maxScore?: number;
 }
 
-const stressRoot = process.env.STRESS_TEST_ROOT || "d:/Minh/Code/stress_test_judge";
+const stressRoot =
+  process.env.STRESS_TEST_ROOT ||
+  path.resolve(process.cwd(), "../stress_test_judge");
 const serverPort = Number(process.env.PORT || "3003");
 const serverUrl = `http://127.0.0.1:${serverPort}`;
 

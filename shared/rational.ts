@@ -174,6 +174,10 @@ export function rationalToNumber(r: Rational): number {
 }
 
 export function rationalToRoundedNumber(r: Rational, decimalPlaces: number): number {
+  return rationalToNumber(roundRational(r, decimalPlaces));
+}
+
+function roundRational(r: Rational, decimalPlaces: number): Rational {
   if (!Number.isInteger(decimalPlaces) || decimalPlaces < 0 || decimalPlaces > 10) {
     throw new RangeError("Invalid score display precision");
   }
@@ -185,7 +189,17 @@ export function rationalToRoundedNumber(r: Rational, decimalPlaces: number): num
   const remainder = numerator % denominator;
   if (remainder > 0n && remainder * 2n >= denominator) ++rounded;
   if (remainder < 0n && -remainder * 2n > denominator) --rounded;
-  return rationalToNumber(exactRational(rounded, scale));
+  return exactRational(rounded, scale);
+}
+
+/** Decimal-only wire presentation; never use this rounded text for scoring. */
+export function formatRationalDecimal(r: Rational, decimalPlaces: number): string {
+  const rounded = roundRational(r, decimalPlaces);
+  const decimal = exactTerminatingDecimal(rounded, decimalPlaces);
+  if (decimal === null) throw new RangeError("Invalid decimal score");
+  if (decimalPlaces === 0) return decimal;
+  const [whole, fraction = ""] = decimal.split(".");
+  return `${whole}.${fraction.padEnd(decimalPlaces, "0")}`;
 }
 
 export function isCanonicalRational(value: unknown): value is Rational {

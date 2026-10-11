@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
+import { assertCompilerSucceeded, StudentCompilationError } from "./compiler-errors.js";
 import os from "node:os";
 import path from "node:path";
 import type { ExecutorRunResult } from "../executor/protocol.js";
@@ -127,6 +128,7 @@ export interface CompilationResult {
   compileError: string;
   compileTime: number;
   program?: PreparedSubmissionProgram;
+  failureKind?: "submission" | "infrastructure";
 }
 
 interface PreparedCompiler {
@@ -309,7 +311,7 @@ export async function compileSubmission(options: CompileSubmissionOptions): Prom
       },
     };
   } catch (error) {
-    return compilationFailure(executablePath, normalizeCompilerError(error), compileStart);
+    return compilationFailure(executablePath, normalizeCompilerError(error), compileStart, error);
   }
 }
 
@@ -415,6 +417,7 @@ async function compileManagedDirectorySubmission(
       artifactDirectory,
       normalizeCompilerError(error),
       compileStart,
+      error,
     );
   }
 }
@@ -980,7 +983,7 @@ export async function runCompilerWithLimits(
     const diagnostics = readCompilerDiagnostics(workspace.path);
     assertCompilerSucceeded(result, diagnostics);
     if (!fs.existsSync(stagedOutput)) throw new Error(diagnostics.trim() || "Compilation did not produce an output file.");
-    if (fs.statSync(stagedOutput).size > limits.maxGeneratedFileBytes) throw new Error("GENERATED_FILE_TOO_LARGE");
+    if (fs.statSync(stagedOutput).size > limits.maxGeneratedFileBytes) throw new StudentCompilationError("GENERATED_FILE_TOO_LARGE");
     fs.copyFileSync(stagedOutput, outputPath);
     return result;
   } finally {
@@ -1064,7 +1067,7 @@ export function remainingCompilerTimeMs(
   // Import, staging and sandbox setup operate on owned inputs. Only native
   // compiler process time consumes the shared frontend/linker watchdog.
   const remaining = timeoutMs - Math.ceil(result.wallTimeUs / 1_000);
-  if (remaining <= 0) throw new Error("COMPILER_TIMEOUT");
+  if (remaining <= 0) throw new StudentCompilationError("COMPILER_TIMEOUT");
   return remaining;
 }
 
@@ -1600,29 +1603,6 @@ function stageCompilerArguments(
   });
 }
 
-function assertCompilerSucceeded(result: ExecutorRunResult, stderr: string): void {
-  switch (result.reason) {
-    case "wall_time_limit":
-      throw new Error("COMPILER_TIMEOUT");
-    case "output_limit":
-    case "write_limit":
-      throw new Error("GENERATED_FILE_TOO_LARGE");
-    case "cancelled":
-      throw new Error("COMPILATION_CANCELLED");
-    case "sandbox_denied":
-    case "launch_error":
-    case "internal_error":
-      throw new Error(`SECURE_RUNNER_LAUNCH_FAILED: ${result.diagnostic || stderr}`);
-    case "memory_limit":
-      throw new Error("COMPILER_MEMORY_LIMIT");
-    case "process_limit":
-    case "thread_limit":
-      throw new Error("COMPILER_RESOURCE_LIMIT");
-    case "exited":
-      if (result.exitCode !== 0) throw new Error(stderr.trim() || `Compilation failed (exit code ${result.exitCode})`);
-  }
-}
-
 function assertTreeContainsNoLinks(root: string): void {
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
     const entryPath = path.join(root, entry.name);
@@ -1661,8 +1641,9 @@ function readCompilerDiagnostics(workspacePath: string): string {
   return [stderr, stdout].filter(Boolean).join("\n");
 }
 
-function compilationFailure(executablePath: string, error: string, started: bigint): CompilationResult {
-  return { executablePath, compileStatus: "CE", compileError: error, compileTime: elapsedMs(started) };
+function compilationFailure(executablePath: string, error: string, started: bigint, cause?: unknown): CompilationResult {
+  return { executablePath, compileStatus: "CE", compileError: error, compileTime: elapsedMs(started),
+    failureKind: cause instanceof StudentCompilationError ? "submission" : "infrastructure" };
 }
 
 export function normalizeCompilerError(error: unknown): string {
