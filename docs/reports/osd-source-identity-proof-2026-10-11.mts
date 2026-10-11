@@ -1,5 +1,7 @@
 // Read-only product diagnostic. Only disposable fixture files are created.
-// Run: node --import tsx docs/reports/osd-source-identity-proof-2026-10-11.mts
+// Historical reproducer for the PRE-FIX watcher. Its assertions describe the old bug.
+// Current regression coverage: server/judge/osd-watcher.test.ts and osd-service.test.ts.
+// Run only against the original pre-fix snapshot, not the repaired implementation.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";

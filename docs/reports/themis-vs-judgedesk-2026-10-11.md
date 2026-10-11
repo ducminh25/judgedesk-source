@@ -1,5 +1,7 @@
 # Phân tích Themis và đối chiếu JudgeDesk
 
+> Đây là snapshot đánh giá **trước** khi sửa OSD. Phần OSD đã có thay đổi sau đánh giá; xem [hợp đồng triển khai và kiểm thử mới](../osd-themis-compatibility.md). Các số dòng dưới đây thuộc snapshot ban đầu.
+
 Ngày đánh giá: 11/10/2026. Phạm vi: bộ cài tại `C:\Themis`, báo cáo Themis do người dùng cung cấp, và mã nguồn JudgeDesk tại `D:\Minh\Code\judgedesk`.
 
 JudgeDesk được đối chiếu ở commit `e83d63b427ac3d85da899e8bc8eaa082259fcbcb`, phiên bản 1.5.5. `guidelines.md` đã có thay đổi chưa commit trước cuộc đánh giá; thay đổi đó được giữ nguyên. Cuộc đánh giá tạo tài liệu và chứng cứ, không sửa mã ứng dụng.
