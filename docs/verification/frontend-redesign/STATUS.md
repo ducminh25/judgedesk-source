@@ -109,4 +109,66 @@ pre-fast-forward-candidate/. Preserve needed evidence before archiving worktree.
   not write/stage/restore it; newest contents remain uncommitted and excluded from
   both commits. Other four backend hashes still match before.json. Local evidence:
   artifacts/merge-155/post-merge-external-storage.ts; observed SHA256 c89e5f316d4bd2be424ba75eb9dd0c70a8e5453719fee12cd2c7345414ae63b9.
+
+## CE/JE hardening checkpoint — 2026-10-12
+
+PAUSED at the user's request (quota); resume only on explicit instruction. This
+is a new scoped batch, not a change to historical acceptance above. Production
+CE/JE propagation through shared/compiler/session/scoring, scoreboard, details,
+log and workbook is implemented; this batch is NOT accepted yet.
+
+Native normal light/dark × VI/EN observed. Narrow 960x600 client: dark EN/light EN
+observed; light VI/dark VI pending. Enter/Escape observed, Tab confinement not
+proven. CE/JE before baseline missing. Native macOS NOT_RUN. Evidence directory:
+artifacts/ce-je-20261012/ relative to this directory.
+
+Latest full gate failed a stale JE corpus aggregate assertion. The last harness
+fix is written and focused scoring passes 14/14; full rerun after that fix is
+pending. No skips, deleted tests or weakened thresholds were introduced.
+Desktop session 36261 closed normally (exit0, sidecar code0); no JudgeDesk app,
+server sidecar or native executor process remains. Preferences left light/EN.
+See ../../reports/judgedesk-hardening-progress-2026-10-12.md for resume order,
+review findings, runtime uncertainty and preserved fixture paths.
+
+## Resumed hardening — 2026-10-12
+
+Resumed on explicit instruction. Step2 full gate PASS (Rust9/9, server854/864
+PASS with10 pre-existing conditional skips, parity67 fixtures, version1.5.5).
+Frozen executable and30 source inputs matched again after gate completion.
+Light/dark × VI/EN × normal/narrow scoreboard matrix now observed; narrow VI
+runtime screenshots added. Preferences restored dark/VI; desktop closed normally.
+Tab in details reaches the background checkbox: existing focus-confinement debt,
+not accessibility PASS. No comparable CE/JE before baseline or macOS runtime proof.
+
+Step3A in progress: strict-only local C/C++/Python admission, migration/recovery
+notice, Themis import without isolation mutation, automatic manager/host refresh.
+Focused backend/UI tests PASS; queued-host-refresh failure received a behavioral
+RED/GREEN regression test. Native acceptance and full gate for step3 remain pending.
 - Final checks on main PASS: check:fast and release:check-version (1.5.5).
+# Checkpoint local policy 3A — 2026-10-12
+
+check:fast và check:full PASS (882 tests, 872 pass, 0 fail, 10 waivers cũ;
+Rust9/9; parity67; version1.5.5). Host refresh regression4/4 và policy10/10.
+Native3A chưa quan sát: Computer Use bị người dùng dừng bằng Escape trước khi
+chọn window; không dùng ảnh CE/JE trước đó làm bằng chứng cho notice mới.
+3B đang thiết kế, chưa implement. Không tuyên bố xong cả bước3 hoặc roadmap.
+
+## Latest hardening checkpoint — 2026-10-13
+
+Supersedes the native3A NOT_OBSERVED checkpoint, preserving its historical stop.
+With renewed Computer Use, notice/auto-refresh observed in all8 light/dark ×
+VI/EN × normal/narrow combinations. Both dev apps closed normally; display
+preferences restored dark/VI. Manifest: local-policy-3a-native-20261012.md.
+Narrow toolbar/table overflow and modal focus limits remain explicit; no full
+accessibility/macOS/before-baseline claim. No real contest or compiler settings
+changed. 3B logic/focused tests implemented; real in-place toolchains still fail
+closed. New full gate running after a standby-related Rust timeout; not yet PASS.
+
+## Final 3B code gate — 2026-10-13
+
+Supersedes only the pending full-gate status above: sequential final check:full
+exit0, Rust9/9, server902/912 PASS /0 fail /10 existing skips, corpus25,
+parity67 at four tiers, version1.5.5; post-gate30 inputs and executor hash/size
+matched. This backend gate does not add a positive native local-compiler UX claim.
+Corrected controlled-copy pipeline4/4, original-path pipeline0/4; step3 product
+acceptance remains open. See ../../reports/local-probe-windows-read-access-2026-10-13.md.

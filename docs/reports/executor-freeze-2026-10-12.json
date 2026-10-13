@@ -1,0 +1,165 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-12",
+  "sourceHead": "938044e104755965e6c932fd12da79c019077d5a",
+  "dirtyNativeFiles": [
+    "native-executor/src/platform/windows.rs",
+    "native-executor/src/platform/windows/launch.rs",
+    "native-executor/src/platform/windows/tests/launch_failure.rs"
+  ],
+  "artifact": {
+    "path": "src-tauri/binaries/judgedesk-executor-x86_64-pc-windows-msvc.exe",
+    "sha256": "9e7359984262f224e0864bcde0f66ce9b655f3870e077364c9a733d55129d41a",
+    "sizeBytes": 952320
+  },
+  "nativeBuildFingerprint": "010889c83420c499b3480e3956484bc9c6847362834bbe8b8291382a582fa759",
+  "recipe": "npm run build:executor",
+  "windowsCargoArguments": [
+    "rustc",
+    "--locked",
+    "--release",
+    "--manifest-path",
+    "native-executor/Cargo.toml",
+    "--target",
+    "x86_64-pc-windows-msvc",
+    "--bin",
+    "judgedesk-native-executor",
+    "--",
+    "-C",
+    "link-arg=/Brepro"
+  ],
+  "toolchain": {
+    "rustc": "1.97.1 (8bab26f4f 2026-07-14)",
+    "visualStudio": "17.14.37502.11",
+    "msvc": "14.44.35207",
+    "windowsSdk": "10.0.26100.0",
+    "ambientRustOverrides": []
+  },
+  "reproduction": {
+    "cleanBuilds": 2,
+    "sameHostIdentical": true,
+    "crossHostVerified": false
+  },
+  "inputs": [
+    {
+      "path": ".gitattributes",
+      "sha256": "54de151b9013754bebcb6c326ce341ee66a363ffc101181fa1ee5a8714f8e4b5"
+    },
+    {
+      "path": "native-executor/Cargo.lock",
+      "sha256": "0bde92ec0670a7ab854db2b6ce1f87ed85cc99963913214e35d8a7de53b359b8"
+    },
+    {
+      "path": "native-executor/Cargo.toml",
+      "sha256": "4a79dd58e7c31d18bdde5620249b8e4d21add339a3f56a2083f5b8d4769ddd25"
+    },
+    {
+      "path": "native-executor/build.rs",
+      "sha256": "b0849bef4ed7f26ea2546eaa42f5537c964087e68c1735126858c9a2235f3cfc"
+    },
+    {
+      "path": "native-executor/src/fault_trace.rs",
+      "sha256": "e671b71891ebc8a7faa4932002176ff1f50af42c270d983545b2ac8cac971435"
+    },
+    {
+      "path": "native-executor/src/guardian_io.rs",
+      "sha256": "0ba97b05c2739bad0a5c0277d943423c0b6f0ed2a4ce6f591c2443424670fdd0"
+    },
+    {
+      "path": "native-executor/src/guardian_protocol.rs",
+      "sha256": "3126fb7ec1f22529cc326be6682bad9854202fd1b45950f7e66415041ff60761"
+    },
+    {
+      "path": "native-executor/src/lib.rs",
+      "sha256": "ab8e898da5a4ddfccb5c0878cb97c7cf75eaeb8af06d6d4b83893a210ae057da"
+    },
+    {
+      "path": "native-executor/src/macos_interactive.rs",
+      "sha256": "1599a680de608bb3b28140d902b7ac7786871c41849ecc233a6eba334388acab"
+    },
+    {
+      "path": "native-executor/src/macos_launcher.rs",
+      "sha256": "8c67c59cb650ce8ebca6c44276f648931b718e5bff61dfa4ce2c02678bf2733a"
+    },
+    {
+      "path": "native-executor/src/macos_process.rs",
+      "sha256": "7f3a815ed0d03edf224dfc3203f92e84cde09227b142f3077d93fffc112652eb"
+    },
+    {
+      "path": "native-executor/src/macos_run_controller.rs",
+      "sha256": "b55111bcb31158a06e2569db396bf6391c57be4251149ec05cc0f7d4e2c59e65"
+    },
+    {
+      "path": "native-executor/src/macos_run_guardian.rs",
+      "sha256": "c07fb778e19cf5b0cff54d082ce8c5686565b13134f47b89162e0d4ca469200b"
+    },
+    {
+      "path": "native-executor/src/macos_stdio.rs",
+      "sha256": "63d93ad164537bf828d8016164b47391be4fe66dd2157a824a40ef200fe06a75"
+    },
+    {
+      "path": "native-executor/src/main.rs",
+      "sha256": "4ce4b1be7400f27d052d73912ad29c4daba035b9294b64a1e88a90c7ef27ee57"
+    },
+    {
+      "path": "native-executor/src/native_build.rs",
+      "sha256": "634b2cee40d2d34ba752ae4b7d49373b2492d45d25ca57d76f6b4233e9be387f"
+    },
+    {
+      "path": "native-executor/src/platform/macos.rs",
+      "sha256": "6d90e7ed8eaf7329f7e374b2dd3c503f7c01b8301f9eb8a98db4e645245d0478"
+    },
+    {
+      "path": "native-executor/src/platform/mod.rs",
+      "sha256": "98cacd910b6552aa6f1979f0c3ece2bf95eb6849fd2dadf1024c824248bce1ff"
+    },
+    {
+      "path": "native-executor/src/platform/windows.rs",
+      "sha256": "245ecec71cf68107d50bd3973686c90d238dcdf57fd2f11d1cdb7c0621849c32"
+    },
+    {
+      "path": "native-executor/src/platform/windows/launch.rs",
+      "sha256": "e39c6b33729ba7750f592f3d4ec6c9e71a7d235d954f2cbcbb72c22bab507ae4"
+    },
+    {
+      "path": "native-executor/src/platform/windows/tests/launch_failure.rs",
+      "sha256": "7eb76c0a638e2a196376f126359ae9a8164bdb53e37b895a23785853dc530fbd"
+    },
+    {
+      "path": "native-executor/src/protocol.rs",
+      "sha256": "34cbc7037adecb4755f8e20ba4eba18d0cad44b11a0b3db15a0adbda49c66c1f"
+    },
+    {
+      "path": "native-executor/src/request_validation.rs",
+      "sha256": "545319fbe467e0d871d47d08c1e7d91044d3edfae52cedc41ffe7a253e767b8b"
+    },
+    {
+      "path": "native-executor/src/security_probe.rs",
+      "sha256": "26f1666262497da9a2c896d2a6cbd0be885d1401a04740e156aaaf4e9f514253"
+    },
+    {
+      "path": "native-executor/src/tree_guard.rs",
+      "sha256": "12549d89b6842bcd5aee12babbe01fc88b95ee18b8e7858cf35ae413d34c89db"
+    },
+    {
+      "path": "native-executor/src/workspace.rs",
+      "sha256": "de18d117dbb57e6626d41de51a6a176d878cdb2e2e9e679febd394d3174a1c15"
+    },
+    {
+      "path": "package.json",
+      "sha256": "63f32e166f870fd08518079f92000942a648d32c81cbaf1982021f482351969a"
+    },
+    {
+      "path": "rust-toolchain.toml",
+      "sha256": "e4c6d27e48d71df0ae66d84f3bc2d5df8cbf5c3cbb3225475a7852d94361a0c5"
+    },
+    {
+      "path": "scripts/build-native-executor.js",
+      "sha256": "519359aab24c1cf2d3cd75196b6b8161c7fbde4d77af8cdbd7067157b40a4a79"
+    },
+    {
+      "path": "scripts/build-server-target.js",
+      "sha256": "971d9ca7d8727b916beec19539e28dbbbe4e9ab9f9bf45b0dae5a227f473e298"
+    }
+  ]
+}

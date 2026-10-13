@@ -247,3 +247,91 @@ Append entries; không viết lại kết quả cũ thành PASS.
   New point text uses emerald700 in light and emerald400 in dark; dark focus uses
   emerald400. Native macOS, explicit fault/busy injection and long-name limits
   remain NOT_RUN. Broader redesign stays partial; this feature batch is complete.
+
+## CE/JE hardening — pause checkpoint 2026-10-12
+
+- User requested a safe stop for quota at 09:28 ICT; no further implementation
+  or test run started. All dirty changes/evidence preserved; no commit/push.
+- Files cover shared CompileStatus, compiler error provenance/Java validation,
+  judge session/scoring, scoreboard model/view, judging details/log, workbook,
+  EN/VI strings, regression tests and corpus expectations. No redesign or new
+  dependency. Full file inventory remains available in git status.
+- Relevant focused tests and check:fast passed. Latest full run: Rust 9/9 PASS;
+  server 864 tests, 853 PASS, 1 stale corpus assertion FAIL, 10 existing skips.
+  Final JE harness fix awaits full rerun; scoring 14/14 PASS after that fix.
+- Native fixture is synthetic Audit_01 with Runtime/Setup/Syntax/Valid. JE total
+  is not a grade; runtime compile OK and AC testcase 0.5 remain visible. Removing
+  both JE problems restores valid total1.00. Owned fixture saved/reopened without
+  changing testcase results. Production Tauri config unchanged; narrow launch
+  uses artifacts/ce-je-ui/narrow-config.json.
+- Normal 1536x792 light/dark × VI/EN screenshots saved; narrow 962x631 including
+  native frame dark EN/light EN saved. VI narrow remains pending. Enter opens
+  details; Escape closes with visible cell focus. Tab containment not proven.
+  No comparable CE/JE before baseline; macOS NOT_RUN. Screenshot directory:
+  artifacts/ce-je-20261012/ relative to this directory.
+- Static new-JE palette contrast estimates exceed normal-text 4.5:1, but this
+  is not native CSSOM measurement or a whole-app accessibility certification.
+- Existing AppToolbar setState-in-render warning recorded, not changed here.
+  Executor code0 exit occurred during concurrent corpus testing; standalone
+  narrow session subsequently remained Ready. Root cause not established.
+- Closed desktop normally: session36261 exit0, sidecar code0; process check
+  confirmed no app/server/native executor. Preferences remain light/EN.
+- Resume only on user instruction: finish missing native audit, close desktop,
+  rerun full gate sequentially and check frozen artifact/source receipt before
+  accepting step2. Steps3–6 not implemented; OSD deferred. Detailed checkpoint:
+  ../../reports/judgedesk-hardening-progress-2026-10-12.md.
+
+### Resume and local policy batch — 2026-10-12
+
+- Completed remaining narrow VI CE/JE observations and restored dark/VI. Native
+  screenshot matrix scoreboard8 states; no macOS/before baseline claim.
+- Step2 full gate exit0, server854 PASS / 0 fail /10 existing skips, parity67,
+  Rust9/9. Post-gate frozen952320-byte executable and30 inputs matched receipt.
+- Confirmed existing details Tab escape to background checkbox; recorded scoped
+  debt instead of labeling the whole keyboard/accessibility audit PASS.
+- Step3A adds LocalExecutionPolicyNotice using existing Notice warning surface
+  and VI/EN keys; no weaker-isolation toggle. Themis import no longer PUTs policy.
+- useToolchains central refresh restarts pending polling. Host refresh extracted
+  into small owned controller; behavioral RED proved queued B lost after failed A,
+  GREEN3/3 verifies servicing B, automatic settlement/no flicker and disposal.
+- Policy9/9, cache6/6, migration10/10, routes11/11, manager11/11 focused PASS.
+  Two existing skip fingerprints rebound to LF test bytes only; no waiver changes.
+- Native step3 and full gate still pending; step3B roles/cancel-drain not implemented.
+# Local policy 3A gate closure — 2026-10-12
+
+Full gate artifacts/local-policy-3a-check-full-20261012.log exit0, 882 tests /
+872 pass / 0 fail / 10 existing conditional waivers; Rust9/9, parity67 four tiers,
+version1.5.5. Final fast log artifacts/local-policy-check-fast-final-20261012.log.
+Latest focused counts: policy10/10, host refresh4/4 (earlier3/3 record superseded).
+Post-gate receipt30/hash/size match. No native3A PASS: desktop launch used owned
+artifacts/local-policy-ui AppData, but user Escape stopped Computer Use before
+window selection. Stop automation immediately; no3A screenshots captured.
+Next native task: notice VI/EN light/dark normal/narrow plus compiler auto-refresh;
+do not touch actual user compiler preferences or security settings.
+
+## Local policy 3A native closure / 3B checkpoint — 2026-10-13
+
+- User restored Computer Use; two dev rebuilds and all8 notice matrix states
+  observed, plus local selection pending -> incompatible without manual Verify.
+- Owned AppData only; no real contest/download/install/security toggle. Dark/VI
+  restored; normal and960x600 client apps closed normally, sidecars exit0.
+- Full screenshot hashes, build timestamps and scoped limits in
+  local-policy-3a-native-20261012.md. No complete focus-trap/return-focus proof,
+  narrow table/toolbar overflow remains; macOS NOT_RUN, no before comparison.
+- 3B owns probes through cancel/drain, requires generated submission/checker and
+  Python runtime roles. Focused22/22 and IPC30/30 GREEN; three bounded reviews.
+- Real original-path GCC/Python probes fail closed, not native positive PASS.
+  Controlled-copy gate only diagnoses role pipeline vs source-path access.
+- Full gate interrupted by Modern Standby TLE timeout; focused TLE passed2,30s.
+  Full gate retry is pending; no gate weakening or skip introduced.
+
+### Final 3B code gate closure — 2026-10-13
+
+- Sequential final check:full exited0: fast, Rust9/9, server902 PASS /0 fail /
+  10 existing skips (912 total), corpus25, parity67 across four tiers, version1.5.5.
+- Post-gate frozen30 inputs and952320-byte executor SHA-256 matched receipt;
+  git diff --check passed. No commit/push, dependency, version or new skip.
+- Corrected owned-root copy gate4/4 validates real native role pipeline only;
+  corrected original-path gate0/4 remains a failing product criterion.
+- No new desktop positive-compiler observation; preserve scoped3A UX acceptance
+  and recorded accessibility/macOS limits. Full step3 and steps4–6 remain open.
