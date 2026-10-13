@@ -19,6 +19,7 @@ import {
   loadToolchainPreferenceSnapshot,
 } from "./storage.js";
 import type { ToolchainKind } from "./types.js";
+import { localProbeRegistry } from "./local-probe-registry.js";
 
 const DISCOVERY_SCHEMA_VERSION = 2;
 const MAX_DISCOVERY_BYTES = 512 * 1024;
@@ -1367,6 +1368,7 @@ function writeDiscoverySnapshot(
 /** Stops in-flight discovery processes during application shutdown. */
 export function cancelToolchainDiscovery(): unknown[] {
   const errors: unknown[] = [];
+  localProbeRegistry.cancel();
   for (const runtime of runtimeStates.values()) {
     runtime.isAborted = true;
     runtime.rescanRequested = false;
@@ -1481,7 +1483,9 @@ export async function drainToolchainDiscovery(deadlineMs = 3000): Promise<void> 
     }
   }
 
-  const allOps = [...pending, ...probeOps, ...childWaitOps];
+  // Also own probes initially started by cache/resolver callers, not only
+  // discovery's promise wrappers. Retained cleanup failures cannot disappear.
+  const allOps = [...pending, ...probeOps, ...childWaitOps, localProbeRegistry.drain()];
   if (allOps.length > 0) {
     let overallTimer: NodeJS.Timeout | null = null;
     const timeoutPromise = new Promise<never>((_, reject) => {

@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
-import { assertCompilerSucceeded, StudentCompilationError } from "./compiler-errors.js";
+import { assertCompilerSucceeded, classifyCompilationFailure, StudentCompilationError } from "./compiler-errors.js";
 import os from "node:os";
 import path from "node:path";
 import type { ExecutorRunResult } from "../executor/protocol.js";
@@ -527,12 +527,14 @@ async function runDirectoryCompilerWithLimits(
       maxFiles: 512,
       maxBytes: options.limits.maxGeneratedFileBytes,
     });
+    // Java may exit successfully for comment-only source with no class files.
+    // Its source-layout validator must classify that before the generic guard.
+    options.validateArtifact(stagedOutput);
     if (artifact.files === 0) {
       throw new Error(
         diagnostics.trim() || "Compilation did not produce an artifact.",
       );
     }
-    options.validateArtifact(stagedOutput);
     if (fs.existsSync(options.outputPath)) {
       throw new Error("Compiler artifact destination already exists.");
     }
@@ -567,7 +569,7 @@ export function resolveJavaEntrypoint(
   if (firstClass) {
     return path.basename(firstClass.name, ".class");
   }
-  throw new Error(
+  throw new StudentCompilationError(
     `JAVA_ENTRYPOINT_INVALID: source must declare public class ${candidate} or Main without a package`,
   );
 }
@@ -584,7 +586,7 @@ export function validateJavaClassDirectory(
       || !/^[A-Za-z_$][A-Za-z0-9_$]*\.class$/.test(entry.name)
     )
   ) {
-    throw new Error(
+    throw new StudentCompilationError(
       "JAVA_ARTIFACT_INVALID: packaged classes and nested output directories are not supported",
     );
   }
@@ -852,6 +854,10 @@ async function warmManagedCCompiler(
       recipe.environment,
       toolchain,
     );
+  } catch (error) {
+    // This source belongs to JudgeDesk, not the student. Do not blame the
+    // submission for a compiler exit/resource failure in this owned probe.
+    throw new Error(`COMPILER_WARMUP_FAILED: ${normalizeCompilerError(error)}`, { cause: error });
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
@@ -1642,12 +1648,12 @@ function readCompilerDiagnostics(workspacePath: string): string {
 }
 
 function compilationFailure(executablePath: string, error: string, started: bigint, cause?: unknown): CompilationResult {
-  return { executablePath, compileStatus: "CE", compileError: error, compileTime: elapsedMs(started),
-    failureKind: cause instanceof StudentCompilationError ? "submission" : "infrastructure" };
+  return { executablePath, ...classifyCompilationFailure(cause), compileError: error, compileTime: elapsedMs(started) };
 }
 
 export function normalizeCompilerError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
+  if (message.startsWith("COMPILER_WARMUP_FAILED:")) return message.trim();
   if (message.includes("GENERATED_FILE_TOO_LARGE")) return "GENERATED_FILE_TOO_LARGE";
   if (message.includes("COMPILER_TIMEOUT")) return "COMPILER_TIMEOUT";
   if (message.startsWith("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE")) return "TOOLCHAIN_NOT_SANDBOX_COMPATIBLE";

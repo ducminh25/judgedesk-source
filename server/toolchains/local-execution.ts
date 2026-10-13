@@ -7,42 +7,39 @@ import type {
   ExecutorLocalToolchainIdentity,
   ExecutorRunResult,
 } from "../executor/protocol.js";
-import { createExecutorWorkspace } from "../executor/workspace.js";
-import { executorClient } from "../executor/client.js";
-import { runReservedExecutor } from "../jobs.js";
+import { createExecutorWorkspace, type ExecutorWorkspace } from "../executor/workspace.js";
 import {
   buildCheckerExecutorRunSpec,
   buildCompilerExecutorRunSpec,
   buildSubmissionExecutorRunSpec,
 } from "../judge/execution-request.js";
-import { loadLocalExecutionPolicy } from "./execution-policy.js";
 import type { ResolvedToolchain, ToolchainKind } from "./types.js";
+import {
+  localProbeFailureSnapshot,
+  localProbeRegistry,
+  LocalProbeCleanupUnconfirmedError,
+  type LocalCompatibilityProbeSnapshot,
+} from "./local-probe-registry.js";
+import { runLocalProbePhase } from "./local-probe-run.js";
+export type {
+  LocalCompatibilityProbeStatus,
+  LocalCompatibilityProbeSnapshot,
+} from "./local-probe-registry.js";
 
 const LOCAL_ROOT_MAX_BYTES = 4_096;
 const LOCAL_EXECUTABLE_RELATIVE_MAX_BYTES = 1_024;
 const LOCAL_PROBE_MEMORY_BYTES = 512 * 1024 * 1024;
 const LOCAL_COMPILER_PROBE_TIMEOUT_MS = 12_000;
 const LOCAL_PYTHON_PROBE_TIMEOUT_MS = 5_000;
+const LOCAL_PROGRAM_PROBE_TIMEOUT_MS = 5_000;
 
-type LocallyExecutableKind = Extract<ToolchainKind, "cpp" | "c" | "python">;
+export type LocallyExecutableKind = Extract<ToolchainKind, "cpp" | "c" | "python">;
 
 export interface DerivedLocalToolchain {
   executablePath: string;
   executableId: string;
   identity: ExecutorLocalToolchainIdentity;
   fingerprint: string;
-}
-
-export type LocalCompatibilityProbeStatus =
-  | "not_started"
-  | "checking"
-  | "compatible"
-  | "incompatible";
-
-export interface LocalCompatibilityProbeSnapshot {
-  status: LocalCompatibilityProbeStatus;
-  checkedAt?: string;
-  diagnostic?: string;
 }
 
 export interface CachedLocalExecutionResolution {
@@ -57,12 +54,6 @@ export type LocalCompatibilityProbeRunner = (
   derived: DerivedLocalToolchain,
   signal?: AbortSignal,
 ) => Promise<void>;
-
-interface CachedProbeEntry extends LocalCompatibilityProbeSnapshot {
-  promise?: Promise<LocalCompatibilityProbeSnapshot>;
-}
-
-const probeCache = new Map<string, CachedProbeEntry>();
 
 /**
  * Derive the exact root/executable pair sent to the native executor. The root is
@@ -153,20 +144,19 @@ export function deriveLocalToolchain(
 export function resolveCachedLocalExecution(
   kind: LocallyExecutableKind,
   executablePath: string,
-  allowResourceOnlyLocalExecution = loadLocalExecutionPolicy()
-    .allowResourceOnlyLocalExecution,
 ): CachedLocalExecutionResolution {
   let strict: DerivedLocalToolchain;
   try {
     strict = deriveLocalToolchain(kind, executablePath, "strict");
   } catch (error) {
+    const probe = localProbeFailureSnapshot(error);
     return {
       ready: false,
-      probe: { status: "incompatible", diagnostic: normalizeError(error) },
-      diagnostic: normalizeError(error),
+      probe,
+      diagnostic: probe.diagnostic,
     };
   }
-  const cached = probeCache.get(strict.fingerprint);
+  const cached = localProbeRegistry.get(kind, strict);
   const probe: LocalCompatibilityProbeSnapshot = cached
     ? {
         status: cached.status,
@@ -178,16 +168,6 @@ export function resolveCachedLocalExecution(
   if (cached?.status === "compatible") {
     return { ready: true, derived: strict, probe };
   }
-  if (allowResourceOnlyLocalExecution) {
-    return {
-      ready: true,
-      derived: {
-        ...strict,
-        identity: { ...strict.identity, isolation: "resource-only" },
-      },
-      probe,
-    };
-  }
   const diagnostic = cached?.status === "incompatible"
     ? cached.diagnostic || "The strict native-executor compatibility probe failed."
     : "The strict native-executor compatibility probe has not completed.";
@@ -196,7 +176,8 @@ export function resolveCachedLocalExecution(
 
 /**
  * Starts at most one bounded native-executor probe for this executable image.
- * The returned promise is safe to ignore from a background discovery task.
+ * Snapshot failure is fulfilled; uncertain cleanup rejects and remains owned
+ * by the registry until shutdown/recovery can prove drain.
  */
 export function scheduleLocalCompatibilityProbe(
   kind: LocallyExecutableKind,
@@ -205,53 +186,19 @@ export function scheduleLocalCompatibilityProbe(
   signal?: AbortSignal,
 ): Promise<LocalCompatibilityProbeSnapshot> {
   if (signal?.aborted) {
-    return Promise.resolve({
-      status: "incompatible",
-      checkedAt: new Date().toISOString(),
-      diagnostic: "Compatibility probe aborted",
-    });
+    return Promise.resolve(localProbeFailureSnapshot(new Error("Compatibility probe aborted")));
   }
   let derived: DerivedLocalToolchain;
   try {
     derived = deriveLocalToolchain(kind, executablePath, "strict");
   } catch (error) {
-    return Promise.resolve({
-      status: "incompatible",
-      checkedAt: new Date().toISOString(),
-      diagnostic: normalizeError(error),
-    });
+    return Promise.resolve(localProbeFailureSnapshot(error));
   }
-  const cached = probeCache.get(derived.fingerprint);
-  if (cached?.promise) return cached.promise;
-  if (cached?.status === "compatible" || cached?.status === "incompatible") {
-    return Promise.resolve({
-      status: cached.status,
-      ...(cached.checkedAt ? { checkedAt: cached.checkedAt } : {}),
-      ...(cached.diagnostic ? { diagnostic: cached.diagnostic } : {}),
-    });
-  }
-
-  const promise = Promise.resolve()
-    .then(() => runner(kind, derived, signal))
-    .then<LocalCompatibilityProbeSnapshot>(() => ({
-      status: "compatible",
-      checkedAt: new Date().toISOString(),
-    }))
-    .catch((error): LocalCompatibilityProbeSnapshot => ({
-      status: "incompatible",
-      checkedAt: new Date().toISOString(),
-      diagnostic: boundedDiagnostic(normalizeError(error)),
-    }))
-    .then((result) => {
-      probeCache.set(derived.fingerprint, result);
-      return result;
-    });
-  probeCache.set(derived.fingerprint, { status: "checking", promise });
-  return promise;
+  return localProbeRegistry.schedule(kind, derived, runner, signal);
 }
 
 export function clearLocalCompatibilityProbeCache(): void {
-  probeCache.clear();
+  localProbeRegistry.clear();
 }
 
 export function localExecutionFields(
@@ -375,25 +322,19 @@ async function probeLocalCompiler(
   if (signal?.aborted) {
     throw new Error("Compatibility probe aborted");
   }
-  const workspace = await createExecutorWorkspace();
-  const runId = `local_compiler_probe_${crypto.randomUUID().replaceAll("-", "_")}`;
-  const onAbort = () => {
-    void executorClient.cancel(runId).catch(() => {});
-  };
-  if (signal) {
-    signal.addEventListener("abort", onAbort, { once: true });
-  }
-  try {
-    if (signal?.aborted) {
-      throw new Error("Compatibility probe aborted");
-    }
+  await runInLocalProbeWorkspace(signal, async (workspace) => {
+    const runId = `local_compiler_probe_${crypto.randomUUID().replaceAll("-", "_")}`;
     const sourceName = kind === "cpp" ? "probe.cpp" : "probe.c";
     const sourcePath = path.join(workspace.path, sourceName);
+    const outputName = process.platform === "win32" ? "probe.exe" : "probe.out";
     const outputPath = path.join(
       workspace.path,
-      process.platform === "win32" ? "probe.exe" : "probe.out",
+      outputName,
     );
-    fs.writeFileSync(sourcePath, "int main(void) { return 0; }\n", {
+    const source = kind === "cpp"
+      ? '#include <iostream>\nint main() { int value; if (!(std::cin >> value)) return 2; std::cout << value + 1 << "\\n"; return std::cout ? 0 : 3; }\n'
+      : '#include <stdio.h>\nint main(void) { int value; if (scanf("%d", &value) != 1) return 2; return printf("%d\\n", value + 1) < 0 ? 3 : 0; }\n';
+    fs.writeFileSync(sourcePath, source, {
       encoding: "utf8",
       flag: "wx",
     });
@@ -414,7 +355,7 @@ async function probeLocalCompiler(
     if (process.platform === "win32") {
       args.splice(support.argumentPrefix.length + 3, 0, "-static");
     }
-    const runPromise = runReservedExecutor(undefined, buildCompilerExecutorRunSpec({
+    const result = await runLocalProbePhase(buildCompilerExecutorRunSpec({
       runId,
       workspaceId: workspace.id,
       executableId: derived.executableId,
@@ -429,28 +370,40 @@ async function probeLocalCompiler(
       maxGeneratedFileBytes: 8 * 1024 * 1024,
       maxWorkspaceWriteBytes: 16 * 1024 * 1024,
       maxCreatedFiles: 64,
-    }));
-    const abortPromise = new Promise<never>((_, reject) => {
-      if (signal?.aborted) {
-        reject(new Error("Compatibility probe aborted"));
-        return;
-      }
-      signal?.addEventListener("abort", () => {
-        void executorClient.cancel(runId).catch(() => {});
-        reject(new Error("Compatibility probe aborted"));
-      }, { once: true });
-    });
-    const result = await Promise.race([runPromise, abortPromise]);
+    }), signal);
     assertSuccessfulProbe(result, "local compiler");
-    if (!fs.statSync(outputPath, { throwIfNoEntry: false })?.isFile()) {
-      throw new Error("local compiler probe did not produce an executable");
+    const output = fs.lstatSync(outputPath, { throwIfNoEntry: false });
+    if (!output?.isFile() || output.size === 0 || output.size > 8 * 1024 * 1024) {
+      throw new Error("local compiler probe did not produce a bounded nonempty regular executable");
     }
-  } finally {
-    if (signal) {
-      signal.removeEventListener("abort", onAbort);
-    }
-    workspace.dispose();
-  }
+    fs.writeFileSync(path.join(workspace.path, "probe.input"), "41\n", { flag: "wx" });
+    const executableId = workspace.relative(outputName);
+    const submission = await runLocalProbePhase(buildSubmissionExecutorRunSpec({
+      runId: `${runId}_submission`,
+      workspaceId: workspace.id,
+      executableId,
+      args: [],
+      stdinFile: "probe.input",
+      environment: {},
+      timeLimitMs: LOCAL_PROGRAM_PROBE_TIMEOUT_MS,
+      memoryBytes: 256 * 1024 * 1024,
+    }), signal);
+    assertSuccessfulProbe(submission, "local compiler submission runtime");
+    const checker = await runLocalProbePhase(buildCheckerExecutorRunSpec({
+      runId: `${runId}_checker`,
+      workspaceId: workspace.id,
+      executableId,
+      args: [],
+      stdinFile: "probe.input",
+      environment: {},
+      runtimeBacked: false,
+      timeoutMs: LOCAL_PROGRAM_PROBE_TIMEOUT_MS,
+      memoryBytes: 256 * 1024 * 1024,
+      stdoutFile: "checker-probe.stdout",
+      stderrFile: "checker-probe.stderr",
+    }), signal);
+    assertSuccessfulProbe(checker, "local compiler checker runtime");
+  });
 }
 
 async function probeLocalPython(
@@ -460,85 +413,69 @@ async function probeLocalPython(
   if (signal?.aborted) {
     throw new Error("Compatibility probe aborted");
   }
-  const workspace = await createExecutorWorkspace();
-  const environment = buildLocalPythonEnvironment(derived);
-  const probeProgram = [
-    "import encodings,sys",
-    "assert sys.flags.isolated == 1",
-    "assert sys.dont_write_bytecode",
-  ].join(";");
-  const submissionRunId =
-    `local_python_probe_${crypto.randomUUID().replaceAll("-", "_")}`;
-  const checkerRunId =
-    `local_python_checker_probe_${crypto.randomUUID().replaceAll("-", "_")}`;
-  const onAbort = () => {
-    void executorClient.cancel(submissionRunId).catch(() => {});
-    void executorClient.cancel(checkerRunId).catch(() => {});
-  };
-  if (signal) {
-    signal.addEventListener("abort", onAbort, { once: true });
-  }
-  try {
-    if (signal?.aborted) {
-      throw new Error("Compatibility probe aborted");
-    }
-    const abortPromise = new Promise<never>((_, reject) => {
-      if (signal?.aborted) {
-        reject(new Error("Compatibility probe aborted"));
-        return;
-      }
-      signal?.addEventListener("abort", () => {
-        void executorClient.cancel(submissionRunId).catch(() => {});
-        void executorClient.cancel(checkerRunId).catch(() => {});
-        reject(new Error("Compatibility probe aborted"));
-      }, { once: true });
-    });
-    const submission = await Promise.race([
-      runReservedExecutor(
-        undefined,
-        buildSubmissionExecutorRunSpec({
-          runId: submissionRunId,
-          workspaceId: workspace.id,
-          executableId: derived.executableId,
-          args: ["-I", "-B", "-c", probeProgram],
-          environment,
-          localToolchain: derived.identity,
-          timeLimitMs: LOCAL_PYTHON_PROBE_TIMEOUT_MS,
-          memoryBytes: 256 * 1024 * 1024,
-        }),
-      ),
-      abortPromise,
-    ]);
+  await runInLocalProbeWorkspace(signal, async (workspace) => {
+    const environment = buildLocalPythonEnvironment(derived);
+    const probeProgram = [
+      "import encodings,sys",
+      "assert sys.flags.isolated == 1",
+      "assert sys.dont_write_bytecode",
+    ].join(";");
+    const submissionRunId =
+      `local_python_probe_${crypto.randomUUID().replaceAll("-", "_")}`;
+    const checkerRunId =
+      `local_python_checker_probe_${crypto.randomUUID().replaceAll("-", "_")}`;
+    const submission = await runLocalProbePhase(buildSubmissionExecutorRunSpec({
+      runId: submissionRunId,
+      workspaceId: workspace.id,
+      executableId: derived.executableId,
+      args: ["-I", "-B", "-c", probeProgram],
+      environment,
+      localToolchain: derived.identity,
+      timeLimitMs: LOCAL_PYTHON_PROBE_TIMEOUT_MS,
+      memoryBytes: 256 * 1024 * 1024,
+    }), signal);
     assertSuccessfulProbe(submission, "local Python submission runtime");
 
-    const checker = await Promise.race([
-      runReservedExecutor(
-        undefined,
-        buildCheckerExecutorRunSpec({
-          runId: checkerRunId,
-          workspaceId: workspace.id,
-          executableId: derived.executableId,
-          args: ["-I", "-B", "-c", probeProgram],
-          environment,
-          localToolchain: derived.identity,
-          runtimeBacked: true,
-          timeoutMs: LOCAL_PYTHON_PROBE_TIMEOUT_MS,
-          memoryBytes: 256 * 1024 * 1024,
-          stdoutFile: "checker-probe.stdout",
-          stderrFile: "checker-probe.stderr",
-        }),
-      ),
-      abortPromise,
-    ]);
+    const checker = await runLocalProbePhase(buildCheckerExecutorRunSpec({
+      runId: checkerRunId,
+      workspaceId: workspace.id,
+      executableId: derived.executableId,
+      args: ["-I", "-B", "-c", probeProgram],
+      environment,
+      localToolchain: derived.identity,
+      runtimeBacked: true,
+      timeoutMs: LOCAL_PYTHON_PROBE_TIMEOUT_MS,
+      memoryBytes: 256 * 1024 * 1024,
+      stdoutFile: "checker-probe.stdout",
+      stderrFile: "checker-probe.stderr",
+    }), signal);
     assertSuccessfulProbe(checker, "local Python checker runtime");
-  } finally {
-    if (signal) {
-      signal.removeEventListener("abort", onAbort);
-    }
-    workspace.dispose();
-  }
+  });
 }
 
+async function runInLocalProbeWorkspace(
+  signal: AbortSignal | undefined,
+  work: (workspace: ExecutorWorkspace) => Promise<void>,
+): Promise<void> {
+  const workspace = await createExecutorWorkspace();
+  let retained = false;
+  try {
+    if (signal?.aborted) throw new Error("Compatibility probe aborted");
+    await work(workspace);
+  } catch (error: unknown) {
+    retained = error instanceof LocalProbeCleanupUnconfirmedError;
+    throw error;
+  } finally {
+    if (!retained) {
+      try {
+        workspace.dispose();
+      } catch (error: unknown) {
+        const diagnostic = localProbeFailureSnapshot(error).diagnostic;
+        throw new LocalProbeCleanupUnconfirmedError(`workspace ${workspace.id}: ${diagnostic}`);
+      }
+    }
+  }
+}
 export function buildLocalPythonEnvironment(
   derived: Pick<DerivedLocalToolchain, "executablePath" | "identity">,
 ): Record<string, string> {
@@ -649,12 +586,4 @@ function assertSuccessfulProbe(result: ExecutorRunResult, label: string): void {
       ].filter(Boolean).join(": "),
     );
   }
-}
-
-function normalizeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function boundedDiagnostic(value: string): string {
-  return value.length <= 320 ? value : `${value.slice(0, 317)}...`;
 }

@@ -32,6 +32,18 @@ void testI18n.use(initReactI18next).init({
 describe("Scoreboard rendering stability", () => {
   const dummyFn = () => {};
 
+  it("renders JE for both compiler setup and runtime judge errors instead of a numeric grade", () => {
+    const result: BatchJudgeResult = { success: true, contestants: [{ contestantName: "Audit", problems: ["Setup", "Runtime"].map((problemName, index) => ({
+      problemName, language: "cpp", compileStatus: index === 0 ? "JE" : "OK", testCases: [],
+      summary: { total: 0, passed: 0, score: 0, maxScore: 1, status: "JE" },
+    })) }] };
+    const html = renderToStaticMarkup(<I18nextProvider i18n={testI18n}><Scoreboard allContestants={["Audit"]} contestants={["Audit"]}
+      contestantSort="default" problems={["Setup", "Runtime"]} result={result} selectedContestants={{ Audit: true }}
+      selectedProblems={{ Setup: true, Runtime: true }} interactionLocked={false} setContestantSort={dummyFn}
+      setSelectedContestants={dummyFn} setSelectedProblems={dummyFn} onOpenActions={dummyFn} onOpenDetails={dummyFn} /></I18nextProvider>);
+    assert.equal((html.match(/>JE<\/span>/g) || []).length, 3, "both cells and the incomplete total");
+  });
+
   it("renders empty state when no contestants and no problems are loaded", () => {
     const html = renderToStaticMarkup(
       <I18nextProvider i18n={testI18n}>

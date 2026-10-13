@@ -114,6 +114,7 @@ export function createScoreWorkbookLabels(t: TFunction): ScoreWorkbookLabels {
     seconds: t("scoringLog.seconds"),
     notFound: t("export.notFound"),
     compilationError: t("export.compilationError"),
+    judgeError: t("export.judgeError"),
     compilationSuccess: t("export.compilationSuccess"),
   };
 }

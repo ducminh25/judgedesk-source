@@ -176,7 +176,7 @@ test("GET exposes registry state without waiting for the remote package catalog"
   assert.equal(payload.mutationsBlocked, false);
   assert.equal(
     payload.executionPolicy?.allowResourceOnlyLocalExecution,
-    true,
+    false,
   );
   assert.equal(payload.executionPolicy?.status, "default");
 });
@@ -193,7 +193,7 @@ test("POST /api/toolchains/prewarm triggers background pre-warm without blocking
   assert.equal(payload.success, true);
 });
 
-test("resource-only local execution requires an exact explicit policy mutation", async (t) => {
+test("execution policy rejects resource-only requests without any disk mutation", async (t) => {
   useTemporaryAppData(t);
   const handler = captureToolchainHandlers().get(
     "PUT /api/toolchains/execution-policy",
@@ -216,8 +216,8 @@ test("resource-only local execution requires an exact explicit policy mutation",
     { body: { allowResourceOnlyLocalExecution: true }, params: {} },
     enabled,
   );
-  assert.equal(enabled.statusCode, 200);
-  assert.equal(loadLocalExecutionPolicy().allowResourceOnlyLocalExecution, true);
+  assert.equal(enabled.statusCode, 400);
+  assert.equal(fs.existsSync(getLocalExecutionPolicyFilePath()), false);
 
   const disabled = createResponse();
   await handler(
@@ -226,6 +226,11 @@ test("resource-only local execution requires an exact explicit policy mutation",
   );
   assert.equal(disabled.statusCode, 200);
   assert.equal(loadLocalExecutionPolicy().allowResourceOnlyLocalExecution, false);
+  const before = fs.readFileSync(getLocalExecutionPolicyFilePath());
+  const rejected = createResponse();
+  await handler({ body: { allowResourceOnlyLocalExecution: true }, params: {} }, rejected);
+  assert.equal(rejected.statusCode, 400);
+  assert.deepEqual(fs.readFileSync(getLocalExecutionPolicyFilePath()), before);
 });
 
 test("deferred toolchain packages cannot be installed through the release API", async (t) => {

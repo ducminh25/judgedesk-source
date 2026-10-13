@@ -147,8 +147,8 @@ fn write_tree_guard(path: &Path, generation: &str) {
 }
 
 pub const FROZEN_WINDOWS_EXECUTOR_SHA256: &str =
-    "EAB2EDDA46C732585E38AAA08E1E0DA2248818F803376E032CA63EB7D8918622";
-pub const FROZEN_WINDOWS_EXECUTOR_SIZE_BYTES: usize = 950784;
+    "9E7359984262F224E0864BCDE0F66CE9B655F3870E077364C9A733D55129D41A";
+pub const FROZEN_WINDOWS_EXECUTOR_SIZE_BYTES: usize = 952320;
 
 fn target_triple_for_packaged_executor() -> &'static str {
     if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
@@ -355,6 +355,16 @@ fn packaged_executor_resolution_rejects_debug_fallback_and_verifies_frozen_ident
             file_bytes.len(),
             FROZEN_WINDOWS_EXECUTOR_SIZE_BYTES,
             "Packaged executor byte size must match frozen candidate identity"
+        );
+
+        // Changing bytes without changing size must still fail the fixed identity.
+        let mut tampered = file_bytes.clone();
+        tampered[0] ^= 1;
+        assert_ne!(sha256_digest(&tampered), FROZEN_WINDOWS_EXECUTOR_SHA256);
+        assert_eq!(tampered.len(), FROZEN_WINDOWS_EXECUTOR_SIZE_BYTES);
+        assert_ne!(
+            sha256_digest(&file_bytes[..file_bytes.len() - 1]),
+            FROZEN_WINDOWS_EXECUTOR_SHA256
         );
 
         // 3. Stale debug binary distinction:

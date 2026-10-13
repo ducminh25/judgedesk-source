@@ -65,7 +65,8 @@ test("an unmanaged Python runtime fails closed instead of running on the host", 
       ready: true,
     },
   });
-  assert.equal(compiled.compileStatus, "CE");
+  assert.equal(compiled.compileStatus, "JE");
+  assert.equal(compiled.failureKind, "infrastructure");
   assert.equal(compiled.compileError, "TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
 });
 

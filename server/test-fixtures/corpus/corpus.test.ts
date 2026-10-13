@@ -6,6 +6,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import Ajv from "ajv";
+import type { CompileStatus } from "../../types.js";
 
 import {
   listRegisteredLanguageProfiles,
@@ -364,7 +365,7 @@ describe("WP0.3 Corpus Manifest Validation", () => {
         if (pythonToolchain.ready) toolchainsMap.python = pythonToolchain;
 
         // 4. Compilation through production compiler
-        let compileStatus: "OK" | "CE" | "SKIPPED" = "OK";
+        let compileStatus: CompileStatus = "OK";
         let compileError = "";
         let executablePath = "";
         let program: PreparedSubmissionProgram | undefined = undefined;
@@ -558,7 +559,14 @@ describe("WP0.3 Corpus Manifest Validation", () => {
         );
         if (testRuns.length > 0) assert.ok(summary.scoreExact, `Summary exact score is missing on ${c.id}`);
         const observedSummaryScoreRat = parseRational(summary.scoreExact ?? summary.score);
-        assert.deepStrictEqual(observedSummaryScoreRat, testcaseTotalRat, `Summary exact score differs from awarded testcase total on ${c.id}`);
+        if (summary.status === "JE") {
+          // This corpus already asserted OK/CE compilation above; runtime JE
+          // must therefore be backed by an actual testcase infrastructure error.
+          assert.ok(testRuns.some(run => run.status === "JE"), `Judge-error summary has no testcase error provenance on ${c.id}`);
+          assert.deepStrictEqual(observedSummaryScoreRat, createRational(0), `Judge-error summary must not award a problem grade on ${c.id}`);
+        } else {
+          assert.deepStrictEqual(observedSummaryScoreRat, testcaseTotalRat, `Summary exact score differs from awarded testcase total on ${c.id}`);
+        }
         assert.strictEqual(
           String(observedSummaryScoreRat.n),
           c.expectedScore.numerator,

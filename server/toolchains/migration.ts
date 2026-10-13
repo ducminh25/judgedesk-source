@@ -345,48 +345,23 @@ export function migrateLegacyBundledToolchains(
 }
 
 /**
- * Automatically migrates any legacy local toolchain execution policy.
- * In older JudgeDesk releases, allowResourceOnlyLocalExecution defaulted to false (or was left false
- * if the user never toggled the Advanced panel). Now that local execution is streamlined
- * and the Advanced panel is removed, local compilers require resource-only execution (Windows Job Object)
- * so that dynamic runtime DLLs are not blocked by the Windows AppContainer.
+ * Initialize missing policies without increasing local execution privileges.
+ * Existing documents are preserved so the loader can explain disabled legacy
+ * settings and recovery errors instead of silently losing that evidence.
  */
 export function migrateLegacyExecutionPolicy(options?: {
   policyFilePath?: string;
 }): boolean {
   try {
     const policyPath = options?.policyFilePath ?? getLocalExecutionPolicyFilePath();
-    if (!fs.existsSync(policyPath)) {
-      if (options?.policyFilePath) {
-        fs.mkdirSync(path.dirname(policyPath), { recursive: true });
-        fs.writeFileSync(
-          policyPath,
-          `${JSON.stringify({ schemaVersion: 1, allowResourceOnlyLocalExecution: true }, null, 2)}\n`,
-          "utf8",
-        );
-      } else {
-        saveLocalExecutionPolicy(true);
-      }
-      return true;
+    try {
+      fs.lstatSync(policyPath);
+      return false;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") return false;
     }
-    const raw = fs.readFileSync(policyPath, "utf8");
-    const parsed = JSON.parse(raw) as unknown;
-    if (
-      parsed
-      && typeof parsed === "object"
-      && (parsed as Record<string, unknown>).allowResourceOnlyLocalExecution === false
-    ) {
-      if (options?.policyFilePath) {
-        fs.writeFileSync(
-          policyPath,
-          `${JSON.stringify({ schemaVersion: 1, allowResourceOnlyLocalExecution: true }, null, 2)}\n`,
-          "utf8",
-        );
-      } else {
-        saveLocalExecutionPolicy(true);
-      }
-      return true;
-    }
+    saveLocalExecutionPolicy(false, policyPath);
+    return true;
   } catch {
     // Non-fatal if policy cannot be read or migrated
   }

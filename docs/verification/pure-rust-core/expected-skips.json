@@ -131,7 +131,7 @@
       "policyId": "python-unmanaged-runtime-not-installed",
       "observedIdentity": "No supported unmanaged Python runtime is installed on this test host.",
       "sourcePath": "server/judge/python-submission.test.ts",
-      "sourceFingerprint": "7885127ff555daf21463d8a63e570d2a8ca7408fb201b3fa7d618f913c90ff4e",
+      "sourceFingerprint": "591020599ca288812056125a88bb60dd6d7a91b6bba42673af25143b54ec5cc0",
       "runner": "node:test",
       "suite": "server/judge/python-submission.test.ts",
       "targets": [
@@ -152,7 +152,7 @@
       "policyId": "python-unmanaged-posix-system-python",
       "observedIdentity": "diagnoses unmanaged system Python 3 on POSIX",
       "sourcePath": "server/judge/python-submission.test.ts",
-      "sourceFingerprint": "7885127ff555daf21463d8a63e570d2a8ca7408fb201b3fa7d618f913c90ff4e",
+      "sourceFingerprint": "591020599ca288812056125a88bb60dd6d7a91b6bba42673af25143b54ec5cc0",
       "runner": "node:test",
       "suite": "server/judge/python-submission.test.ts",
       "targets": [
@@ -173,7 +173,7 @@
       "policyId": "python-unmanaged-macos-homebrew",
       "observedIdentity": "diagnoses unmanaged Homebrew Python 3 on macOS",
       "sourcePath": "server/judge/python-submission.test.ts",
-      "sourceFingerprint": "7885127ff555daf21463d8a63e570d2a8ca7408fb201b3fa7d618f913c90ff4e",
+      "sourceFingerprint": "591020599ca288812056125a88bb60dd6d7a91b6bba42673af25143b54ec5cc0",
       "runner": "node:test",
       "suite": "server/judge/python-submission.test.ts",
       "targets": [
@@ -278,7 +278,7 @@
       "policyId": "toolchain-routes-unsupported-cpp-mock",
       "observedIdentity": "handles unsupported profile gracefully",
       "sourcePath": "server/routes/toolchain-routes.test.ts",
-      "sourceFingerprint": "5640b0807e38266c745957fe36e266ffa949e95a361578cf9808c7af3a1e9f17",
+      "sourceFingerprint": "afee509614bbca1d3430c5e163f58aacd3b0246dde353cf15ec312216ce0312c",
       "runner": "node:test",
       "suite": "server/routes/toolchain-routes.test.ts",
       "targets": [
@@ -299,7 +299,7 @@
       "policyId": "toolchain-routes-win32-local-certification",
       "observedIdentity": "Windows local certification is intentionally host-specific",
       "sourcePath": "server/routes/toolchain-routes.test.ts",
-      "sourceFingerprint": "5640b0807e38266c745957fe36e266ffa949e95a361578cf9808c7af3a1e9f17",
+      "sourceFingerprint": "afee509614bbca1d3430c5e163f58aacd3b0246dde353cf15ec312216ce0312c",
       "runner": "node:test",
       "suite": "server/routes/toolchain-routes.test.ts",
       "targets": [

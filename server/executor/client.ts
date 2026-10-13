@@ -18,6 +18,7 @@ import type {
   ExecutorRunResult,
   ExecutorRunSpec,
 } from "./protocol.js";
+import { isExecutorRunReason } from "./protocol.js";
 import { logJudgeDiagnostic, measureDiagnosticPhase } from "../diagnostics.js";
 
 const MAX_FRAME_BYTES = 1024 * 1024;
@@ -122,8 +123,11 @@ function isExecutorResponse(value: unknown): value is ExecutorResponse {
     case "health":
       return typeof response.health === "object" && response.health !== null && !Array.isArray(response.health);
     case "run_result":
+      return hasKnownRunReason(response.result);
     case "interactive_run_result":
-      return typeof response.result === "object" && response.result !== null && !Array.isArray(response.result);
+      if (typeof response.result !== "object" || response.result === null || Array.isArray(response.result)) return false;
+      return hasKnownRunReason((response.result as Record<string, unknown>).submissionResult)
+        && hasKnownRunReason((response.result as Record<string, unknown>).interactorResult);
     case "cancel_result":
       return typeof response.runId === "string" && typeof response.cancelled === "boolean";
     case "shutdown_result":
@@ -133,6 +137,11 @@ function isExecutorResponse(value: unknown): value is ExecutorResponse {
     default:
       return false;
   }
+}
+
+function hasKnownRunReason(value: unknown): boolean {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    && isExecutorRunReason((value as Record<string, unknown>).reason);
 }
 
 export class ExecutorClient {

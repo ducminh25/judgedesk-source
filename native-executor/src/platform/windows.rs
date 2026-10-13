@@ -1,3 +1,5 @@
+mod launch;
+
 use super::{failure, reported_peak_memory_bytes, root_display, ActiveRuns, Cancellation};
 use crate::protocol::{
     ExecutorHealth, ExecutorStartupTimings, InteractiveRunResult, InteractiveRunSpec,
@@ -5,6 +7,7 @@ use crate::protocol::{
 };
 use crate::request_validation::ValidatedRun;
 use crate::workspace::{file_size, initialize_root, inspect_workspace};
+use launch::create_process;
 use std::collections::{BTreeMap, HashSet};
 use std::ffi::c_void;
 use std::fs;
@@ -60,13 +63,12 @@ use windows_sys::Win32::System::SystemServices::{
     SE_GROUP_ENABLED,
 };
 use windows_sys::Win32::System::Threading::{
-    CreateProcessW, DeleteProcThreadAttributeList, GetCurrentProcess, GetExitCodeProcess,
-    GetProcessAffinityMask, GetProcessTimes, InitializeProcThreadAttributeList, OpenProcessToken,
-    ResumeThread, UpdateProcThreadAttribute, WaitForSingleObject, BELOW_NORMAL_PRIORITY_CLASS,
-    CREATE_NO_WINDOW, CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT,
-    PROCESS_INFORMATION, PROC_THREAD_ATTRIBUTE_ALL_APPLICATION_PACKAGES_POLICY,
-    PROC_THREAD_ATTRIBUTE_HANDLE_LIST, PROC_THREAD_ATTRIBUTE_JOB_LIST,
-    PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES, STARTF_USESTDHANDLES, STARTUPINFOEXW,
+    DeleteProcThreadAttributeList, GetCurrentProcess, GetExitCodeProcess, GetProcessAffinityMask,
+    GetProcessTimes, InitializeProcThreadAttributeList, OpenProcessToken, ResumeThread,
+    UpdateProcThreadAttribute, WaitForSingleObject, PROCESS_INFORMATION,
+    PROC_THREAD_ATTRIBUTE_ALL_APPLICATION_PACKAGES_POLICY, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+    PROC_THREAD_ATTRIBUTE_JOB_LIST, PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
+    STARTF_USESTDHANDLES, STARTUPINFOEXW,
 };
 use windows_sys::Win32::System::WindowsProgramming::PROCESS_CREATION_ALL_APPLICATION_PACKAGES_OPT_OUT;
 use windows_sys::Win32::System::IO::{CreateIoCompletionPort, GetQueuedCompletionStatus};
@@ -437,62 +439,17 @@ impl WindowsPlatform {
         let mut command_line = wide_string(&build_command_line(&launch_executable, &spec.args));
         let current_directory = wide(launch_workspace.as_os_str());
         let mut environment = environment_block(&spec.environment, &launch_workspace);
-        let mut created = unsafe {
-            CreateProcessW(
-                application.as_ptr(),
-                command_line.as_mut_ptr(),
-                null(),
-                null(),
-                1,
-                CREATE_SUSPENDED
-                    | CREATE_UNICODE_ENVIRONMENT
-                    | CREATE_NO_WINDOW
-                    | BELOW_NORMAL_PRIORITY_CLASS
-                    | EXTENDED_STARTUPINFO_PRESENT,
-                environment.as_mut_ptr() as *const c_void,
-                current_directory.as_ptr(),
-                &startup.StartupInfo,
+        // SAFETY: launch buffers and all startup attributes remain live until creation returns.
+        let created = unsafe {
+            create_process(
+                &application,
+                &mut command_line,
+                &mut environment,
+                &current_directory,
+                &startup,
                 &mut process,
             )
         };
-        if created == 0 {
-            let error_code = unsafe { GetLastError() };
-            if error_code == 623 {
-                // Legacy 32-bit (x86 WOW64) binaries (Themis GCC compilers, 32-bit submissions, contest checkers)
-                // without ASLR/relocations fail AppContainer image mapping with ERROR_ILLEGAL_DLL_RELOCATION (623).
-                // Fall back to Job Object resource-only isolation so these executables can still execute safely.
-                let mut fallback_attributes = AttributeList::new(2)?;
-                fallback_attributes.update(
-                    PROC_THREAD_ATTRIBUTE_HANDLE_LIST as usize,
-                    handles.as_mut_ptr() as *mut c_void,
-                    size_of_val(&handles),
-                )?;
-                fallback_attributes.update(
-                    PROC_THREAD_ATTRIBUTE_JOB_LIST as usize,
-                    job_handles.as_mut_ptr().cast(),
-                    size_of_val(&job_handles),
-                )?;
-                startup.lpAttributeList = fallback_attributes.as_ptr();
-                created = unsafe {
-                    CreateProcessW(
-                        application.as_ptr(),
-                        command_line.as_mut_ptr(),
-                        null(),
-                        null(),
-                        1,
-                        CREATE_SUSPENDED
-                            | CREATE_UNICODE_ENVIRONMENT
-                            | CREATE_NO_WINDOW
-                            | BELOW_NORMAL_PRIORITY_CLASS
-                            | EXTENDED_STARTUPINFO_PRESENT,
-                        environment.as_mut_ptr() as *const c_void,
-                        current_directory.as_ptr(),
-                        &startup.StartupInfo,
-                        &mut process,
-                    )
-                };
-            }
-        }
         if created == 0 {
             let error_code = unsafe { GetLastError() };
             let error = io::Error::from_raw_os_error(error_code as i32);
@@ -508,7 +465,7 @@ impl WindowsPlatform {
                     .map(|value| (value.PeakJobMemoryUsed as u64).min(spec.limits.memory_bytes));
                 return Ok(result);
             }
-            return Err(format!("launch AppContainer process: {error}"));
+            return Err(launch::failure_diagnostic(error_code));
         }
         let process_handle = OwnedHandle(process.hProcess);
         let thread_handle = OwnedHandle(process.hThread);
@@ -834,7 +791,7 @@ impl WindowsPlatform {
             Err(SpawnError::Failed(msg)) => return Err(format!("spawn submission: {msg}")),
         };
 
-        let (inter_process, inter_thread) = match spawn_child_process(
+        let inter_spawn = spawn_child_process(
             &spec.interactor,
             &inter_paths,
             &inter_workspace_sid,
@@ -845,7 +802,13 @@ impl WindowsPlatform {
                 stdout: inter_stdout_w.0,
                 stderr: inter_stderr.0,
             },
-        ) {
+        );
+        // The first child is still suspended and not registered in ActiveRuns.
+        // Do not release this accepted run until its exact child and Job are drained.
+        if inter_spawn.is_err() {
+            launch::drain_suspended_child(job_sub.handle(), sub_process.0);
+        }
+        let (inter_process, inter_thread) = match inter_spawn {
             Ok(handles) => handles,
             Err(SpawnError::ProcessCreationMemory(err)) => {
                 return Err(format!("interactor memory error: {err}"))
@@ -1741,72 +1704,24 @@ fn spawn_child_process(
     let mut command_line = wide_string(&build_command_line(&launch_executable, &spec.args));
     let current_directory = wide(launch_workspace.as_os_str());
     let mut environment = environment_block(&spec.environment, &launch_workspace);
-    let mut created = unsafe {
-        CreateProcessW(
-            application.as_ptr(),
-            command_line.as_mut_ptr(),
-            null(),
-            null(),
-            1,
-            CREATE_SUSPENDED
-                | CREATE_UNICODE_ENVIRONMENT
-                | CREATE_NO_WINDOW
-                | BELOW_NORMAL_PRIORITY_CLASS
-                | EXTENDED_STARTUPINFO_PRESENT,
-            environment.as_mut_ptr() as *const c_void,
-            current_directory.as_ptr(),
-            &startup.StartupInfo,
+    // SAFETY: launch buffers and all startup attributes remain live until creation returns.
+    let created = unsafe {
+        create_process(
+            &application,
+            &mut command_line,
+            &mut environment,
+            &current_directory,
+            &startup,
             &mut process,
         )
     };
-    if created == 0 {
-        let error_code = unsafe { GetLastError() };
-        if error_code == 623 {
-            let mut fallback_attributes = AttributeList::new(2).map_err(SpawnError::Failed)?;
-            fallback_attributes
-                .update(
-                    PROC_THREAD_ATTRIBUTE_HANDLE_LIST as usize,
-                    handles.as_mut_ptr() as *mut c_void,
-                    size_of_val(&handles),
-                )
-                .map_err(SpawnError::Failed)?;
-            fallback_attributes
-                .update(
-                    PROC_THREAD_ATTRIBUTE_JOB_LIST as usize,
-                    job_handles.as_mut_ptr().cast(),
-                    size_of_val(&job_handles),
-                )
-                .map_err(SpawnError::Failed)?;
-            startup.lpAttributeList = fallback_attributes.as_ptr();
-            created = unsafe {
-                CreateProcessW(
-                    application.as_ptr(),
-                    command_line.as_mut_ptr(),
-                    null(),
-                    null(),
-                    1,
-                    CREATE_SUSPENDED
-                        | CREATE_UNICODE_ENVIRONMENT
-                        | CREATE_NO_WINDOW
-                        | BELOW_NORMAL_PRIORITY_CLASS
-                        | EXTENDED_STARTUPINFO_PRESENT,
-                    environment.as_mut_ptr() as *const c_void,
-                    current_directory.as_ptr(),
-                    &startup.StartupInfo,
-                    &mut process,
-                )
-            };
-        }
-    }
     if created == 0 {
         let error_code = unsafe { GetLastError() };
         let error = io::Error::from_raw_os_error(error_code as i32);
         if is_process_creation_memory_error(error_code) {
             return Err(SpawnError::ProcessCreationMemory(error));
         }
-        return Err(SpawnError::Failed(format!(
-            "launch AppContainer process: {error}"
-        )));
+        return Err(SpawnError::Failed(launch::failure_diagnostic(error_code)));
     }
     Ok((OwnedHandle(process.hProcess), OwnedHandle(process.hThread)))
 }
@@ -2273,6 +2188,8 @@ unsafe fn wide_ptr_to_string(pointer: *const u16) -> String {
 
 #[cfg(test)]
 mod tests {
+    mod launch_failure;
+
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
 

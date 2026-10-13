@@ -1143,10 +1143,10 @@ addCase({
   ioMode: "stdio",
   fixtureRoot: "static/testlib_matrix",
   expectedCompileOutcome: "SUCCESS",
-  expectedProblemVerdict: "PARTIAL",
+  expectedProblemVerdict: "JE",
   expectedMaxScore: { numerator: "5", denominator: "1", display: 5 },
-  expectedScore: { numerator: "3", denominator: "2", display: 1.5 },
-  provenance: "Systematic testlib exit code matrix: 0 (AC), 1 (WA), 2 (PE), 7 (PARTIAL), 3 (JE).",
+  expectedScore: { numerator: "0", denominator: "1", display: 0 },
+  provenance: "Systematic testlib exit code matrix: 0 (AC), 1 (WA), 2 (PE), 7 (PARTIAL), 3 (JE). Checker JE invalidates the aggregate score while preserving all testcase evidence.",
   tests: [
     { name: "01", verdict: "AC", checkerMessage: "ok", score: { numerator: "1", denominator: "1", display: 1 } },
     { name: "02", verdict: "WA", checkerMessage: "wrong answer", score: { numerator: "0", denominator: "1", display: 0 } },

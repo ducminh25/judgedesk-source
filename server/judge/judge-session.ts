@@ -17,6 +17,7 @@ import {
   resolveInteractor,
   type CompiledChecker,
   type CompiledInteractor,
+  type CompilationResult,
 } from "./compiler.js";
 import type { JudgeEventWriter } from "./judge-event-writer.js";
 import { calculateProblemSummary } from "./scoring.js";
@@ -248,7 +249,8 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
          continue;
       }
 
-      sendEvent("progress", {
+      const unreadableTest = plannedProblem.tests.find(test => !test.inputIsText);
+      if (!unreadableTest) sendEvent("progress", {
         contestant, problem: problemName,
         action: "progress.compilingSubmission",
         percent: totalProblemsCount ? (completedProblemsCount / totalProblemsCount) * 100 : 0
@@ -261,7 +263,12 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
       const outputFilename = useStdOut ? "stdout" : probConf.outputFile;
 
       const subPath = submission.filePath;
-      const compilation = await compileSubmission({
+      // Reject a known-invalid judge test plan before touching student source.
+      // JE here means setup never reached compilation, not a failed compiler.
+      const compilation: CompilationResult = unreadableTest ? {
+        executablePath: "", compileStatus: "JE", compileTime: 0, failureKind: "infrastructure",
+        compileError: `Unreadable input file: ${unreadableTest.files.inputFileName}. Only text files are allowed.`,
+      } : await compileSubmission({
         language,
         contestantName: contestant,
         problemName,
@@ -276,8 +283,8 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
       });
       const executablePath = compilation.executablePath;
       const compileTime = compilation.compileTime;
-      let compileStatus = compilation.compileStatus;
-      let compileError = compilation.compileError;
+      const compileStatus = compilation.compileStatus;
+      const compileError = compilation.compileError;
 
       const tcRuns: TestCaseRun[] = [];
       const tcDirEntries = plannedProblem.tests.map(testCase => testCase.files.name);
@@ -342,12 +349,6 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
            const testFiles = plannedTestCase.files;
            const inpPath = testFiles.inputPath;
            const outPath = testFiles.outputPath;
-
-           if (!plannedTestCase.inputIsText) {
-             compileStatus = "CE";
-             compileError = `Unreadable input file: ${testFiles.inputFileName}. Only text files are allowed.`;
-             break;
-           }
 
            const tcRes = await runTestCase({
              contestant,

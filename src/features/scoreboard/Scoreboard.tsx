@@ -20,6 +20,7 @@ import {
   selectedTotalScore,
 } from "./scoreboard-model";
 import { formatScore } from "../../../shared/rational";
+import { hasJudgeError } from "../judging/verdict.js";
 
 export interface ScoreboardActionTarget {
   type: "problem" | "contestant" | "result";
@@ -458,6 +459,8 @@ const ScoreboardRow = memo(function ScoreboardRow({
     () => selectedTotalScore(contestantResult, selectedProblemNames),
     [contestantResult, selectedProblemNames],
   );
+  const incompleteTotal = contestantResult?.problems.some(problem =>
+    selectedProblemNames.has(problem.problemName.toLowerCase()) && hasJudgeError(problem)) ?? false;
   const contestantTarget = {
     type: "contestant" as const,
     name: contestantName,
@@ -512,6 +515,9 @@ const ScoreboardRow = memo(function ScoreboardRow({
           if (problem.compileStatus === "SKIPPED" && problem.compileError === "not_found") {
             displayText = t("scoreboard.notFound");
             colorClass = "text-text-muted bg-surface-hover";
+          } else if (hasJudgeError(problem)) {
+            displayText = "JE";
+            colorClass = "bg-amber-100 font-bold text-amber-700 dark:bg-amber-950/25 dark:text-amber-400";
           } else if (problem.compileStatus === "CE") {
             displayText = "CE";
             colorClass = "bg-rose-100 font-bold text-rose-700 dark:bg-rose-950/30 dark:text-rose-400";
@@ -542,7 +548,7 @@ const ScoreboardRow = memo(function ScoreboardRow({
             }}
             className={`border-b border-l border-surface-border px-2 text-center align-middle transition-[filter] hover:brightness-95 dark:hover:brightness-110 ${problem ? "cursor-pointer" : "cursor-default"} ${colorClass} ${isCellFocused ? "ring-2 ring-indigo-500 ring-inset" : ""}`}
             style={{ height: rowHeight }}
-            title={problem ? t("scoreboard.resultStatus", {
+            title={problem ? hasJudgeError(problem) ? t("judgingDetails.judgeErrorHelp") : t("scoreboard.resultStatus", {
               status: problem.summary.status,
               compileStatus: problem.compileStatus,
             }) : undefined}
@@ -556,8 +562,9 @@ const ScoreboardRow = memo(function ScoreboardRow({
         onContextMenu={(event) => openContextMenu(event, contestantTarget)}
         className={`sticky right-0 z-10 cursor-default border-b border-l border-surface-border bg-total-column px-2 text-center font-mono font-bold tabular-nums text-indigo-700 dark:text-indigo-300 ${isRowFocused && focusedCol === problems.length ? "ring-2 ring-indigo-500 ring-inset" : ""}`}
         style={{ height: rowHeight }}
+        title={incompleteTotal ? t("judgingDetails.judgeErrorHelp") : undefined}
       >
-        <span className="block whitespace-nowrap font-mono tabular-nums">{contestantResult ? totalScore.toFixed(2) : "-"}</span>
+        <span className="block whitespace-nowrap font-mono tabular-nums">{incompleteTotal ? "JE" : contestantResult ? totalScore.toFixed(2) : "-"}</span>
       </td>
     </tr>
   );

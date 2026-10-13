@@ -1314,7 +1314,7 @@ async fn handle_toolchains(State(state): State<AppState>) -> impl IntoResponse {
         },
         "executionPolicy": {
             "schemaVersion": 1,
-            "allowResourceOnlyLocalExecution": true,
+            "allowResourceOnlyLocalExecution": false,
             "status": "ready"
         },
         "profiles": [
@@ -1410,10 +1410,28 @@ async fn handle_toolchains_rescan() -> impl IntoResponse {
 async fn handle_toolchains_execution_policy(
     Json(body): Json<serde_json::Value>,
 ) -> impl IntoResponse {
-    Json(json!({
-        "success": true,
-        "executionPolicy": body
-    }))
+    if body.as_object().is_none_or(|object| {
+        object.len() != 1 || object.get("allowResourceOnlyLocalExecution") != Some(&json!(false))
+    }) {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "success": false,
+                "message": "Invalid local execution policy. Resource-only local execution is disabled."
+            })),
+        );
+    }
+    (
+        StatusCode::OK,
+        Json(json!({
+            "success": true,
+            "executionPolicy": {
+                "schemaVersion": 1,
+                "allowResourceOnlyLocalExecution": false,
+                "status": "ready"
+            }
+        })),
+    )
 }
 
 async fn handle_toolchains_preference(

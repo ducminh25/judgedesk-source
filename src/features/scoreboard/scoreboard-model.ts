@@ -1,5 +1,6 @@
 import type { BatchJudgeResult, ContestantResult, ProblemResult } from "../../types";
 import { addRational, compareRational, createRational, parseRational, rationalToNumber, type Rational } from "../../../shared/rational";
+import { hasJudgeError } from "../judging/verdict.js";
 
 export interface ScoreboardResultIndex {
   contestants: ReadonlyMap<string, ContestantResult>;
@@ -42,7 +43,7 @@ function selectedTotalScoreRational(
 ): Rational {
   let totalRat = createRational(0);
   for (const problem of contestant?.problems ?? []) {
-    if (selectedProblems.has(problem.problemName.toLowerCase())) {
+    if (selectedProblems.has(problem.problemName.toLowerCase()) && !hasJudgeError(problem)) {
       totalRat = addRational(totalRat, parseRational(problem.summary.scoreExact ?? problem.summary.score));
     }
   }
@@ -122,7 +123,9 @@ export function sortContestants(
     const scoresMap = new Map<string, { hasScore: boolean; score: Rational }>();
     for (const contestant of contestantsList) {
       const ctData = resultIndex.contestants.get(contestant);
+      const incomplete = ctData?.problems.some(p => effectiveProblems.has(p.problemName.toLowerCase()) && hasJudgeError(p)) ?? false;
       const hasScore =
+        !incomplete &&
         ctData !== undefined &&
         ctData.problems.length > 0 &&
         (effectiveProblems.size === 0 ||

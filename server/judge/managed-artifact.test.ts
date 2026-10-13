@@ -3,11 +3,22 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { StudentCompilationError } from "./compiler-errors.js";
 import {
   buildDotnetCscArgs,
   validateDotnetArtifactDirectory,
   validateJavaClassDirectory,
 } from "./compiler.js";
+
+test("Java empty and packaged class layouts are source failures; filesystem failures are not", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-java-provenance-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  assert.throws(() => validateJavaClassDirectory(root), StudentCompilationError);
+  fs.mkdirSync(path.join(root, "contest"));
+  fs.writeFileSync(path.join(root, "contest", "Main.class"), "class");
+  assert.throws(() => validateJavaClassDirectory(root), StudentCompilationError);
+  assert.throws(() => validateJavaClassDirectory(path.join(root, "missing")), error => error instanceof Error && !(error instanceof StudentCompilationError));
+});
 
 test("Java class-directory validation requires an unpackaged Main entrypoint", (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-java-artifact-"));

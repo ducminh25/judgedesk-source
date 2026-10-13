@@ -1741,11 +1741,11 @@
         "display": 5,
         "numerator": "5"
       },
-      "expectedProblemVerdict": "PARTIAL",
+      "expectedProblemVerdict": "JE",
       "expectedScore": {
-        "denominator": "2",
-        "display": 1.5,
-        "numerator": "3"
+        "denominator": "1",
+        "display": 0,
+        "numerator": "0"
       },
       "extension": "py",
       "files": [
@@ -1835,7 +1835,7 @@
       "platforms": [
         "all"
       ],
-      "provenance": "Systematic testlib exit code matrix: 0 (AC), 1 (WA), 2 (PE), 7 (PARTIAL), 3 (JE).",
+      "provenance": "Systematic testlib exit code matrix: 0 (AC), 1 (WA), 2 (PE), 7 (PARTIAL), 3 (JE). Checker JE invalidates the aggregate score while preserving all testcase evidence.",
       "tags": [
         "python",
         "partial",

@@ -318,11 +318,11 @@ export function registerToolchainRoutes(
     if (
       !isRecord(req.body)
       || Object.keys(req.body).length !== 1
-      || typeof req.body.allowResourceOnlyLocalExecution !== "boolean"
+      || req.body.allowResourceOnlyLocalExecution !== false
     ) {
       return res.status(400).json({
         success: false,
-        message: "Invalid local execution policy.",
+        message: "Invalid local execution policy. Resource-only local execution is disabled.",
       });
     }
     try {

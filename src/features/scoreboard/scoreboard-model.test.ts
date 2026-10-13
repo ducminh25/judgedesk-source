@@ -180,6 +180,18 @@ describe("scoreboard-model", () => {
     assert.deepEqual(tiedAsc, ["Adam", "Zara"]);
   });
 
+  it("does not rank an incomplete JE total as a valid zero or partial grade", () => {
+    const result: BatchJudgeResult = { success: true, contestants: [{ contestantName: "Broken", problems: [
+      { problemName: "A", language: "cpp", compileStatus: "OK", testCases: [], summary: { total: 1, passed: 1, score: 10, maxScore: 10, status: "AC" } },
+      { problemName: "B", language: "cpp", compileStatus: "JE", testCases: [], summary: { total: 0, passed: 0, score: 0, maxScore: 10, status: "JE" } },
+    ] }, { contestantName: "Valid", problems: [
+      { problemName: "A", language: "cpp", compileStatus: "CE", testCases: [], summary: { total: 0, passed: 0, score: 0, maxScore: 10, status: "CE" } },
+    ] }] };
+    assert.deepEqual(sortContestants(["Broken", "Valid"], "score_desc", result, ["A", "B"], { A: true, B: true }), ["Valid", "Broken"]);
+    assert.deepEqual(sortContestants(["Broken", "Valid"], "score_asc", result, ["A", "B"], { A: true, B: true }), ["Valid", "Broken"]);
+    assert.deepEqual(sortContestants(["Broken", "Valid"], "score_desc", result, ["A", "B"], { A: true, B: false }), ["Broken", "Valid"]);
+  });
+
   it("checks whether any contestant has a score dynamically", () => {
     assert.equal(hasAnyContestantScore(null, ["Alice"], ["A_SUM"], { A_SUM: true }), false);
     assert.equal(hasAnyContestantScore({ success: true, contestants: [] }, ["Alice"], ["A_SUM"], { A_SUM: true }), false);

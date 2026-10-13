@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "../../api.js";
+import type { LocalExecutionPolicySnapshot } from "../../../shared/contracts.js";
 
 export type ToolchainSourceMode =
   | "none"
@@ -185,12 +186,7 @@ export interface ToolchainState {
     completedAt?: string;
     errorCode?: string;
   };
-  executionPolicy: {
-    schemaVersion: 1;
-    allowResourceOnlyLocalExecution: boolean;
-    status: "default" | "ready" | "recovery";
-    diagnostic?: "INVALID_POLICY_DOCUMENT" | "POLICY_READ_FAILED";
-  };
+  executionPolicy: LocalExecutionPolicySnapshot;
   profiles: LanguageProfileView[];
   preferences: {
     customCppPath?: string;
@@ -235,28 +231,41 @@ export function hasRunningOperation(state: ToolchainState): boolean {
       ));
 }
 
+export async function refreshToolchainState(
+  fetchState: () => Promise<ToolchainState | null>,
+  startPolling: () => void,
+): Promise<ToolchainState | null> {
+  const data = await fetchState();
+  if (!data || hasRunningOperation(data)) startPolling();
+  return data;
+}
+
 export function useToolchains() {
   const [state, setState] = useState<ToolchainState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const pollingRef = useRef<number | null>(null);
   const pollingMountedRef = useRef(false);
   const initialRetryRef = useRef<number | null>(null);
+  const fetchGenerationRef = useRef(0);
 
   const fetchState = useCallback(async () => {
+    const generation = ++fetchGenerationRef.current;
     try {
       const response = await apiFetch("/api/toolchains");
       const data = (await response.json()) as ToolchainState;
+      if (!pollingMountedRef.current || generation !== fetchGenerationRef.current) return null;
       setState(data);
       setError(null);
       return data;
-    } catch (caught: any) {
-      setError(caught.message || "Failed to load toolchains state.");
+    } catch (caught: unknown) {
+      if (!pollingMountedRef.current || generation !== fetchGenerationRef.current) return null;
+      setError(caught instanceof Error ? caught.message : "Failed to load toolchains state.");
       return null;
     }
   }, []);
 
   const startPolling = useCallback(() => {
-    if (pollingRef.current) return;
+    if (!pollingMountedRef.current || pollingRef.current !== null) return;
     const poll = async () => {
       const data = await fetchState();
       if (!pollingMountedRef.current) {
@@ -271,6 +280,11 @@ export function useToolchains() {
     };
     pollingRef.current = window.setTimeout(() => void poll(), 1000);
   }, [fetchState]);
+
+  const refreshState = useCallback(
+    () => refreshToolchainState(fetchState, startPolling),
+    [fetchState, startPolling],
+  );
 
   useEffect(() => {
     let disposed = false;
@@ -291,6 +305,7 @@ export function useToolchains() {
     return () => {
       disposed = true;
       pollingMountedRef.current = false;
+      ++fetchGenerationRef.current;
       if (initialRetryRef.current) clearTimeout(initialRetryRef.current);
       if (pollingRef.current) clearTimeout(pollingRef.current);
       initialRetryRef.current = null;
@@ -313,7 +328,7 @@ export function useToolchains() {
   const cancel = async (id: string) => {
     try {
       await apiFetch(`/api/toolchains/${id}/cancel`, { method: "POST" });
-      await fetchState();
+      await refreshState();
     } catch (caught: any) {
       setError(caught.message);
     }
@@ -323,7 +338,7 @@ export function useToolchains() {
     try {
       setError(null);
       await apiFetch(`/api/toolchains/${id}`, { method: "DELETE" });
-      await fetchState();
+      await refreshState();
       return true;
     } catch (caught: any) {
       setError(caught.message);
@@ -346,7 +361,7 @@ export function useToolchains() {
           ...(localPath === undefined ? {} : { localPath }),
         }),
       });
-      await fetchState();
+      await refreshState();
       return true;
     } catch (caught: any) {
       setError(caught.message);
@@ -358,8 +373,7 @@ export function useToolchains() {
     try {
       setError(null);
       await apiFetch("/api/toolchains/rescan", { method: "POST" });
-      await fetchState();
-      startPolling();
+      await refreshState();
     } catch (caught: any) {
       setError(caught.message);
     }
@@ -375,11 +389,11 @@ export function useToolchains() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ allowResourceOnlyLocalExecution }),
       });
-      await fetchState();
+      await refreshState();
       return true;
     } catch (caught: any) {
       setError(caught.message);
-      await fetchState();
+      await refreshState();
       return false;
     }
   };
@@ -410,11 +424,11 @@ export function useToolchains() {
       await apiFetch(`/api/toolchains/profiles/${encodeURIComponent(profileId)}/certify`, {
         method: "POST",
       });
-      await fetchState();
+      await refreshState();
       return true;
     } catch (caught: any) {
       setError(caught.message);
-      await fetchState();
+      await refreshState();
       return false;
     }
   };
@@ -455,7 +469,7 @@ export function useToolchains() {
   return {
     state,
     error,
-    refresh: fetchState,
+    refresh: refreshState,
     install,
     cancel,
     uninstall,

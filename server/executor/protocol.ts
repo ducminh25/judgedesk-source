@@ -59,18 +59,16 @@ export interface ExecutorRunSpec {
   limits: ExecutorLimits;
 }
 
-export type ExecutorRunReason =
-  | "exited"
-  | "wall_time_limit"
-  | "memory_limit"
-  | "process_limit"
-  | "thread_limit"
-  | "output_limit"
-  | "write_limit"
-  | "cancelled"
-  | "sandbox_denied"
-  | "launch_error"
-  | "internal_error";
+export const EXECUTOR_RUN_REASONS = [
+  "exited", "wall_time_limit", "memory_limit", "process_limit", "thread_limit",
+  "output_limit", "write_limit", "cancelled", "sandbox_denied", "launch_error", "internal_error",
+] as const;
+
+export type ExecutorRunReason = typeof EXECUTOR_RUN_REASONS[number];
+
+export function isExecutorRunReason(value: unknown): value is ExecutorRunReason {
+  return EXECUTOR_RUN_REASONS.some((reason) => reason === value);
+}
 
 export interface ExecutorRunResult {
   runId: string;

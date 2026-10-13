@@ -8,6 +8,7 @@ import { isHelpShortcut, type HelpSectionId } from "./features/help/HelpCenter.j
 import { useThemisPromptModal } from "./features/toolchains/useThemisPromptModal.js";
 import { useScratchPromptModal } from "./features/toolchains/useScratchPromptModal.js";
 import type { ToolchainState } from "./features/toolchains/useToolchains.js";
+import { createHostStatusRefresh } from "./features/toolchains/host-status-refresh.js";
 import { useAppUpdater } from "./features/updates/useAppUpdater.js";
 import { type UpdateEdition } from "./features/updates/catalog.js";
 import { useOsdSession } from "./features/osd/useOsdSession.js";
@@ -102,7 +103,7 @@ export default function App() {
   // Host & Error states
   const [hostStatus, setHostStatus] = useState<HostStatus | null>(null);
   const [appError, setAppError] = useState<AppError | null>(null);
-  const hostStatusRequestRef = useRef<Promise<void> | null>(null);
+  const hostStatusRefreshRef = useRef<ReturnType<typeof createHostStatusRefresh> | null>(null);
 
   const showError = useCallback((err: unknown, options?: Parameters<typeof formatAppError>[1]) => {
     setAppError(formatAppError(err, options, t));
@@ -338,32 +339,32 @@ export default function App() {
   }, [canSortScores, contestantSort]);
 
   // Host status loader
-  const requestHostStatus = useCallback(() => {
-    if (hostStatusRequestRef.current) return;
-    setHostStatus(null);
-    const request = (async () => {
-      try {
-        const response = await apiFetch("/api/status");
-        setHostStatus(await response.json());
-      } catch (error) {
-        console.error("Failed to load host status", error);
-        showError(error, { code: "BACKEND_CONNECTION" });
-      } finally {
-        hostStatusRequestRef.current = null;
-      }
-    })();
-    hostStatusRequestRef.current = request;
-  }, [showError]);
-
   const loadHelpToolchains = useCallback(async (): Promise<ToolchainState> => {
     const response = await apiFetch("/api/toolchains");
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
     return (await response.json()) as ToolchainState;
   }, []);
 
+  const requestHostStatus = useCallback(() => {
+    void hostStatusRefreshRef.current?.request();
+  }, []);
+
   useEffect(() => {
+    const refresh = createHostStatusRefresh({
+      loadToolchains: loadHelpToolchains,
+      loadHostStatus: async () => {
+        const response = await apiFetch("/api/status");
+        return (await response.json()) as HostStatus;
+      },
+      onStatus: setHostStatus,
+      onError: (error) => showError(error, { code: "BACKEND_CONNECTION" }),
+    });
+    hostStatusRefreshRef.current = refresh;
     requestHostStatus();
-  }, [requestHostStatus]);
+    return () => {
+      refresh.dispose();
+      hostStatusRefreshRef.current = null;
+    };
+  }, [loadHelpToolchains, requestHostStatus, showError]);
 
   // Themis Toolchain Detection Prompt on First Launch
   const {

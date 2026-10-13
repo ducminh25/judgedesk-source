@@ -3,6 +3,16 @@ import type { ExecutorRunResult } from "../executor/protocol.js";
 /** Provenance marker: diagnostics alone must never decide who caused a failure. */
 export class StudentCompilationError extends Error {}
 
+/** Keep host/setup failures distinct without parsing student-controlled text. */
+export function classifyCompilationFailure(cause: unknown): {
+  compileStatus: "CE" | "JE";
+  failureKind: "submission" | "infrastructure";
+} {
+  return cause instanceof StudentCompilationError
+    ? { compileStatus: "CE", failureKind: "submission" }
+    : { compileStatus: "JE", failureKind: "infrastructure" };
+}
+
 export function assertCompilerSucceeded(result: ExecutorRunResult, stderr: string): void {
   switch (result.reason) {
     case "wall_time_limit":

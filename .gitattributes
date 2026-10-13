@@ -1,1 +1,9 @@
 *.sh text eol=lf
+.gitattributes text eol=lf
+package.json text eol=lf
+native-executor/**/*.rs text eol=lf
+native-executor/Cargo.toml text eol=lf
+native-executor/Cargo.lock text eol=lf
+rust-toolchain.toml text eol=lf
+scripts/build-native-executor.js text eol=lf
+scripts/build-server-target.js text eol=lf

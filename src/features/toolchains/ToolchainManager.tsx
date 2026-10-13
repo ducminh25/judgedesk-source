@@ -13,6 +13,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import type { LocalExecutionPolicySnapshot } from "../../../shared/contracts.js";
 import {
   type LanguageProfileView,
   type ToolchainCertificationPlan,
@@ -110,6 +111,7 @@ export default function ToolchainManager({ onClose, firstRun = false }: Props) {
             <LoadingState error={error} />
           ) : (
             <div className="space-y-4">
+              <LocalExecutionPolicyNotice policy={state.executionPolicy} />
               {state.preferenceDocument.status === "recovery" && (
                 <Notice tone="danger">
                   {t("toolchains.registry.preferencesRecovery")}
@@ -169,6 +171,20 @@ export default function ToolchainManager({ onClose, firstRun = false }: Props) {
         </div>
       </div>
     </div>
+  );
+}
+
+export function LocalExecutionPolicyNotice({ policy }: {
+  policy: LocalExecutionPolicySnapshot;
+}) {
+  const { t } = useTranslation();
+  if (policy.status !== "recovery") return null;
+  return (
+    <Notice tone="warning">
+      {t(policy.diagnostic === "RESOURCE_ONLY_LOCAL_EXECUTION_DISABLED"
+        ? "toolchains.registry.localPolicyLegacyDisabled"
+        : "toolchains.registry.localPolicyRecovery")}
+    </Notice>
   );
 }
 

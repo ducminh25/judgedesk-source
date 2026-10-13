@@ -118,15 +118,6 @@ export function useThemisPromptModal({
   }, []);
 
   const handleApplyThemisAll = useCallback(async () => {
-    try {
-      await apiFetch("/api/toolchains/execution-policy", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ allowResourceOnlyLocalExecution: true }),
-      });
-    } catch (err) {
-      console.error("Failed to update execution policy for Themis:", err);
-    }
     for (const item of themisDetectedToolchains) {
       try {
         await apiFetch(

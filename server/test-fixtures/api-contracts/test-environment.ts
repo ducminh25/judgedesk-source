@@ -344,7 +344,7 @@ export function createIsolatedTestEnvironment(
   // Seed execution policy
   const execPolicy = {
     schemaVersion: 1,
-    allowResourceOnlyLocalExecution: true,
+    allowResourceOnlyLocalExecution: false,
   };
   fs.writeFileSync(
     path.join(appDataDir, "toolchain-execution-policy-v1.json"),

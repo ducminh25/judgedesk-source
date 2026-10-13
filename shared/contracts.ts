@@ -2,7 +2,20 @@ export type TestVerdict = "AC" | "WA" | "PE" | "TLE" | "RE" | "CE" | "MLE" | "OL
 import type { Rational } from "./rational.js";
 
 export type ProblemVerdict = TestVerdict | "PENDING";
-export type CompileStatus = "OK" | "CE" | "SKIPPED";
+export type CompileStatus = "OK" | "CE" | "JE" | "SKIPPED";
+export interface LocalExecutionPolicyV1 {
+  schemaVersion: 1;
+  allowResourceOnlyLocalExecution: boolean;
+}
+
+export interface LocalExecutionPolicySnapshot extends LocalExecutionPolicyV1 {
+  status: "default" | "ready" | "recovery";
+  diagnostic?:
+    | "INVALID_POLICY_DOCUMENT"
+    | "POLICY_READ_FAILED"
+    | "RESOURCE_ONLY_LOCAL_EXECUTION_DISABLED";
+}
+
 export type SubmissionLanguage =
   | "cpp"
   | "c"

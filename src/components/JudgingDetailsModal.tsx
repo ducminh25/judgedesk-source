@@ -10,6 +10,7 @@ import {
 import { ProblemResult } from "../types";
 import { useTranslation } from "react-i18next";
 import { formatCompileError } from "../features/judging/compile-diagnostics";
+import { hasJudgeError } from "../features/judging/verdict.js";
 import { formatScore } from "../../shared/rational";
 
 interface Props {
@@ -26,6 +27,7 @@ export default function JudgingDetailsModal({
   onClose,
 }: Props) {
   const { t } = useTranslation();
+  const judgeError = hasJudgeError(data);
   const [filter, setFilter] = useState<ResultFilter>("ALL");
 
   useEffect(() => {
@@ -117,9 +119,8 @@ export default function JudgingDetailsModal({
             </h3>
             <span className="text-text-muted text-2xs font-mono tabular-nums mt-0.5">
               {t("judgingDetails.problem")}: {data.problemName} |{" "}
-              {t("judgingDetails.overall")}: {data.summary.status} |{" "}
-              {t("judgingDetails.score")}: {formatScore(data.summary.scoreExact ?? data.summary.score)}/
-              {formatScore(data.summary.maxScoreExact ?? data.summary.maxScore)} |{" "}
+              {t("judgingDetails.overall")}: {judgeError ? "JE" : data.summary.status} |{" "}
+              {t("judgingDetails.score")}: {judgeError ? "JE" : `${formatScore(data.summary.scoreExact ?? data.summary.score)}/${formatScore(data.summary.maxScoreExact ?? data.summary.maxScore)}`} |{" "}
               {t("judgingDetails.passedTests")}: {data.summary.passed}/{data.summary.total}
             </span>
           </div>
@@ -133,6 +134,13 @@ export default function JudgingDetailsModal({
         </div>
 
         <div className="p-0 flex-1 overflow-y-auto flex flex-col font-sans text-xs bg-surface">
+          {judgeError && (
+            <div className="border-b border-surface-border bg-amber-50 p-4 text-amber-800 dark:bg-amber-950/25 dark:text-amber-300" role="alert">
+              <h4 className="mb-1 flex items-center gap-2 font-semibold"><AlertTriangle className="h-4 w-4" />{t("judgingDetails.judgeError")}</h4>
+              <p>{t("judgingDetails.judgeErrorHelp")}</p>
+              {data.compileStatus === "JE" && data.compileError && <pre className="mt-2 whitespace-pre-wrap font-mono text-2xs">{formatCompileError(data.compileError, t)}</pre>}
+            </div>
+          )}
           {/* Compilation section */}
           {data.compileStatus === "CE" ? (
             <div className="bg-violet-50 dark:bg-violet-950/20 p-5 border-b border-surface-border">
@@ -144,7 +152,7 @@ export default function JudgingDetailsModal({
                 {formatCompileError(data.compileError, t)}
               </pre>
             </div>
-          ) : (
+          ) : data.compileStatus === "OK" ? (
             <div className="bg-surface-elevated p-4 flex items-center justify-between border-b border-surface-border">
               <div className="flex gap-2 items-center text-text-muted text-2xs">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-500" />
@@ -166,7 +174,7 @@ export default function JudgingDetailsModal({
                 ))}
               </div>
             </div>
-          )}
+          ) : null}
 
           {/* Test cases list */}
           <div className="divide-y divide-surface-border bg-input-bg">
@@ -232,7 +240,7 @@ export default function JudgingDetailsModal({
               );
             })}
 
-            {filteredTests.length === 0 && data.compileStatus !== "CE" && (
+            {filteredTests.length === 0 && data.compileStatus === "OK" && (
               <div className="text-center py-12 text-text-muted text-xs font-mono">
                 {t("judgingDetails.noMatch")}
               </div>

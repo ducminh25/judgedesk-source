@@ -43,15 +43,16 @@ export function calculateProblemSummary({
   testDirectories,
   config
 }: ProblemSummaryOptions): ProblemResult["summary"] {
-  applyGroupScoring(testCases, config.polygonConfig);
-
+  const status = calculateProblemStatus(compileStatus, testCases);
+  if (status !== "JE") applyGroupScoring(testCases, config.polygonConfig);
   const passed = testCases.filter((test) => test.status === "AC").length;
-  const scoreRat = testCases.reduce(
+  // Retain testcase evidence but never award a partial problem grade for a
+  // broken judge. Exact rational scoring for valid results is unchanged.
+  const scoreRat = status === "JE" ? createRational(0) : testCases.reduce(
     (total, test) => addRational(total, parseRational(test.scoreExact ?? test.score)),
     createRational(0)
   );
   const score = rationalToNumber(scoreRat);
-  const status = calculateProblemStatus(compileStatus, testCases);
   const polygonConfig = config.polygonConfig;
   const hasConfiguredPolygonPoints = testDirectories.some(
     (testDirectory) => Object.hasOwn(polygonConfig?.tests || {}, testDirectory)
@@ -130,6 +131,7 @@ function calculateProblemStatus(
   compileStatus: ProblemResult["compileStatus"],
   testCases: TestCaseRun[]
 ): ProblemResult["summary"]["status"] {
+  if (compileStatus === "JE" || testCases.some(test => test.status === "JE")) return "JE";
   if (compileStatus === "CE") return "CE";
   if (testCases.length === 0) return "AC";
 

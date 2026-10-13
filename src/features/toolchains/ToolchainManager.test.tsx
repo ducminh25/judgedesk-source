@@ -48,6 +48,8 @@ async function renderWithTranslations(element: ReactNode) {
                 managed_only: "Managed only",
               },
               freezeForContest: "Freeze for contest",
+              localPolicyLegacyDisabled: "Legacy resource-only execution is disabled. Local compilers are checked automatically in the strict sandbox.",
+              localPolicyRecovery: "The saved execution policy could not be read. Strict sandbox isolation remains required.",
               resourceOnly: {
                 title: "Advanced local execution",
                 description: "Filesystem and network are not isolated.",
@@ -114,6 +116,63 @@ describe("toolchain settings UI regressions", () => {
 
     assert.match(markup, /Checking\.\.\./);
     assert.match(markup, /Compilers &amp; Runtimes Manager/);
+  });
+
+  it("explains disabled legacy policies without offering a less-secure toggle", async () => {
+    const { LocalExecutionPolicyNotice } = await import("./ToolchainManager.js");
+    const markup = await renderWithTranslations(
+      <LocalExecutionPolicyNotice policy={{
+        schemaVersion: 1,
+        allowResourceOnlyLocalExecution: false,
+        status: "recovery",
+        diagnostic: "RESOURCE_ONLY_LOCAL_EXECUTION_DISABLED",
+      }} />,
+    );
+    assert.match(markup, /Legacy resource-only execution is disabled/);
+    assert.match(markup, /checked automatically/);
+    assert.doesNotMatch(markup, /type="checkbox"|role="switch"/);
+    const healthy = await renderWithTranslations(
+      <LocalExecutionPolicyNotice policy={{
+        schemaVersion: 1,
+        allowResourceOnlyLocalExecution: false,
+        status: "ready",
+      }} />,
+    );
+    assert.equal(healthy, "");
+  });
+
+  it("resumes polling after an idle manager selects a pending local compiler", async () => {
+    const { refreshToolchainState } = await import("./useToolchains.js");
+    const pending = {
+      discovery: { status: "complete", refreshing: false },
+      manifestStatus: "ready",
+      toolchains: [],
+      profiles: [{ active: { localProbe: { status: "checking" } } }],
+    } as unknown as ToolchainState;
+    let polling = false;
+    assert.equal(await refreshToolchainState(async () => pending, () => { polling = true; }), pending);
+    assert.equal(polling, true);
+    polling = false;
+    pending.profiles[0].active.localProbe = { status: "compatible" };
+    assert.equal(await refreshToolchainState(async () => pending, () => { polling = true; }), pending);
+    assert.equal(polling, false);
+    const source = readFileSync(new URL("./useToolchains.ts", import.meta.url), "utf8");
+    const mutation = source.slice(source.indexOf("const setProfilePreference ="), source.indexOf("const rescan ="));
+    assert.match(mutation, /await refreshState\(\)/);
+    assert.doesNotMatch(mutation, /await fetchState\(\)/);
+  });
+
+  it("refreshes the host automatically while toolchain selection is still pending", () => {
+    const source = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
+    const request = source.slice(source.indexOf("const requestHostStatus = useCallback"), source.indexOf("// Themis Toolchain Detection"));
+    assert.match(request, /createHostStatusRefresh/);
+    assert.match(request, /loadToolchains: loadHelpToolchains/);
+    assert.match(request, /refresh\.dispose\(\)/);
+  });
+
+  it("Themis import cannot mutate execution isolation policy", () => {
+    const source = readFileSync(new URL("./useThemisPromptModal.ts", import.meta.url), "utf8");
+    assert.doesNotMatch(source, /execution-policy|allowResourceOnlyLocalExecution/);
   });
 
   it("renders every registry profile with four fixed source radios and inline actions", async () => {
@@ -310,6 +369,6 @@ describe("toolchain settings UI regressions", () => {
     assert.notEqual(requestEnd, -1);
     const requestSource = appSource.slice(requestStart, requestEnd);
     assert.doesNotMatch(requestSource, /hostStatus\s*\|\|/);
-    assert.match(requestSource, /setHostStatus\(null\)/);
+    assert.match(requestSource, /hostStatusRefreshRef\.current\?\.request\(\)/);
   });
 });

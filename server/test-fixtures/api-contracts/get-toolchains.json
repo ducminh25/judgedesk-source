@@ -60,7 +60,7 @@
   },
   "distribution": "development",
   "executionPolicy": {
-    "allowResourceOnlyLocalExecution": true,
+    "allowResourceOnlyLocalExecution": false,
     "schemaVersion": 1,
     "status": "ready"
   },

@@ -500,6 +500,7 @@ async fn test_embedded_axum_server_full_suite() {
     assert!(body.contains("\"profiles\":"));
     assert!(body.contains("\"discovery\":"));
     assert!(body.contains("\"capabilities\":"));
+    assert!(body.contains("\"allowResourceOnlyLocalExecution\":false"));
     assert!(body.contains("\"id\":\"cpp\""));
     assert!(body.contains("\"id\":\"c\""));
     assert!(body.contains("\"id\":\"python\""));
@@ -521,8 +522,19 @@ async fn test_embedded_axum_server_full_suite() {
         Some("application/json"),
     )
     .await;
+    assert_eq!(status, 400);
+    assert!(body.contains("\"success\":false"));
+
+    let (status, body) = http_request(
+        port,
+        "PUT",
+        "/api/toolchains/execution-policy",
+        Some(b"{\"allowResourceOnlyLocalExecution\":false}"),
+        Some("application/json"),
+    )
+    .await;
     assert_eq!(status, 200);
-    assert!(body.contains("\"success\":true"));
+    assert!(body.contains("\"allowResourceOnlyLocalExecution\":false"));
 
     let (status, body) = http_request(
         port,

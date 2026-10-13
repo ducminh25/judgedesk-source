@@ -12,6 +12,43 @@ import {
   encodeScoreExportPayload,
 } from "../../../shared/score-export-wire";
 
+test("Excel distinguishes setup and runtime JE from student CE and preserves diagnostic JSON", async () => {
+  const problems = ["Setup", "Runtime", "Syntax"];
+  const result: BatchJudgeResult = { success: true, contestants: [{ contestantName: "Audit", problems: problems.map((problemName, index) => ({
+    problemName, language: "cpp", compileStatus: index === 0 ? "JE" : index === 1 ? "OK" : "CE",
+    compileError: index === 0 ? "sandbox setup failed" : index === 2 ? "syntax error" : "",
+    testCases: [], summary: { total: 0, passed: 0, score: 0, maxScore: 1, status: index === 2 ? "CE" : "JE" },
+  })) }] };
+  const labels = createScoreWorkbookLabels(((key: string) => key) as Parameters<typeof createScoreWorkbookLabels>[0]);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(Buffer.from(await buildScoreWorkbookBytes(result, ["Audit"], problems, labels)));
+  assert.equal(workbook.getWorksheet(labels.scoreboardTitle)?.getCell("B2").value, "export.judgeError");
+  assert.equal(workbook.getWorksheet(labels.scoreboardTitle)?.getCell("C2").value, "export.judgeError");
+  assert.equal(workbook.getWorksheet(labels.scoreboardTitle)?.getCell("D2").value, labels.compilationError);
+  assert.equal(workbook.getWorksheet(labels.scoreboardTitle)?.getCell("E2").value, "export.judgeError");
+  assert.equal(workbook.getWorksheet(labels.detailsTitle)?.getCell("F3").value, "export.judgeError");
+  assert.equal(workbook.getWorksheet(labels.detailsTitle)?.getCell("F4").value, "export.judgeError");
+  const diagnostic = JSON.parse(buildDiagnosticJson(result, ["Audit"], problems));
+  assert.equal(diagnostic.contestants[0].problems[0].compileStatus, "JE");
+  assert.equal(diagnostic.contestants[0].problems[0].compileError, "sandbox setup failed");
+});
+
+test("Excel invalidates historical JE problem grades without changing saved evidence", async () => {
+  const result: BatchJudgeResult = { success: true, contestants: [{ contestantName: "Audit", problems: [{
+    problemName: "Runtime", language: "cpp", compileStatus: "OK", testCases: [
+      { name: "01", status: "AC", executionTime: 1, score: 0.5, scoreExact: { n: 1, d: 2 } },
+      { name: "02", status: "JE", executionTime: 0, score: 0 },
+    ], summary: { total: 2, passed: 1, score: 0.5, maxScore: 1, status: "PARTIAL" },
+  }] }] };
+  const labels = createScoreWorkbookLabels(((key: string) => key) as Parameters<typeof createScoreWorkbookLabels>[0]);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(Buffer.from(await buildScoreWorkbookBytes(result, ["Audit"], ["Runtime"], labels)));
+  const details = workbook.getWorksheet(labels.detailsTitle)!;
+  assert.equal(details.getCell("D3").value, labels.judgeError);
+  assert.equal(details.getCell("D4").value, 0.5, "retain individual testcase evidence");
+  assert.deepEqual(JSON.parse(buildDiagnosticJson(result, ["Audit"], ["Runtime"])).contestants[0].problems[0], result.contestants[0].problems[0]);
+});
+
 test("score export creates summary and detail worksheets", async () => {
   const result: BatchJudgeResult = {
     success: true,

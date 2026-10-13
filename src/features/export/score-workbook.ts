@@ -1,6 +1,6 @@
 import type ExcelJS from "exceljs";
 import type { BatchJudgeResult, ContestantResult, RunMetadata } from "../../types";
-import { describeTestResult } from "../judging/verdict";
+import { describeTestResult, hasJudgeError } from "../judging/verdict";
 import {
   addRational,
   createRational,
@@ -21,6 +21,7 @@ export interface ScoreWorkbookLabels {
   seconds: string;
   notFound: string;
   compilationError: string;
+  judgeError: string;
   compilationSuccess: string;
 }
 
@@ -200,10 +201,15 @@ function buildSummaryRows(
     const row: Record<string, WorkbookCellValue> = { [labels.candidate]: contestant.contestantName };
     let totalScoreRat = createRational(0);
     let hasResult = false;
+    let incomplete = false;
     for (const problemName of problemNames) {
       const problem = findProblem(contestant, problemName);
       if (!problem) {
         row[problemName] = null;
+      } else if (hasJudgeError(problem)) {
+        hasResult = true;
+        incomplete = true;
+        row[problemName] = labels.judgeError;
       } else if (problem.compileStatus === "SKIPPED" && problem.compileError === "not_found") {
         hasResult = true;
         row[problemName] = labels.notFound;
@@ -216,7 +222,7 @@ function buildSummaryRows(
         totalScoreRat = addRational(totalScoreRat, parseRational(problem.summary.scoreExact ?? problem.summary.score));
       }
     }
-    row[labels.total] = hasResult ? rationalToRoundedNumber(totalScoreRat, 2) : null;
+    row[labels.total] = incomplete ? labels.judgeError : hasResult ? rationalToRoundedNumber(totalScoreRat, 2) : null;
     return row;
   });
 }
@@ -242,14 +248,14 @@ function buildDetailRows(
         return orderA - orderB;
       });
     const contestantTotalRat = problems.reduce(
-      (total, problem) => addRational(total, parseRational(problem.summary.scoreExact ?? problem.summary.score)),
+      (total, problem) => hasJudgeError(problem) ? total : addRational(total, parseRational(problem.summary.scoreExact ?? problem.summary.score)),
       createRational(0)
     );
     rows.push({
       [labels.candidate]: contestant.contestantName,
       [labels.problem]: "",
       [labels.test]: "",
-      [labels.score]: problems.length > 0
+      [labels.score]: problems.some(hasJudgeError) ? labels.judgeError : problems.length > 0
         ? rationalToRoundedNumber(contestantTotalRat, 2)
         : null,
       [labels.time]: "",
@@ -260,14 +266,15 @@ function buildDetailRows(
         [labels.candidate]: contestant.contestantName,
         [labels.problem]: problem.problemName,
         [labels.test]: "",
-        [labels.score]: problem.summary.score,
+        [labels.score]: hasJudgeError(problem) ? labels.judgeError : problem.summary.score,
         [labels.time]: "",
         [labels.results]:
-          problem.compileStatus === "SKIPPED" && problem.compileError === "not_found"
+          hasJudgeError(problem) ? labels.judgeError : problem.compileStatus === "SKIPPED" && problem.compileError === "not_found"
             ? labels.notFound
             : problem.compileStatus === "OK"
               ? labels.compilationSuccess
-              : labels.compilationError
+              : labels.compilationError,
+        "Error detail": problem.compileError || "",
       });
       for (const test of problem.testCases) {
         const execution = test.execution;

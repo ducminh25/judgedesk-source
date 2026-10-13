@@ -271,7 +271,7 @@ test("migrateLegacyBundledToolchains ignores external directories lacking receip
   }
 });
 
-test("migrateLegacyExecutionPolicy migrates false to true automatically", () => {
+test("migrateLegacyExecutionPolicy preserves an existing strict policy byte-for-byte", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "policy-migration-test-"));
   try {
     const policyFile = path.join(tempDir, "toolchain-execution-policy-v1.json");
@@ -281,11 +281,13 @@ test("migrateLegacyExecutionPolicy migrates false to true automatically", () => 
       "utf8",
     );
 
+    const before = fs.readFileSync(policyFile);
     const migrated = migrateLegacyExecutionPolicy({ policyFilePath: policyFile });
-    assert.equal(migrated, true);
+    assert.equal(migrated, false);
+    assert.deepEqual(fs.readFileSync(policyFile), before);
 
     const after = JSON.parse(fs.readFileSync(policyFile, "utf8"));
-    assert.equal(after.allowResourceOnlyLocalExecution, true);
+    assert.equal(after.allowResourceOnlyLocalExecution, false);
     assert.equal(after.schemaVersion, 1);
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
@@ -312,7 +314,7 @@ test("migrateLegacyExecutionPolicy does not modify already true policy", () => {
   }
 });
 
-test("migrateLegacyExecutionPolicy creates default true policy when file does not exist", () => {
+test("migrateLegacyExecutionPolicy creates a strict policy when the file does not exist", () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "policy-migration-test-"));
   try {
     const policyFile = path.join(tempDir, "sub", "toolchain-execution-policy-v1.json");
@@ -320,7 +322,26 @@ test("migrateLegacyExecutionPolicy creates default true policy when file does no
     assert.equal(migrated, true);
 
     const after = JSON.parse(fs.readFileSync(policyFile, "utf8"));
-    assert.equal(after.allowResourceOnlyLocalExecution, true);
+    assert.equal(after.allowResourceOnlyLocalExecution, false);
+    assert.deepEqual(fs.readdirSync(path.dirname(policyFile)), [path.basename(policyFile)]);
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("migration never rewrites corrupt, oversized, or future-schema policy documents", () => {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "policy-migration-test-"));
+  try {
+    const policyFile = path.join(tempDir, "toolchain-execution-policy-v1.json");
+    for (const contents of [
+      "{not-json",
+      JSON.stringify({ schemaVersion: 2, allowResourceOnlyLocalExecution: false }),
+      `${JSON.stringify({ schemaVersion: 1, allowResourceOnlyLocalExecution: false })}${" ".repeat(8 * 1024)}`,
+    ]) {
+      fs.writeFileSync(policyFile, contents, "utf8");
+      assert.equal(migrateLegacyExecutionPolicy({ policyFilePath: policyFile }), false);
+      assert.equal(fs.readFileSync(policyFile, "utf8"), contents);
+    }
   } finally {
     fs.rmSync(tempDir, { recursive: true, force: true });
   }

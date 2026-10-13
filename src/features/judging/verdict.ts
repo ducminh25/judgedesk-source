@@ -1,4 +1,10 @@
-import type { TestCaseRun } from "../../types";
+import type { ProblemResult, TestCaseRun } from "../../types";
+
+/** Older saved summaries may say PARTIAL even though a testcase has JE. */
+export function hasJudgeError(problem: ProblemResult): boolean {
+  return problem.compileStatus === "JE" || problem.summary.status === "JE"
+    || problem.testCases.some(test => test.status === "JE");
+}
 
 export const VERDICT_LABELS: Record<TestCaseRun["status"], string> = {
   AC: "Accepted",

@@ -52,7 +52,9 @@ export default function ScoringLogModal({
               ? t("judgingDetails.skipped")
               : problem.compileStatus === "OK"
                 ? t("judgingDetails.compilationSuccess")
-                : formatCompileError(problem.compileError, t);
+                : problem.compileStatus === "JE"
+                  ? `${t("judgingDetails.judgeError")}: ${problem.compileError ? formatCompileError(problem.compileError, t) : t("judgingDetails.judgeErrorHelp")}`
+                  : formatCompileError(problem.compileError, t);
 
           return [
             {

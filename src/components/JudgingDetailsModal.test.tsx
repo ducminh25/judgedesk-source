@@ -6,6 +6,39 @@ import { renderToStaticMarkup } from "react-dom/server";
 import JudgingDetailsModal from "./JudgingDetailsModal.js";
 import type { ProblemResult } from "../types.js";
 
+test("JE details report an invalid judge result, never successful compilation for setup failures", async () => {
+  const i18n = createInstance();
+  await i18n.use(initReactI18next).init({ lng: "en", resources: { en: { translation: {
+    common: { close: "Close" }, judgingDetails: { judgeError: "Judge environment error (JE)",
+      judgeErrorHelp: "Not a valid grade; check the environment and rejudge.", compiledSuccessfully: "Compiled successfully in" },
+  } } } });
+  const data: ProblemResult = { problemName: "Setup", language: "cpp", compileStatus: "JE", compileError: "isolated runner unavailable",
+    testCases: [], summary: { total: 0, passed: 0, score: 0, maxScore: 1, status: "JE" } };
+  const markup = renderToStaticMarkup(<I18nextProvider i18n={i18n}><JudgingDetailsModal data={data} contestantName="Audit" onClose={() => {}} /></I18nextProvider>);
+  assert.match(markup, /Judge environment error \(JE\)/);
+  assert.match(markup, /Not a valid grade/);
+  assert.match(markup, /isolated runner unavailable/);
+  assert.doesNotMatch(markup, /Compiled successfully in/);
+});
+
+test("historical PARTIAL with runtime JE shows no aggregate grade but retains testcase evidence", async () => {
+  const i18n = createInstance();
+  await i18n.use(initReactI18next).init({ lng: "en", resources: { en: { translation: {
+    common: { close: "Close" }, judgingDetails: { judgeError: "Judge environment error (JE)",
+      judgeErrorHelp: "Not a valid grade; check the environment and rejudge.", compiledSuccessfully: "Compiled successfully in", overall: "Overall", score: "Score" },
+  } } } });
+  const data: ProblemResult = { problemName: "Runtime", language: "cpp", compileStatus: "OK", compileTime: 1,
+    testCases: [{ name: "retained-test", status: "AC", executionTime: 1, score: 1 }, { name: "broken-test", status: "JE", executionTime: 0, score: 0 }],
+    summary: { total: 2, passed: 1, score: 1, maxScore: 2, status: "PARTIAL" } };
+  const markup = renderToStaticMarkup(<I18nextProvider i18n={i18n}><JudgingDetailsModal data={data} contestantName="Audit" onClose={() => {}} /></I18nextProvider>);
+  assert.match(markup, /Judge environment error \(JE\)/);
+  assert.match(markup, /retained-test/);
+  assert.match(markup, /Compiled successfully in/);
+  assert.match(markup, /Overall: JE/);
+  assert.match(markup, /Score: JE/);
+  assert.doesNotMatch(markup, /Overall: PARTIAL|Score: 1\/2/);
+});
+
 test("judging details show useful WA context but hide internal execution diagnostics", async () => {
   const i18n = createInstance();
   await i18n.use(initReactI18next).init({

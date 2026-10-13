@@ -491,6 +491,45 @@ test("a mismatched IPC response type terminalizes the live generation", async ()
   assert.equal(internals.lifecycleState, "terminal");
 });
 
+test("invalid native run reasons fail closed at the IPC boundary for every runtime role", async (t) => {
+  for (const slot of ["run", "interactive-submission", "interactive-interactor"] as const) {
+    for (const reason of [undefined, "unknown_reason"]) {
+      await t.test(`${slot}: ${String(reason)}`, async () => {
+        const client = new ExecutorClient({ platform: "darwin", environment: {} });
+        const child = fakeChild({ exitOnKill: false });
+        const internals = client as unknown as ExecutorClientInternals;
+        internals.child = child;
+        internals.guardedDrainChild = child;
+        internals.cachedHealth = readyHealth();
+        internals.lifecycleState = "running";
+        internals.startPromise = Promise.resolve(internals.cachedHealth);
+        const spec = runSpec();
+        const request: ExecutorRequest = slot === "run"
+          ? { type: "run", id: "invalid-reason", spec }
+          : { type: "interactive_run", id: "invalid-reason", spec: { runId: spec.runId, submission: spec, interactor: spec } };
+        const pending = internals.request(request, 1000);
+        const invalid = { ...runResult(spec.runId), reason };
+        const response = slot === "run"
+          ? { type: "run_result", id: request.id, result: invalid }
+          : { type: "interactive_run_result", id: request.id, result: {
+            runId: spec.runId, verdict: "AC", executionTimeMs: 1,
+            submissionResult: slot === "interactive-submission" ? invalid : runResult(spec.runId),
+            interactorResult: slot === "interactive-interactor" ? invalid : runResult(spec.runId),
+          } };
+        const payload = Buffer.from(JSON.stringify(response));
+        const frame = Buffer.allocUnsafe(4 + payload.length);
+        frame.writeUInt32LE(payload.length, 0);
+        payload.copy(frame, 4);
+        internals.receive(child, frame);
+        await assert.rejects(pending, /invalid response envelope/);
+        assert.equal(child.stdinEndCalls, 1);
+        assert.equal(internals.child, child, "EOF starts drain; it does not prove completion");
+        assert.equal(internals.cachedHealth.ready, false);
+      });
+    }
+  }
+});
+
 test("startup retry retains its guard after exit until close completes", async () => {
   const client = new ExecutorClient({
     platform: "darwin",

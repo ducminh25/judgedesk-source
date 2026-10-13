@@ -82,6 +82,42 @@ test("compile errors take precedence when no tests ran", () => {
   assert.equal(summary.status, "CE");
 });
 
+test("infrastructure compilation failures with no tests are JE, never AC", () => {
+  const summary = calculateProblemSummary({ compileStatus: "JE", testCases: [], testDirectories: ["01"], config: { totalScore: "1/3" } });
+  assert.equal(summary.status, "JE");
+  assert.equal(summary.score, 0);
+  assert.equal(summary.maxScore, 1 / 3);
+  assert.equal(summary.total, 0);
+});
+
+test("a runtime JE invalidates the aggregate even after an exact AC award", () => {
+  const testCases = [{ ...testCase("01", "AC", 1 / 3), scoreExact: parseRational("1/3") }, testCase("02", "JE", 0)];
+  const summary = calculateProblemSummary({ compileStatus: "OK", testCases, testDirectories: ["01", "02"], config: { totalScore: "2/3" } });
+  assert.equal(summary.status, "JE");
+  assert.equal(summary.score, 0);
+  assert.deepEqual(summary.scoreExact, createRational(0));
+  assert.deepEqual(summary.maxScoreExact, parseRational("2/3"));
+  assert.equal(summary.passed, 1);
+  assert.deepEqual(testCases[0].scoreExact, parseRational("1/3"), "keep testcase evidence, not a valid problem award");
+});
+
+test("JE preserves exact testcase evidence in incomplete and dependent groups", () => {
+  const runs = [
+    { ...testCase("01", "AC", 1 / 3), scoreExact: parseRational("1/3") },
+    testCase("02", "JE", 0),
+    { ...testCase("03", "AC", 1 / 2), scoreExact: parseRational("1/2") },
+  ];
+  const evidence = structuredClone(runs);
+  const summary = calculateProblemSummary({ compileStatus: "OK", testCases: runs, testDirectories: ["01", "02", "03"],
+    config: { polygonConfig: { enableGroups: true,
+      groups: { A: { policy: "COMPLETE_GROUP" }, B: { dependencies: ["A"] } },
+      tests: { "01": { group: "A", points: "1/3" }, "02": { group: "A", points: "1/3" }, "03": { group: "B", points: "1/2" } },
+    } } });
+  assert.equal(summary.status, "JE");
+  assert.deepEqual(summary.scoreExact, createRational(0));
+  assert.deepEqual(runs, evidence);
+});
+
 test("scoring eliminates IEEE floating point epsilon (0.35*10=3.5 and 0.3*10=3)", () => {
   const testCases35 = Array.from({ length: 10 }, (_, i) => testCase(`t${i}`, "AC", 0.35));
   const summary35 = calculateProblemSummary({

@@ -46,6 +46,15 @@ test("buildContestManifest creates a portable versioned manifest", () => {
   assert.deepEqual(validateContestManifest(JSON.parse(JSON.stringify(manifest))), manifest);
 });
 
+test("saved JE and legacy CE survive the contest manifest JSON round-trip unchanged", () => {
+  const result = { success: true, contestants: [{ contestantName: "Alice", problems: [
+    { problemName: "A", language: "cpp", compileStatus: "JE" as const, compileError: "runner setup failed", testCases: [], summary: { total: 0, passed: 0, score: 0, maxScore: 1, status: "JE" as const } },
+    { problemName: "B", language: "cpp", compileStatus: "CE" as const, compileError: "historical diagnostic", testCases: [], summary: { total: 0, passed: 0, score: 0, maxScore: 1, status: "CE" as const } },
+  ] }] };
+  const manifest = buildContestManifest({ ...workspace, judgeResult: result });
+  assert.deepEqual(validateContestManifest(JSON.parse(JSON.stringify(manifest))).workspace.judgeResult, result);
+});
+
 test("validateContestManifest accepts legacy archives that contain a global time limit", () => {
   const manifest = buildContestManifest(workspace);
   const legacyManifest = {

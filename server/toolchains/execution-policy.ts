@@ -1,36 +1,30 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import type {
+  LocalExecutionPolicySnapshot,
+  LocalExecutionPolicyV1,
+} from "../../shared/contracts.js";
 import { getAppDataDir } from "./storage.js";
 
 const POLICY_SCHEMA_VERSION = 1;
 const MAX_POLICY_BYTES = 4 * 1024;
 
-export interface LocalExecutionPolicyV1 {
-  schemaVersion: 1;
-  allowResourceOnlyLocalExecution: boolean;
-}
-
-export interface LocalExecutionPolicySnapshot
-  extends LocalExecutionPolicyV1 {
-  status: "default" | "ready" | "recovery";
-  diagnostic?: "INVALID_POLICY_DOCUMENT" | "POLICY_READ_FAILED";
-}
-
 const SAFE_DEFAULT: LocalExecutionPolicyV1 = Object.freeze({
   schemaVersion: POLICY_SCHEMA_VERSION,
-  allowResourceOnlyLocalExecution: true,
+  allowResourceOnlyLocalExecution: false,
 });
 
 export function getLocalExecutionPolicyFilePath(): string {
   return path.join(getAppDataDir(), "toolchain-execution-policy-v1.json");
 }
 
-export function loadLocalExecutionPolicy(): LocalExecutionPolicySnapshot {
-  const filePath = getLocalExecutionPolicyFilePath();
+export function loadLocalExecutionPolicy(
+  filePath = getLocalExecutionPolicyFilePath(),
+): LocalExecutionPolicySnapshot {
   let bytes: Buffer;
   try {
-    bytes = fs.readFileSync(filePath);
+    bytes = readPolicyBytes(filePath);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return { ...SAFE_DEFAULT, status: "default" };
@@ -50,21 +44,53 @@ export function loadLocalExecutionPolicy(): LocalExecutionPolicySnapshot {
       diagnostic: "INVALID_POLICY_DOCUMENT",
     };
   }
-  return { ...policy, status: "ready" };
+  if (policy.allowResourceOnlyLocalExecution) {
+    return {
+      ...SAFE_DEFAULT,
+      status: "recovery",
+      diagnostic: "RESOURCE_ONLY_LOCAL_EXECUTION_DISABLED",
+    };
+  }
+  return { ...SAFE_DEFAULT, status: "ready" };
 }
 
 export function saveLocalExecutionPolicy(
   allowResourceOnlyLocalExecution: boolean,
+  filePath = getLocalExecutionPolicyFilePath(),
 ): LocalExecutionPolicySnapshot {
-  const policy: LocalExecutionPolicyV1 = {
-    schemaVersion: POLICY_SCHEMA_VERSION,
-    allowResourceOnlyLocalExecution,
-  };
+  if (allowResourceOnlyLocalExecution !== false) {
+    throw new Error("Resource-only local execution is disabled.");
+  }
+  const policy = SAFE_DEFAULT;
   atomicWritePrivateFile(
-    getLocalExecutionPolicyFilePath(),
+    filePath,
     `${JSON.stringify(policy, null, 2)}\n`,
   );
   return { ...policy, status: "ready" };
+}
+
+function readPolicyBytes(filePath: string): Buffer {
+  // POSIX FIFO/device entries must not block before the regular-file check.
+  // Windows does not expose O_NONBLOCK; it still uses a read-only descriptor.
+  const descriptor = fs.openSync(filePath,
+    fs.constants.O_RDONLY | (fs.constants.O_NONBLOCK ?? 0));
+  try {
+    if (!fs.fstatSync(descriptor).isFile()) {
+      throw new Error("Execution policy is not a regular file.");
+    }
+    // Read one extra byte to reject oversized files, including growth after
+    // fstat. Never allocate from an untrusted size or read the whole document.
+    const bytes = Buffer.alloc(MAX_POLICY_BYTES + 1);
+    let count = 0;
+    while (count < bytes.length) {
+      const read = fs.readSync(descriptor, bytes, count, bytes.length - count, count);
+      if (read === 0) break;
+      count += read;
+    }
+    return bytes.subarray(0, count);
+  } finally {
+    fs.closeSync(descriptor);
+  }
 }
 
 function decodePolicy(bytes: Buffer): LocalExecutionPolicyV1 | null {

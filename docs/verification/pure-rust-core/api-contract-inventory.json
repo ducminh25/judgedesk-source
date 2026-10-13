@@ -2,7 +2,7 @@
   "manifestRoutesCount": 29,
   "nodeRoutesCount": 29,
   "rustRoutesCount": 29,
-  "frontendCallersCount": 34,
+  "frontendCallersCount": 33,
   "nodeRoutes": [
     {
       "method": "DELETE",
@@ -428,12 +428,6 @@
       "rawUrl": "/api/toolchains",
       "basePath": "/api/toolchains",
       "method": "GET"
-    },
-    {
-      "file": "src/features/toolchains/useThemisPromptModal.ts",
-      "rawUrl": "/api/toolchains/execution-policy",
-      "basePath": "/api/toolchains/execution-policy",
-      "method": "PUT"
     },
     {
       "file": "src/features/toolchains/useThemisPromptModal.ts",
