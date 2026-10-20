@@ -258,7 +258,11 @@ function adaptExpectedFixtureForHost(caseId: string, fixture: unknown): unknown 
   return cloned;
 }
 
-export async function runContractParity(adapterType: "node" | "rust"): Promise<ParityRunReport> {
+export async function runContractParity(
+  adapterType: "node" | "rust",
+  options: { writeReport?: boolean } = {},
+): Promise<ParityRunReport> {
+  const { writeReport = false } = options;
   let hostBaseline: Map<string, string> | null = null;
   let env: IsolatedTestEnvironment | null = null;
   let adapter: BackendAdapter | null = null;
@@ -444,7 +448,7 @@ export async function runContractParity(adapterType: "node" | "rust"): Promise<P
       results,
     };
 
-    if (adapterType === "rust") {
+    if (adapterType === "rust" && writeReport) {
       fs.writeFileSync(reportPath, JSON.stringify(report, null, 2), "utf8");
       console.log(`[check-contract-parity] Wrote Rust contract parity report to ${reportPath}`);
     }
@@ -462,7 +466,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const adapterType = isRust ? "rust" : "node";
   const reportOnly = process.argv.includes("--report-only");
 
-  runContractParity(adapterType)
+  runContractParity(adapterType, { writeReport: true })
     .then((report) => {
       console.log("\n=======================================================");
       console.log(`  CONTRACT PARITY REPORT: ${report.adapter.toUpperCase()} ADAPTER`);

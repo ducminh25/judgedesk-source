@@ -382,7 +382,8 @@ export function generateMatrixMarkdown(manifest, inventory) {
   return lines.join("\n");
 }
 
-export function runContractInventory() {
+export function runContractInventory(options = {}) {
+  const { writeReport = false } = options;
   const manifest = loadManifest();
   const manifestRoutes = manifest.routes;
   const errors = [];
@@ -460,39 +461,41 @@ export function runContractInventory() {
     rustRoutesFound: rustRoutes.length,
   };
 
-  // Generate matrix markdown file
-  const markdown = generateMatrixMarkdown(manifest, result);
-  fs.writeFileSync(matrixDocPath, markdown, "utf8");
+  if (writeReport) {
+    // Generate matrix markdown file
+    const markdown = generateMatrixMarkdown(manifest, result);
+    fs.writeFileSync(matrixDocPath, markdown, "utf8");
 
-  // Generate inventory JSON artifact (deterministic, without volatile timestamps)
-  const inventoryData = {
-    manifestRoutesCount: manifestRoutes.length,
-    nodeRoutesCount: nodeRoutes.length,
-    rustRoutesCount: rustRoutes.length,
-    frontendCallersCount: frontendCallers.length,
-    nodeRoutes,
-    rustRoutes,
-    frontendCallers,
-    manifestRoutes: manifestRoutes.map((r) => ({
-      id: r.id,
-      method: r.method,
-      path: r.path,
-      streaming: r.streaming,
-      statusCodes: r.statusCodes,
-      concurrencyGates: r.concurrencyGates,
-      persistence: r.persistence,
-      rustParityGaps: r.rustParityGaps,
-      nodeImplementation: r.nodeImplementation,
-      rustImplementation: r.rustImplementation,
-    })),
-  };
-  fs.writeFileSync(inventoryJsonPath, JSON.stringify(inventoryData, null, 2), "utf8");
+    // Generate inventory JSON artifact (deterministic, without volatile timestamps)
+    const inventoryData = {
+      manifestRoutesCount: manifestRoutes.length,
+      nodeRoutesCount: nodeRoutes.length,
+      rustRoutesCount: rustRoutes.length,
+      frontendCallersCount: frontendCallers.length,
+      nodeRoutes,
+      rustRoutes,
+      frontendCallers,
+      manifestRoutes: manifestRoutes.map((r) => ({
+        id: r.id,
+        method: r.method,
+        path: r.path,
+        streaming: r.streaming,
+        statusCodes: r.statusCodes,
+        concurrencyGates: r.concurrencyGates,
+        persistence: r.persistence,
+        rustParityGaps: r.rustParityGaps,
+        nodeImplementation: r.nodeImplementation,
+        rustImplementation: r.rustImplementation,
+      })),
+    };
+    fs.writeFileSync(inventoryJsonPath, JSON.stringify(inventoryData, null, 2), "utf8");
+  }
 
   return result;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const result = runContractInventory();
+  const result = runContractInventory({ writeReport: true });
   console.log(`[check-api-contracts] Manifest routes: ${result.manifestRoutes}`);
   console.log(`[check-api-contracts] Frontend callers: ${result.frontendCallersFound}`);
   console.log(`[check-api-contracts] Node routes: ${result.nodeRoutesFound}`);
