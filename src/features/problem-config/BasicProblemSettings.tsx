@@ -1,6 +1,7 @@
-import { Dispatch, SetStateAction, useState } from "react";
+import { Dispatch, SetStateAction, useEffect, useRef, useState } from "react";
 import { ProblemConfig } from "../../types";
 import { useTranslation } from "react-i18next";
+import { Check, Copy, ExternalLink, X } from "lucide-react";
 import {
   CHECKER_SOURCE_FILES,
   POLYGON_CHECKER_IDS,
@@ -8,6 +9,7 @@ import {
   checkerTranslationKey,
   isBuiltInCheckerId,
 } from "../../../shared/checker-catalog";
+import { BUILTIN_CHECKER_SOURCES } from "./checker-sources-data";
 
 interface Props {
   problemName: string;
@@ -30,6 +32,10 @@ export function BasicProblemSettings(props: Props) {
   const { problemName, config, setConfig, customCheckers, interactors = [] } = props;
   const { t } = useTranslation();
   const [sourceError, setSourceError] = useState("");
+  const [isSourcePreviewOpen, setIsSourcePreviewOpen] = useState(false);
+  const [copiedSource, setCopiedSource] = useState(false);
+  const viewSourceButtonRef = useRef<HTMLButtonElement>(null);
+  const closePreviewButtonRef = useRef<HTMLButtonElement>(null);
   const selectedChecker = config.checkerType || "C1";
   const selectedBuiltIn = isBuiltInCheckerId(selectedChecker)
     ? selectedChecker
@@ -38,7 +44,39 @@ export function BasicProblemSettings(props: Props) {
     ? checkerTranslationKey(selectedBuiltIn)
     : null;
 
-  const openSource = async () => {
+  const closeSourcePreview = () => {
+    setIsSourcePreviewOpen(false);
+    requestAnimationFrame(() => {
+      viewSourceButtonRef.current?.focus();
+    });
+  };
+
+  useEffect(() => {
+    if (!isSourcePreviewOpen) return;
+    closePreviewButtonRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        setIsSourcePreviewOpen(false);
+        requestAnimationFrame(() => {
+          viewSourceButtonRef.current?.focus();
+        });
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [isSourcePreviewOpen]);
+
+  const openSource = () => {
+    if (!selectedBuiltIn) return;
+    setSourceError("");
+    setCopiedSource(false);
+    setIsSourcePreviewOpen(true);
+  };
+
+  const openExternalSource = async () => {
     if (!selectedBuiltIn) return;
     setSourceError("");
     try {
@@ -46,6 +84,18 @@ export function BasicProblemSettings(props: Props) {
       await invoke("open_checker_source", { checkerId: selectedBuiltIn });
     } catch (error) {
       setSourceError(error instanceof Error ? error.message : String(error));
+    }
+  };
+
+  const copySourceToClipboard = async () => {
+    if (!selectedBuiltIn) return;
+    const content = BUILTIN_CHECKER_SOURCES[selectedBuiltIn] ?? "";
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedSource(true);
+      window.setTimeout(() => setCopiedSource(false), 1800);
+    } catch {
+      // Ignore clipboard failures
     }
   };
 
@@ -242,8 +292,9 @@ export function BasicProblemSettings(props: Props) {
         </p>
         {selectedBuiltIn && (
           <button
+            ref={viewSourceButtonRef}
             type="button"
-            onClick={() => void openSource()}
+            onClick={openSource}
             className="mt-1 font-medium text-indigo-600 underline underline-offset-2 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
           >
             {t("checkers.viewSource")}: ({CHECKER_SOURCE_FILES[selectedBuiltIn]})
@@ -255,6 +306,80 @@ export function BasicProblemSettings(props: Props) {
           </p>
         )}
       </div>
+
+      {isSourcePreviewOpen && selectedBuiltIn && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4"
+          onClick={closeSourcePreview}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            data-nested-modal="checker-source-preview"
+            aria-label={`${t("checkers.viewSource")}: ${CHECKER_SOURCE_FILES[selectedBuiltIn]}`}
+            className="flex max-h-[82vh] w-full max-w-3xl flex-col overflow-hidden rounded border border-surface-border-strong bg-surface-panel shadow-xl"
+            onClick={event => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-surface-border bg-surface-elevated px-4 py-2.5">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="font-mono text-xs font-bold text-text-primary truncate">
+                  {CHECKER_SOURCE_FILES[selectedBuiltIn]}
+                </span>
+                <span className="rounded border border-surface-border bg-surface-panel px-1.5 py-0.5 font-mono text-[10px] text-text-muted">
+                  {selectedBuiltIn}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => void copySourceToClipboard()}
+                  className="inline-flex items-center gap-1 rounded border border-surface-border bg-surface-panel px-2.5 py-1 text-[11px] font-medium text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+                >
+                  {copiedSource ? (
+                    <>
+                      <Check className="h-3.5 w-3.5 text-emerald-500" />
+                      <span>{t("common.copied", "Đã sao chép")}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3.5 w-3.5" />
+                      <span>{t("common.copy", "Sao chép")}</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void openExternalSource()}
+                  className="inline-flex items-center gap-1 rounded border border-surface-border bg-surface-panel px-2.5 py-1 text-[11px] font-medium text-text-secondary hover:bg-surface-hover hover:text-text-primary"
+                  title={t("checkers.openExternalEditor", "Mở trong trình soạn thảo ngoài")}
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  <span>{t("checkers.openExternalEditor", "Mở ngoài")}</span>
+                </button>
+                <button
+                  ref={closePreviewButtonRef}
+                  type="button"
+                  onClick={closeSourcePreview}
+                  aria-label={t("common.close", "Đóng")}
+                  className="rounded p-1 text-text-muted hover:bg-surface-hover hover:text-text-primary"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            {sourceError && (
+              <div className="border-b border-rose-500/30 bg-rose-500/10 px-4 py-2 text-[11px] text-rose-500">
+                {t("checkers.sourceOpenFailed")}: {sourceError}
+              </div>
+            )}
+            <div className="flex-1 overflow-auto bg-input-bg p-4">
+              <pre className="font-mono text-xs leading-relaxed text-text-primary whitespace-pre overflow-x-auto">
+                <code>{BUILTIN_CHECKER_SOURCES[selectedBuiltIn]}</code>
+              </pre>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

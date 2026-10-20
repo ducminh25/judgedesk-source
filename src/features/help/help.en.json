@@ -107,7 +107,7 @@
       "summary": "Auto-detect submissions from LAN shared folder, continuous judging queue and log generation",
       "intro": "The Online Submission Directory (OSD) feature allows teachers to set up a shared drop folder on the local network. Contestants or submission clients drop their source files into this folder, and JudgeDesk automatically detects, ingests, queues, and grades submissions in real time.",
       "items": {
-        "sharing": "LAN Folder Sharing: Create a drop folder (e.g. D:/Submit) and enable network sharing (Windows File Sharing or macOS File Sharing) with Read/Write permissions for Everyone.",
+        "sharing": "LAN Folder Sharing: Create a drop folder (e.g. D:/Submit) and enable network sharing (Windows File Sharing, macOS File Sharing, or Samba on Linux) with Read/Write permissions for Everyone.",
         "naming": "Themis Filename Convention: *[ContestantId][ProblemName].EXT (e.g., [HS01][SUM].cpp, 001[Mon][BAI1].pas, 2026[LeA][PROB1].py).",
         "ingestion": "Ingestion & Archiving: Valid submissions are moved into contestant folders, and older submissions are safely archived to $History/ to prevent conflicts.",
         "queue": "FIFO Judge Queue: Submissions are queued and judged sequentially within the isolated Sandbox with precise CPU and memory measurements.",
@@ -183,7 +183,7 @@
         },
         "ctrlI": {
           "term": "Ctrl + I (⌘I)",
-          "description": "Toggle selection of the currently focused contestant."
+          "description": "Toggle selection of the currently focused contestant (or the first contestant if none is focused)."
         },
         "ctrlShiftA": {
           "term": "Ctrl + Shift + A (⇧⌘A)",
@@ -195,11 +195,11 @@
         },
         "ctrlShiftI": {
           "term": "Ctrl + Shift + I (⇧⌘I)",
-          "description": "Toggle selection of the currently focused problem."
+          "description": "Toggle selection of the currently focused problem (or the first problem if none is focused)."
         },
         "esc": {
           "term": "Esc (Escape)",
-          "description": "Immediately close any open modal, dialog, or popover menu."
+          "description": "Immediately close the topmost open modal, dialog, or popover menu."
         },
         "arrows": {
           "term": "Arrow keys (↑ ↓ ← →)",
@@ -218,7 +218,7 @@
     "toolchains": {
       "title": "Languages & toolchains",
       "summary": "Core, Full, statuses, paths, and quick troubleshooting",
-      "intro": "The compiler/runtime source answers where a language comes from. Readiness answers what JudgeDesk is currently allowed to do with it. These are separate facts.",
+      "intro": "The compiler/runtime source answers where a language comes from. Readiness answers what JudgeDesk is currently allowed to do with it. These are separate facts. JudgeDesk isolates contestant execution inside a native sandbox on Windows (AppContainer + Job Object), macOS (Seatbelt), and Linux (Bubblewrap bwrap + cgroup v2 + seccomp-bpf).",
       "editionsTitle": "Core and Full",
       "editions": {
         "full": {
@@ -227,7 +227,7 @@
         },
         "core": {
           "term": "JudgeDesk Core",
-          "description": "Does not bundle every compiler/runtime. It probes PATH first, then a bounded list of standard locations, and shows the detected version and executable path. Choosing Core during an update preserves the selected compiler sources and paths."
+          "description": "Does not bundle every compiler/runtime. It probes PATH first, then a bounded list of standard locations (including Linux system GCC/Clang, Python 3, Free Pascal fpc, and OpenJDK javac/java plus the bundled Scratch runtime), and shows the detected version and executable path. Choosing Core during an update preserves the selected compiler sources and paths."
         }
       },
       "statusesTitle": "Status meanings",
@@ -263,7 +263,7 @@
       "localCompatibilityWarning": "Enable this only if you accept that contestant source may read or write files available to the teacher account and may access the network. A managed Full package remains the safer choice.",
       "troubleshootingTitle": "If a language is not ready",
       "troubleshooting": {
-        "rescan": "Open the compiler & runtime manager and scan again after changing PATH or installing a compiler.",
+        "rescan": "Open the compiler & runtime manager (F6) and scan again after changing PATH or installing a compiler (e.g. on Ubuntu: `sudo apt install g++ python3 fp-compiler default-jdk`).",
         "path": "Confirm the displayed executable is the intended compiler/runtime, especially when several versions are installed.",
         "version": "Run the same executable's version command in a terminal. Remove broken PATH entries or choose the correct local path.",
         "managed": "In Full, prefer the package included with JudgeDesk. For C/C++ on macOS, install Xcode Command Line Tools if Apple Clang is not detected. In Core, apply a managed package when local execution is not compatible with native protection.",
@@ -296,18 +296,18 @@
         }
       },
       "configExample": "Example stored in Config.cfg",
-      "platformNote": "Config.cfg stores platform-independent arguments. JudgeDesk adds required output, Windows stack/static-link, or macOS compatibility arguments for the active compiler; it does not apply Windows-only flags to Apple Clang.",
+      "platformNote": "Config.cfg stores platform-independent arguments. JudgeDesk adds required output, Windows stack/static-link, or macOS/Linux compatibility arguments for the active compiler; it does not apply Windows-only flags to Apple Clang or Linux GCC.",
       "invalidationWarning": "Changing a problem's profile or effective flags changes the compiled program. Saving the change requires confirmation and deletes that problem's old scores/logs before the next grading run.",
       "restore": "To return to established behavior, choose Themis compatibility in that problem and save. Updating JudgeDesk does not silently rewrite a profile already stored in Config.cfg."
     },
     "portable": {
       "title": "Portable compatibility",
       "summary": "What the current release supports and what remains future work",
-      "notShipped": "JudgeDesk does not ship or support a portable application archive. The supported release artifacts remain the Windows installer and macOS disk image.",
-      "compatibility": "The application is being kept compatible with a future extract-and-run package, but signing, updater behavior, writable data location, WebView/runtime dependencies, and clean-machine testing must be solved before release.",
+      "notShipped": "JudgeDesk ships official Windows installers (.msi), macOS disk images (.dmg), and Linux packages (.deb, .rpm, .AppImage).",
+      "compatibility": "The application keeps format-isolated updater targets across platforms (including separate Linux .deb, .rpm, and .AppImage updater channels).",
       "items": {
-        "installer": "Use the official installer or disk image and verify its published checksum.",
-        "contestArchive": "The .judgedesk contest format is portable between supported Windows and macOS installations; this does not make the application itself portable.",
+        "installer": "Use the official installer (.msi, .dmg, .deb, .rpm, .AppImage) and verify its published checksum.",
+        "contestArchive": "The .judgedesk contest format is portable between supported Windows, macOS, and Linux installations.",
         "futureWindows": "A future Windows option would use a verified ZIP, not an old-style self-extracting executable.",
         "futureMac": "A future macOS option must preserve the signed app bundle, executable permissions, and Gatekeeper behavior."
       },
@@ -316,7 +316,7 @@
     "about": {
       "title": "About JudgeDesk",
       "summary": "Version, edition, build identity, paths, and diagnostics",
-      "intro": "JudgeDesk is a local Vietnamese programming-contest desktop judge for Windows and Apple Silicon macOS. It keeps contest preparation, grading, detailed results, archives, and exports in one desktop workflow.",
+      "intro": "JudgeDesk is a local Vietnamese programming-contest desktop judge for Windows, Apple Silicon macOS, and Linux (Ubuntu 22.04 LTS+). It keeps contest preparation, grading, detailed results, archives, and exports in one desktop workflow.",
       "themisCredit": "JudgeDesk's offline, teacher-first workflow and contextual help are inspired by Themis. This Help Center is newly written for JudgeDesk and does not copy Themis text, screenshots, or assets.",
       "scratchRunCredit": "Scratch judging is powered by the open-source scratch-run tool developed by VNOI (VNOI-Admin / Le Bao Hiep) on top of TurboWarp scratch-vm. JudgeDesk gratefully acknowledges the VNOI team for their contributions to the competitive programming community.",
       "disclaimer": "JudgeDesk is an independent product: it is not Themis, has no affiliation with the authors of Themis, and makes no claim of endorsement or commission by the Ministry of Education and Training."

@@ -1207,6 +1207,11 @@ mod imp {
             }
 
             if let Err(error) = require_anchored_group_signal(watcher, libc::SIGSTOP) {
+                if is_zombie_only_group_signal_eperm(watcher, &anchor, &error) {
+                    previous_stopped_snapshot = None;
+                    thread::sleep(options.poll_interval);
+                    continue;
+                }
                 return Err(group_signal_failure(
                     &anchor,
                     libc::SIGSTOP,
@@ -1263,6 +1268,11 @@ mod imp {
                 continue;
             }
             if let Err(error) = require_anchored_group_signal(watcher, libc::SIGKILL) {
+                if is_zombie_only_group_signal_eperm(watcher, &anchor, &error) {
+                    previous_stopped_snapshot = None;
+                    thread::sleep(options.poll_interval);
+                    continue;
+                }
                 return Err(group_signal_failure(
                     &anchor,
                     libc::SIGKILL,
@@ -1375,6 +1385,18 @@ mod imp {
                 ),
             )),
         }
+    }
+
+    fn is_zombie_only_group_signal_eperm(
+        watcher: &AnchorExitWatcher,
+        anchor: &ProcessIdentity,
+        error: &io::Error,
+    ) -> bool {
+        error.raw_os_error() == Some(libc::EPERM)
+            && watcher.require_exit_unreaped().is_ok()
+            && inventory_anchored_process_group(watcher)
+                .map(|snapshot| descendant_snapshot(anchor, snapshot).members.is_empty())
+                .unwrap_or(false)
     }
 
     fn signal_process_group(pgid: i32, signal: i32) -> io::Result<GroupSignalOutcome> {

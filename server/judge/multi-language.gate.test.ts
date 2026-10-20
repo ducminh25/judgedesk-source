@@ -275,6 +275,53 @@ function managedRuntimeSecurityGate(
   loopbackPort: number,
 ): LanguageGate | null {
   const sentinelLiteral = JSON.stringify(sentinelPath);
+  if (name === "pascal") {
+    const pascalSentinel = `'${sentinelPath.replaceAll("'", "''")}'`;
+    return {
+      language: "pascal",
+      toolchainKind: "pascal",
+      extension: ".pas",
+      source: [
+        "program Main;",
+        "uses Sockets, SysUtils;",
+        `const Sentinel = ${pascalSentinel};`,
+        `const LoopbackPort = ${loopbackPort};`,
+        "var inputFile, outputFile: Text;",
+        "var fileReadBlocked, fileWriteBlocked, networkBlocked: Boolean;",
+        "var socketHandle: LongInt;",
+        "var address: TInetSockAddr;",
+        "begin",
+        "  {$I-}",
+        "  Assign(inputFile, Sentinel);",
+        "  Reset(inputFile);",
+        "  fileReadBlocked := IOResult <> 0;",
+        "  if not fileReadBlocked then Close(inputFile);",
+        "  Assign(outputFile, Sentinel);",
+        "  Rewrite(outputFile);",
+        "  fileWriteBlocked := IOResult <> 0;",
+        "  if not fileWriteBlocked then begin",
+        "    Writeln(outputFile, 'SECURITY_ESCAPE');",
+        "    Close(outputFile);",
+        "  end;",
+        "  {$I+}",
+        "  FillChar(address, SizeOf(address), 0);",
+        "  address.sin_family := AF_INET;",
+        "  address.sin_port := htons(LoopbackPort);",
+        "  address.sin_addr := StrToNetAddr('127.0.0.1');",
+        "  socketHandle := fpSocket(AF_INET, SOCK_STREAM, 0);",
+        "  if socketHandle < 0 then networkBlocked := True",
+        "  else begin",
+        "    networkBlocked := fpConnect(socketHandle, @address, SizeOf(address)) <> 0;",
+        "    CloseSocket(socketHandle);",
+        "  end;",
+        "  if fileReadBlocked and fileWriteBlocked and networkBlocked then Writeln('SAFE')",
+        "  else Writeln('UNSAFE fileRead=', fileReadBlocked,",
+        "    ' fileWrite=', fileWriteBlocked, ' network=', networkBlocked);",
+        "end.",
+        "",
+      ].join("\n"),
+    };
+  }
   if (name === "javascript") {
     return {
       language: "javascript",
@@ -408,22 +455,16 @@ function managedRuntimeSecurityGate(
   return null;
 }
 
-const builtInRoot = process.env.JUDGEDESK_REAL_TOOLCHAIN_GATE_ROOT;
-const enabled =
-  (process.platform === "win32" || process.platform === "darwin")
-  && process.env.JUDGEDESK_REAL_TOOLCHAIN_GATES === "1"
-  && !!builtInRoot;
-if (enabled) {
-  process.env.JUDGEDESK_BUILTIN_TOOLCHAINS_DIR = path.resolve(builtInRoot!);
-}
+test("managed runtime security matrix includes every production interpreted runtime", () => {
+  for (const name of ["pascal", "java", "python"] as const) {
+    assert.ok(
+      managedRuntimeSecurityGate(name, path.join(os.homedir(), "private.txt"), 1),
+      `${name} has no private-file/network boundary fixture`,
+    );
+  }
+});
 
-const requestedGateNames = (
-  process.env.JUDGEDESK_REAL_LANGUAGE_GATES
-  || "pascal,java,python"
-)
-  .split(",")
-  .map((value) => value.trim().toLowerCase())
-  .filter(Boolean);
+const toolchainGateRoot = process.env.JUDGEDESK_REAL_TOOLCHAIN_GATE_ROOT;
 const expectedPackageOrigin =
   process.env.JUDGEDESK_REAL_TOOLCHAIN_GATE_ORIGIN || "built-in";
 if (
@@ -434,7 +475,31 @@ if (
     "JUDGEDESK_REAL_TOOLCHAIN_GATE_ORIGIN must be 'built-in' or 'downloaded'.",
   );
 }
+const enabled =
+  (process.platform === "win32" || process.platform === "darwin")
+  && process.env.JUDGEDESK_REAL_TOOLCHAIN_GATES === "1"
+  && !!toolchainGateRoot;
+if (enabled) {
+  const resolvedGateRoot = path.resolve(toolchainGateRoot!);
+  if (expectedPackageOrigin === "built-in") {
+    process.env.JUDGEDESK_BUILTIN_TOOLCHAINS_DIR = resolvedGateRoot;
+  } else {
+    assert.equal(
+      path.basename(resolvedGateRoot).toLowerCase(),
+      "toolchains",
+      "downloaded gate root must be the exact ThemisV2/toolchains directory",
+    );
+    process.env.THEMIS_APP_DATA_DIR = path.dirname(resolvedGateRoot);
+  }
+}
 
+const requestedGateNames = (
+  process.env.JUDGEDESK_REAL_LANGUAGE_GATES
+  || "pascal,java,python"
+)
+  .split(",")
+  .map((value) => value.trim().toLowerCase())
+  .filter(Boolean);
 function provisionMacosTreeGuard(): string | null {
   if (process.platform !== "darwin") return null;
   if (process.env.JUDGEDESK_TREE_GUARD_REQUIRED === "1") return null;

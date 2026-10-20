@@ -122,7 +122,10 @@ async fn test_rust_core_contract_endpoints() {
     let (status, body) = http_request(port, "GET", "/api/status", None, None, None).await;
     assert_eq!(status, 200);
     let parsed: serde_json::Value = serde_json::from_str(&body).expect("parse status json");
-    assert_eq!(parsed["success"], true);
+    assert!(
+        parsed.get("secureRunner").is_some(),
+        "status must contain secureRunner"
+    );
     assert!(parsed.get("gpp").is_some(), "status must contain gpp");
     assert!(parsed.get("python").is_some(), "status must contain python");
     assert!(

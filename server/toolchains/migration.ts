@@ -286,6 +286,9 @@ export function migrateLegacyBundledToolchains(
 
   for (const [packageId, candidates] of candidatesByPackage.entries()) {
     const canonicalDir = path.join(downloadedRoot, packageId);
+    const canonicalCandidate = candidates.find(
+      (c) => c.dirPath.toLowerCase() === canonicalDir.toLowerCase(),
+    );
     let canonicalValid = false;
 
     if (
@@ -328,6 +331,9 @@ export function migrateLegacyBundledToolchains(
       for (const cand of candidates) {
         if (!fs.existsSync(cand.dirPath)) continue;
         if (cand.dirPath.toLowerCase() === canonicalDir.toLowerCase()) continue;
+        if (isActiveExecutorCacheCandidate(cand, executorCacheRoot, canonicalCandidate)) {
+          continue;
+        }
         try {
           const size = getDirectorySizeBytes(cand.dirPath);
           fs.rmSync(cand.dirPath, { recursive: true, force: true });
@@ -342,6 +348,33 @@ export function migrateLegacyBundledToolchains(
   }
 
   return result;
+}
+
+function isActiveExecutorCacheCandidate(
+  candidate: CandidatePackage,
+  executorCacheRoot: string,
+  canonicalCandidate: CandidatePackage | undefined,
+): boolean {
+  if (!canonicalCandidate || !canonicalCandidate.version || !canonicalCandidate.archiveSha256) {
+    return false;
+  }
+  const normalizedRoot = path.resolve(executorCacheRoot).toLowerCase();
+  const normalizedDir = path.resolve(candidate.dirPath).toLowerCase();
+  if (
+    normalizedDir === normalizedRoot
+    || !normalizedDir.startsWith(`${normalizedRoot}${path.sep}`)
+  ) {
+    return false;
+  }
+  const markerPath = path.join(candidate.dirPath, ".judgedesk-import-complete");
+  try {
+    const marker = fs.readFileSync(markerPath, "utf8");
+    const expectedMarker =
+      `4-receipt-digest\n${canonicalCandidate.packageId}\n${canonicalCandidate.version}\n${canonicalCandidate.archiveSha256}\n`;
+    return marker === expectedMarker;
+  } catch {
+    return false;
+  }
 }
 
 /**

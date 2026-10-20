@@ -63,7 +63,7 @@ pub(super) fn failure_diagnostic(error_code: u32) -> String {
     }
 }
 
-pub(super) fn drain_suspended_child(job: HANDLE, process: HANDLE) {
+pub(super) fn drain_child_or_exit(job: HANDLE, process: HANDLE, context: &str) {
     let deadline = Instant::now() + Duration::from_secs(20);
     // SAFETY: this run exclusively owns the Job and its still-suspended child.
     let terminated = unsafe { TerminateJobObject(job, super::LIMIT_EXIT_CODE) };
@@ -75,7 +75,7 @@ pub(super) fn drain_suspended_child(job: HANDLE, process: HANDLE) {
     {
         // Never acknowledge an uncertain teardown or admit another run after it.
         // Exiting closes every kill-on-close Job; the sidecar detects executor loss.
-        eprintln!("interactive launch failed and suspended-child cleanup could not be verified; executor stopping fail-closed");
+        eprintln!("{context} cleanup could not be verified; executor stopping fail-closed");
         std::process::exit(1);
     }
 }

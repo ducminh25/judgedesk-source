@@ -433,7 +433,7 @@ function preparePair(runtime: GateRuntime, mode: PairMode): ExecutorInteractiveR
     const source = `#define main resourceFixtureMain\n${resourceSource}\n#undef main\n#include <csignal>\n` +
       `int main(int argc, char** argv) {\n` +
       `    if (argc == 3 && std::string(argv[1]) == "exit-code") return std::atoi(argv[2]);\n` +
-      `    if (argc == 3 && std::string(argv[1]) == "delayed-exit") { std::this_thread::sleep_for(std::chrono::milliseconds(200)); return std::atoi(argv[2]); }\n` +
+      `    if (argc == 3 && std::string(argv[1]) == "delayed-exit") { char bytes[4096]; while (std::cin.read(bytes, sizeof(bytes)) || std::cin.gcount() > 0) {} std::this_thread::sleep_for(std::chrono::milliseconds(50)); return std::atoi(argv[2]); }\n` +
       `    if (argc == 3 && std::string(argv[1]) == "drain-then-exit") { char bytes[4096]; while (std::cin.read(bytes, sizeof(bytes)) || std::cin.gcount() > 0) {} return std::atoi(argv[2]); }\n` +
       `    if (argc >= 2 && std::string(argv[1]) == "signal-crash") { std::raise(SIGTERM); return 70; }\n` +
       `    if (argc >= 2 && std::string(argv[1]) == "drain-input") { std::this_thread::sleep_for(std::chrono::milliseconds(100)); char bytes[4096]; while (std::cin.read(bytes, sizeof(bytes)) || std::cin.gcount() > 0) {} std::this_thread::sleep_for(std::chrono::seconds(5)); return 0; }\n` +

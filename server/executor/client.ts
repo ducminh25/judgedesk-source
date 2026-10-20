@@ -312,6 +312,28 @@ export class ExecutorClient {
       this.startPromise = Promise.resolve(this.cachedHealth);
       return;
     }
+    if (this.lifecycleState === "terminal") {
+      await waitForChildExit(child, this.shutdownExitTimeoutMs);
+      if (!childHasExited(child)) {
+        if (this.requiresGuardedMacosDrain(child)) {
+          throw new SecureRunnerError(
+            "SECURE_RUNNER_UNAVAILABLE",
+            this.cachedHealth.diagnostics[0]
+              || "Native executor drain is still in progress; the macOS process-tree guard remains held.",
+          );
+        }
+        child.kill();
+        await waitForChildExit(child, this.shutdownExitTimeoutMs);
+        if (!childHasExited(child)) {
+          const detail = this.cachedHealth.diagnostics[0] || "Native executor terminal failure.";
+          throw new SecureRunnerError(
+            "SECURE_RUNNER_UNAVAILABLE",
+            `Native executor did not exit after terminal failure: ${detail}`,
+          );
+        }
+      }
+      return;
+    }
     this.lifecycleState = "draining";
     this.cachedHealth = unavailableHealth("Native executor shutdown is in progress.");
     this.startPromise = Promise.resolve(this.cachedHealth);
@@ -370,6 +392,13 @@ export class ExecutorClient {
       throw new SecureRunnerError("SECURE_RUNNER_UNAVAILABLE", message);
     }
     this.finishShutdown("Native executor shut down.");
+  }
+
+  async waitForStdioClose(timeoutMs = this.shutdownExitTimeoutMs): Promise<boolean> {
+    const child = this.child;
+    if (!child) return true;
+    await waitForChildClose(child, timeoutMs);
+    return this.child !== child;
   }
 
   private async startInternal(): Promise<ExecutorHealth> {
@@ -540,7 +569,7 @@ export class ExecutorClient {
 
   private request(request: ExecutorRequest, timeoutMs = REQUEST_TIMEOUT_MS): Promise<ExecutorResponse> {
     const child = this.child;
-    if (!child || !child.stdin.writable) {
+    if (!child || !child.stdin.writable || this.lifecycleState === "terminal") {
       return Promise.reject(new SecureRunnerError("SECURE_RUNNER_UNAVAILABLE", "Native executor is not running."));
     }
     const payload = Buffer.from(JSON.stringify(request), "utf8");
@@ -551,9 +580,9 @@ export class ExecutorClient {
     header.writeUInt32LE(payload.length);
     return new Promise<ExecutorResponse>((resolve, reject) => {
       const timer = setTimeout(() => {
-        this.pending.delete(request.id);
         const stderr = this.stderrPreview.trim();
-        reject(
+        this.terminalizeLiveChild(
+          child,
           new SecureRunnerError(
             "SECURE_RUNNER_PROTOCOL_ERROR",
             `Executor request ${request.id} timed out.` +
@@ -649,10 +678,12 @@ export class ExecutorClient {
   }
 
   private terminalizeLiveChild(child: ChildProcessWithoutNullStreams, error: Error): void {
-    if (this.child !== child) return;
-    this.cachedHealth = unavailableHealth(error.message);
-    this.lifecycleState = "terminal";
-    this.startPromise = Promise.resolve(this.cachedHealth);
+    if (this.child !== child || this.lifecycleState === "terminal") return;
+    if (!this.startupRetryChildren.has(child)) {
+      this.cachedHealth = unavailableHealth(error.message);
+      this.lifecycleState = "terminal";
+      this.startPromise = Promise.resolve(this.cachedHealth);
+    }
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer);
       pending.reject(error);
@@ -673,7 +704,11 @@ export class ExecutorClient {
       this.ownedTreeGuardCleanup = null;
     }
     const startupRetry = this.startupRetryChildren.has(child);
-    this.cachedHealth = unavailableHealth(error.message);
+    const preserveTerminalDiagnostic =
+      this.lifecycleState === "draining" || this.lifecycleState === "terminal";
+    if (!preserveTerminalDiagnostic) {
+      this.cachedHealth = unavailableHealth(error.message);
+    }
     this.child = null;
     if (this.guardedDrainChild === child) this.guardedDrainChild = null;
     for (const pending of this.pending.values()) {

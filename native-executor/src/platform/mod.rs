@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
+#[cfg(target_os = "linux")]
+pub(crate) mod linux;
 #[cfg(target_os = "macos")]
 pub(crate) mod macos;
 #[cfg(windows)]
@@ -25,6 +27,8 @@ enum PlatformInner {
     Windows(Arc<windows::WindowsPlatform>),
     #[cfg(target_os = "macos")]
     Macos(Arc<macos::MacosPlatform>),
+    #[cfg(target_os = "linux")]
+    Linux(Arc<linux::LinuxPlatform>),
     Unsupported(String),
 }
 
@@ -56,11 +60,24 @@ impl Platform {
                 },
             }
         }
-        #[cfg(not(any(windows, target_os = "macos")))]
+        #[cfg(target_os = "linux")]
+        {
+            match linux::LinuxPlatform::initialize() {
+                Ok((inner, root)) => Self {
+                    root,
+                    inner: PlatformInner::Linux(Arc::new(inner)),
+                },
+                Err(error) => Self {
+                    root: PathBuf::new(),
+                    inner: PlatformInner::Unsupported(error),
+                },
+            }
+        }
+        #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
         Self {
             root: PathBuf::new(),
             inner: PlatformInner::Unsupported(
-                "secure executor is supported only on Windows and macOS".into(),
+                "secure executor is supported only on Windows, macOS, and Linux".into(),
             ),
         }
     }
@@ -75,6 +92,8 @@ impl Platform {
             PlatformInner::Windows(inner) => inner.health(&self.root),
             #[cfg(target_os = "macos")]
             PlatformInner::Macos(inner) => inner.health(&self.root),
+            #[cfg(target_os = "linux")]
+            PlatformInner::Linux(inner) => inner.health(&self.root),
             PlatformInner::Unsupported(error) => ExecutorHealth {
                 ready: false,
                 mode: "unavailable".into(),
@@ -96,6 +115,8 @@ impl Platform {
             PlatformInner::Windows(inner) => inner.run(spec, validated, _active),
             #[cfg(target_os = "macos")]
             PlatformInner::Macos(inner) => inner.run(&self.root, spec, validated, _active),
+            #[cfg(target_os = "linux")]
+            PlatformInner::Linux(inner) => inner.run(&self.root, spec, validated, _active),
             PlatformInner::Unsupported(error) => {
                 failure(spec, RunReason::SandboxDenied, error.clone())
             }
@@ -115,6 +136,8 @@ impl Platform {
                 Ok(()) => crate::macos_interactive::run(&self.root, spec, _active),
                 Err(error) => interactive_failure(spec, error),
             },
+            #[cfg(target_os = "linux")]
+            PlatformInner::Linux(inner) => inner.run_interactive(&self.root, spec, _active),
             PlatformInner::Unsupported(error) => interactive_failure(spec, error.clone()),
         }
     }

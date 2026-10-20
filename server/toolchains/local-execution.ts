@@ -73,7 +73,7 @@ export function deriveLocalToolchain(
   if (!lexicalMetadata.isFile() && !lexicalMetadata.isSymbolicLink()) {
     throw new Error("LOCAL_EXECUTABLE_INVALID: executable is not a regular file");
   }
-  const canonicalExecutable = fs.realpathSync(executablePath);
+  let canonicalExecutable = fs.realpathSync(executablePath);
   if (!fs.statSync(canonicalExecutable).isFile()) {
     throw new Error("LOCAL_EXECUTABLE_INVALID: executable is not a regular file");
   }
@@ -92,6 +92,20 @@ export function deriveLocalToolchain(
   }
   if (path.parse(canonicalRoot).root === canonicalRoot) {
     throw new Error("LOCAL_EXECUTABLE_INVALID: toolchain root is not bounded");
+  }
+  if (kind === "python" && os.platform() === "darwin") {
+    const frameworkInterpreter = path.join(
+      canonicalRoot,
+      "Resources",
+      "Python.app",
+      "Contents",
+      "MacOS",
+      "Python",
+    );
+    const frameworkStat = fs.lstatSync(frameworkInterpreter, { throwIfNoEntry: false });
+    if (frameworkStat?.isFile() && !frameworkStat.isSymbolicLink()) {
+      canonicalExecutable = fs.realpathSync(frameworkInterpreter);
+    }
   }
 
   const relative = path.relative(canonicalRoot, canonicalExecutable);
@@ -285,6 +299,13 @@ export function inferLocalToolchainRoot(
   }
 
   const pathApi = platform === "win32" ? path.win32 : path.posix;
+  if (platform === "darwin") {
+    const normalized = canonicalExecutable.replaceAll("\\", "/");
+    const frameworkSuffix = "/Resources/Python.app/Contents/MacOS/Python";
+    if (normalized.endsWith(frameworkSuffix)) {
+      return normalized.slice(0, -frameworkSuffix.length) || "/";
+    }
+  }
   const executableDirectory = pathApi.dirname(canonicalExecutable);
   const directoryName = pathApi.basename(executableDirectory).toLowerCase();
   return directoryName === "bin" || directoryName === "scripts"

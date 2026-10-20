@@ -16,28 +16,32 @@ use std::mem::{size_of, zeroed};
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::ptr::{null, null_mut};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use windows_sys::Win32::Foundation::{
     CloseHandle, GetLastError, LocalFree, ERROR_ALREADY_EXISTS, ERROR_COMMITMENT_LIMIT,
     ERROR_INSUFFICIENT_BUFFER, ERROR_NOT_ENOUGH_MEMORY, ERROR_OUTOFMEMORY, FILETIME, GENERIC_READ,
     GENERIC_WRITE, HANDLE, INVALID_HANDLE_VALUE, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 use windows_sys::Win32::Security::Authorization::{
-    ConvertSidToStringSidW, GetNamedSecurityInfoW, SetNamedSecurityInfoW, SE_FILE_OBJECT,
+    ConvertSidToStringSidW, GetNamedSecurityInfoW, GetSecurityInfo, SetEntriesInAclW,
+    SetNamedSecurityInfoW, SetSecurityInfo, EXPLICIT_ACCESS_W, GRANT_ACCESS, SE_FILE_OBJECT,
+    SE_WINDOW_OBJECT, TRUSTEE_IS_SID, TRUSTEE_IS_WELL_KNOWN_GROUP, TRUSTEE_W,
 };
 use windows_sys::Win32::Security::Isolation::{
-    CreateAppContainerProfile, DeriveAppContainerSidFromAppContainerName, GetAppContainerFolderPath,
+    CreateAppContainerProfile, DeleteAppContainerProfile,
+    DeriveAppContainerSidFromAppContainerName, GetAppContainerFolderPath,
 };
 use windows_sys::Win32::Security::{
     AclSizeInformation, AddAccessAllowedAceEx, CreateWellKnownSid, DeriveCapabilitySidsFromName,
     EqualSid, FreeSid, GetAce, GetAclInformation, GetLengthSid, GetSecurityDescriptorControl,
-    GetTokenInformation, InitializeAcl, TokenUser, WinBuiltinAdministratorsSid, WinLocalSystemSid,
-    ACCESS_ALLOWED_ACE, ACL, ACL_REVISION, ACL_SIZE_INFORMATION, CONTAINER_INHERIT_ACE,
-    DACL_SECURITY_INFORMATION, OBJECT_INHERIT_ACE, PROTECTED_DACL_SECURITY_INFORMATION,
-    PSECURITY_DESCRIPTOR, PSID, SECURITY_ATTRIBUTES, SECURITY_CAPABILITIES, SECURITY_MAX_SID_SIZE,
-    SE_DACL_PROTECTED, SID_AND_ATTRIBUTES, TOKEN_QUERY, TOKEN_USER,
+    GetTokenInformation, InitializeAcl, TokenUser, WinBuiltinAdministratorsSid,
+    WinBuiltinAnyPackageSid, WinLocalSystemSid, ACCESS_ALLOWED_ACE, ACL, ACL_REVISION,
+    ACL_SIZE_INFORMATION, CONTAINER_INHERIT_ACE, DACL_SECURITY_INFORMATION, OBJECT_INHERIT_ACE,
+    PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID, SECURITY_ATTRIBUTES,
+    SECURITY_CAPABILITIES, SECURITY_MAX_SID_SIZE, SE_DACL_PROTECTED, SID_AND_ATTRIBUTES,
+    TOKEN_QUERY, TOKEN_USER,
 };
 use windows_sys::Win32::Storage::FileSystem::{
     CreateFileW, CREATE_ALWAYS, FILE_ALL_ACCESS, FILE_ATTRIBUTE_NORMAL, FILE_GENERIC_EXECUTE,
@@ -63,9 +67,9 @@ use windows_sys::Win32::System::SystemServices::{
     SE_GROUP_ENABLED,
 };
 use windows_sys::Win32::System::Threading::{
-    DeleteProcThreadAttributeList, GetCurrentProcess, GetExitCodeProcess, GetProcessAffinityMask,
-    GetProcessTimes, InitializeProcThreadAttributeList, OpenProcessToken, ResumeThread,
-    UpdateProcThreadAttribute, WaitForSingleObject, PROCESS_INFORMATION,
+    DeleteProcThreadAttributeList, GetCurrentProcess, GetCurrentThreadId, GetExitCodeProcess,
+    GetProcessAffinityMask, GetProcessTimes, InitializeProcThreadAttributeList, OpenProcessToken,
+    ResumeThread, UpdateProcThreadAttribute, WaitForSingleObject, PROCESS_INFORMATION,
     PROC_THREAD_ATTRIBUTE_ALL_APPLICATION_PACKAGES_POLICY, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
     PROC_THREAD_ATTRIBUTE_JOB_LIST, PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
     STARTF_USESTDHANDLES, STARTUPINFOEXW,
@@ -76,14 +80,63 @@ use windows_sys::Win32::System::IO::{CreateIoCompletionPort, GetQueuedCompletion
 const PROFILE_NAME: &str = "JudgeDesk.NativeSecureExecutor.v1";
 const CANCEL_EXIT_CODE: u32 = 0x4a44_0001;
 const LIMIT_EXIT_CODE: u32 = 0x4a44_0002;
-const MANAGED_RUNTIME_MARKERS: [&str; 6] = [
+const MANAGED_RUNTIME_MARKERS: [&str; 5] = [
     "JUDGEDESK_PYTHON_ISOLATED",
     "JUDGEDESK_NODE_ISOLATED",
     "JUDGEDESK_JAVA_ISOLATED",
     "JUDGEDESK_DOTNET_ISOLATED",
     "JUDGEDESK_SCRATCH_ISOLATED",
-    "JUDGEDESK_PASCAL_ISOLATED",
 ];
+static EPHEMERAL_PROFILE_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SandboxBoundary {
+    ResourceOnly,
+    Lpac,
+    EphemeralAppContainer,
+}
+
+fn sandbox_boundary(
+    role: RunRole,
+    isolation: LocalToolchainIsolation,
+    has_managed_runtime_marker: bool,
+    has_toolchain: bool,
+) -> SandboxBoundary {
+    if matches!(isolation, LocalToolchainIsolation::ResourceOnly) {
+        SandboxBoundary::ResourceOnly
+    } else if matches!(role, RunRole::Compiler | RunRole::CheckerRuntime)
+        || (matches!(role, RunRole::Submission) && has_toolchain && has_managed_runtime_marker)
+    {
+        SandboxBoundary::EphemeralAppContainer
+    } else {
+        SandboxBoundary::Lpac
+    }
+}
+
+fn sandbox_boundary_for_run(spec: &RunSpec, isolation: LocalToolchainIsolation) -> SandboxBoundary {
+    sandbox_boundary(
+        spec.role,
+        isolation,
+        MANAGED_RUNTIME_MARKERS
+            .iter()
+            .any(|marker| spec.environment.get(*marker).map(String::as_str) == Some("1")),
+        spec.toolchain.is_some() || spec.local_toolchain.is_some(),
+    )
+}
+
+fn next_ephemeral_profile_name() -> String {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0);
+    let counter = EPHEMERAL_PROFILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!(
+        "JudgeDesk.Run.{:08x}.{:012x}.{:08x}",
+        std::process::id(),
+        millis & 0xffff_ffff_ffff,
+        counter & 0xffff_ffff,
+    )
+}
 
 pub struct WindowsPlatform {
     sid: Vec<u8>,
@@ -109,14 +162,19 @@ impl WindowsPlatform {
         let phase_started = Instant::now();
         let root = initialize_root(base_dir.join("JudgeDesk"))?;
         phases.insert("root".into(), elapsed_us(phase_started));
+        let any_package_sid = well_known_sid(WinBuiltinAnyPackageSid)?;
+        let _ = ensure_thread_desktop_appcontainer_access();
         let phase_started = Instant::now();
-        protect_cache_directory(&root.join("toolchains"), &sid)?;
+        // Managed runtimes use a fresh package identity for every run. The
+        // verified toolchain cache is intentionally readable/executable by
+        // AppContainers, while artifacts retain the stable executor SID.
+        protect_cache_directory(&root.join("toolchains"), &any_package_sid)?;
         phases.insert("toolchainAcl".into(), elapsed_us(phase_started));
         let phase_started = Instant::now();
         protect_cache_directory(&root.join("artifacts"), &sid)?;
         phases.insert("artifactAcl".into(), elapsed_us(phase_started));
         let phase_started = Instant::now();
-        protect_workspace_parent(&root.join("workspaces"), &sid)?;
+        protect_workspace_parent(&root.join("workspaces"), &any_package_sid)?;
         phases.insert("workspaceAcl".into(), elapsed_us(phase_started));
         let mut platform = Self {
             sid,
@@ -311,15 +369,70 @@ impl WindowsPlatform {
         paths: &ValidatedRun,
         active: &ActiveRuns,
     ) -> Result<RunResult, String> {
+        let boundary = sandbox_boundary_for_run(spec, paths.isolation);
+        let ephemeral_profile = if matches!(boundary, SandboxBoundary::EphemeralAppContainer) {
+            Some(EphemeralAppContainerProfile::create()?)
+        } else {
+            None
+        };
+        let app_container_sid = ephemeral_profile
+            .as_ref()
+            .map(EphemeralAppContainerProfile::sid)
+            .unwrap_or(&self.sid);
+        let profile_name = ephemeral_profile
+            .as_ref()
+            .map(EphemeralAppContainerProfile::name)
+            .unwrap_or(PROFILE_NAME);
+        let result = self.run_inner_with_identity(
+            spec,
+            paths,
+            active,
+            boundary,
+            app_container_sid,
+            profile_name,
+        );
+        let cleanup = ephemeral_profile
+            .map(EphemeralAppContainerProfile::delete)
+            .unwrap_or(Ok(()));
+        match (result, cleanup) {
+            (Ok(result), Ok(())) => Ok(result),
+            (Err(error), Ok(())) => Err(error),
+            (Ok(_), Err(cleanup_error)) => Err(cleanup_error),
+            (Err(error), Err(cleanup_error)) => Err(format!(
+                "{error}; ephemeral AppContainer cleanup also failed: {cleanup_error}"
+            )),
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn run_inner_with_identity(
+        &self,
+        spec: &RunSpec,
+        paths: &ValidatedRun,
+        active: &ActiveRuns,
+        boundary: SandboxBoundary,
+        app_container_sid: &[u8],
+        profile_name: &str,
+    ) -> Result<RunResult, String> {
         let setup_started = Instant::now();
         // A single long-lived AppContainer package SID would otherwise let two
         // concurrent submissions inspect each other's workspace under
         // LocalState. Give every run an unforgeable capability SID and protect
         // the complete workspace tree with that SID before any handle is
         // opened or process is created.
-        prepare_workspace_profile_directories(&paths.workspace)?;
-        let workspace_capability_sid = derive_workspace_capability_sid(&spec.workspace_id)?;
-        protect_workspace_tree(&paths.workspace, &workspace_capability_sid)?;
+        prepare_workspace_profile_directories(&paths.workspace, profile_name)?;
+        let workspace_capability_sid = if matches!(boundary, SandboxBoundary::EphemeralAppContainer)
+        {
+            Vec::new()
+        } else {
+            derive_workspace_capability_sid(&spec.workspace_id)?
+        };
+        let workspace_access_sid = if matches!(boundary, SandboxBoundary::EphemeralAppContainer) {
+            app_container_sid
+        } else {
+            &workspace_capability_sid
+        };
+        protect_workspace_tree(&paths.workspace, workspace_access_sid)?;
         let stdin = open_input(paths.stdin.as_deref())?;
         let stdout = open_output(&paths.stdout)?;
         let stderr = open_output(&paths.stderr)?;
@@ -349,39 +462,24 @@ impl WindowsPlatform {
             Sid: workspace_capability_sid.as_ptr() as PSID,
             Attributes: SE_GROUP_ENABLED as u32,
         };
+        let ephemeral_identity = matches!(boundary, SandboxBoundary::EphemeralAppContainer);
         let mut security = SECURITY_CAPABILITIES {
-            AppContainerSid: self.sid.as_ptr() as PSID,
-            Capabilities: &mut workspace_capability,
-            CapabilityCount: 1,
+            AppContainerSid: app_container_sid.as_ptr() as PSID,
+            Capabilities: if ephemeral_identity {
+                null_mut()
+            } else {
+                &mut workspace_capability
+            },
+            CapabilityCount: if ephemeral_identity { 0 } else { 1 },
             Reserved: 0,
         };
         let mut lpac_policy = PROCESS_CREATION_ALL_APPLICATION_PACKAGES_OPT_OUT;
         let mut handles = inherited;
-        let compiler_may_spawn = matches!(spec.role, RunRole::Compiler);
-        // Managed language runtimes depend on system DLLs and registry/file resources
-        // granted to regular AppContainers through ALL APPLICATION PACKAGES. LPAC opts out of
-        // those grants: CPython terminates with STATUS_ACCESS_DENIED and Node fails WSAStartup
-        // before user code runs. The typed submission role plus an exact runtime marker select
-        // this compatibility boundary. A regular AppContainer still has no capabilities, so
-        // network and private user-file access remain default-deny; the Job Object continues to
-        // enforce process and resource limits.
-        let isolated_submission_runtime = matches!(spec.role, RunRole::Submission)
-            && (spec.toolchain.is_some()
-                || spec.local_toolchain.is_some()
-                || spec
-                    .environment
-                    .get("JUDGEDESK_PASCAL_ISOLATED")
-                    .map(String::as_str)
-                    == Some("1"))
-            && MANAGED_RUNTIME_MARKERS
-                .iter()
-                .any(|marker| spec.environment.get(*marker).map(String::as_str) == Some("1"));
-        let managed_checker_runtime = matches!(spec.role, RunRole::CheckerRuntime);
-        let resource_only = matches!(paths.isolation, LocalToolchainIsolation::ResourceOnly);
-        let use_lpac = !resource_only
-            && !compiler_may_spawn
-            && !isolated_submission_runtime
-            && !managed_checker_runtime;
+        // Managed runtimes need the baseline resources exposed to regular
+        // AppContainers. They receive a fresh package SID for this run and no
+        // capabilities; native submissions and checkers stay on LPAC.
+        let resource_only = matches!(boundary, SandboxBoundary::ResourceOnly);
+        let use_lpac = matches!(boundary, SandboxBoundary::Lpac);
         let attribute_count = if resource_only {
             2
         } else if use_lpac {
@@ -478,9 +576,12 @@ impl WindowsPlatform {
         {
             let mut runs = active.lock().unwrap_or_else(|p| p.into_inner());
             if runs.contains_key(&spec.run_id) {
-                unsafe {
-                    TerminateJobObject(job.handle(), LIMIT_EXIT_CODE);
-                }
+                drop(runs);
+                launch::drain_child_or_exit(
+                    job.handle(),
+                    process_handle.0,
+                    "duplicate single-run launch",
+                );
                 return Err("duplicate active runId".into());
             }
             runs.insert(spec.run_id.clone(), cancellation);
@@ -490,17 +591,17 @@ impl WindowsPlatform {
             setup_started.elapsed().as_micros().min(u64::MAX as u128) as u64;
         let started = Instant::now();
         if unsafe { ResumeThread(thread_handle.0) } == u32::MAX {
+            let resume_error = io::Error::last_os_error();
             active
                 .lock()
                 .unwrap_or_else(|p| p.into_inner())
                 .remove(&spec.run_id);
-            unsafe {
-                TerminateJobObject(job.handle(), LIMIT_EXIT_CODE);
-            }
-            return Err(format!(
-                "resume LPAC process: {}",
-                io::Error::last_os_error()
-            ));
+            launch::drain_child_or_exit(
+                job.handle(),
+                process_handle.0,
+                "single-run resume failure",
+            );
+            return Err(format!("resume LPAC process: {resume_error}"));
         }
         drop(thread_handle);
         drop(stdin);
@@ -560,7 +661,7 @@ impl WindowsPlatform {
                 // Toolhelp thread enumeration and recursive quota inspection can be expensive on
                 // a busy host. Keep them off the deadline hot path and never start one in the last
                 // 100 ms, while kernel Job notifications and stdout size remain continuously polled.
-                next_resource_check = Instant::now() + Duration::from_millis(5);
+                next_resource_check = Instant::now() + Duration::from_millis(25);
             }
 
             if !matches!(reason, RunReason::Exited) && !terminated {
@@ -600,6 +701,7 @@ impl WindowsPlatform {
         if !wait_for_job_empty(job.handle(), Duration::from_secs(5)) {
             reason = RunReason::InternalError;
             diagnostic = Some("Job Object did not become empty during teardown".into());
+            launch::drain_child_or_exit(job.handle(), process_handle.0, "single-run teardown");
         }
         active
             .lock()
@@ -673,18 +775,117 @@ impl WindowsPlatform {
         spec: &InteractiveRunSpec,
         active: &ActiveRuns,
     ) -> Result<InteractiveRunResult, String> {
-        let setup_started = Instant::now();
         let sub_paths = crate::request_validation::validate_run(root, &spec.submission)?;
         let inter_paths = crate::request_validation::validate_run(root, &spec.interactor)?;
         crate::request_validation::validate_interactive_pair(spec, &sub_paths, &inter_paths)?;
+        let sub_boundary = sandbox_boundary_for_run(&spec.submission, sub_paths.isolation);
+        let inter_boundary = sandbox_boundary_for_run(&spec.interactor, inter_paths.isolation);
+        let sub_profile = if matches!(sub_boundary, SandboxBoundary::EphemeralAppContainer) {
+            Some(EphemeralAppContainerProfile::create()?)
+        } else {
+            None
+        };
+        let inter_profile = if matches!(inter_boundary, SandboxBoundary::EphemeralAppContainer) {
+            Some(EphemeralAppContainerProfile::create()?)
+        } else {
+            None
+        };
+        let sub_app_container_sid = sub_profile
+            .as_ref()
+            .map(EphemeralAppContainerProfile::sid)
+            .unwrap_or(&self.sid);
+        let sub_profile_name = sub_profile
+            .as_ref()
+            .map(EphemeralAppContainerProfile::name)
+            .unwrap_or(PROFILE_NAME);
+        let inter_app_container_sid = inter_profile
+            .as_ref()
+            .map(EphemeralAppContainerProfile::sid)
+            .unwrap_or(&self.sid);
+        let inter_profile_name = inter_profile
+            .as_ref()
+            .map(EphemeralAppContainerProfile::name)
+            .unwrap_or(PROFILE_NAME);
+        let result = self.run_interactive_inner_with_identities(
+            spec,
+            active,
+            &sub_paths,
+            &inter_paths,
+            sub_boundary,
+            sub_app_container_sid,
+            sub_profile_name,
+            inter_boundary,
+            inter_app_container_sid,
+            inter_profile_name,
+        );
+        let mut cleanup_errors = Vec::new();
+        if let Some(profile) = sub_profile {
+            if let Err(error) = profile.delete() {
+                cleanup_errors.push(error);
+            }
+        }
+        if let Some(profile) = inter_profile {
+            if let Err(error) = profile.delete() {
+                cleanup_errors.push(error);
+            }
+        }
+        match (result, cleanup_errors.is_empty()) {
+            (Ok(result), true) => Ok(result),
+            (Err(error), true) => Err(error),
+            (Ok(_), false) => Err(cleanup_errors.join("; ")),
+            (Err(error), false) => Err(format!(
+                "{error}; ephemeral AppContainer cleanup also failed: {}",
+                cleanup_errors.join("; ")
+            )),
+        }
+    }
 
-        prepare_workspace_profile_directories(&sub_paths.workspace)?;
-        let sub_workspace_sid = derive_workspace_capability_sid(&spec.submission.workspace_id)?;
-        protect_workspace_tree(&sub_paths.workspace, &sub_workspace_sid)?;
+    #[allow(clippy::too_many_arguments)]
+    fn run_interactive_inner_with_identities(
+        &self,
+        spec: &InteractiveRunSpec,
+        active: &ActiveRuns,
+        sub_paths: &ValidatedRun,
+        inter_paths: &ValidatedRun,
+        sub_boundary: SandboxBoundary,
+        sub_app_container_sid: &[u8],
+        sub_profile_name: &str,
+        inter_boundary: SandboxBoundary,
+        inter_app_container_sid: &[u8],
+        inter_profile_name: &str,
+    ) -> Result<InteractiveRunResult, String> {
+        let setup_started = Instant::now();
 
-        prepare_workspace_profile_directories(&inter_paths.workspace)?;
-        let inter_workspace_sid = derive_workspace_capability_sid(&spec.interactor.workspace_id)?;
-        protect_workspace_tree(&inter_paths.workspace, &inter_workspace_sid)?;
+        prepare_workspace_profile_directories(&sub_paths.workspace, sub_profile_name)?;
+        let sub_workspace_sid = if matches!(sub_boundary, SandboxBoundary::EphemeralAppContainer) {
+            Vec::new()
+        } else {
+            derive_workspace_capability_sid(&spec.submission.workspace_id)?
+        };
+        protect_workspace_tree(
+            &sub_paths.workspace,
+            if matches!(sub_boundary, SandboxBoundary::EphemeralAppContainer) {
+                sub_app_container_sid
+            } else {
+                &sub_workspace_sid
+            },
+        )?;
+
+        prepare_workspace_profile_directories(&inter_paths.workspace, inter_profile_name)?;
+        let inter_workspace_sid =
+            if matches!(inter_boundary, SandboxBoundary::EphemeralAppContainer) {
+                Vec::new()
+            } else {
+                derive_workspace_capability_sid(&spec.interactor.workspace_id)?
+            };
+        protect_workspace_tree(
+            &inter_paths.workspace,
+            if matches!(inter_boundary, SandboxBoundary::EphemeralAppContainer) {
+                inter_app_container_sid
+            } else {
+                &inter_workspace_sid
+            },
+        )?;
 
         let sa = SECURITY_ATTRIBUTES {
             nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
@@ -753,9 +954,10 @@ impl WindowsPlatform {
 
         let (sub_process, sub_thread) = match spawn_child_process(
             &spec.submission,
-            &sub_paths,
+            sub_paths,
             &sub_workspace_sid,
-            &self.sid,
+            sub_app_container_sid,
+            sub_boundary,
             job_sub.handle(),
             ChildHandles {
                 stdin: sub_stdin_r.0,
@@ -793,9 +995,10 @@ impl WindowsPlatform {
 
         let inter_spawn = spawn_child_process(
             &spec.interactor,
-            &inter_paths,
+            inter_paths,
             &inter_workspace_sid,
-            &self.sid,
+            inter_app_container_sid,
+            inter_boundary,
             job_inter.handle(),
             ChildHandles {
                 stdin: inter_stdin_r.0,
@@ -806,7 +1009,11 @@ impl WindowsPlatform {
         // The first child is still suspended and not registered in ActiveRuns.
         // Do not release this accepted run until its exact child and Job are drained.
         if inter_spawn.is_err() {
-            launch::drain_suspended_child(job_sub.handle(), sub_process.0);
+            launch::drain_child_or_exit(
+                job_sub.handle(),
+                sub_process.0,
+                "interactive submission spawn rollback",
+            );
         }
         let (inter_process, inter_thread) = match inter_spawn {
             Ok(handles) => handles,
@@ -834,10 +1041,17 @@ impl WindowsPlatform {
         {
             let mut runs = active.lock().unwrap_or_else(|p| p.into_inner());
             if runs.contains_key(&spec.run_id) {
-                unsafe {
-                    TerminateJobObject(job_sub.handle(), LIMIT_EXIT_CODE);
-                    TerminateJobObject(job_inter.handle(), LIMIT_EXIT_CODE);
-                }
+                drop(runs);
+                launch::drain_child_or_exit(
+                    job_sub.handle(),
+                    sub_process.0,
+                    "duplicate interactive submission launch",
+                );
+                launch::drain_child_or_exit(
+                    job_inter.handle(),
+                    inter_process.0,
+                    "duplicate interactive interactor launch",
+                );
                 return Err("duplicate active runId".into());
             }
             runs.insert(spec.run_id.clone(), cancellation);
@@ -847,32 +1061,40 @@ impl WindowsPlatform {
         let started = Instant::now();
 
         if unsafe { ResumeThread(sub_thread.0) } == u32::MAX {
+            let resume_error = io::Error::last_os_error();
             active
                 .lock()
                 .unwrap_or_else(|p| p.into_inner())
                 .remove(&spec.run_id);
-            unsafe {
-                TerminateJobObject(job_sub.handle(), LIMIT_EXIT_CODE);
-                TerminateJobObject(job_inter.handle(), LIMIT_EXIT_CODE);
-            }
-            return Err(format!(
-                "resume submission process: {}",
-                io::Error::last_os_error()
-            ));
+            launch::drain_child_or_exit(
+                job_sub.handle(),
+                sub_process.0,
+                "interactive submission resume failure",
+            );
+            launch::drain_child_or_exit(
+                job_inter.handle(),
+                inter_process.0,
+                "interactive interactor rollback",
+            );
+            return Err(format!("resume submission process: {resume_error}"));
         }
         if unsafe { ResumeThread(inter_thread.0) } == u32::MAX {
+            let resume_error = io::Error::last_os_error();
             active
                 .lock()
                 .unwrap_or_else(|p| p.into_inner())
                 .remove(&spec.run_id);
-            unsafe {
-                TerminateJobObject(job_sub.handle(), LIMIT_EXIT_CODE);
-                TerminateJobObject(job_inter.handle(), LIMIT_EXIT_CODE);
-            }
-            return Err(format!(
-                "resume interactor process: {}",
-                io::Error::last_os_error()
-            ));
+            launch::drain_child_or_exit(
+                job_sub.handle(),
+                sub_process.0,
+                "interactive submission rollback",
+            );
+            launch::drain_child_or_exit(
+                job_inter.handle(),
+                inter_process.0,
+                "interactive interactor resume failure",
+            );
+            return Err(format!("resume interactor process: {resume_error}"));
         }
         drop(sub_thread);
         drop(inter_thread);
@@ -965,12 +1187,36 @@ impl WindowsPlatform {
         let wall_time_us = elapsed_us(started);
         let collection_started = Instant::now();
 
-        let _ = wait_for_job_empty(job_sub.handle(), Duration::from_secs(2));
-        let _ = wait_for_job_empty(job_inter.handle(), Duration::from_secs(2));
+        let mut sub_drained = wait_for_job_empty(job_sub.handle(), Duration::from_secs(2));
+        let mut inter_drained = wait_for_job_empty(job_inter.handle(), Duration::from_secs(2));
+        let forced_teardown = !sub_drained || !inter_drained;
+        if !sub_drained || !inter_drained {
+            if !sub_drained {
+                launch::drain_child_or_exit(
+                    job_sub.handle(),
+                    sub_process.0,
+                    "interactive submission teardown",
+                );
+                sub_drained = true;
+            }
+            if !inter_drained {
+                launch::drain_child_or_exit(
+                    job_inter.handle(),
+                    inter_process.0,
+                    "interactive interactor teardown",
+                );
+                inter_drained = true;
+            }
+        }
         active
             .lock()
             .unwrap_or_else(|p| p.into_inner())
             .remove(&spec.run_id);
+        if forced_teardown {
+            return Err(format!(
+                "interactive Job teardown required forced termination: submissionDrained={sub_drained}, interactorDrained={inter_drained}"
+            ));
+        }
 
         let mut sub_code = 0_u32;
         let sub_exit_code = if unsafe { GetExitCodeProcess(sub_process.0, &mut sub_code) } != 0 {
@@ -1258,7 +1504,154 @@ fn protect_workspace_parent(path: &Path, app_container_sid: &[u8]) -> Result<(),
     set_protected_acl(path, &grants, "protect executor workspace parent")
 }
 
-fn prepare_workspace_profile_directories(workspace: &Path) -> Result<(), String> {
+#[link(name = "user32")]
+extern "system" {
+    fn GetThreadDesktop(dwthreadid: u32) -> HANDLE;
+}
+
+fn ensure_thread_desktop_appcontainer_access() -> Result<(), String> {
+    // Standard interactive Windows desktops (WinSta0\Default) grant AppContainer
+    // SIDs (S-1-15-2-1 and S-1-15-2-2) DESKTOP_READOBJECTS | DESKTOP_CREATEWINDOW |
+    // DESKTOP_CREATEMENU | DESKTOP_HOOKCONTROL | DESKTOP_JOURNALRECORD |
+    // DESKTOP_JOURNALPLAYBACK | DESKTOP_ENUMERATE | DESKTOP_WRITEOBJECTS (0x00FF)
+    // so user32.dll's DllMain (UserClientDllInitialize -> NtUserProcessConnect)
+    // succeeds during process startup (e.g. Free Pascal RTL importing user32.dll).
+    // Custom non-Default desktops created by test runners or CI harnesses often
+    // omit DESKTOP_CREATEWINDOW | DESKTOP_CREATEMENU | DESKTOP_WRITEOBJECTS (0x0086)
+    // for S-1-15-2-2, causing user32.dll initialization to abort with 0xC0000142
+    // (STATUS_DLL_INIT_FAILED).
+    const REQUIRED_DESKTOP_INIT_MASK: u32 = 0x0086;
+    const APPCONTAINER_DESKTOP_MASK: u32 = 0x0002_00FF;
+
+    let desktop = unsafe { GetThreadDesktop(GetCurrentThreadId()) };
+    if desktop.is_null() {
+        return Ok(());
+    }
+    let any_package_sid = well_known_sid(WinBuiltinAnyPackageSid)?;
+    // S-1-15-2-2 (ALL RESTRICTED APPLICATION PACKAGES): Revision 1, 2 sub-authorities (2, 2)
+    let restricted_package_sid: [u8; 16] = [1, 2, 0, 0, 0, 0, 0, 15, 2, 0, 0, 0, 2, 0, 0, 0];
+
+    let mut dacl: *mut ACL = null_mut();
+    let mut descriptor: PSECURITY_DESCRIPTOR = null_mut();
+    let status = unsafe {
+        GetSecurityInfo(
+            desktop,
+            SE_WINDOW_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            null_mut(),
+            null_mut(),
+            &mut dacl,
+            null_mut(),
+            &mut descriptor,
+        )
+    };
+    if status != 0 || descriptor.is_null() {
+        return Ok(());
+    }
+
+    let already_granted = (|| -> bool {
+        if dacl.is_null() {
+            return false;
+        }
+        let mut info = ACL_SIZE_INFORMATION::default();
+        if unsafe {
+            GetAclInformation(
+                dacl,
+                (&mut info as *mut ACL_SIZE_INFORMATION).cast(),
+                size_of::<ACL_SIZE_INFORMATION>() as u32,
+                AclSizeInformation,
+            )
+        } == 0
+        {
+            return false;
+        }
+        let mut has_any = false;
+        let mut has_restricted = false;
+        for index in 0..info.AceCount {
+            let mut raw_ace: *mut c_void = null_mut();
+            if unsafe { GetAce(dacl, index, &mut raw_ace) } == 0 || raw_ace.is_null() {
+                continue;
+            }
+            let ace = unsafe { &*raw_ace.cast::<ACCESS_ALLOWED_ACE>() };
+            if ace.Header.AceType != ACCESS_ALLOWED_ACE_TYPE as u8 {
+                continue;
+            }
+            if (ace.Mask & REQUIRED_DESKTOP_INIT_MASK) != REQUIRED_DESKTOP_INIT_MASK {
+                continue;
+            }
+            let ace_sid = (&ace.SidStart as *const u32).cast_mut().cast::<c_void>();
+            if unsafe { EqualSid(ace_sid, any_package_sid.as_ptr() as PSID) } != 0 {
+                has_any = true;
+            }
+            if unsafe { EqualSid(ace_sid, restricted_package_sid.as_ptr() as PSID) } != 0 {
+                has_restricted = true;
+            }
+        }
+        has_any && has_restricted
+    })();
+
+    if already_granted {
+        unsafe {
+            LocalFree(descriptor);
+        }
+        return Ok(());
+    }
+
+    let entries = [
+        EXPLICIT_ACCESS_W {
+            grfAccessPermissions: APPCONTAINER_DESKTOP_MASK,
+            grfAccessMode: GRANT_ACCESS,
+            grfInheritance: 0,
+            Trustee: TRUSTEE_W {
+                pMultipleTrustee: null_mut(),
+                MultipleTrusteeOperation: 0,
+                TrusteeForm: TRUSTEE_IS_SID,
+                TrusteeType: TRUSTEE_IS_WELL_KNOWN_GROUP,
+                ptstrName: any_package_sid.as_ptr() as *mut u16,
+            },
+        },
+        EXPLICIT_ACCESS_W {
+            grfAccessPermissions: APPCONTAINER_DESKTOP_MASK,
+            grfAccessMode: GRANT_ACCESS,
+            grfInheritance: 0,
+            Trustee: TRUSTEE_W {
+                pMultipleTrustee: null_mut(),
+                MultipleTrusteeOperation: 0,
+                TrusteeForm: TRUSTEE_IS_SID,
+                TrusteeType: TRUSTEE_IS_WELL_KNOWN_GROUP,
+                ptstrName: restricted_package_sid.as_ptr() as *mut u16,
+            },
+        },
+    ];
+    let mut new_dacl: *mut ACL = null_mut();
+    let set_entries =
+        unsafe { SetEntriesInAclW(entries.len() as u32, entries.as_ptr(), dacl, &mut new_dacl) };
+    if set_entries == 0 && !new_dacl.is_null() {
+        let _ = unsafe {
+            SetSecurityInfo(
+                desktop,
+                SE_WINDOW_OBJECT,
+                DACL_SECURITY_INFORMATION,
+                null_mut(),
+                null_mut(),
+                new_dacl,
+                null_mut(),
+            )
+        };
+        unsafe {
+            LocalFree(new_dacl.cast());
+        }
+    }
+    unsafe {
+        LocalFree(descriptor);
+    }
+    Ok(())
+}
+
+fn prepare_workspace_profile_directories(
+    workspace: &Path,
+    profile_name: &str,
+) -> Result<(), String> {
     // GetTempPath inside an AppContainer can resolve the package's redirected
     // AC\Temp folder relative to USERPROFILE even when TEMP/TMP are pinned.
     // Materialize that location inside this run instead of falling back to the
@@ -1266,7 +1659,7 @@ fn prepare_workspace_profile_directories(workspace: &Path) -> Result<(), String>
     fs::create_dir_all(
         workspace
             .join("Packages")
-            .join(PROFILE_NAME.to_ascii_lowercase())
+            .join(profile_name.to_ascii_lowercase())
             .join("AC")
             .join("Temp"),
     )
@@ -1610,6 +2003,7 @@ fn spawn_child_process(
     paths: &ValidatedRun,
     workspace_capability_sid: &[u8],
     app_container_sid: &[u8],
+    boundary: SandboxBoundary,
     job: HANDLE,
     child_handles: ChildHandles,
 ) -> Result<(OwnedHandle, OwnedHandle), SpawnError> {
@@ -1617,10 +2011,15 @@ fn spawn_child_process(
         Sid: workspace_capability_sid.as_ptr() as PSID,
         Attributes: SE_GROUP_ENABLED as u32,
     };
+    let ephemeral_identity = matches!(boundary, SandboxBoundary::EphemeralAppContainer);
     let mut security = SECURITY_CAPABILITIES {
         AppContainerSid: app_container_sid.as_ptr() as PSID,
-        Capabilities: &mut workspace_capability,
-        CapabilityCount: 1,
+        Capabilities: if ephemeral_identity {
+            null_mut()
+        } else {
+            &mut workspace_capability
+        },
+        CapabilityCount: if ephemeral_identity { 0 } else { 1 },
         Reserved: 0,
     };
     let mut lpac_policy = PROCESS_CREATION_ALL_APPLICATION_PACKAGES_OPT_OUT;
@@ -1629,24 +2028,8 @@ fn spawn_child_process(
         child_handles.stdout,
         child_handles.stderr,
     ];
-    let compiler_may_spawn = matches!(spec.role, RunRole::Compiler);
-    let isolated_submission_runtime = matches!(spec.role, RunRole::Submission)
-        && (spec.toolchain.is_some()
-            || spec.local_toolchain.is_some()
-            || spec
-                .environment
-                .get("JUDGEDESK_PASCAL_ISOLATED")
-                .map(String::as_str)
-                == Some("1"))
-        && MANAGED_RUNTIME_MARKERS
-            .iter()
-            .any(|marker| spec.environment.get(*marker).map(String::as_str) == Some("1"));
-    let managed_checker_runtime = matches!(spec.role, RunRole::CheckerRuntime);
-    let resource_only = matches!(paths.isolation, LocalToolchainIsolation::ResourceOnly);
-    let use_lpac = !resource_only
-        && !compiler_may_spawn
-        && !isolated_submission_runtime
-        && !managed_checker_runtime;
+    let resource_only = matches!(boundary, SandboxBoundary::ResourceOnly);
+    let use_lpac = matches!(boundary, SandboxBoundary::Lpac);
     let attribute_count = if resource_only {
         2
     } else if use_lpac {
@@ -1803,6 +2186,84 @@ impl Drop for AttributeList {
     fn drop(&mut self) {
         unsafe {
             DeleteProcThreadAttributeList(self.as_ptr());
+        }
+    }
+}
+
+struct EphemeralAppContainerProfile {
+    name: String,
+    sid: Vec<u8>,
+    deleted: bool,
+}
+
+impl EphemeralAppContainerProfile {
+    fn create() -> Result<Self, String> {
+        let name = next_ephemeral_profile_name();
+        let wide_name = wide_string(&name);
+        let display = wide_string("JudgeDesk isolated judge run");
+        let description = wide_string("Ephemeral identity for one untrusted judging workload");
+        let mut sid: PSID = null_mut();
+        let result = unsafe {
+            CreateAppContainerProfile(
+                wide_name.as_ptr(),
+                display.as_ptr(),
+                description.as_ptr(),
+                null(),
+                0,
+                &mut sid,
+            )
+        };
+        if result < 0 {
+            return Err(format!(
+                "CreateAppContainerProfile for isolated run failed: HRESULT 0x{:08X}",
+                result as u32
+            ));
+        }
+        if sid.is_null() {
+            let _ = unsafe { DeleteAppContainerProfile(wide_name.as_ptr()) };
+            return Err("ephemeral AppContainer profile returned a null SID".into());
+        }
+        let length = unsafe { GetLengthSid(sid) } as usize;
+        let mut owned_sid = vec![0_u8; length];
+        unsafe {
+            std::ptr::copy_nonoverlapping(sid.cast::<u8>(), owned_sid.as_mut_ptr(), length);
+            FreeSid(sid);
+        }
+        Ok(Self {
+            name,
+            sid: owned_sid,
+            deleted: false,
+        })
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn sid(&self) -> &[u8] {
+        &self.sid
+    }
+
+    fn delete(mut self) -> Result<(), String> {
+        let name = wide_string(&self.name);
+        let result = unsafe { DeleteAppContainerProfile(name.as_ptr()) };
+        if result < 0 {
+            return Err(format!(
+                "DeleteAppContainerProfile for isolated run failed: HRESULT 0x{:08X}",
+                result as u32
+            ));
+        }
+        self.deleted = true;
+        Ok(())
+    }
+}
+
+impl Drop for EphemeralAppContainerProfile {
+    fn drop(&mut self) {
+        if !self.deleted {
+            let name = wide_string(&self.name);
+            let result = unsafe { DeleteAppContainerProfile(name.as_ptr()) };
+            self.deleted = result >= 0;
         }
     }
 }
@@ -2254,6 +2715,76 @@ mod tests {
     }
 
     #[test]
+    fn sandbox_boundary_requires_ephemeral_profiles_for_managed_code() {
+        assert_eq!(
+            sandbox_boundary(
+                RunRole::Submission,
+                LocalToolchainIsolation::Strict,
+                true,
+                true
+            ),
+            SandboxBoundary::EphemeralAppContainer
+        );
+        assert_eq!(
+            sandbox_boundary(
+                RunRole::CheckerRuntime,
+                LocalToolchainIsolation::Strict,
+                false,
+                true,
+            ),
+            SandboxBoundary::EphemeralAppContainer
+        );
+        assert_eq!(
+            sandbox_boundary(
+                RunRole::Submission,
+                LocalToolchainIsolation::Strict,
+                false,
+                false
+            ),
+            SandboxBoundary::Lpac
+        );
+        assert_eq!(
+            sandbox_boundary(
+                RunRole::Compiler,
+                LocalToolchainIsolation::Strict,
+                false,
+                true
+            ),
+            SandboxBoundary::EphemeralAppContainer
+        );
+        assert_eq!(
+            sandbox_boundary(
+                RunRole::Submission,
+                LocalToolchainIsolation::ResourceOnly,
+                true,
+                true,
+            ),
+            SandboxBoundary::ResourceOnly
+        );
+    }
+
+    #[test]
+    fn ephemeral_profile_names_are_unique_and_package_identity_safe() {
+        let first = next_ephemeral_profile_name();
+        let second = next_ephemeral_profile_name();
+        assert_ne!(first, second);
+        for name in [first, second] {
+            assert!(name.len() <= 50, "profile name exceeds PACKAGE_ID limit");
+            assert!(
+                name.bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'.'),
+                "profile name contains unsupported identity characters: {name}"
+            );
+        }
+    }
+
+    #[test]
+    fn ephemeral_profile_supports_explicit_cleanup() {
+        let profile = EphemeralAppContainerProfile::create().unwrap();
+        profile.delete().unwrap();
+    }
+
+    #[test]
     fn target_environment_forces_private_profile_and_temp_paths() {
         let workspace = Path::new(r"C:\executor\workspaces\run");
         let supplied = BTreeMap::from([
@@ -2353,7 +2884,9 @@ mod tests {
 
     #[test]
     fn test_scratch_execution() {
-        let _lock = TEST_SHARED_INITIALIZATION_LOCK.lock().unwrap();
+        let _lock = TEST_SHARED_INITIALIZATION_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let scratch_exe = PathBuf::from(
             r"C:\Users\mon\AppData\Local\ThemisV2\toolchains\scratch-windows-x64\scratch-run.exe",
         );
@@ -2365,11 +2898,17 @@ mod tests {
             return;
         }
         let (runner, root) = WindowsPlatform::initialize().unwrap();
-        let workspace = TestDirectory::new("scratch-test-workspace");
-        let stdin_path = workspace.0.join("stdin.txt");
-        let stdout_path = workspace.0.join("stdout.txt");
-        let stderr_path = workspace.0.join("stderr.txt");
-        let sb3_path = workspace.0.join("submission.sb3");
+        let staged_tc_root = root.join("toolchains").join("scratch-windows-x64");
+        fs::create_dir_all(&staged_tc_root).unwrap();
+        let staged_scratch_exe = staged_tc_root.join("scratch-run.exe");
+        fs::copy(&scratch_exe, &staged_scratch_exe).unwrap();
+
+        let ws_dir = root.join("workspaces").join("scratch_test_ws_1");
+        fs::create_dir_all(&ws_dir).unwrap();
+        let stdin_path = ws_dir.join("stdin.txt");
+        let stdout_path = ws_dir.join("stdout.txt");
+        let stderr_path = ws_dir.join("stderr.txt");
+        let sb3_path = ws_dir.join("submission.sb3");
         fs::copy(sample_sb3, &sb3_path).unwrap();
         fs::copy(sample_inp, &stdin_path).unwrap();
 
@@ -2377,7 +2916,7 @@ mod tests {
             run_id: "scratch_test_1".into(),
             role: RunRole::Submission,
             workspace_id: "scratch_test_ws_1".into(),
-            executable_id: scratch_exe.to_string_lossy().into_owned(),
+            executable_id: staged_scratch_exe.to_string_lossy().into_owned(),
             args: vec!["submission.sb3".into()],
             stdin_file: Some("stdin.txt".into()),
             stdout_file: "stdout.txt".into(),
@@ -2387,7 +2926,12 @@ mod tests {
                 ("TURBO_MODE".into(), "1".into()),
             ]),
             toolchain: None,
-            local_toolchain: None,
+            local_toolchain: Some(crate::protocol::LocalToolchainGrant {
+                root_path: staged_tc_root.to_string_lossy().into_owned(),
+                executable_relative_path: "scratch-run.exe".into(),
+                isolation: LocalToolchainIsolation::Strict,
+                role: crate::protocol::ToolchainGrantRole::SubmissionRuntime,
+            }),
             limits: crate::protocol::RunLimits {
                 wall_time_ms: 5000,
                 memory_bytes: 512 * 1024 * 1024,
@@ -2401,31 +2945,28 @@ mod tests {
         };
 
         let paths = ValidatedRun {
-            executable: scratch_exe,
-            workspace: workspace.0.clone(),
+            executable: staged_scratch_exe,
+            workspace: ws_dir,
             stdin: Some(stdin_path),
             stdout: stdout_path.clone(),
             stderr: stderr_path.clone(),
-            toolchain_package_root: None,
-            isolation: LocalToolchainIsolation::ResourceOnly,
+            toolchain_package_root: Some(staged_tc_root),
+            isolation: LocalToolchainIsolation::Strict,
         };
 
         let active = ActiveRuns::default();
         let result = runner.run_inner(&spec, &paths, &active).unwrap();
-        println!("Scratch run result: {:?}", result);
         let stdout = fs::read_to_string(&stdout_path).unwrap_or_default();
-        let stderr = fs::read_to_string(&stderr_path).unwrap_or_default();
-        println!("Stdout: {stdout}");
-        println!("Stderr: {stderr}");
+        cleanup_executor_test_root(&root);
         assert_eq!(result.exit_code, Some(0));
         assert_eq!(stdout.trim(), "5070720");
-
-        cleanup_executor_test_root(&root);
     }
 
     #[test]
     fn test_pascal_execution() {
-        let _lock = TEST_SHARED_INITIALIZATION_LOCK.lock().unwrap();
+        let _lock = TEST_SHARED_INITIALIZATION_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let (runner, root) = WindowsPlatform::initialize().unwrap();
         let ws_dir = root.join("workspaces").join("pascal-test-workspace");
         let _ = fs::create_dir_all(&ws_dir);
@@ -2471,7 +3012,7 @@ mod tests {
             stdin_file: None,
             stdout_file: "stdout.txt".into(),
             stderr_file: "stderr.txt".into(),
-            environment: BTreeMap::from([("JUDGEDESK_PASCAL_ISOLATED".into(), "1".into())]),
+            environment: BTreeMap::new(),
             toolchain: None,
             local_toolchain: None,
             limits: crate::protocol::RunLimits {
@@ -2487,19 +3028,21 @@ mod tests {
         };
 
         let paths = crate::request_validation::validate_run(&root, &spec).unwrap();
+        assert_eq!(paths.isolation, LocalToolchainIsolation::Strict);
 
         let active = ActiveRuns::default();
         let result = runner.run_inner(&spec, &paths, &active).unwrap();
         let stdout = fs::read_to_string(&stdout_path).unwrap_or_default();
+        cleanup_executor_test_root(&root);
         assert_eq!(result.exit_code, Some(0));
         assert!(stdout.contains("JUDGEDESK_PROBE_OK"));
-
-        cleanup_executor_test_root(&root);
     }
 
     #[test]
     fn test_sentinel_host_executor_appdata_untouched() {
-        let _lock = TEST_SHARED_INITIALIZATION_LOCK.lock().unwrap();
+        let _lock = TEST_SHARED_INITIALIZATION_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         let host_appdata = match std::env::var_os("LOCALAPPDATA") {
             Some(val) => PathBuf::from(val),
             None => return,

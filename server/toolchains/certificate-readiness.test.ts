@@ -6,6 +6,7 @@ import test from "node:test";
 import { createToolchainCertificate } from "./certificate-store.js";
 import { CPP_LANGUAGE_PROFILE_ID } from "../languages/registry.js";
 import {
+  localCppCertificateExecutionFields,
   readCertifiedFileIdentitySync,
   resolveLocalCppCertificateReadiness,
 } from "./certificate-readiness.js";
@@ -109,6 +110,20 @@ test("a local C++ certificate resolves only to its immutable executor snapshot",
       fs.realpathSync.native(snapshot.executablePath),
     );
     assert.notEqual(ready.snapshotExecutablePath, fs.realpathSync(executablePath));
+    assert.deepEqual(localCppCertificateExecutionFields(ready), {
+      executablePath: fs.realpathSync(executablePath),
+      version: "16.1.0",
+      ready: true,
+      provenance: "certified-local",
+      certificateId: certificate.certificateId,
+      candidateFingerprint: certificate.candidateFingerprint,
+      certificateIssuedAt: certificate.issuedAt,
+      certifiedRoles: ["submission", "checker"],
+      snapshotDigest: snapshot.treeDigest,
+      executionPath: fs.realpathSync(snapshot.executablePath),
+      executionId: snapshot.executableId,
+      executionRoot: snapshot.root,
+    });
   }
 
   const unavailableExecutor = resolveLocalCppCertificateReadiness(executablePath, {

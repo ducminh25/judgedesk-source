@@ -7,7 +7,7 @@ This document provides a complete reference for the architectural blueprint, eng
 ## 1. Project Overview & Architectural Blueprint
 
 ### 1.1. Introduction
-**JudgeDesk** (historically codenamed *ThemisV2*) is a standalone, offline desktop automated grading application designed for competitive programming contests, computer science classrooms, and training clubs. It runs natively on **Windows x64** and **macOS Apple Silicon (ARM64)** without requiring any cloud or external network services during judging.
+**JudgeDesk** (historically codenamed *ThemisV2*) is a standalone, offline desktop automated grading application designed for competitive programming contests, computer science classrooms, and training clubs. It runs natively on **Windows 10/11 x64**, **macOS Apple Silicon (ARM64)**, and **Linux x86_64 (`amd64` — Ubuntu 22.04 LTS, 24.04 LTS, 26.04 LTS+ and compatible distributions)** without requiring any cloud or external network services during judging.
 
 ### 1.2. 4-Tier Architecture
 
@@ -27,8 +27,8 @@ graph TD
         ContestArchive[.judgedesk Contest Archive Packager/Extractor]
     end
 
-    subgraph Backend_Layer [Tier 3: Backend Sidecar - Node.js SEA]
-        ExpressServer[Express Server HTTP/SSE on 127.0.0.1]
+    subgraph Backend_Layer [Tier 3: Backend - Rust Core / Node.js SEA Sidecar]
+        ExpressServer[HTTP/SSE Server on 127.0.0.1]
         JobQueue[Session & Batch Judge Engine]
         LanguageRegistry[Language & Toolchain Registry v2]
         ScoringEngine[Scoring, Subtasks & Checkers Engine]
@@ -39,7 +39,8 @@ graph TD
         ClientIPC[IPC Protocol: Stdin/Stdout Header-Payload LE]
         WinSandbox[Windows: AppContainer + Job Objects + Low Integrity]
         MacSandbox[macOS: Run Guardian + Seatbelt Sandbox + PGID]
-        LimitsEnforcer[CPU, Wall-clock, 512MB Memory, I/O Enforcer]
+        LinuxSandbox[Linux: Bubblewrap + cgroup v2 + seccomp-bpf]
+        LimitsEnforcer[CPU, Wall-clock, 8-1024MB Memory, I/O Enforcer]
     end
 
     UI -->|HTTP / SSE / JSON| ExpressServer
@@ -48,12 +49,13 @@ graph TD
     ExpressServer -->|Stdin/Stdout Pipe Protocol| ClientIPC
     ClientIPC --> WinSandbox
     ClientIPC --> MacSandbox
+    ClientIPC --> LinuxSandbox
 ```
 
 - **Tier 1: Frontend (React 19 + TypeScript + Vite + Tailwind CSS v4)**: Fluid, responsive desktop UI supporting Light/Dark themes, bilingual interface (Vietnamese `vi.json` and English `en.json`), real-time judging progress streaming via Server-Sent Events (SSE).
 - **Tier 2: Desktop Shell (Tauri v2 / Rust)**: Manages native OS windows, enforces the single-instance invariant (`startup_guard.rs`), supervises orphan process tree cleanup (`process_supervisor.rs`), coordinates update handoffs (`prepare_for_update`), and handles `.judgedesk` zip contest containers.
-- **Tier 3: Backend Sidecar (Node.js 24.19.0 SEA - Single Executable Application)**: Bundled with `esbuild` and injected via `postject` into a standalone binary (`server-<target>`). Hosts the core judging logic, compiler orchestration, testcase discovery, scoring algorithms, standard/custom checkers, and toolchain distribution management. Protected by bootstrap tokens and parent process watchdogs.
-- **Tier 4: Native Executor (Rust Binary - `judgedesk-native-executor`)**: Executes untrusted contestant submissions within strictly isolated OS sandbox environments. Utilizes Windows AppContainer + Job Objects on Windows, and Run Guardian + Seatbelt Sandbox policies + Process Groups on macOS.
+- **Tier 3: Backend (`judgedesk-core` Rust Axum / Node.js 24.19.0 SEA Sidecar)**: Hosts the core judging logic, compiler orchestration, testcase discovery, scoring algorithms, standard/custom checkers, and toolchain distribution management. Protected by bootstrap tokens and parent process watchdogs.
+- **Tier 4: Native Executor (Rust Binary - `judgedesk-native-executor`)**: Executes untrusted contestant submissions within strictly isolated OS sandbox environments. Utilizes Windows AppContainer + Job Objects on Windows, Run Guardian + Seatbelt Sandbox policies + Process Groups on macOS, and Bubblewrap (`bwrap`) + systemd User Scope (`cgroup v2`) + `seccomp-bpf` on Linux.
 
 ### 1.3. Project Invariants & Identifiers
 All code changes must preserve the following identity invariants to guarantee backward compatibility, data persistence, and in-place upgrades:
@@ -62,8 +64,9 @@ All code changes must preserve the following identity invariants to guarantee ba
 3. **User Application Data Directory**:
    - Windows: `%LOCALAPPDATA%\ThemisV2\`
    - macOS: `~/Library/Application Support/ThemisV2/`
+   - Linux: `~/.local/share/ThemisV2/`
 4. **Dual-Repository Model**:
-   - Private source repository: `ducminh25/judgedesk-source` (contains source code, tags, CI workflows).
+   - Public source repository: `ducminh25/judgedesk-source` (contains source code, tags, CI workflows).
    - Public distribution repository: `ducminh25/judgedesk` (contains public releases, installers, SHA256SUMS, `latest.json` updater manifest, and public documentation).
 5. **8-File Version Synchronization Rule**:
    Every version bump must be synchronized across exactly 8 files:
@@ -312,7 +315,7 @@ JudgeDesk enforces strict defense-in-depth isolation against hostile contestant 
    - Network access is completely blocked (`networkBlocked = true`).
    - File writes are restricted to the allocated temporary run workspace; file reads additionally permit the minimum explicitly approved runtime and system resources.
 2. **Windows Job Objects**:
-   - **Memory Cap**: Configurable up to **1,024 MiB** (default 256 MiB). The submission process is strictly constrained by the Windows Job Object memory limit, keeping the combined peak working set of the process tree (App + WebView2 + Backend + Executor + Child) comfortably within the **1,024 MiB** release gate.
+   - **Memory Cap & Resource Envelope (`C03`)**: Configurable up to **1,024 MiB** (default 256 MiB). The submission or compiler process is strictly constrained by the Windows Job Object commit limit (`JOB_OBJECT_LIMIT_PROCESS_MEMORY` / `JOB_OBJECT_LIMIT_JOB_MEMORY`). For standard/representative problem configurations (`S256` / `S512`, `memoryLimit <= 512 MiB`), both the combined peak private committed memory (`PrivateMemorySize64`) and the combined peak un-deduplicated working set (`WorkingSet64`) of the entire process tree (App + WebView2 + Backend + Executor + Child) stay strictly below **`1,024 MiB` (`1 GiB`)**. When a problem is configured above `512 MiB` up to the **`1,024 MiB`** maximum (`SMAX` / `CMAX`), the combined peak private committed memory is bounded by **`<= 1,408 MiB` (`1.375 GiB` = `1,024 MiB` active Job Object commit quota + `384 MiB` `B384` app/host private commit budget)** and the combined peak un-deduplicated multi-process working set (`WorkingSet64`, which counts shared `msedge.dll` and Win32 system DLL pages in each of the 12+ host/WebView2 processes) is bounded by **`<= 1,792 MiB` (`1.75 GiB` = `1,024 MiB` active run working set + `768 MiB` un-deduplicated host working-set ceiling)** without artificial working-set trimming (`JOB_OBJECT_LIMIT_WORKINGSET`) that would induce paging jitter.
    - **CPU Affinity & Priority**: Each test is pinned to **1 logical processor** and runs at `BELOW_NORMAL_PRIORITY_CLASS` to prevent system freezes on low-spec teacher PCs.
    - **Kill on Job Close**: Closing the Job Object handle automatically terminates all descendant processes.
 
@@ -375,7 +378,7 @@ npm run test:security
 
 #### 5. Windows Resource & Single-Instance Gates (Windows)
 ```powershell
-# Verify combined process tree stays below 1024 MiB peak
+# Verify combined process tree stays within C03 resource envelope (< 1024 MiB for S256/S512; private <= 1408 MiB & working set <= 1792 MiB for SMAX 1024 MiB workloads)
 npm run test:windows-resources
 
 # Verify single-instance lock and secondary activation

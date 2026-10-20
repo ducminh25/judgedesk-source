@@ -1,9 +1,11 @@
 export type UpdateEdition = "core" | "full";
+export type LinuxUpdateBundleType = "deb" | "rpm" | "appimage";
 
 export interface UpdateHostIdentity {
   distribution: UpdateEdition | "development";
   platform: string;
   arch: string;
+  bundleType?: LinuxUpdateBundleType;
 }
 
 export interface AppUpdateCandidate {
@@ -24,7 +26,7 @@ export interface ClosableUpdateResource {
 }
 
 export function updaterTargetForHost(
-  host: Pick<UpdateHostIdentity, "platform" | "arch">,
+  host: Pick<UpdateHostIdentity, "platform" | "arch" | "bundleType">,
   edition: UpdateEdition,
 ): string {
   if (host.platform === "win32" && host.arch === "x64") {
@@ -32,6 +34,16 @@ export function updaterTargetForHost(
   }
   if (host.platform === "darwin" && host.arch === "arm64") {
     return `darwin-aarch64-${edition}`;
+  }
+  if (host.platform === "linux" && host.arch === "x64") {
+    if (
+      host.bundleType === "deb"
+      || host.bundleType === "rpm"
+      || host.bundleType === "appimage"
+    ) {
+      return `linux-x86_64-${host.bundleType}-${edition}`;
+    }
+    return `linux-x86_64-${edition}`;
   }
   throw new Error(`Unsupported updater host: ${host.platform}/${host.arch}`);
 }

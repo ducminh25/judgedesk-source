@@ -134,6 +134,11 @@ mod imp {
     }
 
     impl GuardianChild {
+        #[cfg(test)]
+        pub(crate) fn for_test_pid(pid: i32) -> Self {
+            Self { pid, reaped: None }
+        }
+
         pub fn pid(&self) -> i32 {
             self.pid
         }
@@ -1210,16 +1215,21 @@ mod imp {
                         }
                     }
                     last = Some(snapshot);
+                } else if snapshot.members.is_empty() {
+                    // Only zombies remain in the group (including at least one untrusted
+                    // descendant zombie awaiting launchd reap). Darwin XNU rejects whole-group
+                    // signals to a zombie-only PGID with EPERM; retain S's pin and wait for the
+                    // external reaper without advancing the two-observation quiescence proof.
+                    last = None;
                 } else {
                     last = None;
-                    crate::macos_process::signal_exited_anchor_group(
-                        &runtime.watcher,
-                        libc::SIGSTOP,
-                    )?;
-                    crate::macos_process::signal_exited_anchor_group(
-                        &runtime.watcher,
-                        libc::SIGKILL,
-                    )?;
+                    for signal in [libc::SIGSTOP, libc::SIGKILL] {
+                        signal_exited_anchor_group_for_pair_release(
+                            &mut runtime.watcher,
+                            runtime.anchor.pgid,
+                            signal,
+                        )?;
+                    }
                 }
                 if self.control_open {
                     match self.read_executor_command() {
@@ -1393,6 +1403,9 @@ mod imp {
                         format!("ignored command {} during cleanup", command.kind()),
                     ),
                     SessionInput::ExecutorEof => self.control_open = false,
+                    SessionInput::Supervisor(SupervisorEvent::Ready { anchor, .. }) => {
+                        authenticate_process_identity(&anchor, &runtime.anchor)?;
+                    }
                     SessionInput::Supervisor(SupervisorEvent::Prepared {
                         anchor, result, ..
                     }) => {
@@ -2374,6 +2387,32 @@ mod imp {
         }
     }
 
+    fn signal_exited_anchor_group_for_pair_release(
+        watcher: &mut AnchorExitWatcher,
+        pgid: i32,
+        signal: i32,
+    ) -> io::Result<()> {
+        match crate::macos_process::signal_exited_anchor_group(watcher, signal) {
+            Ok(_) => Ok(()),
+            // Darwin XNU killpg1 returns EPERM when every remaining member of an existing
+            // process group has transitioned to SZOMB before the signal is delivered.
+            // Never treat raw EPERM as a drain proof: corroborate that the owned anchor
+            // remains pinned and no live member remains in the group.
+            Err(error) if error.raw_os_error() == Some(libc::EPERM) => {
+                if watcher.poll_exit_unreaped()?
+                    && crate::macos_process::inventory_live_process_group(pgid)?
+                        .members
+                        .is_empty()
+                {
+                    Ok(())
+                } else {
+                    Err(error)
+                }
+            }
+            Err(error) => Err(error),
+        }
+    }
+
     fn hold_generation_guard_forever() -> ! {
         loop {
             unsafe {
@@ -2593,6 +2632,283 @@ mod imp {
             assert!(status.success(), "descriptor inspection failed: {status}");
             assert_eq!(control_message, "control-ok\n");
             assert_eq!(direct_message, "direct-ok\n");
+        }
+
+        struct TestExternalGroupZombie {
+            reaper_pid: i32,
+            zombie_pid: i32,
+            release_write: Option<File>,
+        }
+
+        impl TestExternalGroupZombie {
+            fn new(pgid: i32) -> Self {
+                let mut ready_fds = [-1_i32; 2];
+                let mut release_fds = [-1_i32; 2];
+                assert_eq!(unsafe { libc::pipe(ready_fds.as_mut_ptr()) }, 0);
+                assert_eq!(unsafe { libc::pipe(release_fds.as_mut_ptr()) }, 0);
+                let reaper_pid = unsafe { libc::fork() };
+                assert!(reaper_pid >= 0, "fork external zombie reaper");
+                if reaper_pid == 0 {
+                    unsafe {
+                        libc::close(ready_fds[0]);
+                        libc::close(release_fds[1]);
+                        if libc::setpgid(0, 0) != 0 {
+                            libc::_exit(161);
+                        }
+                        let zombie = libc::fork();
+                        if zombie < 0 {
+                            libc::_exit(162);
+                        }
+                        if zombie == 0 {
+                            libc::close(ready_fds[1]);
+                            libc::close(release_fds[0]);
+                            if libc::setpgid(0, pgid) != 0 {
+                                libc::_exit(163);
+                            }
+                            libc::_exit(0);
+                        }
+                        let mut info: libc::siginfo_t = std::mem::zeroed();
+                        if libc::waitid(
+                            libc::P_PID,
+                            zombie as libc::id_t,
+                            &mut info,
+                            libc::WEXITED | libc::WNOWAIT,
+                        ) != 0
+                        {
+                            libc::_exit(164);
+                        }
+                        let bytes = zombie.to_ne_bytes();
+                        if libc::write(ready_fds[1], bytes.as_ptr().cast(), bytes.len())
+                            != bytes.len() as isize
+                        {
+                            libc::_exit(165);
+                        }
+                        libc::close(ready_fds[1]);
+                        let mut poll = libc::pollfd {
+                            fd: release_fds[0],
+                            events: libc::POLLIN,
+                            revents: 0,
+                        };
+                        libc::poll(&mut poll, 1, 5_000);
+                        libc::close(release_fds[0]);
+                        let mut status = 0_i32;
+                        let _ = libc::waitpid(zombie, &mut status, 0);
+                        libc::_exit(0);
+                    }
+                }
+                unsafe {
+                    libc::close(ready_fds[1]);
+                    libc::close(release_fds[0]);
+                }
+                let mut ready_read = unsafe { File::from_raw_fd(ready_fds[0]) };
+                let release_write = unsafe { File::from_raw_fd(release_fds[1]) };
+                let mut pid_bytes = [0_u8; std::mem::size_of::<i32>()];
+                ready_read
+                    .read_exact(&mut pid_bytes)
+                    .expect("read external zombie pid");
+                Self {
+                    reaper_pid,
+                    zombie_pid: i32::from_ne_bytes(pid_bytes),
+                    release_write: Some(release_write),
+                }
+            }
+
+            fn release(&mut self) {
+                drop(self.release_write.take());
+            }
+        }
+
+        impl Drop for TestExternalGroupZombie {
+            fn drop(&mut self) {
+                self.release();
+                loop {
+                    if unsafe { libc::waitpid(self.reaper_pid, std::ptr::null_mut(), 0) }
+                        == self.reaper_pid
+                    {
+                        break;
+                    }
+                    if io::Error::last_os_error().kind() != io::ErrorKind::Interrupted {
+                        break;
+                    }
+                }
+            }
+        }
+
+        fn wait_until_zombie_unreaped(pid: i32) {
+            let deadline = Instant::now() + Duration::from_secs(2);
+            loop {
+                let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+                let rc = unsafe {
+                    libc::waitid(
+                        libc::P_PID,
+                        pid as libc::id_t,
+                        &mut info,
+                        libc::WEXITED | libc::WNOWAIT | libc::WNOHANG,
+                    )
+                };
+                assert_eq!(rc, 0, "waitid failed: {}", io::Error::last_os_error());
+                if unsafe { info.si_pid() } != 0 {
+                    return;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "timed out waiting for pid {pid} to become unreaped zombie"
+                );
+                thread::sleep(Duration::from_millis(1));
+            }
+        }
+
+        #[test]
+        fn await_pair_member_release_waits_for_untrusted_zombie_without_zombie_group_eperm() {
+            use std::os::unix::process::CommandExt;
+            use std::process::Command;
+
+            let mut anchor_child = Command::new("/bin/sleep")
+                .arg("30")
+                .process_group(0)
+                .spawn()
+                .expect("spawn anchor group leader");
+            let anchor_pid = anchor_child.id() as i32;
+            let anchor = read_process_identity(anchor_pid).expect("read anchor identity");
+            let mut watcher = AnchorExitWatcher::new(anchor).expect("watch anchor");
+
+            let mut member_child = Command::new("/bin/sleep")
+                .arg("30")
+                .process_group(anchor.pgid)
+                .spawn()
+                .expect("spawn paired member in anchor group");
+            let member_pid = member_child.id() as i32;
+            let member = read_process_identity(member_pid).expect("read member identity");
+
+            let mut external_zombie = TestExternalGroupZombie::new(anchor.pgid);
+            let zombie_pid = external_zombie.zombie_pid;
+
+            assert_eq!(unsafe { libc::kill(anchor.pid, libc::SIGKILL) }, 0);
+            assert_eq!(unsafe { libc::kill(member.pid, libc::SIGKILL) }, 0);
+            watcher
+                .wait_for_exit_unreaped(crate::macos_process::DrainOptions::default(), |_| {})
+                .expect("wait for anchor unreaped exit");
+            wait_until_zombie_unreaped(member.pid);
+
+            let initial_snapshot = crate::macos_process::inventory_live_process_group(anchor.pgid)
+                .expect("inventory zombie-only group");
+            assert!(
+                initial_snapshot.members.is_empty(),
+                "expected zero live members, got {initial_snapshot:?}"
+            );
+            assert!(
+                initial_snapshot.zombie_pids.contains(&anchor.pid)
+                    && initial_snapshot.zombie_pids.contains(&member.pid)
+                    && initial_snapshot.zombie_pids.contains(&zombie_pid),
+                "expected anchor, member, and untrusted zombie in group: {initial_snapshot:?}"
+            );
+
+            let identity = FrameIdentity::new(
+                "11".repeat(32),
+                "22".repeat(32),
+                "paired-zombie-release".into(),
+            )
+            .expect("frame identity");
+            let (control, mut executor_control) = UnixStream::pair().expect("control socket pair");
+            control
+                .set_read_timeout(Some(SESSION_READ_TIMEOUT))
+                .expect("control read timeout");
+            control
+                .set_write_timeout(Some(SESSION_WRITE_TIMEOUT))
+                .expect("control write timeout");
+            executor_control
+                .set_read_timeout(Some(Duration::from_secs(2)))
+                .expect("executor read timeout");
+            let (supervisor_stream, _supervisor_peer) =
+                UnixStream::pair().expect("supervisor stream pair");
+
+            let mut session = GuardianSession {
+                identity: identity.clone(),
+                guardian: ProcessIdentity {
+                    pid: std::process::id() as i32,
+                    pgid: anchor.pgid,
+                    start_abstime: 1,
+                },
+                root: std::env::temp_dir(),
+                control,
+                control_reader: FrameReader::new(),
+                control_open: true,
+                supervisor_direct: None,
+                trace: None,
+                containment_active: true,
+                sandbox_profile: None,
+                paired: true,
+                pair_member: Some(member),
+            };
+            let mut runtime = SupervisorRuntime {
+                stream: supervisor_stream,
+                reader: FrameReader::new(),
+                anchor,
+                watcher,
+            };
+
+            let controller_thread = thread::spawn(move || -> io::Result<()> {
+                thread::sleep(Duration::from_millis(15));
+                external_zombie.release();
+                let event: Option<GuardianEvent> =
+                    read_authenticated_frame(&mut executor_control, &identity)?;
+                match event {
+                    Some(GuardianEvent::PairQuiescent {
+                        anchor: observed_anchor,
+                        member: observed_member,
+                        ..
+                    }) => {
+                        assert_eq!(observed_anchor, anchor);
+                        assert_eq!(observed_member, member);
+                        let _ = member_child.wait();
+                        Ok(())
+                    }
+                    other => Err(io::Error::other(format!(
+                        "expected PairQuiescent event, received {other:?}"
+                    ))),
+                }
+            });
+
+            let release_result = session.await_pair_member_release(&mut runtime);
+            let _ = session.control.shutdown(std::net::Shutdown::Both);
+            let controller_result = controller_thread.join().expect("join controller thread");
+            let _ = anchor_child.wait();
+
+            release_result
+                .expect("await_pair_member_release should succeed without zombie-only EPERM");
+            controller_result.expect("executor should receive PairQuiescent and reap member");
+        }
+
+        #[test]
+        fn signal_exited_anchor_group_for_pair_release_corroborates_zombie_only_eperm() {
+            use std::os::unix::process::CommandExt;
+            use std::process::Command;
+
+            let mut anchor_child = Command::new("/bin/sleep")
+                .arg("30")
+                .process_group(0)
+                .spawn()
+                .expect("spawn anchor group leader");
+            let anchor_pid = anchor_child.id() as i32;
+            let anchor = read_process_identity(anchor_pid).expect("read anchor identity");
+            let mut watcher = AnchorExitWatcher::new(anchor).expect("watch anchor");
+
+            assert_eq!(unsafe { libc::kill(anchor.pid, libc::SIGKILL) }, 0);
+            watcher
+                .wait_for_exit_unreaped(crate::macos_process::DrainOptions::default(), |_| {})
+                .expect("wait for anchor unreaped exit");
+
+            assert_eq!(
+                crate::macos_process::signal_exited_anchor_group(&watcher, libc::SIGSTOP)
+                    .expect_err("raw Darwin group signal to zombie-only group returns EPERM")
+                    .raw_os_error(),
+                Some(libc::EPERM)
+            );
+            for signal in [libc::SIGSTOP, libc::SIGKILL] {
+                signal_exited_anchor_group_for_pair_release(&mut watcher, anchor.pgid, signal)
+                    .expect("corroborated zombie-only EPERM should succeed");
+            }
+            let _ = anchor_child.wait();
         }
     }
 }

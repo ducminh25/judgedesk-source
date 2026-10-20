@@ -22,7 +22,10 @@ export function hostStatusToRunMetadata(
   const isMac = typeof navigator !== "undefined"
     ? navigator.userAgent.includes("Mac")
     : (typeof process !== "undefined" ? process.platform === "darwin" : false);
-  const platform = hostStatus?.platform || (isMac ? "darwin" : "win32");
+  const isLinux = typeof navigator !== "undefined"
+    ? navigator.userAgent.includes("Linux")
+    : (typeof process !== "undefined" ? process.platform === "linux" : false);
+  const platform = hostStatus?.platform || (isMac ? "darwin" : isLinux ? "linux" : "win32");
   const arch = isMac ? "aarch64" : "x64";
 
   return {
@@ -36,7 +39,13 @@ export function hostStatusToRunMetadata(
       builtAt: new Date().toISOString(),
     },
     executor: {
-      mode: hostStatus?.secureRunner.mode || (isMac ? "macos-sandbox" : "windows-lpac-job"),
+      mode:
+        hostStatus?.secureRunner.mode ||
+        (isMac
+          ? "macos-sandbox"
+          : isLinux
+            ? "linux-bwrap-cgroup-seccomp"
+            : "windows-lpac-job"),
       version: hostStatus?.secureRunner.executorVersion || APP_VERSION,
       ready: hostStatus?.secureRunner.ready ?? true,
     },

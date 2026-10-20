@@ -108,6 +108,8 @@ export default function App() {
   const showError = useCallback((err: unknown, options?: Parameters<typeof formatAppError>[1]) => {
     setAppError(formatAppError(err, options, t));
   }, [t]);
+  const showErrorRef = useRef(showError);
+  showErrorRef.current = showError;
 
   const clearError = useCallback(() => {
     setAppError(null);
@@ -121,7 +123,7 @@ export default function App() {
     if (outcome.status === "current") {
       setAppError({
         title: t("updates.upToDate"),
-        reason: t("updates.upToDateDetails", { version: APP_VERSION }),
+        reason: t("updates.upToDateDetails", { version: APP_VERSION || "1.6.0" }),
         severity: "info",
       });
     } else if (outcome.status === "error") {
@@ -355,8 +357,15 @@ export default function App() {
         const response = await apiFetch("/api/status");
         return (await response.json()) as HostStatus;
       },
-      onStatus: setHostStatus,
-      onError: (error) => showError(error, { code: "BACKEND_CONNECTION" }),
+      onStatus: (status) => {
+        setHostStatus(status);
+        if (status) {
+          setAppError((previous) =>
+            previous?.code === "BACKEND_CONNECTION" ? null : previous,
+          );
+        }
+      },
+      onError: (error) => showErrorRef.current(error, { code: "BACKEND_CONNECTION" }),
     });
     hostStatusRefreshRef.current = refresh;
     requestHostStatus();
@@ -364,7 +373,7 @@ export default function App() {
       refresh.dispose();
       hostStatusRefreshRef.current = null;
     };
-  }, [loadHelpToolchains, requestHostStatus, showError]);
+  }, [loadHelpToolchains, requestHostStatus]);
 
   // Themis Toolchain Detection Prompt on First Launch
   const {
@@ -506,6 +515,7 @@ export default function App() {
     activeLog,
     loadModal,
     helpSection,
+    showChangelog,
     openToolchains,
     showOsdModal,
     pendingScoreDeletion,
@@ -516,6 +526,7 @@ export default function App() {
     onCloseActiveLog: () => setActiveLog(null),
     onCloseLoadModal: () => setLoadModal(null),
     onCloseHelpSection: () => setHelpSection(null),
+    onCloseChangelog: handleCloseChangelog,
     onCloseOpenToolchains: () => setOpenToolchains(false),
     onCloseShowOsdModal: () => setShowOsdModal(false),
     onClosePendingScoreDeletion: () => setPendingScoreDeletion(null),
@@ -800,10 +811,12 @@ export default function App() {
             setOpenToolchains(true);
           }}
           onOpenChangelogFromHelp={() => {
-            setHelpSection(null);
             setShowChangelog(true);
           }}
-          onCloseToolchains={() => setOpenToolchains(false)}
+          onCloseToolchains={() => {
+            setOpenToolchains(false);
+            requestHostStatus();
+          }}
           onCloseThemisPrompt={() => setShowThemisPromptModal(false)}
           onApplyThemisAll={handleApplyThemisAll}
           onApplyManagedAll={handleApplyManagedAll}

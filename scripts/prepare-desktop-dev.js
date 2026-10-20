@@ -41,8 +41,12 @@ async function stopOrphanedBackend(debugSidecar, statePath) {
 
   console.log(`[Desktop Dev] Stopping orphaned backend on port ${state.port}...`);
   try {
+    const headers = typeof state.token === "string" && state.token.length === 64
+      ? { "X-JudgeDesk-Session": state.token }
+      : {};
     await fetch(`http://127.0.0.1:${state.port}/api/shutdown`, {
       method: "POST",
+      headers,
       signal: AbortSignal.timeout(3_000),
     });
   } catch {
@@ -58,36 +62,61 @@ async function stopOrphanedBackend(debugSidecar, statePath) {
 // Windows does not allow Tauri to replace a sidecar executable while an older
 // dev session is still running it. Probe write access up front so we can give a
 // useful error instead of tauri-build panicking with "Access is denied".
+const rustCoreEnv = process.env.JUDGEDESK_PURE_RUST_CORE?.trim().toLowerCase();
+const useNodeSidecarRollback = rustCoreEnv === "0" || rustCoreEnv === "false";
+
 if (process.platform === "win32") {
-  const debugSidecar = path.resolve(
+  const debugDir = path.resolve(process.cwd(), "src-tauri", "target", "debug");
+  const debugExecutor = path.join(debugDir, "judgedesk-executor.exe");
+  const stagedExecutor = path.resolve(
     process.cwd(),
     "src-tauri",
-    "target",
-    "debug",
-    "server.exe",
+    "binaries",
+    "judgedesk-executor-x86_64-pc-windows-msvc.exe",
   );
-  const statePath = path.join(path.dirname(debugSidecar), "judgedesk-backend-state.json");
+  const debugSidecar = path.join(debugDir, "server.exe");
+  const stagedSidecar = path.resolve(
+    process.cwd(),
+    "src-tauri",
+    "binaries",
+    "server-x86_64-pc-windows-msvc.exe",
+  );
+  const statePath = path.join(debugDir, "judgedesk-backend-state.json");
 
-  await stopOrphanedBackend(debugSidecar, statePath);
+  await stopOrphanedBackend(useNodeSidecarRollback ? debugSidecar : debugExecutor, statePath);
 
-  let descriptor;
-  try {
-    if (fs.existsSync(debugSidecar)) {
-      descriptor = fs.openSync(debugSidecar, "r+");
+  const binariesToProbe = useNodeSidecarRollback
+    ? [debugExecutor, debugSidecar]
+    : [debugExecutor];
+
+  for (const binaryPath of binariesToProbe) {
+    let descriptor;
+    try {
+      if (fs.existsSync(binaryPath)) {
+        descriptor = fs.openSync(binaryPath, "r+");
+      }
+    } catch (error) {
+      const code = error && typeof error === "object" && "code" in error
+        ? error.code
+        : "UNKNOWN";
+
+      console.error("\n[Desktop Dev] JudgeDesk debug backend or native executor is still running.");
+      console.error(
+        "Close the existing JudgeDesk window and stop its previous terminal with Ctrl+C, then run npm run test:desktop again.",
+      );
+      console.error(`Locked file: ${binaryPath}`);
+      console.error(`Windows error: ${code}`);
+      process.exit(1);
+    } finally {
+      if (descriptor !== undefined) fs.closeSync(descriptor);
     }
-  } catch (error) {
-    const code = error && typeof error === "object" && "code" in error
-      ? error.code
-      : "UNKNOWN";
+  }
 
-    console.error("\n[Desktop Dev] JudgeDesk debug backend is still running.");
-    console.error(
-      "Close the existing JudgeDesk window and stop its previous terminal with Ctrl+C, then run npm run test:desktop again.",
-    );
-    console.error(`Locked file: ${debugSidecar}`);
-    console.error(`Windows error: ${code}`);
-    process.exit(1);
-  } finally {
-    if (descriptor !== undefined) fs.closeSync(descriptor);
+  if (fs.existsSync(stagedExecutor) && fs.existsSync(debugDir)) {
+    fs.copyFileSync(stagedExecutor, debugExecutor);
+  }
+  if (useNodeSidecarRollback && fs.existsSync(stagedSidecar) && fs.existsSync(debugDir)) {
+    fs.copyFileSync(stagedSidecar, debugSidecar);
   }
 }
+

@@ -580,22 +580,23 @@ export function findLocalToolchainSnapshot(options: {
   relativeExecutablePath: string;
   executorRoot?: string;
 }): Omit<LocalToolchainSnapshot, keyof DirectoryTreeInspection> | null {
-  const executorRoot = options.executorRoot || executorClient.health.executorRoot;
-  if (!executorRoot || !path.isAbsolute(executorRoot)) return null;
-  const toolchainsRoot = path.join(executorRoot, "toolchains");
-  const root = path.join(toolchainsRoot, cacheName(options.kind, options.snapshotDigest));
-  if (!isDescendant(toolchainsRoot, root)) return null;
-  const marker = readMarker(root);
-  const relativeExecutablePath = safeRelativePath(options.relativeExecutablePath);
-  if (
-    !marker
-    || marker.kind !== options.kind
-    || marker.snapshotDigest !== options.snapshotDigest
-    || marker.relativeExecutablePath !== relativeExecutablePath
-  ) return null;
-  const payloadRoot = path.join(root, "payload");
-  const executablePath = path.join(payloadRoot, relativeExecutablePath);
+  const rawExecutorRoot = options.executorRoot || executorClient.health.executorRoot;
+  if (!rawExecutorRoot || !path.isAbsolute(rawExecutorRoot)) return null;
   try {
+    const executorRoot = fs.realpathSync(rawExecutorRoot);
+    const toolchainsRoot = path.join(executorRoot, "toolchains");
+    const root = path.join(toolchainsRoot, cacheName(options.kind, options.snapshotDigest));
+    if (!isDescendant(toolchainsRoot, root)) return null;
+    const marker = readMarker(root);
+    const relativeExecutablePath = safeRelativePath(options.relativeExecutablePath);
+    if (
+      !marker
+      || marker.kind !== options.kind
+      || marker.snapshotDigest !== options.snapshotDigest
+      || marker.relativeExecutablePath !== relativeExecutablePath
+    ) return null;
+    const payloadRoot = path.join(root, "payload");
+    const executablePath = path.join(payloadRoot, relativeExecutablePath);
     const canonicalPayload = fs.realpathSync(payloadRoot);
     const canonicalExecutable = fs.realpathSync(executablePath);
     if (

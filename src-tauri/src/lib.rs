@@ -37,8 +37,11 @@ pub fn get_cli_contest_file() -> Option<String> {
 pub struct InitialContestFile(pub std::sync::Mutex<Option<String>>);
 
 #[tauri::command]
-fn get_backend_port(port: tauri::State<'_, backend::BackendPort>) -> u16 {
-    port.0
+fn get_backend_session(session: tauri::State<'_, backend::BackendSession>) -> serde_json::Value {
+    serde_json::json!({
+        "port": session.port,
+        "token": session.token,
+    })
 }
 
 #[tauri::command]
@@ -134,15 +137,28 @@ pub fn run() {
             backend::spawn(app)
         })
         .invoke_handler(tauri::generate_handler![
-            get_backend_port,
+            get_backend_session,
             get_initial_contest_file,
             backend::prepare_for_update,
             checker_sources::open_checker_source,
             contest_archive::open_contest_archive,
             contest_archive::save_contest_archive
         ])
-        .build(context)
-        .expect("error while building ThemisV2");
+        .build(context);
+    let app = match app {
+        Ok(app) => app,
+        Err(error) => {
+            eprintln!("JudgeDesk startup failed: {error}");
+            rfd::MessageDialog::new()
+                .set_title("JudgeDesk startup error")
+                .set_description(format!(
+                    "JudgeDesk could not start its verified desktop backend.\n\n{error}"
+                ))
+                .set_level(rfd::MessageLevel::Error)
+                .show();
+            std::process::exit(70);
+        }
+    };
 
     app.run(|handle, event| {
         #[cfg(target_os = "macos")]

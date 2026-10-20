@@ -22,7 +22,7 @@ pub fn generation_contents(generation: &str) -> String {
     format!("{HEADER}\ngeneration={generation}\n")
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 mod macos {
     use super::{
         generation_contents, validate_generation, GENERATION_ENV, MAX_METADATA_BYTES,
@@ -103,16 +103,60 @@ mod macos {
             ));
         }
 
-        let parent_identity = crate::macos_process::read_process_identity(os_parent_pid)
-            .map_err(|e| format!("PROCESS_PARENT_LOOKUP_FAILED: {e}"))?;
-        let current_identity =
-            crate::macos_process::read_process_identity(unsafe { libc::getpid() })
+        #[cfg(target_os = "macos")]
+        {
+            let parent_identity = crate::macos_process::read_process_identity(os_parent_pid)
+                .map_err(|e| format!("PROCESS_PARENT_LOOKUP_FAILED: {e}"))?;
+            let current_identity =
+                crate::macos_process::read_process_identity(unsafe { libc::getpid() })
+                    .map_err(|e| format!("CURRENT_PROCESS_LOOKUP_FAILED: {e}"))?;
+
+            if parent_identity.start_abstime > current_identity.start_abstime {
+                return Err("PROCESS_PARENT_STALE_OR_RECYCLED".into());
+            }
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let parent_start = read_linux_process_start_ticks(os_parent_pid)
+                .map_err(|e| format!("PROCESS_PARENT_LOOKUP_FAILED: {e}"))?;
+            let current_start = read_linux_process_start_ticks(unsafe { libc::getpid() })
                 .map_err(|e| format!("CURRENT_PROCESS_LOOKUP_FAILED: {e}"))?;
 
-        if parent_identity.start_abstime > current_identity.start_abstime {
-            return Err("PROCESS_PARENT_STALE_OR_RECYCLED".into());
+            if parent_start > current_start {
+                return Err("PROCESS_PARENT_STALE_OR_RECYCLED".into());
+            }
         }
         Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
+    fn read_linux_process_start_ticks(pid: i32) -> Result<u64, String> {
+        if pid <= 0 {
+            return Err("invalid process ID".into());
+        }
+        let stat_path = format!("/proc/{pid}/stat");
+        let stat = std::fs::read_to_string(&stat_path)
+            .map_err(|error| format!("read {stat_path}: {error}"))?;
+        let close_paren = stat
+            .rfind(')')
+            .ok_or_else(|| format!("malformed {stat_path}: missing comm terminator"))?;
+        let after_comm = stat
+            .get(close_paren + 1..)
+            .ok_or_else(|| format!("malformed {stat_path}: truncated after comm"))?;
+        let mut fields = after_comm.split_whitespace();
+        let state = fields
+            .next()
+            .ok_or_else(|| format!("malformed {stat_path}: missing state"))?;
+        if state == "Z" || state == "X" {
+            return Err("PROCESS_PARENT_NOT_ACTIVE".into());
+        }
+        // Field 3 is state (consumed above); field 22 is starttime (18 fields after state).
+        let start_ticks_str = fields
+            .nth(18)
+            .ok_or_else(|| format!("malformed {stat_path}: missing starttime"))?;
+        start_ticks_str
+            .parse::<u64>()
+            .map_err(|error| format!("malformed {stat_path} starttime: {error}"))
     }
 
     pub fn acquire(path: &Path, generation: &str) -> Result<ProcessTreeGuard, String> {
@@ -608,7 +652,7 @@ mod windows {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 pub use macos::{
     acquire_executor_from_environment, acquire_from_environment, ExecutorTreeGuard,
     ProcessTreeGuard,
@@ -620,19 +664,19 @@ pub use windows::{
     ProcessTreeGuard,
 };
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 #[derive(Debug)]
 pub struct ProcessTreeGuard;
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 pub type ExecutorTreeGuard = ProcessTreeGuard;
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 pub fn acquire_from_environment() -> Result<ProcessTreeGuard, String> {
     Err("UNSUPPORTED_PLATFORM".into())
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 pub fn acquire_executor_from_environment() -> Result<ExecutorTreeGuard, String> {
     Err("UNSUPPORTED_PLATFORM".into())
 }

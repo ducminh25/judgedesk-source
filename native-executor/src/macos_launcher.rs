@@ -94,6 +94,7 @@ mod macos {
         security_setup_time_us: u64,
         peak_memory_bytes: u64,
         last_usage: GroupUsage,
+        process_limit_observations: u8,
         baseline_workspace_bytes: u64,
         baseline_workspace_files: u32,
         cwd_path: PathBuf,
@@ -607,6 +608,12 @@ mod macos {
                 Ok(usage) => {
                     target.peak_memory_bytes = target.peak_memory_bytes.max(usage.memory_bytes);
                     target.last_usage = usage;
+                    if usage.processes > target.monitor_limits.process_count {
+                        target.process_limit_observations =
+                            target.process_limit_observations.saturating_add(1);
+                    } else {
+                        target.process_limit_observations = 0;
+                    }
                 }
                 Err(error) => {
                     self.diagnostic =
@@ -1011,6 +1018,7 @@ mod macos {
                 security_setup_time_us,
                 peak_memory_bytes: 0,
                 last_usage: GroupUsage::default(),
+                process_limit_observations: 0,
                 baseline_workspace_bytes: self.baseline_workspace_bytes,
                 baseline_workspace_files: self.baseline_workspace_files,
                 cwd_path: self.cwd_path.clone(),
@@ -1755,6 +1763,8 @@ mod macos {
         }
     }
 
+    const LIVE_PROCESS_LIMIT_CONFIRMATION_POLLS: u8 = 4;
+
     fn classify_live_target(target: &SpawnedTarget) -> (Option<CleanupCause>, Option<String>) {
         let limits = &target.monitor_limits;
         if target.started_at.elapsed() >= Duration::from_millis(limits.wall_time_ms) {
@@ -1762,7 +1772,14 @@ mod macos {
         } else if target.peak_memory_bytes > limits.memory_bytes {
             (Some(CleanupCause::MemoryLimit), None)
         } else if target.last_usage.processes > limits.process_count {
-            (Some(CleanupCause::ProcessLimit), None)
+            if limits.process_count == 1
+                && target.last_usage.processes == 2
+                && target.process_limit_observations < LIVE_PROCESS_LIMIT_CONFIRMATION_POLLS
+            {
+                (None, None)
+            } else {
+                (Some(CleanupCause::ProcessLimit), None)
+            }
         } else if target.last_usage.threads > limits.thread_count {
             (Some(CleanupCause::ThreadLimit), None)
         } else if redirected_output_bytes(target) > limits.output_bytes {
@@ -2777,6 +2794,7 @@ mod macos {
                 security_setup_time_us: 0,
                 peak_memory_bytes: 0,
                 last_usage: GroupUsage::default(),
+                process_limit_observations: 0,
                 baseline_workspace_bytes: 0,
                 baseline_workspace_files: 0,
                 cwd_path: directory.0.clone(),
@@ -2793,6 +2811,61 @@ mod macos {
                     created_files: 64,
                 },
             }
+        }
+
+        #[test]
+        fn live_process_limit_requires_consecutive_confirmation_polls_while_exit_classifies_immediately(
+        ) {
+            let directory = TestDirectory::new("process-limit-polls");
+            let started = Instant::now();
+            let mut target = test_target(
+                &directory,
+                Some(WaitOutcome {
+                    status: ExitStatus::from_raw(0),
+                    usage: unsafe { std::mem::zeroed() },
+                }),
+                Some(started),
+                started,
+            );
+            target.monitor_limits.process_count = 1;
+            target.monitor_limits.thread_count = 1;
+            target.last_usage.processes = 2;
+            target.last_usage.threads = 2;
+            for observation in 1..LIVE_PROCESS_LIMIT_CONFIRMATION_POLLS {
+                target.process_limit_observations = observation;
+                assert_eq!(
+                    classify_live_target(&target).0,
+                    None,
+                    "transient observation {observation} must not preempt child probe receipt or fall through to ThreadLimit"
+                );
+            }
+            target.process_limit_observations = LIVE_PROCESS_LIMIT_CONFIRMATION_POLLS;
+            assert_eq!(
+                classify_live_target(&target).0,
+                Some(CleanupCause::ProcessLimit)
+            );
+            target.process_limit_observations = 1;
+            target.last_usage.processes = 3;
+            assert_eq!(
+                classify_live_target(&target).0,
+                Some(CleanupCause::ProcessLimit)
+            );
+            target.monitor_limits.process_count = 4;
+            target.monitor_limits.thread_count = 16;
+            target.last_usage.processes = 5;
+            target.last_usage.threads = 20;
+            target.process_limit_observations = 1;
+            assert_eq!(
+                classify_live_target(&target).0,
+                Some(CleanupCause::ProcessLimit)
+            );
+            target.monitor_limits.process_count = 1;
+            target.process_limit_observations = 0;
+            target.last_usage.processes = 1;
+            assert_eq!(
+                classify_exited_target(&target).0,
+                Some(CleanupCause::ProcessLimit)
+            );
         }
 
         #[test]

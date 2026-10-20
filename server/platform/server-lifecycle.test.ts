@@ -75,3 +75,60 @@ test("server lifecycle drain wait is bounded and remains fail-closed", async () 
   if (admitted.accepted) admitted.lease.finish();
   assert.equal(await lifecycle.waitForJudgeSessionsToFinish(10), true);
 });
+
+test("server lifecycle drain never shuts down executor while judge sessions remain active and allows retry after session completion", async (t) => {
+  const { executorClient } = await import("../executor/client.js");
+  let executorShutdownCalls = 0;
+  t.mock.method(executorClient, "shutdown", async () => {
+    executorShutdownCalls += 1;
+  });
+
+  const lifecycle = new ServerLifecycle();
+  const admitted = lifecycle.tryStartJudgeSession("active-during-drain");
+  assert.equal(admitted.accepted, true);
+
+  await assert.rejects(
+    lifecycle.drain(20),
+    /active judging session/,
+  );
+  assert.equal(
+    executorShutdownCalls,
+    0,
+    "executor must not be shut down while a judge session failed to drain",
+  );
+
+  if (admitted.accepted) admitted.lease.finish();
+  await lifecycle.drain(200);
+  assert.equal(
+    executorShutdownCalls,
+    1,
+    "subsequent drain after session completion must not return a stale rejected promise",
+  );
+});
+
+test("background judge prewarm defers immediately without running PCH when server lifecycle begins draining", async () => {
+  const { executeJudgePrewarm, resetJudgePrewarmStateForTests } = await import("../judge/background-prewarm.js");
+  resetJudgePrewarmStateForTests();
+  let pchCalled = false;
+  let closing = false;
+  const outcome = await executeJudgePrewarm({
+    isClosing: () => closing,
+    waitForToolchainDiscovery: async () => {
+      closing = true;
+      return {
+        schemaVersion: 2,
+        registryRevision: 1,
+        status: "complete",
+        refreshing: false,
+        completedAt: new Date().toISOString(),
+        profiles: {},
+      };
+    },
+    ensureUniversalCppPch: async () => {
+      pchCalled = true;
+      return null;
+    },
+  });
+  assert.deepEqual(outcome, { status: "deferred", reason: "SERVER_CLOSING" });
+  assert.equal(pchCalled, false, "PCH compilation must not start after server drain begins");
+});

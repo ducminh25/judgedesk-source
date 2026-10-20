@@ -118,26 +118,43 @@ if (process.env.JUDGEDESK_INTERACTIVE_PRODUCTION_GATE === "1") {
       if (worker.exitCode === null && worker.signalCode === null) stopWorker();
       let cleanupDeadline: ReturnType<typeof setTimeout> | undefined;
       try {
-        await Promise.race([completed, new Promise<never>((_, reject) => {
-          cleanupDeadline = setTimeout(() => reject(new Error(`Owned worker did not close; drain unproved; evidence retained at ${runRoot}`)), 40_000);
-        })]);
+        await Promise.race([
+          Promise.all([completed, stdout.finished, stderr.finished]),
+          new Promise<never>((_, reject) => {
+            cleanupDeadline = setTimeout(() => reject(new Error(`Owned worker did not close; drain unproved; evidence retained at ${runRoot}`)), 40_000);
+          }),
+        ]);
       } finally { clearTimeout(cleanupDeadline); clearTimeout(stopDeadline); }
-      await Promise.all([stdout.finished, stderr.finished]);
     });
     try {
       const code = await completed;
       await Promise.all([stdout.finished, stderr.finished]);
       t.diagnostic(`private evidence retained at ${runRoot}\n${stdout.tail()}\n${stderr.tail()}`);
-      if (loggingError) throw loggingError;
       assert.equal(forcedStop, false, `forced worker stop; drain unproved; evidence retained at ${runRoot}`);
       assert.equal(worker.signalCode, null, `worker signal=${worker.signalCode}; ${stderr.tail()}`);
       assert.equal(code, 0, `production matrix failed; ${outputPath}; ${errorPath}\n${stdout.tail()}\n${stderr.tail()}`);
       const receipt = JSON.parse(fs.readFileSync(path.join(runRoot, "completed-rows.json"), "utf8")) as {
-        selectedCases: string | null; rows: string[]; cleanupProved: boolean;
+        selectedCases: string | null;
+        rows: string[];
+        aborted?: boolean;
+        cleanupProved: boolean;
+        barriers?: {
+          nativeDrain: boolean;
+          callerSettlement: boolean;
+          stdioClose: boolean;
+          finalizers: boolean;
+          workspaceInventory: string[];
+          profiles: string[];
+          leaseRelease: boolean;
+        };
       };
       assert.equal(receipt.selectedCases, selection ?? null);
       assert.equal(receipt.cleanupProved, true);
+      assert.deepEqual(receipt.barriers?.workspaceInventory ?? [], []);
+      assert.deepEqual(receipt.barriers?.profiles ?? [], []);
       assert.equal(new Set(receipt.rows).size, receipt.rows.length);
+      if (loggingError) throw loggingError;
+      assert.equal(receipt.aborted ?? false, false, "production matrix aborted unexpectedly");
       if (selection === undefined) assert.equal(receipt.rows.length, 91, "required full matrix row count including canonical quota verdicts");
       t.diagnostic(JSON.stringify({ completedRows: receipt.rows.length, selectedCases: receipt.selectedCases }));
     } finally {

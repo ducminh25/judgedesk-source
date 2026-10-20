@@ -32,7 +32,7 @@ test("application authority excludes independent core package and enforces relea
   const root = fixture(t); fs.mkdirSync(path.join(root, "crates/judgedesk-core"), { recursive: true });
   fs.writeFileSync(path.join(root, "crates/judgedesk-core/Cargo.toml"), '[package]\nname="judgedesk-core"\nversion="99.8.7"\n');
   assert.equal(check(root, "v" + appVersion).status, 0);
-  const rejected = check(root, "v1.6.0"); assert.notEqual(rejected.status, 0); assert.match(rejected.stderr, /Git tag/);
+  const rejected = check(root, "v99.8.7"); assert.notEqual(rejected.status, 0); assert.match(rejected.stderr, /Git tag/);
   const lock = path.join(root, "src-tauri/Cargo.lock");
   fs.writeFileSync(lock, fs.readFileSync(lock, "utf8").replace('name = "themis-v2"', 'name = "judgedesk-desktop"'));
   assert.notEqual(check(root).status, 0);

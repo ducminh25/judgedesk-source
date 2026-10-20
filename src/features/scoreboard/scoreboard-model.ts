@@ -37,7 +37,7 @@ export function selectedTotalScore(
   return rationalToNumber(selectedTotalScoreRational(contestant, selectedProblems));
 }
 
-function selectedTotalScoreRational(
+export function selectedTotalScoreRational(
   contestant: ContestantResult | undefined,
   selectedProblems: ReadonlySet<string>,
 ): Rational {

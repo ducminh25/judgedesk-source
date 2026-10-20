@@ -257,6 +257,11 @@ test("sidecar smoke test verifies a real child process over HTTP", async () => {
         "const port = Number(process.env.PORT);",
         "let statusRequests = 0;",
         "const server = http.createServer((request, response) => {",
+        "  if (!/^[0-9a-f]{64}$/.test(process.env.JUDGEDESK_API_TOKEN || \"\") || request.headers[\"x-judgedesk-session\"] !== process.env.JUDGEDESK_API_TOKEN) {",
+        '    response.writeHead(401, { "content-type": "application/json" });',
+        '    response.end(JSON.stringify({ success: false, code: "API_SESSION_REQUIRED" }));',
+        "    return;",
+        "  }",
         '  response.writeHead(200, { "content-type": "application/json" });',
         '  if (request.url === "/api/status") {',
         "    statusRequests += 1;",
@@ -520,6 +525,14 @@ test("Apple Silicon release scripts verify architecture, DMG, and sidecar", () =
   assert.match(
     processSupervisorGate,
     /wait_for_cpp_submission_ready "\$port"[\s\S]*api\/batch-judge/,
+  );
+  assert.match(
+    processSupervisorGate,
+    /THEMIS_APP_DATA_DIR=\$app_data/,
+  );
+  assert.match(
+    processSupervisorGate,
+    /wait_for_idle_executor_generation_guard "\$initial_executor" "\$generation_lock"/,
   );
   assert.match(
     processSupervisorGate,

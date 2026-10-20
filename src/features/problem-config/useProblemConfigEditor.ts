@@ -263,6 +263,7 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
       }
       const configToSave = {
         ...polygonConfig,
+        ...(config.timeLimit !== undefined ? { timeLimit: config.timeLimit } : {}),
         testWellFormed: config.testWellFormed ?? false,
         checkerType: config.checkerType || "C1",
         memoryLimit: config.memoryLimit ?? 256,

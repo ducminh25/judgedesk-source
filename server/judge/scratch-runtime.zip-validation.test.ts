@@ -6,9 +6,11 @@ import zlib from "node:zlib";
 import { test, type TestContext } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { prepareIsolatedScratchScript } from "./scratch-runtime.js";
+import {
+  buildIsolatedScratchLaunch,
+  stageValidatedScratchProject,
+} from "./scratch-runtime.js";
 import type { ExecutorWorkspace } from "../executor/workspace.js";
-import type { ResolvedToolchain } from "../toolchains/types.js";
 
 const fixtureRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -45,17 +47,6 @@ function createWorkspace(t: TestContext): { workspace: ExecutorWorkspace; root: 
     dispose() { throw new Error("Unexpected workspace disposal"); },
   };
   return { workspace, root };
-}
-
-function scratchToolchain(root: string): ResolvedToolchain {
-  return {
-    kind: "scratch",
-    source: "managed",
-    ready: true,
-    version: "test",
-    executablePath: path.join(root, "scratch-run"),
-    packageRoot: root,
-  };
 }
 
 function zipOffsets(bytes: Buffer): { central: number; end: number; data: number } {
@@ -106,13 +97,8 @@ for (const { directory, filename } of fixtures) {
 
   test(`${filename}: valid corpus archive stages its original bytes`, async (t) => {
     const { workspace, root } = createWorkspace(t);
-    const launch = await prepareIsolatedScratchScript(
-      workspace,
-      canonicalPath,
-      filename,
-      scratchToolchain(root),
-    );
-    assert.equal(launch.args[0], filename);
+    const staged = stageValidatedScratchProject(workspace, canonicalPath, filename);
+    assert.equal(staged, path.join(root, filename));
     assert.deepEqual(fs.readFileSync(path.join(root, filename)), fs.readFileSync(canonicalPath));
   });
 
@@ -134,8 +120,8 @@ for (const { directory, filename } of fixtures) {
     trailer.writeUInt32LE(central + descriptor.length, 16);
     const archivePath = path.join(root, `complete-descriptor-${filename}`);
     fs.writeFileSync(archivePath, Buffer.concat([local, descriptor, directory, trailer]));
-    const launch = await prepareIsolatedScratchScript(workspace, archivePath, filename, scratchToolchain(root));
-    assert.equal(launch.args[0], filename);
+    const staged = stageValidatedScratchProject(workspace, archivePath, filename);
+    assert.equal(staged, path.join(root, filename));
   });
 
   test(`${filename}: accepts a valid deflated project entry`, async (t) => {
@@ -153,8 +139,8 @@ for (const { directory, filename } of fixtures) {
     trailer.writeUInt32LE(data + payload.length, 16);
     const archivePath = path.join(root, `deflated-${filename}`);
     fs.writeFileSync(archivePath, Buffer.concat([local, payload, directory, trailer]));
-    const launch = await prepareIsolatedScratchScript(workspace, archivePath, filename, scratchToolchain(root));
-    assert.equal(launch.args[0], filename);
+    const staged = stageValidatedScratchProject(workspace, archivePath, filename);
+    assert.equal(staged, path.join(root, filename));
   });
 
   test(`${filename}: rejects archive without central directory`, async (t) => {
@@ -163,8 +149,8 @@ for (const { directory, filename } of fixtures) {
     const { central } = zipOffsets(bytes);
     const malformedPath = path.join(root, `missing-central-${filename}`);
     fs.writeFileSync(malformedPath, bytes.subarray(0, central));
-    await assert.rejects(
-      prepareIsolatedScratchScript(workspace, malformedPath, filename, scratchToolchain(root)),
+    assert.throws(
+      () => stageValidatedScratchProject(workspace, malformedPath, filename),
       /SCRATCH_PROJECT_MALFORMED/,
     );
   });
@@ -175,8 +161,8 @@ for (const { directory, filename } of fixtures) {
     const { end } = zipOffsets(bytes);
     const malformedPath = path.join(root, `missing-eocd-${filename}`);
     fs.writeFileSync(malformedPath, bytes.subarray(0, end));
-    await assert.rejects(
-      prepareIsolatedScratchScript(workspace, malformedPath, filename, scratchToolchain(root)),
+    assert.throws(
+      () => stageValidatedScratchProject(workspace, malformedPath, filename),
       /SCRATCH_PROJECT_MALFORMED/,
     );
   });
@@ -188,8 +174,8 @@ for (const { directory, filename } of fixtures) {
     bytes[central + 16] ^= 0x01;
     const malformedPath = path.join(root, `bad-crc-${filename}`);
     fs.writeFileSync(malformedPath, bytes);
-    await assert.rejects(
-      prepareIsolatedScratchScript(workspace, malformedPath, filename, scratchToolchain(root)),
+    assert.throws(
+      () => stageValidatedScratchProject(workspace, malformedPath, filename),
       /SCRATCH_PROJECT_MALFORMED/,
     );
   });
@@ -202,8 +188,8 @@ for (const { directory, filename } of fixtures) {
     bytes.writeUInt16LE(bytes.readUInt16LE(central + 8) | 8, central + 8);
     const malformedPath = path.join(root, `missing-descriptor-${filename}`);
     fs.writeFileSync(malformedPath, bytes);
-    await assert.rejects(
-      prepareIsolatedScratchScript(workspace, malformedPath, filename, scratchToolchain(root)),
+    assert.throws(
+      () => stageValidatedScratchProject(workspace, malformedPath, filename),
       /SCRATCH_PROJECT_MALFORMED/,
     );
   });
@@ -217,8 +203,8 @@ for (const { directory, filename } of fixtures) {
     bytes[marker] = "s".charCodeAt(0);
     const malformedPath = path.join(root, `bad-data-${filename}`);
     fs.writeFileSync(malformedPath, bytes);
-    await assert.rejects(
-      prepareIsolatedScratchScript(workspace, malformedPath, filename, scratchToolchain(root)),
+    assert.throws(
+      () => stageValidatedScratchProject(workspace, malformedPath, filename),
       /SCRATCH_PROJECT_MALFORMED/,
     );
   });
@@ -229,9 +215,26 @@ for (const { directory, filename } of fixtures) {
     archive[assetStart] ^= 0x01;
     const malformedPath = path.join(root, `bad-asset-${filename}`);
     fs.writeFileSync(malformedPath, archive);
-    await assert.rejects(
-      prepareIsolatedScratchScript(workspace, malformedPath, filename, scratchToolchain(root)),
+    assert.throws(
+      () => stageValidatedScratchProject(workspace, malformedPath, filename),
       /SCRATCH_PROJECT_MALFORMED/,
     );
   });
 }
+
+test("Scratch launch uses a verified managed grant instead of resource-only local execution", () => {
+  const toolchain = {
+    packageId: "scratch-windows-x64",
+    packageDigest: "a".repeat(64),
+    componentId: "scratch.runtime",
+  };
+  const launch = buildIsolatedScratchLaunch("submission.sb3", {
+    executableId: "toolchains/scratch/scratch-run.exe",
+    executablePath: "C:\\executor\\toolchains\\scratch\\scratch-run.exe",
+    root: "C:\\executor\\toolchains\\scratch",
+    toolchain,
+  });
+  assert.deepEqual(launch.toolchain, toolchain);
+  assert.equal("localToolchain" in launch, false);
+  assert.equal(launch.environment.JUDGEDESK_SCRATCH_ISOLATED, "1");
+});

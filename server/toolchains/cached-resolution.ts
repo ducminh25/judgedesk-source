@@ -2,8 +2,8 @@ import os from "node:os";
 import path from "node:path";
 import type { StoredProfileToolchainPreference } from "../languages/contracts.js";
 import {
+  getLocalExecutionModeForHost,
   getRegisteredProfileForKind,
-  type LocalExecutionMode,
 } from "../languages/registry.js";
 import {
   isToolchainVersionAllowed,
@@ -30,6 +30,10 @@ import {
   localExecutionFields,
   resolveCachedLocalExecution,
 } from "./local-execution.js";
+import {
+  localCppCertificateExecutionFields,
+  resolveLocalCppCertificateReadiness,
+} from "./certificate-readiness.js";
 import type {
   ResolvedToolchain,
   ToolchainKind,
@@ -193,12 +197,10 @@ function isCandidateVersionAllowed(
   );
 }
 
-function localExecutionMode(kind: ToolchainKind): LocalExecutionMode | undefined {
+function localExecutionMode(kind: ToolchainKind) {
   const host = mappedHost();
   if (!host) return undefined;
-  return getRegisteredProfileForKind(kind).localExecution.find(
-    (entry) => entry.platform === host.platform && entry.arch === host.arch,
-  )?.mode;
+  return getLocalExecutionModeForHost(kind, host.platform, host.arch);
 }
 
 function isQuickVerifiedLocalKind(
@@ -245,6 +247,32 @@ function resolveCachedLocalCandidate(
   }
   const executionMode = localExecutionMode(kind);
   if (executionMode === "freeze_required") {
+    if (kind === "cpp" && os.platform() === "win32") {
+      const certificate = resolveLocalCppCertificateReadiness(candidate.canonicalPath);
+      if (certificate.state === "ready") {
+        return {
+          kind,
+          source,
+          candidateId: candidate.candidateId,
+          ...localCppCertificateExecutionFields(certificate),
+        };
+      }
+      return {
+        ...unavailable(
+          kind,
+          source,
+          certificate.diagnostic,
+          certificate.code,
+          candidate.canonicalPath,
+          version,
+        ),
+        candidateId: candidate.candidateId,
+        provenance: "unverified-local",
+        ...(certificate.certificateId
+          ? { certificateId: certificate.certificateId }
+          : {}),
+      };
+    }
     return {
       ...unavailable(
         kind,

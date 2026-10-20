@@ -18,6 +18,22 @@ test("updater targets keep Core and Full separate on supported hosts", () => {
     updaterTargetForHost({ platform: "darwin", arch: "arm64" }, "full"),
     "darwin-aarch64-full",
   );
+  assert.equal(
+    updaterTargetForHost({ platform: "linux", arch: "x64" }, "core"),
+    "linux-x86_64-core",
+  );
+  assert.equal(
+    updaterTargetForHost({ platform: "linux", arch: "x64", bundleType: "deb" }, "core"),
+    "linux-x86_64-deb-core",
+  );
+  assert.equal(
+    updaterTargetForHost({ platform: "linux", arch: "x64", bundleType: "rpm" }, "core"),
+    "linux-x86_64-rpm-core",
+  );
+  assert.equal(
+    updaterTargetForHost({ platform: "linux", arch: "x64", bundleType: "appimage" }, "core"),
+    "linux-x86_64-appimage-core",
+  );
   assert.throws(
     () => updaterTargetForHost({ platform: "win32", arch: "arm64" }, "core"),
     /Unsupported updater host/,

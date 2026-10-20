@@ -65,6 +65,11 @@ export default function JudgingDetailsModal({
           col: "text-blue-600 dark:text-blue-400",
           el: <XCircle className="w-3.5 h-3.5" />,
         };
+      case "PARTIAL":
+        return {
+          col: "text-sky-600 dark:text-sky-400",
+          el: <AlertCircle className="w-3.5 h-3.5" />,
+        };
       case "TLE":
         return {
           col: "text-amber-600 dark:text-amber-400",
@@ -100,7 +105,7 @@ export default function JudgingDetailsModal({
       if (filter === "ALL") return true;
       if (filter === "CORRECT") return tc.status === "AC";
       if (filter === "INCORRECT")
-        return tc.status !== "AC" && tc.status !== "PE";
+        return tc.status !== "AC" && tc.status !== "PE" && tc.status !== "PARTIAL";
       if (filter === "PARTIAL") return tc.status === "PE" || tc.status === "PARTIAL";
       return true;
     });
@@ -157,8 +162,10 @@ export default function JudgingDetailsModal({
               <div className="flex gap-2 items-center text-text-muted text-2xs">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-500" />
                 <span>
-                  {t("judgingDetails.compiledSuccessfully")}{" "}
-                  {data.compileTime?.toFixed(2)}ms
+                  {typeof data.compileTime === "number" &&
+                  Number.isFinite(data.compileTime)
+                    ? `${t("judgingDetails.compiledSuccessfully")} ${data.compileTime.toFixed(2)}ms`
+                    : t("judgingDetails.compilationSuccess")}
                 </span>
               </div>
 
@@ -216,6 +223,11 @@ export default function JudgingDetailsModal({
                       {tc.checkerMessage}
                     </div>
                   )}
+                  {(tc.status === "RE" || tc.status === "JE" || tc.status === "FAIL") && tc.errorDetail && (
+                    <div className="bg-rose-50 dark:bg-rose-950/15 border border-rose-200 dark:border-rose-900/30 p-2 rounded mt-1.5 text-2xs font-mono text-rose-700 dark:text-rose-300 whitespace-pre-wrap">
+                      {tc.errorDetail}
+                    </div>
+                  )}
                   {(tc.status === "WA" || tc.status === "PE" || (tc.expectedOutputPreview === "[Interactive Problem]" && Boolean(tc.actualOutputPreview))) && (
                     <div className="grid grid-cols-2 gap-3 mt-2">
                       <div className="bg-surface border border-surface-border p-2 rounded font-mono text-2xs text-text-muted overflow-x-auto max-h-32 whitespace-pre-wrap">
@@ -227,7 +239,7 @@ export default function JudgingDetailsModal({
                         {tc.expectedOutputPreview || t("common.noOutput")}
                       </div>
                       <div className="bg-surface border border-surface-border p-2 rounded font-mono text-2xs text-rose-600 dark:text-rose-300 overflow-x-auto max-h-32 whitespace-pre-wrap">
-                        <span className="block font-bold text-rose-700 dark:text-rose-900/60 mb-1 border-b border-surface-border pb-1">
+                        <span className="block font-bold text-rose-700 dark:text-rose-300 mb-1 border-b border-surface-border pb-1">
                           {tc.expectedOutputPreview === "[Interactive Problem]"
                             ? t("judgingDetails.interactiveTranscript")
                             : t("judgingDetails.contestantOutput")}

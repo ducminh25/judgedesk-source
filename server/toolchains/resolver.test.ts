@@ -10,6 +10,7 @@ import {
 } from "./storage.js";
 import {
   chooseNativeProtectedToolchain,
+  clearToolchainDetectionCache,
   compareVersions,
   executableVersionArguments,
   buildCompilerProbeArgs,
@@ -27,6 +28,11 @@ import {
   MIN_GNU_GDB_VERSION,
   verifyLocalToolchainCandidate,
 } from "./resolver.js";
+import {
+  clearLocalCompatibilityProbeCache,
+  resolveCachedLocalExecution,
+  scheduleLocalCompatibilityProbe,
+} from "./local-execution.js";
 
 test("receipt-backed managed packages must match their exact catalog version", () => {
   assert.equal(
@@ -338,4 +344,43 @@ test("toolchainsDir resolves and creates directories", (t) => {
   const toolchainsDir = getToolchainsDir();
   assert.ok(fs.existsSync(toolchainsDir));
   assert.ok(toolchainsDir.endsWith("toolchains"));
+});
+
+test("clearToolchainDetectionCache preserves fingerprint-keyed local compatibility probe cache when requested", async (t) => {
+  clearLocalCompatibilityProbeCache();
+  t.after(clearLocalCompatibilityProbeCache);
+
+  const runtimeRoot = fs.mkdtempSync(
+    path.join(os.tmpdir(), "judgedesk-probe-cache-resolver-"),
+  );
+  t.after(() => fs.rmSync(runtimeRoot, { recursive: true, force: true }));
+  const pythonExecutable = path.join(
+    runtimeRoot,
+    "bin",
+    process.platform === "win32" ? "python.exe" : "python3",
+  );
+  fs.mkdirSync(path.dirname(pythonExecutable), { recursive: true });
+  fs.writeFileSync(pythonExecutable, "python-probe-fixture");
+
+  const probed = await scheduleLocalCompatibilityProbe(
+    "python",
+    pythonExecutable,
+    async () => {},
+  );
+  assert.equal(probed.status, "compatible");
+  assert.equal(resolveCachedLocalExecution("python", pythonExecutable).ready, true);
+
+  clearToolchainDetectionCache({ preserveLocalProbeCache: true });
+  assert.equal(
+    resolveCachedLocalExecution("python", pythonExecutable).ready,
+    true,
+    "preserveLocalProbeCache must keep fingerprint-verified local compatibility probes",
+  );
+
+  clearToolchainDetectionCache();
+  assert.equal(
+    resolveCachedLocalExecution("python", pythonExecutable).ready,
+    false,
+    "full rescan cache clear must invalidate local compatibility probes",
+  );
 });

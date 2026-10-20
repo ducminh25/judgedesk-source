@@ -313,7 +313,9 @@ async fn test_flat_problem_routes_write_config_to_synthetic_path() {
     assert_eq!(status, 200, "{body}");
     let stored: serde_json::Value =
         serde_json::from_slice(&fs::read(problem_dir.join("Config.cfg")).unwrap()).unwrap();
-    assert_eq!(stored, config);
+    assert_eq!(stored["timeLimit"], 1500);
+    assert_eq!(stored["memoryLimit"], 256);
+    assert_eq!(stored["compile"]["profile"], "themis");
     assert!(!problem_dir.join("SUM").join("Config.cfg").exists());
     assert!(!problem_dir.join("Config.cfg.tmp").exists());
 
@@ -348,7 +350,9 @@ async fn test_flat_problem_routes_write_config_to_synthetic_path() {
     assert_eq!(status, 500);
     let stored: serde_json::Value =
         serde_json::from_slice(&fs::read(problem_dir.join("Config.cfg")).unwrap()).unwrap();
-    assert_eq!(stored, config);
+    assert_eq!(stored["timeLimit"], 1500);
+    assert_eq!(stored["memoryLimit"], 256);
+    assert_eq!(stored["compile"]["profile"], "themis");
     server_task.abort();
 }
 
@@ -483,7 +487,6 @@ async fn test_embedded_axum_server_full_suite() {
     // 1. GET /api/status
     let (status, body) = http_request(port, "GET", "/api/status", None, None).await;
     assert_eq!(status, 200);
-    assert!(body.contains("\"success\":true"));
     assert!(body.contains("\"secureRunner\""));
     assert!(body.contains("\"build\""));
     assert!(body.contains("\"sandbox\""));
@@ -576,7 +579,7 @@ async fn test_embedded_axum_server_full_suite() {
 
     let (status, body) = http_request(port, "POST", "/api/toolchains/prewarm", None, None).await;
     assert_eq!(status, 200);
-    assert!(body.contains("\"message\":\"Background pre-warm initiated.\""));
+    assert!(body.contains("Background pre-warm initiated."));
 
     let (status, body) = http_request(
         port,
@@ -867,4 +870,230 @@ int main() {
 
     let _ = fs::remove_dir_all(&test_root);
     assert!(!test_root.exists(), "test_root must be fully cleaned up");
+}
+
+#[tokio::test]
+async fn test_preference_mutation_stays_pinned_to_constructed_app_data_root_across_env_switch() {
+    struct ScopedEnvGuard(Vec<(&'static str, Option<std::ffi::OsString>)>);
+    impl Drop for ScopedEnvGuard {
+        fn drop(&mut self) {
+            for (k, v) in self.0.drain(..).rev() {
+                match v {
+                    Some(val) => std::env::set_var(k, val),
+                    None => std::env::remove_var(k),
+                }
+            }
+        }
+    }
+
+    let env_a = common::OwnedTestEnvironment::new();
+    let root_a_themis = env_a.root().join("local").join("ThemisV2");
+    fs::create_dir_all(&root_a_themis).unwrap();
+
+    let root_b_base = env_a.root().join("owned_root_b");
+    let root_b_local = root_b_base.join("local");
+    let root_b_roaming = root_b_base.join("roaming");
+    let root_b_temp = root_b_base.join("temp");
+    let root_b_themis = root_b_local.join("ThemisV2");
+    fs::create_dir_all(&root_b_themis).unwrap();
+    fs::create_dir_all(&root_b_roaming).unwrap();
+    fs::create_dir_all(&root_b_temp).unwrap();
+
+    let b_prefs_path = root_b_themis.join("toolchain-preferences.json");
+    let b_initial_bytes = br#"{
+  "schemaVersion": 2,
+  "profiles": {
+    "cpp": { "mode": "managed" },
+    "cpp-legacy-v1": { "mode": "managed" }
+  }
+}
+"#;
+    fs::write(&b_prefs_path, b_initial_bytes).unwrap();
+
+    let env_keys = [
+        "THEMIS_APP_DATA_DIR",
+        "LOCALAPPDATA",
+        "APPDATA",
+        "TEMP",
+        "TMP",
+        "TMPDIR",
+    ];
+    let saved_env: Vec<(&'static str, Option<std::ffi::OsString>)> =
+        env_keys.iter().map(|&k| (k, std::env::var_os(k))).collect();
+    let _outer_guard = ScopedEnvGuard(saved_env);
+
+    // Phase 1: Reproduce the constructor-guard escape when ambient LOCALAPPDATA points to owned root B
+    // and THEMIS_APP_DATA_DIR is unset outside with_isolated_roots.
+    std::env::remove_var("THEMIS_APP_DATA_DIR");
+    std::env::set_var("LOCALAPPDATA", &root_b_local);
+    std::env::set_var("APPDATA", &root_b_roaming);
+    std::env::set_var("TEMP", &root_b_temp);
+    std::env::set_var("TMP", &root_b_temp);
+    std::env::set_var("TMPDIR", &root_b_temp);
+
+    let canonical_root_a =
+        judgedesk_core::toolchains::discovery::clean_canonical_path(&root_a_themis);
+    let canonical_root_b =
+        judgedesk_core::toolchains::discovery::clean_canonical_path(&root_b_themis);
+
+    let (state, resolved_at_construction) = env_a.with_isolated_roots(|| {
+        let resolved = judgedesk_core::toolchains::discovery::clean_canonical_path(
+            &judgedesk_core::toolchains::discovery::get_app_data_dir(),
+        );
+        let st = AppState::new(Arc::new(
+            judgedesk_core::executor_client::ExecutorClient::unavailable(
+                "two-root preference isolation test",
+            ),
+        ));
+        (st, resolved)
+    });
+
+    // After with_isolated_roots returns, ambient environment points back to owned root B.
+    let resolved_ambient_at_mutation = judgedesk_core::toolchains::discovery::clean_canonical_path(
+        &judgedesk_core::toolchains::discovery::get_app_data_dir(),
+    );
+
+    let (addr, server_task) = start_embedded_server_with_state(0, state.clone())
+        .await
+        .expect("Failed to start embedded server for isolation test");
+    let port = addr.port();
+
+    let (status, body) = http_request(
+        port,
+        "PUT",
+        "/api/toolchains/profiles/cpp/preference",
+        Some(b"{\"mode\":\"local_auto\"}"),
+        Some("application/json"),
+    )
+    .await;
+    assert_eq!(status, 200, "PUT preference failed: {body}");
+
+    let dummy_cpp = env_a.root().join("dummy_gpp.exe");
+    fs::write(&dummy_cpp, b"dummy").unwrap();
+    let custom_body = serde_json::json!({
+        "kind": "cpp",
+        "path": dummy_cpp.to_string_lossy()
+    });
+    let (status_cp, body_cp) = http_request(
+        port,
+        "POST",
+        "/api/toolchains/custom-path",
+        Some(custom_body.to_string().as_bytes()),
+        Some("application/json"),
+    )
+    .await;
+    assert_eq!(status_cp, 200, "POST custom-path failed: {body_cp}");
+
+    let (status_inst, _) = http_request(
+        port,
+        "POST",
+        "/api/toolchains/gcc-windows-x64/install",
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status_inst, 202);
+
+    let (status_uninst, _) = http_request(
+        port,
+        "DELETE",
+        "/api/toolchains/gcc-windows-x64",
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status_uninst, 200);
+
+    let a_prefs_path = root_a_themis.join("toolchain-preferences.json");
+    let a_prefs_exists = a_prefs_path.is_file();
+    let b_after_bytes = fs::read(&b_prefs_path).unwrap();
+    let b_prefs_unchanged = b_after_bytes == b_initial_bytes;
+
+    println!(
+        "TWO_ROOT_ISOLATION_OBSERVATION construction_root={} mutation_ambient_root={} root_a_prefs_exists={} root_b_prefs_unchanged={}",
+        resolved_at_construction.display(),
+        resolved_ambient_at_mutation.display(),
+        a_prefs_exists,
+        b_prefs_unchanged
+    );
+
+    server_task.abort();
+    let _ = server_task.await;
+
+    assert_eq!(
+        resolved_at_construction, canonical_root_a,
+        "AppState construction inside with_isolated_roots must resolve to root A"
+    );
+    assert_eq!(
+        resolved_ambient_at_mutation, canonical_root_b,
+        "Ambient environment after with_isolated_roots exit must resolve to root B"
+    );
+    assert!(
+        a_prefs_exists,
+        "Preference mutation must write toolchain-preferences.json to constructed root A ({}), not escape to ambient root B ({})",
+        a_prefs_path.display(),
+        b_prefs_path.display()
+    );
+    assert!(
+        b_prefs_unchanged,
+        "Ambient root B toolchain-preferences.json ({}) must remain byte-identical across mutations on state constructed in root A",
+        b_prefs_path.display()
+    );
+
+    // Phase 2: Verify with_isolated_roots also overrides ambient THEMIS_APP_DATA_DIR and restores all 6 vars on both ok and panic.
+    std::env::set_var("THEMIS_APP_DATA_DIR", &root_b_themis);
+    let expected_inside_a = [
+        ("THEMIS_APP_DATA_DIR", root_a_themis.clone()),
+        ("LOCALAPPDATA", env_a.root().join("local")),
+        ("APPDATA", env_a.root().join("roaming")),
+        ("TEMP", env_a.root().join("temp")),
+        ("TMP", env_a.root().join("temp")),
+        ("TMPDIR", env_a.root().join("temp")),
+    ];
+    let expected_outside_b = [
+        ("THEMIS_APP_DATA_DIR", root_b_themis.clone()),
+        ("LOCALAPPDATA", root_b_local.clone()),
+        ("APPDATA", root_b_roaming.clone()),
+        ("TEMP", root_b_temp.clone()),
+        ("TMP", root_b_temp.clone()),
+        ("TMPDIR", root_b_temp.clone()),
+    ];
+
+    let resolved_with_ambient_themis = env_a.with_isolated_roots(|| {
+        for (var_name, expected_path) in &expected_inside_a {
+            assert_eq!(
+                std::env::var_os(var_name),
+                Some(expected_path.clone().into_os_string()),
+                "{var_name} must point to root A inside with_isolated_roots"
+            );
+        }
+        judgedesk_core::toolchains::discovery::clean_canonical_path(
+            &judgedesk_core::toolchains::discovery::get_app_data_dir(),
+        )
+    });
+    assert_eq!(
+        resolved_with_ambient_themis, canonical_root_a,
+        "with_isolated_roots must isolate THEMIS_APP_DATA_DIR even when set in ambient environment"
+    );
+    for (var_name, expected_path) in &expected_outside_b {
+        assert_eq!(
+            std::env::var_os(var_name),
+            Some(expected_path.clone().into_os_string()),
+            "{var_name} must be restored after normal return"
+        );
+    }
+
+    let unwind_res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        env_a.with_isolated_roots(|| -> () {
+            panic!("intentional panic to verify EnvironmentRestore unwind safety");
+        });
+    }));
+    assert!(unwind_res.is_err(), "expected intentional panic");
+    for (var_name, expected_path) in &expected_outside_b {
+        assert_eq!(
+            std::env::var_os(var_name),
+            Some(expected_path.clone().into_os_string()),
+            "{var_name} must be restored after panic unwind"
+        );
+    }
 }

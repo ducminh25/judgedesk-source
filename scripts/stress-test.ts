@@ -40,7 +40,15 @@ interface NormalizedExpectation {
 
 const stressRoot = process.env.STRESS_TEST_ROOT;
 const serverUrl = process.env.JUDGE_SERVER_URL || "http://127.0.0.1:3000";
+const apiToken = process.env.JUDGEDESK_API_TOKEN?.trim();
 if (!stressRoot) throw new Error("Set STRESS_TEST_ROOT to the stress_test_judge directory.");
+
+function sessionHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  return {
+    ...(apiToken ? { "X-JudgeDesk-Session": apiToken } : {}),
+    ...extra,
+  };
+}
 
 const expectationsPath = path.join(stressRoot, "EXPECTED_RESULTS.json");
 const document = JSON.parse(fs.readFileSync(expectationsPath, "utf8")) as ExpectationDocument;
@@ -114,7 +122,7 @@ function submissionExtension(contestant: string, problem: string): string | null
 async function judge(expectation: ExpectationCase): Promise<ProblemResult> {
   const response = await fetch(`${serverUrl}/api/batch-judge`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: sessionHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({
       thisinhPath: path.join(stressRoot!, "contestants"),
       testPath: path.join(stressRoot!, "test"),
@@ -231,7 +239,7 @@ function normalizeExpectation(source: ExpectationCase): NormalizedExpectation {
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url);
+  const response = await fetch(url, { headers: sessionHeaders() });
   if (!response.ok) throw new Error(`GET ${url} returned HTTP ${response.status}`);
   return await response.json() as T;
 }

@@ -254,14 +254,14 @@ function exactTerminatingDecimal(r: Rational, maxDecimals: number): string | nul
   return `${negative ? "-" : ""}${whole}${fraction ? `.${fraction}` : ""}`;
 }
 
-export function formatRational(r: Rational, maxDecimals: number = 2): string {
+export function formatRational(r: Rational, maxDecimals: number = 4): string {
   if (r.n === 0) return "0";
   const decimal = exactTerminatingDecimal(r, maxDecimals);
   if (decimal !== null) return decimal;
   return `${r.n}/${r.d}`;
 }
 
-export function formatScore(score: unknown, maxDecimals: number = 2): string {
+export function formatScore(score: unknown, maxDecimals: number = 4): string {
   if (score === null || score === undefined || score === "") return "-";
   const r = parseRational(score);
   return formatRational(r, maxDecimals);

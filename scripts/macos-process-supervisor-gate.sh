@@ -26,6 +26,17 @@ active_anchor=""
 gate_shell_pgid="$(ps -o pgid= -p $$ | tr -d ' ')"
 executor_root="${TMPDIR:-/tmp}"
 executor_root="${executor_root%/}/JudgeDeskExecutor"
+api_token="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+export JUDGEDESK_API_TOKEN="$api_token"
+rust_core_env="${JUDGEDESK_PURE_RUST_CORE:-1}"
+use_node_sidecar=0
+expected_process_count=3
+expected_server_count=0
+if [[ "$rust_core_env" == "0" || "$rust_core_env" == "false" || "$rust_core_env" == "FALSE" ]]; then
+  use_node_sidecar=1
+  expected_process_count=4
+  expected_server_count=1
+fi
 
 fail() {
   echo "macOS process-supervisor gate failed: $*" >&2
@@ -129,15 +140,17 @@ wait_for_listening_port() {
   local candidate
   local index
   for ((index = 0; index < attempts; index++)); do
-    candidate="$(
+    for candidate in $(
       lsof -Pan -p "$pid" -iTCP -sTCP:LISTEN -Fn 2>/dev/null |
         sed -n 's/^n127\.0\.0\.1://p' |
-        head -n 1 || true
-    )"
-    if [[ "$candidate" =~ ^[0-9]+$ ]]; then
-      printf '%s\n' "$candidate"
-      return 0
-    fi
+        tail -r || true
+    ); do
+      if [[ "$candidate" =~ ^[0-9]+$ ]] &&
+        curl -fsS --max-time 1 -H "X-JudgeDesk-Session: $api_token" "http://127.0.0.1:$candidate/api/status" >/dev/null 2>&1; then
+        printf '%s\n' "$candidate"
+        return 0
+      fi
+    done
     sleep 0.02
   done
   return 1
@@ -149,20 +162,13 @@ wait_for_cpp_submission_ready() {
   local index
   for ((index = 0; index < 300; index++)); do
     last_status="$(
-      curl -fsS --max-time 2 "http://127.0.0.1:$port/api/status" 2>/dev/null || true
+      curl -fsS --max-time 2 -H "X-JudgeDesk-Session: $api_token" "http://127.0.0.1:$port/api/status" 2>/dev/null || true
     )"
-    if [[ -n "$last_status" ]] && printf '%s' "$last_status" | node -e '
-      let body = "";
-      process.stdin.setEncoding("utf8");
-      process.stdin.on("data", (chunk) => { body += chunk; });
-      process.stdin.on("end", () => {
-        try {
-          process.exit(JSON.parse(body)?.gpp?.submissionReady === true ? 0 : 1);
-        } catch {
-          process.exit(1);
-        }
-      });
-    '; then
+    if [[ -n "$last_status" ]] &&
+      node -e '
+        const status = JSON.parse(process.argv[1]);
+        process.exit(status?.gpp?.submissionReady === true ? 0 : 1);
+      ' "$last_status" 2>/dev/null; then
       return 0
     fi
     sleep 0.1
@@ -171,10 +177,26 @@ wait_for_cpp_submission_ready() {
   return 1
 }
 
+wait_for_idle_executor_generation_guard() {
+  local pid="$1"
+  local lock_name="$2"
+  local attempts="${3:-300}"
+  local index
+  for ((index = 0; index < attempts; index++)); do
+    if [[ "$(exact_count "$run_guardian_command")" == "0" &&
+      "$(exact_count "$run_supervisor_command")" == "0" &&
+      "$(lsof -a -p "$pid" 2>/dev/null | grep -c "$lock_name" || true)" == "1" ]]; then
+      return 0
+    fi
+    sleep 0.05
+  done
+  return 1
+}
+
 assert_full_generation() {
   [[ "$(exact_count "$gui_command")" == "1" ]] || fail "GUI count is not one"
   [[ "$(exact_count "$helper_command")" == "1" ]] || fail "helper count is not one"
-  [[ "$(exact_count "$server_command")" == "1" ]] || fail "backend count is not one"
+  [[ "$(exact_count "$server_command")" == "$expected_server_count" ]] || fail "backend count is not $expected_server_count"
   [[ "$(exact_count "$executor_command")" == "1" ]] || fail "executor count is not one"
 }
 
@@ -294,6 +316,15 @@ cleanup() {
     if [[ "$(process_count)" != "0" ]]; then
       echo "Candidate JudgeDesk process tree remained after gate cleanup:" >&2
       inventory >&2
+      for command in "$executor_command" "$server_command" "$helper_command"; do
+        for pid in $(exact_pids "$command"); do
+          kill -KILL "$pid" >/dev/null 2>&1 || true
+        done
+      done
+      for ((index = 0; index < 250; index++)); do
+        [[ "$(process_count)" == "0" ]] && break
+        sleep 0.02
+      done
     fi
   fi
   if [[ -n "$fixture" && "$fixture" == /tmp/judgedesk-supervisor-gate.* ]]; then
@@ -316,16 +347,39 @@ fi
 [[ "$(directory_entry_count "$executor_root/profiles")" == "0" ]] ||
   fail "Seatbelt profile cache is not empty before the packaged gate"
 fixture="$(mktemp -d /tmp/judgedesk-supervisor-gate.XXXXXX)"
+app_data="$fixture/app-data"
+mkdir -p "$app_data"
+export THEMIS_APP_DATA_DIR="$app_data"
 
-open -n "$app"
+open -n \
+  --env "TMPDIR=${TMPDIR:-/tmp}" \
+  --env "THEMIS_APP_DATA_DIR=$app_data" \
+  --env "JUDGEDESK_API_TOKEN=$api_token" \
+  --env "JUDGEDESK_PURE_RUST_CORE=$rust_core_env" \
+  "$app"
 gate_started_app=1
-wait_for_inventory 4
+wait_for_inventory "$expected_process_count"
 assert_full_generation
 
 initial_gui="$(only_pid GUI "$gui_command")"
 initial_helper="$(only_pid helper "$helper_command")"
-initial_server="$(only_pid backend "$server_command")"
+if [[ "$use_node_sidecar" == "1" ]]; then
+  initial_server="$(only_pid backend "$server_command")"
+else
+  initial_server="$initial_gui"
+fi
 initial_executor="$(only_pid executor "$executor_command")"
+
+owner_lock="process-tree.owner.lock"
+generation_lock="process-tree.generation"
+
+initial_port="$(wait_for_listening_port "$initial_server")" ||
+  fail "initial packaged backend did not open a listening port"
+[[ "$initial_port" =~ ^[0-9]+$ ]] || fail "could not discover the initial packaged backend port"
+wait_for_cpp_submission_ready "$initial_port" ||
+  fail "initial packaged C++ toolchain did not become submission-ready"
+wait_for_idle_executor_generation_guard "$initial_executor" "$generation_lock" ||
+  fail "initial executor did not settle to one idle generation guard before secondary launches"
 
 secondary_marker="$fixture/secondary-monitor.running"
 secondary_failure="$fixture/secondary-monitor.err"
@@ -334,11 +388,19 @@ touch "$secondary_marker"
   check_secondary_generation() {
     local expected
     local observed
-    expected="$(
-      printf 'backend %s\nexecutor %s\nhelper %s\n' \
-        "$initial_server" "$initial_executor" "$initial_helper" |
-        sort
-    )"
+    if [[ "$use_node_sidecar" == "1" ]]; then
+      expected="$(
+        printf 'backend %s\nexecutor %s\nhelper %s\n' \
+          "$initial_server" "$initial_executor" "$initial_helper" |
+          sort
+      )"
+    else
+      expected="$(
+        printf 'executor %s\nhelper %s\n' \
+          "$initial_executor" "$initial_helper" |
+          sort
+      )"
+    fi
     observed="$(
       ps -axo pid=,command= |
         awk \
@@ -383,7 +445,12 @@ touch "$secondary_marker"
 ) 2>"$secondary_failure" &
 secondary_monitor_pid=$!
 sleep 0.02
-seq 1 20 | xargs -P 20 -I{} open -n "$app"
+seq 1 20 | xargs -P 20 -I{} open -n \
+  --env "TMPDIR=${TMPDIR:-/tmp}" \
+  --env "THEMIS_APP_DATA_DIR=$app_data" \
+  --env "JUDGEDESK_API_TOKEN=$api_token" \
+  --env "JUDGEDESK_PURE_RUST_CORE=$rust_core_env" \
+  "$app"
 rm -f -- "$secondary_marker"
 if ! wait "$secondary_monitor_pid"; then
   cat "$secondary_failure" >&2 || true
@@ -394,38 +461,55 @@ secondary_monitor_pid=""
 assert_full_generation
 [[ "$(only_pid GUI "$gui_command")" == "$initial_gui" ]] || fail "secondary launch replaced the GUI"
 [[ "$(only_pid helper "$helper_command")" == "$initial_helper" ]] || fail "secondary launch replaced the helper"
-[[ "$(only_pid backend "$server_command")" == "$initial_server" ]] || fail "secondary launch replaced the backend"
+if [[ "$use_node_sidecar" == "1" ]]; then
+  [[ "$(only_pid backend "$server_command")" == "$initial_server" ]] || fail "secondary launch replaced the backend"
+fi
 [[ "$(only_pid executor "$executor_command")" == "$initial_executor" ]] || fail "secondary launch replaced the executor"
+wait_for_cpp_submission_ready "$initial_port" ||
+  fail "initial packaged C++ toolchain did not remain submission-ready after secondary launches"
 
-owner_lock="process-tree.owner.lock"
-generation_lock="process-tree.generation"
 [[ "$(lsof -a -p "$initial_gui" 2>/dev/null | grep -Ec "$owner_lock|$generation_lock" || true)" == "0" ]] ||
   fail "GUI inherited process-tree lock descriptors"
-[[ "$(lsof -a -p "$initial_server" 2>/dev/null | grep -Ec "$owner_lock|$generation_lock" || true)" == "0" ]] ||
-  fail "backend inherited process-tree lock descriptors"
+if [[ "$use_node_sidecar" == "1" ]]; then
+  [[ "$(lsof -a -p "$initial_server" 2>/dev/null | grep -Ec "$owner_lock|$generation_lock" || true)" == "0" ]] ||
+    fail "backend inherited process-tree lock descriptors"
+fi
 [[ "$(lsof -a -p "$initial_helper" 2>/dev/null | grep -c "$owner_lock" || true)" == "1" ]] ||
   fail "helper does not hold exactly one owner lock"
 [[ "$(lsof -a -p "$initial_helper" 2>/dev/null | grep -c "$generation_lock" || true)" == "1" ]] ||
   fail "helper does not hold exactly one generation descriptor"
 [[ "$(lsof -a -p "$initial_executor" 2>/dev/null | grep -c "$owner_lock" || true)" == "0" ]] ||
   fail "executor inherited the owner lock"
+wait_for_idle_executor_generation_guard "$initial_executor" "$generation_lock" ||
+  fail "executor does not hold exactly one generation guard"
 [[ "$(lsof -a -p "$initial_executor" 2>/dev/null | grep -c "$generation_lock" || true)" == "1" ]] ||
   fail "executor does not hold exactly one generation guard"
 
 quit_app
 
-open -n "$app"
-wait_for_inventory 4
+open -n \
+  --env "TMPDIR=${TMPDIR:-/tmp}" \
+  --env "THEMIS_APP_DATA_DIR=$app_data" \
+  --env "JUDGEDESK_API_TOKEN=$api_token" \
+  --env "JUDGEDESK_PURE_RUST_CORE=$rust_core_env" \
+  "$app"
+wait_for_inventory "$expected_process_count"
 assert_full_generation
 active_gui="$(only_pid GUI "$gui_command")"
 active_helper="$(only_pid helper "$helper_command")"
 active_executor="$(only_pid executor "$executor_command")"
-active_server="$(only_pid backend "$server_command")"
+if [[ "$use_node_sidecar" == "1" ]]; then
+  active_server="$(only_pid backend "$server_command")"
+else
+  active_server="$active_gui"
+fi
 port="$(wait_for_listening_port "$active_server")" ||
   fail "packaged backend did not open a listening port"
 [[ "$port" =~ ^[0-9]+$ ]] || fail "could not discover the packaged backend port"
 wait_for_cpp_submission_ready "$port" ||
   fail "packaged C++ toolchain did not become submission-ready"
+wait_for_idle_executor_generation_guard "$active_executor" "$generation_lock" ||
+  fail "active executor did not settle to one idle generation guard before submission"
 
 mkdir -p "$fixture/contestants/alice" "$fixture/tests/A/01"
 printf '%s\n' \
@@ -439,13 +523,14 @@ printf '1\n' >"$fixture/tests/A/01/input.inp"
 printf '1\n' >"$fixture/tests/A/01/answer.out"
 request_body="$(
   printf \
-    '{"thisinhPath":"%s/contestants","testPath":"%s/tests","targetContestants":["alice"],"targetProblems":["A"],"jobId":"macos_process_supervisor_gate"}' \
+    '{"thisinhPath":"%s/contestants","testPath":"%s/tests","targetContestants":["alice"],"targetProblems":["A"],"problemConfigs":{"A":{"defaultTimeLimit":15,"polygonConfig":{"enableGroups":false,"tests":{"01":{"points":1,"timeLimit":15.0}},"groups":{}}}},"jobId":"macos_process_supervisor_gate"}' \
     "$fixture" \
     "$fixture"
 )"
 curl -sS -N \
   --max-time 20 \
   -H 'Content-Type: application/json' \
+  -H "X-JudgeDesk-Session: $api_token" \
   --data-binary "$request_body" \
   "http://127.0.0.1:$port/api/batch-judge" \
   >"$fixture/events.txt" \
@@ -453,7 +538,7 @@ curl -sS -N \
 curl_pid=$!
 
 for ((index = 0; index < 1000; index++)); do
-  if grep -q 'Judging test' "$fixture/events.txt" 2>/dev/null; then
+  if grep -qi 'Judging test' "$fixture/events.txt" 2>/dev/null; then
     if [[ "$(exact_count "$run_guardian_command")" == "1" &&
       "$(exact_count "$run_supervisor_command")" == "1" ]]; then
       candidate_guardian="$(exact_pids "$run_guardian_command")"
@@ -489,7 +574,12 @@ done
 pid_matches "$active_gui" "$gui_command" ||
   fail "primary GUI identity changed before crash injection"
 kill -9 "$active_gui"
-open -n "$app" >/dev/null 2>&1 &
+open -n \
+  --env "TMPDIR=${TMPDIR:-/tmp}" \
+  --env "THEMIS_APP_DATA_DIR=$app_data" \
+  --env "JUDGEDESK_API_TOKEN=$api_token" \
+  --env "JUDGEDESK_PURE_RUST_CORE=$rust_core_env" \
+  "$app" >/dev/null 2>&1 &
 
 max_gui=0
 max_helper=0
@@ -512,19 +602,38 @@ for ((index = 0; index < 1000; index++)); do
   ((executor_count > max_executor)) && max_executor="$executor_count"
   if [[ "$gui_count" == "1" &&
     "$helper_count" == "1" &&
-    "$server_count" == "1" &&
+    "$server_count" == "$expected_server_count" &&
     "$executor_count" == "1" ]]; then
     replacement_gui="$(exact_pids "$gui_command")"
     replacement_helper="$(exact_pids "$helper_command")"
-    replacement_server="$(exact_pids "$server_command")"
+    if [[ "$use_node_sidecar" == "1" ]]; then
+      replacement_server="$(exact_pids "$server_command")"
+    else
+      replacement_server="$replacement_gui"
+    fi
     replacement_executor="$(exact_pids "$executor_command")"
-    if [[ "$replacement_gui" != "$active_gui" &&
-      "$replacement_helper" != "$active_helper" &&
-      "$replacement_server" != "$active_server" &&
-      "$replacement_executor" != "$active_executor" &&
-      "$(parent_pid "$replacement_helper")" == "$replacement_gui" &&
-      "$(parent_pid "$replacement_server")" == "$replacement_gui" &&
-      "$(parent_pid "$replacement_executor")" == "$replacement_server" ]]; then
+    if [[ "$use_node_sidecar" == "1" ]]; then
+      topology_ok=0
+      if [[ "$replacement_gui" != "$active_gui" &&
+        "$replacement_helper" != "$active_helper" &&
+        "$replacement_server" != "$active_server" &&
+        "$replacement_executor" != "$active_executor" &&
+        "$(parent_pid "$replacement_helper")" == "$replacement_gui" &&
+        "$(parent_pid "$replacement_server")" == "$replacement_gui" &&
+        "$(parent_pid "$replacement_executor")" == "$replacement_server" ]]; then
+        topology_ok=1
+      fi
+    else
+      topology_ok=0
+      if [[ "$replacement_gui" != "$active_gui" &&
+        "$replacement_helper" != "$active_helper" &&
+        "$replacement_executor" != "$active_executor" &&
+        "$(parent_pid "$replacement_helper")" == "$replacement_gui" &&
+        "$(parent_pid "$replacement_executor")" == "$replacement_gui" ]]; then
+        topology_ok=1
+      fi
+    fi
+    if [[ "$topology_ok" == "1" ]]; then
       current_tuple="$replacement_gui/$replacement_helper/$replacement_server/$replacement_executor"
       if [[ "$current_tuple" == "$previous_tuple" ]]; then
         stable=$((stable + 1))
@@ -562,7 +671,7 @@ fi
 wait "$curl_pid" >/dev/null 2>&1 || true
 curl_pid=""
 assert_full_generation
-[[ "$max_gui" -le 1 && "$max_helper" -le 1 && "$max_server" -le 1 && "$max_executor" -le 1 ]] ||
+[[ "$max_gui" -le 1 && "$max_helper" -le 1 && "$max_server" -le "$expected_server_count" && "$max_executor" -le 1 ]] ||
   fail "old and replacement generations overlapped: gui=$max_gui helper=$max_helper backend=$max_server executor=$max_executor"
 if ps -axo pgid= | awk -v pgid="$active_pgid" '$1 == pgid { found = 1 } END { exit found ? 0 : 1 }'; then
   fail "submission process group $active_pgid survived GUI crash recovery"
@@ -570,12 +679,16 @@ fi
 replacement_port="$(wait_for_listening_port "$replacement_server")" ||
   fail "replacement backend did not open a listening port"
 [[ "$replacement_port" =~ ^[0-9]+$ ]] || fail "replacement backend has no listening port"
-replacement_status="$(curl -fsS --max-time 5 "http://127.0.0.1:$replacement_port/api/status")" ||
+replacement_status="$(curl -fsS --max-time 5 -H "X-JudgeDesk-Session: $api_token" "http://127.0.0.1:$replacement_port/api/status")" ||
   fail "replacement backend health request failed"
 node -e '
   const status = JSON.parse(process.argv[1]);
   if (!status.secureRunner?.ready) process.exit(1);
 ' "$replacement_status" || fail "replacement backend secure runner is not ready"
+wait_for_cpp_submission_ready "$replacement_port" ||
+  fail "replacement packaged C++ toolchain did not become submission-ready"
+wait_for_idle_executor_generation_guard "$replacement_executor" "$generation_lock" ||
+  fail "replacement executor did not settle to one idle generation guard before helper crash injection"
 
 recovery_gui="$(only_pid GUI "$gui_command")"
 recovery_helper="$(only_pid helper "$helper_command")"
@@ -597,24 +710,43 @@ done
 [[ "$(lsof -a -p "$recovery_gui" 2>/dev/null | grep -c "$generation_lock" || true)" == "1" ]] ||
   fail "GUI did not retain the generation recovery lock"
 
-open -n "$app"
+open -n \
+  --env "TMPDIR=${TMPDIR:-/tmp}" \
+  --env "THEMIS_APP_DATA_DIR=$app_data" \
+  --env "JUDGEDESK_API_TOKEN=$api_token" \
+  --env "JUDGEDESK_PURE_RUST_CORE=$rust_core_env" \
+  "$app"
 sleep 1
 [[ "$(exact_count "$gui_command")" == "1" ]] || fail "secondary launch bypassed the surviving primary"
 [[ "$(process_count)" == "1" ]] || fail "secondary launch restarted a failed backend generation"
 
 quit_app
-open -n "$app"
-wait_for_inventory 4
+open -n \
+  --env "TMPDIR=${TMPDIR:-/tmp}" \
+  --env "THEMIS_APP_DATA_DIR=$app_data" \
+  --env "JUDGEDESK_API_TOKEN=$api_token" \
+  --env "JUDGEDESK_PURE_RUST_CORE=$rust_core_env" \
+  "$app"
+wait_for_inventory "$expected_process_count"
 assert_full_generation
-final_server="$(only_pid backend "$server_command")"
+if [[ "$use_node_sidecar" == "1" ]]; then
+  final_server="$(only_pid backend "$server_command")"
+else
+  final_server="$(only_pid GUI "$gui_command")"
+fi
+final_executor="$(only_pid executor "$executor_command")"
 final_port="$(wait_for_listening_port "$final_server")" ||
   fail "final backend did not open a listening port"
-final_status="$(curl -fsS --max-time 5 "http://127.0.0.1:$final_port/api/status")" ||
+final_status="$(curl -fsS --max-time 5 -H "X-JudgeDesk-Session: $api_token" "http://127.0.0.1:$final_port/api/status")" ||
   fail "final backend health request failed"
 node -e '
   const status = JSON.parse(process.argv[1]);
   if (!status.secureRunner?.ready) process.exit(1);
 ' "$final_status" || fail "final backend secure runner is not ready"
+wait_for_cpp_submission_ready "$final_port" ||
+  fail "final packaged C++ toolchain did not become submission-ready"
+wait_for_idle_executor_generation_guard "$final_executor" "$generation_lock" ||
+  fail "final executor did not settle to one idle generation guard before final shutdown"
 quit_app
 [[ -z "$(all_judgedesk_runtime_inventory)" ]] ||
   fail "a JudgeDesk runtime process remained after the final shutdown"

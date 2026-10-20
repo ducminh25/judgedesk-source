@@ -4,13 +4,32 @@
 **Document Status**: Official / Approved  
 **Classification**: Technical API & Wire Schema Reference  
 
-**Release context**: JSON examples use the released `v1.5.0` baseline. Current development targets `v1.6.0`; runtime/package version fields change only after the final coordinated eight-file bump.
+**Release context**: Eight application version files are synchronized at `v1.5.5` (`crates/judgedesk-core/Cargo.toml` at `1.5.1`; historical wire payload examples retain `1.5.0` where applicable). Current Pure-Rust Core migration targets `v1.6.0` (`WP10.3`).
 
 ---
 
 ## 1. REST & SSE Endpoint Specification
 
-All endpoints are hosted locally on `http://127.0.0.1:<PORT>` and protected by the internal `X-JudgeDesk-Token` session token.
+All desktop endpoints are hosted on the IPv4 loopback interface at
+`http://127.0.0.1:<PORT>`. The Tauri shell generates a separate 256-bit session
+token for every launch and passes it to the selected backend. The Node sidecar
+consumes and deletes its environment copy before asynchronous startup work; the
+token is not written to the desktop dev-state file.
+
+Every REST and SSE request from the desktop frontend carries the token in
+`X-JudgeDesk-Session`. Production backends reject requests unless all applicable
+checks pass:
+
+- `Host` is exactly `127.0.0.1:<PORT>`;
+- `Origin`, when present, is a known Tauri or JudgeDesk development origin;
+- non-preflight requests have the exact per-launch session token.
+
+`OPTIONS` preflight does not carry the secret, but it still has to pass the Host
+and Origin checks. Rejections use `API_SESSION_REQUIRED`, `API_HOST_REJECTED`, or
+`API_ORIGIN_REJECTED`. Direct browser development remains a separate
+non-production mode; production desktop code has no fixed-port or unauthenticated
+fallback. The Content Security Policy permits Tauri IPC, the ephemeral loopback
+HTTP port, and the exact Vite development WebSocket port only.
 
 ### 1.1. System & Host Information
 
@@ -83,51 +102,59 @@ Returns test directories with input previews and file byte sizes.
 ```
 
 #### `GET /api/polygon-config?path=<PROBLEM_DIR_PATH>`
-Reads `Config.cfg` or Polygon subtask configuration for the problem.
+Reads `Config.cfg` or legacy `config.json` and returns a `NormalizedProblemConfig` object (`shared/contracts.ts`).
 * **Response (200 OK)**:
 ```json
 {
   "success": true,
   "data": {
-    "timeLimit": 1000,
-    "memoryLimit": 256,
-    "checkerType": "C1",
+    "testWellFormed": false,
+    "useStdIO": true,
     "useStdIn": true,
     "useStdOut": true,
-    "inputFile": "",
-    "outputFile": "",
-    "isInteractive": false,
-    "testWellFormed": false,
-    "interactorType": "cpp",
-    "interactorFile": "",
+    "inputFile": "BAI1.INP",
+    "outputFile": "BAI1.OUT",
     "totalScore": 100,
-    "defaultScore": 1,
-    "groups": {
-      "Subtask 1": {
-        "score": 40,
-        "mode": "all-or-nothing",
-        "tests": ["test1", "test2", "test3"],
-        "dependencies": []
+    "defaultScore": 20,
+    "testScores": {},
+    "memoryLimit": 256,
+    "checkerType": "C1",
+    "isInteractive": false,
+    "interactor": "",
+    "polygonConfig": {
+      "enableGroups": true,
+      "tests": {
+        "test1": { "points": 20, "group": "Subtask 1", "timeLimit": 1000 },
+        "test2": { "points": 20, "group": "Subtask 1", "timeLimit": 1000 },
+        "test3": { "points": 30, "group": "Subtask 2", "timeLimit": 1000 },
+        "test4": { "points": 30, "group": "Subtask 2", "timeLimit": 1000 }
       },
-      "Subtask 2": {
-        "score": 60,
-        "mode": "sum",
-        "tests": ["test4", "test5"],
-        "dependencies": ["Subtask 1"]
+      "groups": {
+        "Subtask 1": {
+          "policy": "COMPLETE_GROUP",
+          "dependencies": []
+        },
+        "Subtask 2": {
+          "policy": "EACH_TEST",
+          "dependencies": ["Subtask 1"]
+        }
       }
     },
     "compile": {
-      "preset": "ThemisCompatibility",
-      "cppArgs": ["-O2", "-std=c++14"],
-      "cArgs": ["-O2"]
+      "schemaVersion": 1,
+      "profile": "themis",
+      "flags": {
+        "cpp": ["-O2", "-pipe", "-std=c++14"],
+        "c": ["-O2", "-pipe", "-std=c11"]
+      }
     }
   }
 }
 ```
-*(Note: `memoryLimit` accepts values from 8 MB to 1024 MB with 256 MB as default).*
+*(Note: `memoryLimit` accepts values from 8 MB to 1024 MB with 256 MB as default; `compile.profile` accepts `"themis" | "modern_ioi_icpc_2025" | "icpc_world_finals" | "custom"` validated by `shared/compile-config.ts`).*
 
 #### `POST /api/polygon-config`
-Atomically writes updated problem configuration back to `Config.cfg`. `testWellFormed` defaults to false; when true, both backends validate discovered input files before saving and judging. Validation is read-only: nonempty file, LF/CRLF at the end of every line, no other bytes below 32, no leading/trailing or consecutive ASCII spaces, no leading/trailing empty lines. Diagnostics use one-based line and byte column.
+Atomically writes updated problem configuration back to `Config.cfg`. `testWellFormed` defaults to false; when true, both backends validate discovered input files before saving and judging. Validation is read-only: nonempty file, LF/CRLF at the end of every line, no other bytes below 32, no leading/trailing or consecutive ASCII spaces, no leading/trailing empty lines. Diagnostics use one-based line and byte column, with `WellFormedCode` values `"empty" | "missing_eol" | "control_character" | "edge_space" | "consecutive_spaces" | "edge_empty_line"` (`shared/contracts.ts`).
 * **Request Body**:
 ```json
 {
@@ -146,7 +173,7 @@ The Tests editor keeps group assignment, membership, points, policies and depend
 ### 1.3. Batch Judging & Evaluation Engine
 
 #### `POST /api/batch-judge`
-Initiates a batch judging session. Yields a real-time Server-Sent Events (`text/event-stream`) response.
+Initiates a batch judging session. Yields a newline-delimited JSON (`application/x-ndjson`) stream and sets the `X-JudgeDesk-Job-Id: <jobId>` response header.
 * **Request Body**:
 ```json
 {
@@ -158,44 +185,69 @@ Initiates a batch judging session. Yields a real-time Server-Sent Events (`text/
   "jobId": "e1f70519-89b3-4b61-9f93-c90684fbb7a1"
 }
 ```
-* **SSE Stream Event Types**:
-  1. `event: job_start`
+* **NDJSON Stream Event Objects (`JudgeStreamEvent`)**:
+  1. Initial `progress` event (`action: "progress.initializing"`):
      ```json
-     { "jobId": "e1f70519-89b3-4b61-9f93-c90684fbb7a1", "totalTargets": 4 }
+     { "type": "progress", "data": { "contestant": "", "problem": "", "action": "progress.initializing", "percent": 0 } }
      ```
-  2. `event: test_progress`
+  2. `metadata` event (`RunMetadata` with `build`, `executor`, and `toolchains` containing both `cpp` and `python`):
      ```json
      {
-       "contestant": "user01",
-       "problem": "BAI1",
-       "test": "test1",
-       "verdict": "AC",
-       "timeMs": 45,
-       "memoryMb": 12.4,
-       "score": 1.0,
-       "maxScore": 1.0
-     }
-     ```
-  3. `event: problem_completed`
-     ```json
-     {
-       "contestant": "user01",
-       "problem": "BAI1",
-       "problemResult": {
-         "problemName": "BAI1",
-         "score": 100.0,
-         "totalScore": 100.0,
-         "tests": [
-           { "testName": "test1", "verdict": "AC", "time": 0.045, "memory": 12.4, "score": 1.0 }
-         ],
-         "compileError": null,
-         "judgedAt": "2026-08-21T11:00:00.000Z"
+       "type": "metadata",
+       "data": {
+         "judgedAt": "2026-08-21T11:00:00.000Z",
+         "platform": "win32",
+         "arch": "x64",
+         "toolchains": {
+           "cpp": { "kind": "cpp", "source": "managed", "executablePath": "...", "version": "14.2.0" },
+           "python": { "kind": "python", "source": "managed", "executablePath": "...", "version": "3.12.13" }
+         }
        }
      }
      ```
-  4. `event: job_complete`
+  3. Per-test `progress` events:
      ```json
-     { "jobId": "e1f70519-89b3-4b61-9f93-c90684fbb7a1", "success": true }
+     {
+       "type": "progress",
+       "data": {
+         "contestant": "user01",
+         "problem": "BAI1",
+         "action": "test1",
+         "percent": 25
+       }
+     }
+     ```
+  4. `problem_completed` events:
+     ```json
+     {
+       "type": "problem_completed",
+       "data": {
+         "contestant": "user01",
+         "problemResult": {
+           "name": "BAI1",
+           "language": "cpp",
+           "compileStatus": "OK",
+           "tests": [
+             { "name": "test1", "status": "AC", "score": 20, "executionTime": 45, "peakMemory": 12400 }
+           ],
+           "summary": {
+             "status": "AC",
+             "score": 100,
+             "maxScore": 100,
+             "scoreExact": 100,
+             "maxScoreExact": 100,
+             "passedTests": 4,
+             "totalTests": 4,
+             "totalTime": 180,
+             "peakMemory": 12400
+           }
+         }
+       }
+     }
+     ```
+  5. Terminating `done` (or `error`) event:
+     ```json
+     { "type": "done", "data": { "success": true } }
      ```
 
 * **Interactive Evaluation Architecture (`isInteractive: true`)**:
@@ -211,10 +263,10 @@ Initiates a batch judging session. Yields a real-time Server-Sent Events (`text/
   - Eliminates IEEE 754 floating-point drift (e.g., preventing $0.3333333333333333 \times 3 \neq 1.0$).
   - Results in exact integer or exact decimal points displayed on the UI and exported to Excel.
 
-#### `POST /api/terminate-judge`
-Cancels the actively running judging session.
+#### `POST /api/batch-judge/cancel`
+Cancels an active judging session (or records a 60s pre-admission cancellation tombstone if the `jobId` has not yet been admitted).
 * **Request Body**: `{ "jobId": "e1f70519-89b3-4b61-9f93-c90684fbb7a1" }`
-* **Response (200 OK)**: `{ "success": true, "message": "Job terminated" }`
+* **Response (200 OK)**: `{ "success": true, "cancelledRuns": 1 }` (returns `500` in Node if active native run cancellation fails to confirm).
 
 ---
 
@@ -225,40 +277,43 @@ Returns live state of the background folder watcher and active submission queue.
 * **Response (200 OK)**:
 ```json
 {
-  "active": true,
-  "dropDirectory": "D:\\SharedContest\\Submissions",
-  "queueLength": 2,
-  "processedCount": 15
+  "success": true,
+  "status": {
+    "isRunning": true,
+    "osdPath": "D:\\SharedContest\\Submissions",
+    "queueLength": 2,
+    "judgedCount": 15
+  }
 }
 ```
 
 #### `POST /api/osd/start`
-Starts monitoring the submission directory.
+Starts monitoring the submission directory (see `docs/osd-themis-compatibility.md` for Themis Web dotless filename, stability, `$History`, and `logs/<raw-filename>.log` contracts).
 * **Request Body**:
 ```json
 {
-  "dropDirectory": "D:\\SharedContest\\Submissions",
-  "thisinhPath": "C:\\Contest\\Contestants",
+  "osdPath": "D:\\SharedContest\\Submissions",
+  "contestantsPath": "C:\\Contest\\Contestants",
   "testPath": "C:\\Contest\\Tests",
+  "enableLog": true,
   "problemConfigs": { /* ProblemConfigs map */ }
 }
 ```
-* **Response (200 OK)**: `{ "success": true }`
+* **Response (200 OK)**: `{ "success": true, "status": { /* OsdStatus */ } }`
 
 #### `POST /api/osd/stop`
 Stops the submission directory watcher.
-* **Response (200 OK)**: `{ "success": true }`
+* **Response (200 OK)**: `{ "success": true, "status": { /* OsdStatus */ } }`
 
-#### `GET /api/osd/stream`
-SSE Stream emitting real-time events when new submissions arrive and finish grading.
-* **Events**: `osd_queue_update`, `osd_submission_discovered`, `osd_problem_completed`.
+#### `GET /api/osd/events`
+SSE Stream (`text/event-stream`) emitting real-time events when new submissions arrive and finish grading.
 
 ---
 
 ### 1.5. Toolchains, Execution Policy & Certification Engine
 
 #### `GET /api/toolchains`
-Returns the status of all supported programming languages, managed toolchains, and discovery states.
+Returns the status of all supported programming languages, managed toolchains, discovery states, and the active `executionPolicy`.
 * **Response (200 OK)**:
 ```json
 {
@@ -308,20 +363,21 @@ Requests an asynchronous re-detection scan of system PATH and local candidate co
 }
 ```
 
-#### `GET /api/toolchains/execution-policy`
-Returns the active local toolchain execution policy.
+#### `PUT /api/toolchains/execution-policy`
+Validates and persists the local toolchain execution policy document (`execution-policy.json`). Note: there is no standalone `GET /api/toolchains/execution-policy` route; the active `executionPolicy` is returned within `GET /api/toolchains`. Internally, the resolver enforces per-language capability modes (`managed_only` for `pascal`, `java`, and `scratch`; `quick_verified_direct` or snapshot/certificate `freeze_required` for `cpp`, `c`, and `python`), while the HTTP endpoint strictly enforces `allowResourceOnlyLocalExecution: false`.
+* **Request Body**: `{ "allowResourceOnlyLocalExecution": false }`
 * **Response (200 OK)**:
 ```json
 {
-  "policy": "allow_any_local",
-  "migrated": true
+  "success": true,
+  "executionPolicy": {
+    "schemaVersion": 1,
+    "allowResourceOnlyLocalExecution": false,
+    "status": "ready"
+  }
 }
 ```
 
-#### `POST /api/toolchains/execution-policy`
-Updates the local toolchain execution policy (`allow_any_local` vs. `certified_only`).
-* **Request Body**: `{ "policy": "allow_any_local" }`
-* **Response (200 OK)**: `{ "success": true, "policy": "allow_any_local" }`
 
 ---
 

@@ -9,6 +9,7 @@
 - Rust `1.97.1` with `rustfmt` (pinned by `rust-toolchain.toml`).
 - Windows: Visual Studio Build Tools with **Desktop development with C++** and WebView2.
 - macOS: Xcode Command Line Tools (`xcode-select --install`).
+- Linux (`x86_64` / Ubuntu 22.04 LTS+): `build-essential`, `libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, `patchelf`, `rpm`, `file`, `bubblewrap`, `zenity`, `xdg-utils`.
 
 The Tauri CLI is installed by `npm ci`; do not install a separate global copy.
 
@@ -133,6 +134,40 @@ Developer ID/notarization pipeline. Keep the source/native checks before the
 Tauri build so a compiler, executor, TypeScript, version, or fixture failure
 does not consume a packaging attempt.
 
+### Linux x86_64 packages (`.deb`, `.rpm`, `.AppImage`)
+
+On Ubuntu 22.04 LTS / 24.04 LTS+ (`x86_64`), build and verify all three Linux
+release installers with:
+
+```bash
+bash scripts/build-linux-release.sh
+```
+
+The script:
+1. builds the frontend (`npm run build:frontend`);
+2. compiles the Linux sidecar (`server-x86_64-unknown-linux-gnu`) and native
+   executor (`judgedesk-executor-x86_64-unknown-linux-gnu`) with weak symbol
+   definitions for `GLIBC_2.39` `pidfd_spawnp`/`pidfd_getpid` so the resulting
+   ELF binaries remain compatible with **Ubuntu 22.04 LTS (`glibc 2.35`)** and
+   newer;
+3. packages `.deb`, `.rpm`, and `.AppImage` bundles using
+   `src-tauri/tauri.linux.conf.json` (with unlocked cross-Ubuntu dependencies
+   `libgtk-3-0t64 | libgtk-3-0`, `libayatana-appindicator3-1 | libappindicator3-1`,
+   `bubblewrap`, `zenity`, `g++`, `python3`);
+4. enforces an automated `readelf -V` gate verifying that `themis-v2`, `server`,
+   and `judgedesk-executor` require no symbol newer than `GLIBC_2.34`;
+5. stages `JudgeDesk_<version>_amd64.deb`, `JudgeDesk-<version>-1.x86_64.rpm`,
+   `JudgeDesk_<version>_amd64.AppImage`, and `SHA256SUMS-linux` under
+   `release-assets-linux/`.
+
+To verify an installed `.deb` end-to-end against C++ and Python submissions inside
+the real Bubblewrap + cgroup v2 + seccomp-bpf sandbox, run:
+
+```bash
+sudo apt install ./release-assets-linux/JudgeDesk_<version>_amd64.deb
+bash scripts/verify-linux-deb.sh
+```
+
 ## Managed compiler packages
 
 The app downloads the signed `toolchains-manifest.json` from the
@@ -163,6 +198,7 @@ Installed packages are stored in:
 
 - Windows: `%LOCALAPPDATA%/ThemisV2/toolchains/`
 - macOS: `~/Library/Application Support/ThemisV2/toolchains/`
+- Linux: `~/.local/share/ThemisV2/toolchains/`
 
 The legacy `ThemisV2` data directory and application identifier are retained
 for this rename so existing managed toolchains, preferences, and updater

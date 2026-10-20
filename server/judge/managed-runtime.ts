@@ -91,6 +91,9 @@ export function buildJavaRuntimeArgs(
   const boundedMemory = Math.max(8 * 1024 * 1024, Math.floor(memoryBytes));
   return [
     "-XX:+UseSerialGC",
+    "-XX:TieredStopAtLevel=1",
+    "-Xshare:auto",
+    "-XX:-UsePerfData",
     "-XX:ActiveProcessorCount=1",
     "-XX:+ExitOnOutOfMemoryError",
     `-XX:MaxRAM=${boundedMemory}`,

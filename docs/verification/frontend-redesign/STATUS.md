@@ -172,3 +172,30 @@ parity67 at four tiers, version1.5.5; post-gate30 inputs and executor hash/size
 matched. This backend gate does not add a positive native local-compiler UX claim.
 Corrected controlled-copy pipeline4/4, original-path pipeline0/4; step3 product
 acceptance remains open. See ../../reports/local-probe-windows-read-access-2026-10-13.md.
+
+## Backend/API startup UX checkpoint — 2026-10-14
+
+Step5 backend/session hardening is implemented but not yet accepted. Startup IPC
+failure now renders a localized, keyboard-focusable alert with an explicit retry
+instead of leaving a blank window; retry never uses a fixed port, missing token or
+experimental-backend fallback. Static VI/EN render tests, production frontend
+build and check:fast pass. Native light/dark observation and CSP/session runtime
+verification require a fresh `test:desktop` session and user-approved Computer
+Use; no native screenshot or UX PASS is claimed yet. See WORKLOG FR-LOG-0009 and
+../../reports/judgedesk-hardening-progress-2026-10-12.md.
+
+The final sequential repository gate is now PASS: Rust 9/9, server 930 total /
+920 pass / 0 fail / 10 registered conditional skips, parity 67/67 at all four
+tiers, version 1.5.5. The frozen executor still matches its 964096-byte receipt
+and SHA-256. This closes the code gate only; native light/dark VI/EN and actual
+CSP/session observation remain NOT_OBSERVED pending explicit Computer Use consent.
+
+## Packaged Ubuntu acceptance — 2026-10-20
+
+Separate acceptance of installed Linux 1.6.0 via Computer Use/WSLg; does not close
+the earlier Windows/frontend batch. Result: NOT ACCEPTED for the full requested
+release scope. Core judging, interactive, OSD, archive roundtrip and xlsx ordering
+observed; Scratch missing, compiler metadata inconsistent, Help stale and narrow/
+dark contrast issues recorded. Windows checkout fast/version PASS; server and full
+gates FAIL. Both owned Linux sessions ended, final app/executor/bwrap count zero.
+Report: ../../reports/judgedesk-ubuntu-uat-1.6.0-2026-10-20.md.

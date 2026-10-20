@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { isTextFile, readTextPreview } from "../file-utils.js";
-import { activeJobs } from "../jobs.js";
+import { activeJobs, JudgeJobCancelledError } from "../jobs.js";
 import type {
   BatchJudgeRequest,
   ContestantResult,
@@ -89,6 +89,7 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
   const thisinhPath = request.thisinhPath!;
   const testPath = request.testPath!;
   const { jobId } = request;
+  if (jobId && activeJobs.get(jobId)?.cancel) return;
   const sendEvent = events.send;
   const getTestProblemDirObj = createProblemDirectoryResolver(resolvedTest);
   const contestantDirs = listContestants(resolvedThisinh, request.targetContestants);
@@ -141,14 +142,26 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
   ]);
   const nativePrewarmKinds = nativeCompilerKindsToPrewarm(nativePrewarmRequirements);
   if (nativePrewarmKinds.length > 0) {
+    if (jobId && activeJobs.get(jobId)?.cancel) return;
     sendEvent("progress", {
       contestant: "",
       problem: "",
       action: "progress.verifyingEnvironment",
       percent: 0,
     });
-    await ensureJudgePrewarmReady(pinnedToolchains.cpp, tempDir, jobId, undefined, nativePrewarmKinds);
+    try {
+      await ensureJudgePrewarmReady(pinnedToolchains.cpp, tempDir, jobId, undefined, nativePrewarmKinds);
+    } catch (error) {
+      if (
+        error instanceof JudgeJobCancelledError
+        || (jobId && activeJobs.get(jobId)?.cancel)
+      ) {
+        return;
+      }
+      throw error;
+    }
   }
+  if (jobId && activeJobs.get(jobId)?.cancel) return;
   sendEvent("progress", {
     contestant: "",
     problem: "",
@@ -156,8 +169,10 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
     percent: 0,
   });
   for (const problem of plannedProblems.values()) {
+    if (jobId && activeJobs.get(jobId)?.cancel) return;
     if (problem.config.testWellFormed) {
       const validation = await validateProblemTestInputs(problem.directory.path, problem.config.isInteractive);
+      if (jobId && activeJobs.get(jobId)?.cancel) return;
       if (validation.issues.length > 0) {
         const first = validation.issues[0];
         throw new Error(`Test input is not well-formed: ${first.testName}/${first.fileName}:${first.line}:${first.column} (${first.code}); ${validation.issues.length} issue(s)`);
@@ -165,6 +180,7 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
     }
     problem.tests = planProblemTestCases(problem.directory.path, problem.config);
   }
+  if (jobId && activeJobs.get(jobId)?.cancel) return;
   console.info("[Judge] Toolchain pin", {
     jobId,
     cpp: {
@@ -281,6 +297,7 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
         pythonToolchain: pinnedToolchains.python,
         toolchains: pinnedToolchains,
       });
+      if (jobId && activeJobs.get(jobId)?.cancel) break;
       const executablePath = compilation.executablePath;
       const compileTime = compilation.compileTime;
       const compileStatus = compilation.compileStatus;
@@ -298,7 +315,7 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
               action: `Compiling custom checker (${checkerType})...`,
               percent: totalProblemsCount ? (completedProblemsCount / totalProblemsCount) * 100 : 0
             });
-            compiledCheckers[cacheKey] = await resolveChecker({
+            const resolvedChecker = await resolveChecker({
               checkerType,
               problemName,
               problemDirectory: plannedProblem.directory.path,
@@ -307,6 +324,8 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
               cppToolchain: pinnedToolchains.cpp,
               pythonToolchain: pinnedToolchains.python,
             });
+            if (jobId && activeJobs.get(jobId)?.cancel) break;
+            compiledCheckers[cacheKey] = resolvedChecker;
           }
 
           let compiledInteractor: CompiledInteractor | undefined;
@@ -319,7 +338,7 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
                 action: `Compiling interactor (${probConf.interactor || "interactor.cpp"})...`,
                 percent: totalProblemsCount ? (completedProblemsCount / totalProblemsCount) * 100 : 0
               });
-              compiledInteractors[interactorKey] = await resolveInteractor({
+              const resolvedInteractor = await resolveInteractor({
                 interactorName: probConf.interactor || "interactor.cpp",
                 problemName,
                 problemDirectory: plannedProblem.directory.path,
@@ -328,6 +347,8 @@ export async function runJudgeSession(options: JudgeSessionOptions): Promise<voi
                 cppToolchain: pinnedToolchains.cpp,
                 pythonToolchain: pinnedToolchains.python,
               });
+              if (jobId && activeJobs.get(jobId)?.cancel) break;
+              compiledInteractors[interactorKey] = resolvedInteractor;
             }
             compiledInteractor = compiledInteractors[interactorKey];
           }

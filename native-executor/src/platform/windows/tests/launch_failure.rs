@@ -201,17 +201,17 @@ mod tests {
     }
 
     #[test]
-    fn failed_suspended_child_drain_stops_executor() {
+    fn failed_child_drain_stops_executor() {
         const CHILD_FLAG: &str = "JUDGEDESK_TEST_INVALID_DRAIN";
         if std::env::var_os(CHILD_FLAG).is_some() {
             // No child or Job exists: invalid handles deterministically make verification fail.
-            launch::drain_suspended_child(null_mut(), null_mut());
+            launch::drain_child_or_exit(null_mut(), null_mut(), "test child");
             panic!("unverified drain must never return");
         }
         let child = std::process::Command::new(std::env::current_exe().unwrap())
         .args([
             "--exact",
-            "platform::windows::tests::launch_failure::tests::failed_suspended_child_drain_stops_executor",
+            "platform::windows::tests::launch_failure::tests::failed_child_drain_stops_executor",
             "--nocapture",
         ])
         .env(CHILD_FLAG, "1")

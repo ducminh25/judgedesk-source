@@ -199,18 +199,72 @@ workflows:
               exit 1
             fi
           done
+          linux_bundles=()
+          if [[ -n "${LINUX_DEB_SHA256:-}" || -n "${LINUX_RPM_SHA256:-}" || -n "${LINUX_APPIMAGE_SHA256:-}" ]]; then
+            mkdir -p release-assets-linux
+            for spec in \
+              "JudgeDesk_${version}_amd64.deb:${LINUX_DEB_SHA256:-}" \
+              "JudgeDesk-${version}-1.x86_64.rpm:${LINUX_RPM_SHA256:-}" \
+              "JudgeDesk_${version}_amd64.AppImage:${LINUX_APPIMAGE_SHA256:-}"; do
+              pkg_name="${spec%%:*}"
+              expected_pkg="${spec#*:}"
+              if [[ -z "$expected_pkg" ]]; then
+                echo "Missing expected SHA-256 for $pkg_name." >&2
+                exit 1
+              fi
+              expected_pkg="$(printf '%s' "$expected_pkg" | tr '[:upper:]' '[:lower:]')"
+              if ! [[ "$expected_pkg" =~ ^[0-9a-f]{64}$ ]]; then
+                echo "Invalid expected SHA-256 for $pkg_name." >&2
+                exit 1
+              fi
+              pkg_url="https://github.com/ducminh25/judgedesk/releases/download/${staging_tag}/${pkg_name}"
+              curl --proto '=https' --tlsv1.2 -fL "$pkg_url" -o "release-assets-linux/$pkg_name"
+              meta_name="${pkg_name}.metadata.json"
+              meta_url="https://github.com/ducminh25/judgedesk/releases/download/${staging_tag}/${meta_name}"
+              curl --proto '=https' --tlsv1.2 -fL "$meta_url" -o "release-assets-linux/$meta_name"
+              actual_pkg="$(shasum -a 256 "release-assets-linux/$pkg_name" | awk '{print $1}')"
+              if [[ "$actual_pkg" != "$expected_pkg" ]]; then
+                echo "Staged Linux package SHA-256 mismatch for $pkg_name." >&2
+                exit 1
+              fi
+              linux_bundles+=("release-assets-linux/$pkg_name")
+            done
+          fi
           for variant in core full; do
             msi_name="JudgeDesk_${version}_${variant}_x64_en-US.msi"
             npx tauri signer sign "release-assets-windows/$msi_name"
             test -s "release-assets-windows/$msi_name.sig"
+          done
+          for linux_pkg in "${linux_bundles[@]:-}"; do
+            if [[ -n "$linux_pkg" ]]; then
+              npx tauri signer sign "$linux_pkg"
+              test -s "${linux_pkg}.sig"
+            fi
           done
           (
             cd release-assets-windows
             shasum -a 256 JudgeDesk_*.msi > SHA256SUMS-windows
             cat SHA256SUMS-windows
           )
+          if [[ -d release-assets-linux ]]; then
+            (
+              cd release-assets-linux
+              shasum -a 256 JudgeDesk_*.deb JudgeDesk-*.rpm JudgeDesk_*.AppImage > SHA256SUMS-linux
+              cat SHA256SUMS-linux
+            )
+          fi
     artifacts:
       - release-assets-windows/JudgeDesk_*.msi
       - release-assets-windows/JudgeDesk_*.msi.sig
       - release-assets-windows/JudgeDesk_*.msi.metadata.json
       - release-assets-windows/SHA256SUMS-windows
+      - release-assets-linux/JudgeDesk_*.deb
+      - release-assets-linux/JudgeDesk_*.deb.sig
+      - release-assets-linux/JudgeDesk_*.deb.metadata.json
+      - release-assets-linux/JudgeDesk-*.rpm
+      - release-assets-linux/JudgeDesk-*.rpm.sig
+      - release-assets-linux/JudgeDesk-*.rpm.metadata.json
+      - release-assets-linux/JudgeDesk_*.AppImage
+      - release-assets-linux/JudgeDesk_*.AppImage.sig
+      - release-assets-linux/JudgeDesk_*.AppImage.metadata.json
+      - release-assets-linux/SHA256SUMS-linux

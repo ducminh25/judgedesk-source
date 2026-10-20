@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "kind": "prompt-clarification-only",
+  "generatedAtUtc": "2026-10-17T18:00:08.330624+00:00",
+  "finding": "N0-C12-AUDIT-R1",
+  "files": {
+    "n0-c12-audit-remediator-20261018.md": {
+      "bytes": 8719,
+      "sha256": "7349661309c5f9f2fe47ca649cf628fa94301b1acff1b0cfa12619f85a94e118"
+    },
+    "n0-c12-audit-remediation-notes-20261018.md": {
+      "bytes": 8680,
+      "sha256": "fc0317e104ec1bfd8b54c2e01a08446c499145a20caea8d2f338d2f3b25e78c2"
+    }
+  },
+  "sourceResearch": {
+    "crates/judgedesk-core/src/toolchains/discovery.rs": {
+      "bytes": 51062,
+      "sha256": "e1f517ebd4786f048448e01f1c4ca5f3dc5ed9766c132616cf9742a51a4fdc0c"
+    },
+    "crates/judgedesk-core/src/server/state.rs": {
+      "bytes": 13958,
+      "sha256": "808cf4acd22c89ee9529b2ef064ad4794088a15ee4abe60610163759c9c1059f"
+    },
+    "crates/judgedesk-core/src/server/routes/toolchains.rs": {
+      "bytes": 33637,
+      "sha256": "c841d38c6487578fcf818e0f9514b97446d1fe8392e93c5fe114c1e67d8918cf"
+    },
+    "crates/judgedesk-core/tests/common/mod.rs": {
+      "bytes": 17143,
+      "sha256": "e6b62139f3ce79996f1b4773d340eb8cc92a5ebbf4216a353e775329a8da9810"
+    },
+    "crates/judgedesk-core/tests/server_test.rs": {
+      "bytes": 29089,
+      "sha256": "9923e808014ffac21a7401e7c7fb025680231ab0f979e6c853e3d8ff15237c02"
+    },
+    "crates/judgedesk-core/tests/toolchain_diagnose_test.rs": {
+      "bytes": 12280,
+      "sha256": "a1f4d05cd56796d2508f07a86a305d0e04cfec1d700f71d8f416e5c6ed11b9f2"
+    },
+    "docs/pure-rust-core-efficient-execution.md": {
+      "bytes": 21509,
+      "sha256": "0b0274c2afd5cc1da3676916f7e1b2ceb0189ffa1fcf657e6c9a9eaeac7afd99"
+    },
+    "docs/pure-rust-core-review-workflow.md": {
+      "bytes": 16444,
+      "sha256": "f919aa30fd2241c66c91b07379393488f1da5a4c7ddee5e89e93ff8d342ea569"
+    }
+  },
+  "originalSealedReviewManifest": {
+    "bytes": 8415,
+    "sha256": "fd30bf3d772d92b60c8f0db1ac81977d64d1fa1b3a50df275fbadf9cddc68d9b"
+  },
+  "checks": {
+    "relativeLinks": "PASS",
+    "jsonOnlyHashPolicy": "PASS",
+    "originalSealedArtifactsUnchanged": true,
+    "originalArtifactCount": 50
+  },
+  "runtimeCommandsExecuted": false,
+  "candidateCodeEdited": false,
+  "verdictChanged": false,
+  "restorationAuthorized": false
+}

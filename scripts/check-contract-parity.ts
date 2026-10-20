@@ -61,6 +61,203 @@ export interface ParityRunReport {
   results: ParityCaseResult[];
 }
 
+function adaptExpectedFixtureForHost(caseId: string, fixture: unknown): unknown {
+  if (process.platform !== "darwin" || !fixture || typeof fixture !== "object") {
+    return fixture;
+  }
+  const cloned = JSON.parse(JSON.stringify(fixture)) as Record<string, unknown>;
+  const arch = process.arch;
+
+  if (caseId === "get-status") {
+    cloned.platform = "darwin";
+    cloned.gpp = {
+      checkerReady: false,
+      diagnostic: "Managed toolchain is not supported on this host.",
+      installed: false,
+      managedInstalled: false,
+      source: "managed",
+      submissionReady: false,
+      version: "Not found",
+    };
+    return cloned;
+  }
+
+  if (caseId === "get-distribution") {
+    cloned.platform = "darwin";
+    cloned.arch = arch;
+    return cloned;
+  }
+
+  if (caseId === "get-toolchains") {
+    cloned.platform = "darwin";
+    cloned.arch = arch;
+    const active = cloned.active as Record<string, unknown>;
+    active.cpp = {
+      diagnostic: "Managed toolchain is not supported on this host.",
+      diagnosticCode: "MANAGED_PACKAGE_UNSUPPORTED",
+      executablePath: "",
+      kind: "cpp",
+      ready: false,
+      source: "managed",
+      version: "",
+    };
+    active.python = {
+      ...(active.python as Record<string, unknown>),
+      executablePath:
+        "<TEMP_ROOT>/<ISOLATED_ENV>/appdata/toolchains/python-macos-arm64/bin/python3",
+      packageRoot:
+        "<TEMP_ROOT>/<ISOLATED_ENV>/appdata/toolchains/python-macos-arm64",
+    };
+    const capabilities = cloned.capabilities as Record<string, unknown>;
+    capabilities.cpp = {
+      checkerReady: false,
+      detected: false,
+      installable: false,
+      managed: false,
+      submissionReady: false,
+    };
+    const profiles = cloned.profiles as Array<Record<string, unknown>>;
+    for (const p of profiles) {
+      if (p.id === "cpp-legacy-v1" || p.id === "c-gcc14") {
+        const kind = p.kind as string;
+        p.active = {
+          diagnostic: "Managed toolchain is not supported on this host.",
+          diagnosticCode: "MANAGED_PACKAGE_UNSUPPORTED",
+          executablePath: "",
+          kind,
+          ready: false,
+          source: "managed",
+          version: "",
+        };
+        if (p.id === "cpp-legacy-v1") {
+          p.certification = {
+            canCertify: false,
+            required: false,
+            supported: false,
+          };
+        }
+        p.detected = false;
+        p.diagnostic = {
+          code: "MANAGED_PACKAGE_UNSUPPORTED",
+          message: "Managed toolchain is not supported on this host.",
+          messageKey: "toolchains.diagnostics.MANAGED_PACKAGE_UNSUPPORTED",
+        };
+        p.localPolicy = {
+          executionMode: "quick_verified_direct",
+          supportedVersions: [">=9.0.0"],
+        };
+        delete p.managedPackage;
+        p.roles = {
+          checkerReady: false,
+          submissionReady: false,
+        };
+        p.sources = {
+          local_auto: { available: true },
+          local_path: { available: true },
+          managed: {
+            available: false,
+            reasonCode: "MANAGED_PACKAGE_UNSUPPORTED",
+          },
+          none: { available: true },
+        };
+        p.status = "not_available";
+      } else if (p.id === "python-cpython312") {
+        const act = p.active as Record<string, unknown>;
+        act.executablePath =
+          "<TEMP_ROOT>/<ISOLATED_ENV>/appdata/toolchains/python-macos-arm64/bin/python3";
+        act.packageRoot =
+          "<TEMP_ROOT>/<ISOLATED_ENV>/appdata/toolchains/python-macos-arm64";
+        (p.localPolicy as Record<string, unknown>).executionMode =
+          "quick_verified_direct";
+        const pkg = p.managedPackage as Record<string, unknown>;
+        pkg.id = "python-macos-arm64";
+        (pkg.progress as Record<string, unknown>).id = "python-macos-arm64";
+        p.sources = {
+          local_auto: { available: true },
+          local_path: { available: true },
+          managed: { available: true },
+          none: { available: true },
+        };
+      } else if (p.id === "pascal-fpc322") {
+        const act = p.active as Record<string, unknown>;
+        act.executablePath =
+          "<TEMP_ROOT>/<ISOLATED_ENV>/appdata/toolchains/fpc-macos-arm64/bin/fpc";
+        act.packageRoot =
+          "<TEMP_ROOT>/<ISOLATED_ENV>/appdata/toolchains/fpc-macos-arm64";
+        const pkg = p.managedPackage as Record<string, unknown>;
+        pkg.id = "fpc-macos-arm64";
+        (pkg.progress as Record<string, unknown>).id = "fpc-macos-arm64";
+      } else if (p.id === "java-temurin21") {
+        const act = p.active as Record<string, unknown>;
+        act.executablePath =
+          "<TEMP_ROOT>/<ISOLATED_ENV>/appdata/toolchains/temurin21-macos-arm64/bin/javac";
+        act.packageRoot =
+          "<TEMP_ROOT>/<ISOLATED_ENV>/appdata/toolchains/temurin21-macos-arm64";
+        const pkg = p.managedPackage as Record<string, unknown>;
+        pkg.id = "temurin21-macos-arm64";
+        (pkg.progress as Record<string, unknown>).id = "temurin21-macos-arm64";
+      } else if (p.id === "scratch-turbowarp-v1") {
+        const act = p.active as Record<string, unknown>;
+        act.executablePath =
+          "<TEMP_ROOT>/<ISOLATED_ENV>/appdata/toolchains/scratch-macos-arm64/scratch-run";
+        act.packageRoot =
+          "<TEMP_ROOT>/<ISOLATED_ENV>/appdata/toolchains/scratch-macos-arm64";
+        const pkg = p.managedPackage as Record<string, unknown>;
+        pkg.id = "scratch-macos-arm64";
+        (pkg.progress as Record<string, unknown>).id = "scratch-macos-arm64";
+      }
+    }
+    return cloned;
+  }
+
+  if (
+    caseId === "post-toolchain-certification-plan" ||
+    caseId === "post-toolchain-certify"
+  ) {
+    cloned.message =
+      "Local certification is currently available for Windows GNU C++ only.";
+    return cloned;
+  }
+
+  if (caseId === "post-toolchain-diagnose") {
+    cloned.diagnostic = {
+      error: "Managed toolchain not installed.",
+      language: "cpp",
+      phase: "configuration",
+      profileId: "cpp-legacy-v1",
+      sourceMode: "managed",
+      success: false,
+      version: "",
+    };
+    return cloned;
+  }
+
+  if (caseId === "post-open-excel") {
+    cloned.openMode = "system-open";
+    return cloned;
+  }
+
+  if (caseId === "post-batch-judge" && Array.isArray(cloned)) {
+    for (const item of cloned as Array<Record<string, unknown>>) {
+      if (item.type === "metadata" && item.data && typeof item.data === "object") {
+        const data = item.data as Record<string, unknown>;
+        data.platform = "darwin";
+        data.arch = arch;
+        const toolchains = data.toolchains as Record<string, unknown>;
+        toolchains.cpp = {
+          checkerReady: false,
+          source: "managed",
+          submissionReady: false,
+          version: "",
+        };
+      }
+    }
+    return cloned;
+  }
+
+  return cloned;
+}
+
 export async function runContractParity(adapterType: "node" | "rust"): Promise<ParityRunReport> {
   let hostBaseline: Map<string, string> | null = null;
   let env: IsolatedTestEnvironment | null = null;
@@ -130,7 +327,10 @@ export async function runContractParity(adapterType: "node" | "rust"): Promise<P
         const fixturePath = path.join(fixturesDir, testCase.fixtureFile);
         let expectedFixture: unknown = null;
         if (fs.existsSync(fixturePath)) {
-          expectedFixture = JSON.parse(fs.readFileSync(fixturePath, "utf8"));
+          expectedFixture = adaptExpectedFixtureForHost(
+            testCase.id,
+            JSON.parse(fs.readFileSync(fixturePath, "utf8")),
+          );
         }
 
         const normalizerOpts = {

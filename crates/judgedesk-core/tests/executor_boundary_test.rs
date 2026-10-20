@@ -37,21 +37,62 @@ impl Drop for EnvironmentRestore {
     }
 }
 
+const OWNERSHIP_MARKER: &str = "judgedesk-test-owned\n";
+
+struct IsolatedExecutorEnv {
+    local_app_data: PathBuf,
+    app_data: PathBuf,
+    themis_app_data: PathBuf,
+    temp_dir: PathBuf,
+}
+
+impl IsolatedExecutorEnv {
+    fn as_pairs(&self) -> [(&'static str, &std::ffi::OsStr); 6] {
+        [
+            ("LOCALAPPDATA", self.local_app_data.as_os_str()),
+            ("APPDATA", self.app_data.as_os_str()),
+            ("THEMIS_APP_DATA_DIR", self.themis_app_data.as_os_str()),
+            ("TMPDIR", self.temp_dir.as_os_str()),
+            ("TEMP", self.temp_dir.as_os_str()),
+            ("TMP", self.temp_dir.as_os_str()),
+        ]
+    }
+}
+
 struct TempTestDir(PathBuf);
 
 impl TempTestDir {
-    fn new(name: &str) -> Self {
+    fn new(_name: &str) -> Self {
         let id = TEST_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!(
-            "judgedesk-boundary-test-{name}-{}-{id}",
-            std::process::id()
-        ));
+        let path = std::env::temp_dir().join(format!("jdbt-{}-{id}", std::process::id()));
         let _ = fs::create_dir_all(&path);
+        let _ = fs::write(path.join(".judgedesk-test-root"), OWNERSHIP_MARKER);
         Self(path)
     }
 
     fn path(&self) -> &Path {
         &self.0
+    }
+
+    fn isolated_env(&self) -> IsolatedExecutorEnv {
+        self.isolated_env_named("l", "t")
+    }
+
+    fn isolated_env_named(&self, local_sub: &str, temp_sub: &str) -> IsolatedExecutorEnv {
+        let local_app_data = self.0.join(local_sub);
+        let app_data = self.0.join(format!("{local_sub}-roaming"));
+        let themis_app_data = local_app_data.join("ThemisV2");
+        let temp_dir = self.0.join(temp_sub);
+        for dir in [&local_app_data, &app_data, &themis_app_data, &temp_dir] {
+            let _ = fs::create_dir_all(dir);
+            let _ = fs::write(dir.join(".judgedesk-test-root"), OWNERSHIP_MARKER);
+        }
+        IsolatedExecutorEnv {
+            local_app_data,
+            app_data,
+            themis_app_data,
+            temp_dir,
+        }
     }
 }
 
@@ -147,8 +188,8 @@ fn write_tree_guard(path: &Path, generation: &str) {
 }
 
 pub const FROZEN_WINDOWS_EXECUTOR_SHA256: &str =
-    "9E7359984262F224E0864BCDE0F66CE9B655F3870E077364C9A733D55129D41A";
-pub const FROZEN_WINDOWS_EXECUTOR_SIZE_BYTES: usize = 952320;
+    "EA7F018676F470173B32EA3C60DE1E57A2DC49D846EB48C19864FA63DC4152BA";
+pub const FROZEN_WINDOWS_EXECUTOR_SIZE_BYTES: usize = 965120;
 
 fn target_triple_for_packaged_executor() -> &'static str {
     if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
@@ -157,6 +198,10 @@ fn target_triple_for_packaged_executor() -> &'static str {
         "aarch64-apple-darwin"
     } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
         "x86_64-apple-darwin"
+    } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
+        "x86_64-unknown-linux-gnu"
+    } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
+        "aarch64-unknown-linux-gnu"
     } else {
         panic!("unsupported target triple for packaged executor boundary");
     }
@@ -419,21 +464,18 @@ async fn rust_client_uses_packaged_executor_only() {
 
     // Empty non-executable file also fails during initial health handshake without silent fallback.
     let temp = TempTestDir::new("dummy-bin");
+    let isolated = temp.isolated_env();
     let dummy_file = temp.path().join("dummy.exe");
     fs::write(&dummy_file, b"").expect("write dummy file");
-    let dummy_result = ExecutorClient::spawn(&dummy_file).await;
+    let dummy_result = ExecutorClient::spawn_with_env(&dummy_file, &isolated.as_pairs()).await;
     assert!(
         dummy_result.is_err(),
         "Incompatible or non-executable binary must return error without fallback"
     );
 
     // Valid packaged executor spawns successfully, performs health handshake, and reports ready
-    let isolated_appdata = temp.path().join("local");
-    let _ = fs::create_dir_all(&isolated_appdata);
     let exe = locate_executor_binary();
-    let valid_client =
-        ExecutorClient::spawn_with_env(&exe, &[("LOCALAPPDATA", isolated_appdata.as_os_str())])
-            .await;
+    let valid_client = ExecutorClient::spawn_with_env(&exe, &isolated.as_pairs()).await;
     assert!(
         valid_client.is_ok(),
         "Valid packaged executor must spawn successfully"
@@ -516,11 +558,10 @@ fn legacy_framed_v1_matches_node_client() {
 fn executor_rejects_missing_tree_guard_variables() {
     let exe = locate_executor_binary();
     let temp = TempTestDir::new("missing-guard");
-    let isolated_appdata = temp.path().join("local");
-    let _ = fs::create_dir_all(&isolated_appdata);
+    let isolated = temp.isolated_env();
 
     let output = Command::new(&exe)
-        .env("LOCALAPPDATA", &isolated_appdata)
+        .envs(isolated.as_pairs())
         .env_remove("JUDGEDESK_TREE_GUARD_REQUIRED")
         .env_remove("JUDGEDESK_TREE_GUARD_PATH")
         .env_remove("JUDGEDESK_TREE_GUARD_GENERATION")
@@ -545,8 +586,7 @@ fn executor_rejects_missing_tree_guard_variables() {
 fn executor_rejects_forged_generation() {
     let exe = locate_executor_binary();
     let temp = TempTestDir::new("forged-gen");
-    let isolated_appdata = temp.path().join("local");
-    let _ = fs::create_dir_all(&isolated_appdata);
+    let isolated = temp.isolated_env();
     let guard_file = temp.path().join("process-tree.lock");
 
     let generation_file = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -554,7 +594,7 @@ fn executor_rejects_forged_generation() {
     write_tree_guard(&guard_file, generation_file);
 
     let output = Command::new(&exe)
-        .env("LOCALAPPDATA", &isolated_appdata)
+        .envs(isolated.as_pairs())
         .env("JUDGEDESK_PARENT_PID", std::process::id().to_string())
         .env("JUDGEDESK_TREE_GUARD_REQUIRED", "1")
         .env("JUDGEDESK_TREE_GUARD_PATH", &guard_file)
@@ -579,14 +619,13 @@ fn executor_rejects_forged_generation() {
 fn executor_rejects_invalid_parent_pid() {
     let exe = locate_executor_binary();
     let temp = TempTestDir::new("invalid-parent");
-    let isolated_appdata = temp.path().join("local");
-    let _ = fs::create_dir_all(&isolated_appdata);
+    let isolated = temp.isolated_env();
     let guard_file = temp.path().join("process-tree.lock");
     let generation = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     write_tree_guard(&guard_file, generation);
 
     let output = Command::new(&exe)
-        .env("LOCALAPPDATA", &isolated_appdata)
+        .envs(isolated.as_pairs())
         .env("JUDGEDESK_PARENT_PID", "99999999")
         .env("JUDGEDESK_TREE_GUARD_REQUIRED", "1")
         .env("JUDGEDESK_TREE_GUARD_PATH", &guard_file)
@@ -612,13 +651,12 @@ fn executor_rejects_invalid_parent_pid() {
 fn executor_rejects_wrong_parent_or_generation() {
     let exe = locate_executor_binary();
     let temp = TempTestDir::new("tree-guard-probe");
-    let isolated_appdata = temp.path().join("local");
-    let _ = fs::create_dir_all(&isolated_appdata);
+    let isolated = temp.isolated_env();
     let guard_file = temp.path().join("process-tree.lock");
 
     // Case 1: Partial environment (PATH set without REQUIRED) fails
     let output = Command::new(&exe)
-        .env("LOCALAPPDATA", &isolated_appdata)
+        .envs(isolated.as_pairs())
         .env("JUDGEDESK_TREE_GUARD_PATH", &guard_file)
         .env_remove("JUDGEDESK_TREE_GUARD_REQUIRED")
         .env_remove("JUDGEDESK_TREE_GUARD_GENERATION")
@@ -630,7 +668,7 @@ fn executor_rejects_wrong_parent_or_generation() {
 
     // Case 2: Invalid generation format (not 64 hex characters) fails
     let output = Command::new(&exe)
-        .env("LOCALAPPDATA", &isolated_appdata)
+        .envs(isolated.as_pairs())
         .env("JUDGEDESK_TREE_GUARD_REQUIRED", "1")
         .env("JUDGEDESK_TREE_GUARD_PATH", &guard_file)
         .env(
@@ -652,7 +690,7 @@ fn executor_rejects_wrong_parent_or_generation() {
     write_tree_guard(&guard_file, generation_file);
 
     let output = Command::new(&exe)
-        .env("LOCALAPPDATA", &isolated_appdata)
+        .envs(isolated.as_pairs())
         .env("JUDGEDESK_PARENT_PID", std::process::id().to_string())
         .env("JUDGEDESK_TREE_GUARD_REQUIRED", "1")
         .env("JUDGEDESK_TREE_GUARD_PATH", &guard_file)
@@ -665,7 +703,7 @@ fn executor_rejects_wrong_parent_or_generation() {
 
     // Case 4: Missing all tree guard variables MUST fail closed (LOG-0058-F1)
     let output_no_guard = Command::new(&exe)
-        .env("LOCALAPPDATA", &isolated_appdata)
+        .envs(isolated.as_pairs())
         .env_remove("JUDGEDESK_TREE_GUARD_REQUIRED")
         .env_remove("JUDGEDESK_TREE_GUARD_PATH")
         .env_remove("JUDGEDESK_TREE_GUARD_GENERATION")
@@ -679,7 +717,7 @@ fn executor_rejects_wrong_parent_or_generation() {
 
     // Case 5: Forged or mismatched parent PID MUST fail closed (LOG-0058-F1)
     let output_forged_parent = Command::new(&exe)
-        .env("LOCALAPPDATA", &isolated_appdata)
+        .envs(isolated.as_pairs())
         .env("JUDGEDESK_PARENT_PID", "99999999")
         .env("JUDGEDESK_TREE_GUARD_REQUIRED", "1")
         .env("JUDGEDESK_TREE_GUARD_PATH", &guard_file)
@@ -699,15 +737,14 @@ fn executor_rejects_wrong_parent_or_generation() {
 fn one_executor_guard_per_generation() {
     let exe = locate_executor_binary();
     let temp = TempTestDir::new("singleton-guard");
-    let isolated_appdata = temp.path().join("local");
-    let _ = fs::create_dir_all(&isolated_appdata);
+    let isolated = temp.isolated_env();
     let guard_file = temp.path().join("process-tree.lock");
     let generation = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     write_tree_guard(&guard_file, generation);
 
     // Spawn first executor holding the generation guard
     let mut child1 = Command::new(&exe)
-        .env("LOCALAPPDATA", &isolated_appdata)
+        .envs(isolated.as_pairs())
         .env("JUDGEDESK_PARENT_PID", std::process::id().to_string())
         .env("JUDGEDESK_TREE_GUARD_REQUIRED", "1")
         .env("JUDGEDESK_TREE_GUARD_PATH", &guard_file)
@@ -723,7 +760,7 @@ fn one_executor_guard_per_generation() {
 
     // Attempt to spawn second executor with the SAME generation guard
     let output2 = Command::new(&exe)
-        .env("LOCALAPPDATA", &isolated_appdata)
+        .envs(isolated.as_pairs())
         .env("JUDGEDESK_PARENT_PID", std::process::id().to_string())
         .env("JUDGEDESK_TREE_GUARD_REQUIRED", "1")
         .env("JUDGEDESK_TREE_GUARD_PATH", &guard_file)
@@ -750,8 +787,7 @@ fn one_executor_guard_per_generation() {
 fn rust_client_binds_to_application_generation_and_drops_via_clean_shutdown() {
     let exe = locate_executor_binary();
     let temp = TempTestDir::new("client-application-guard");
-    let isolated_appdata = temp.path().join("local");
-    fs::create_dir_all(&isolated_appdata).expect("create isolated appdata");
+    let isolated = temp.isolated_env();
     let guard_file = temp.path().join("application-generation.lock");
     let generation = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
     write_tree_guard(&guard_file, generation);
@@ -761,7 +797,7 @@ fn rust_client_binds_to_application_generation_and_drops_via_clean_shutdown() {
     let client = ExecutorClient::spawn_sync_with_tree_guard_and_env(
         &exe,
         guard.clone(),
-        &[("LOCALAPPDATA", isolated_appdata.as_os_str())],
+        &isolated.as_pairs(),
     )
     .expect("spawn client bound to application generation");
     assert!(client.health().ready, "bound executor must become ready");
@@ -770,11 +806,8 @@ fn rust_client_binds_to_application_generation_and_drops_via_clean_shutdown() {
         "application guard must remain exclusively held while the executor is ready"
     );
 
-    let duplicate = ExecutorClient::spawn_sync_with_tree_guard_and_env(
-        &exe,
-        guard,
-        &[("LOCALAPPDATA", isolated_appdata.as_os_str())],
-    );
+    let duplicate =
+        ExecutorClient::spawn_sync_with_tree_guard_and_env(&exe, guard, &isolated.as_pairs());
     assert!(
         duplicate.is_err(),
         "a second client must not own the same application generation"
@@ -797,8 +830,7 @@ fn rust_standalone_client_ignores_ambient_tree_guard_contract() {
     let _environment = PROCESS_ENV_LOCK.lock().expect("lock process environment");
     let exe = locate_executor_binary();
     let temp = TempTestDir::new("client-standalone-guard");
-    let isolated_appdata = temp.path().join("local");
-    fs::create_dir_all(&isolated_appdata).expect("create isolated appdata");
+    let isolated = temp.isolated_env();
     let restore = EnvironmentRestore::capture(&[
         "JUDGEDESK_TREE_GUARD_REQUIRED",
         "JUDGEDESK_TREE_GUARD_PATH",
@@ -814,12 +846,8 @@ fn rust_standalone_client_ignores_ambient_tree_guard_contract() {
         "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     );
 
-    let client = ExecutorClient::spawn_sync_with_args_and_env(
-        &exe,
-        &[],
-        &[("LOCALAPPDATA", isolated_appdata.as_os_str())],
-    )
-    .expect("standalone client must create and own a fresh guard");
+    let client = ExecutorClient::spawn_sync_with_args_and_env(&exe, &[], &isolated.as_pairs())
+        .expect("standalone client must create and own a fresh guard");
     assert!(client.health().ready);
     drop(client);
     drop(restore);
@@ -832,17 +860,15 @@ fn rust_standalone_client_ignores_ambient_tree_guard_contract() {
 fn concurrent_executor_generation_startup() {
     let exe = locate_executor_binary();
     let temp = TempTestDir::new("concurrent-startup");
-    let isolated_appdata1 = temp.path().join("local1");
-    let isolated_appdata2 = temp.path().join("local2");
-    let _ = fs::create_dir_all(&isolated_appdata1);
-    let _ = fs::create_dir_all(&isolated_appdata2);
+    let isolated1 = temp.isolated_env_named("local1", "temp1");
+    let isolated2 = temp.isolated_env_named("local2", "temp2");
     let guard_file = temp.path().join("process-tree.lock");
     let generation = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     write_tree_guard(&guard_file, generation);
 
     // Spawn first executor holding the guard
     let mut child1 = Command::new(&exe)
-        .env("LOCALAPPDATA", &isolated_appdata1)
+        .envs(isolated1.as_pairs())
         .env("JUDGEDESK_PARENT_PID", std::process::id().to_string())
         .env("JUDGEDESK_TREE_GUARD_REQUIRED", "1")
         .env("JUDGEDESK_TREE_GUARD_PATH", &guard_file)
@@ -857,7 +883,7 @@ fn concurrent_executor_generation_startup() {
 
     // Spawn concurrent second executor targeting the exact same generation guard
     let output2 = Command::new(&exe)
-        .env("LOCALAPPDATA", &isolated_appdata2)
+        .envs(isolated2.as_pairs())
         .env("JUDGEDESK_PARENT_PID", std::process::id().to_string())
         .env("JUDGEDESK_TREE_GUARD_REQUIRED", "1")
         .env("JUDGEDESK_TREE_GUARD_PATH", &guard_file)
@@ -886,15 +912,11 @@ fn concurrent_executor_generation_startup() {
 fn cancel_covers_reserved_and_active_runs() {
     let exe = locate_executor_binary();
     let temp = TempTestDir::new("cancel-live");
-    let isolated_appdata = temp.path().join("local");
-    let _ = fs::create_dir_all(&isolated_appdata);
+    let isolated = temp.isolated_env();
 
     // Spawn real executor with isolated environment
-    let client = ExecutorClient::spawn_sync_with_env(
-        &exe,
-        &[("LOCALAPPDATA", isolated_appdata.as_os_str())],
-    )
-    .expect("spawn executor client");
+    let client = ExecutorClient::spawn_sync_with_env(&exe, &isolated.as_pairs())
+        .expect("spawn executor client");
     let client = Arc::new(client);
 
     // Create run workspace under executor root
@@ -925,10 +947,8 @@ int main() {
     });
     let mut cmd = Command::new("g++");
     cmd.arg("-O2").arg("-std=c++14");
-    if !cfg!(target_os = "macos") {
-        cmd.arg("-static");
-    }
     if cfg!(windows) {
+        cmd.arg("-static");
         cmd.arg("-Wl,--stack,66060288");
     }
     cmd.arg("-o").arg(&out_exe).arg(&source_file);
@@ -1031,15 +1051,14 @@ int main() {
 fn protocol_failure_drains_before_replacement() {
     let exe = locate_executor_binary();
     let temp = TempTestDir::new("protocol-drain");
-    let isolated_appdata = temp.path().join("local");
-    let _ = fs::create_dir_all(&isolated_appdata);
+    let isolated = temp.isolated_env();
     let guard_file = temp.path().join("process-tree.lock");
     let generation = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     write_tree_guard(&guard_file, generation);
 
     // 1. Spawn live child executor with valid mandatory guard variables
     let mut child = Command::new(&exe)
-        .env("LOCALAPPDATA", &isolated_appdata)
+        .envs(isolated.as_pairs())
         .env("JUDGEDESK_PARENT_PID", std::process::id().to_string())
         .env("JUDGEDESK_TREE_GUARD_REQUIRED", "1")
         .env("JUDGEDESK_TREE_GUARD_PATH", &guard_file)
@@ -1105,7 +1124,7 @@ fn protocol_failure_drains_before_replacement() {
 
     // 5. Assert clean replacement: new executor can now start with the SAME generation guard
     let mut replacement = Command::new(&exe)
-        .env("LOCALAPPDATA", &isolated_appdata)
+        .envs(isolated.as_pairs())
         .env("JUDGEDESK_PARENT_PID", std::process::id().to_string())
         .env("JUDGEDESK_TREE_GUARD_REQUIRED", "1")
         .env("JUDGEDESK_TREE_GUARD_PATH", &guard_file)
@@ -1148,8 +1167,7 @@ fn protocol_failure_drains_before_replacement() {
 fn malformed_or_unknown_request_terminates_generation_before_replacement() {
     let exe = locate_executor_binary();
     let temp = TempTestDir::new("malformed-request-drain");
-    let isolated_appdata = temp.path().join("local");
-    fs::create_dir_all(&isolated_appdata).expect("create isolated AppData");
+    let isolated = temp.isolated_env();
     let guard_file = temp.path().join("process-tree.lock");
     let generation = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     write_tree_guard(&guard_file, generation);
@@ -1164,7 +1182,7 @@ fn malformed_or_unknown_request_terminates_generation_before_replacement() {
 
     for (case, payload) in invalid_requests {
         let mut child = Command::new(&exe)
-            .env("LOCALAPPDATA", &isolated_appdata)
+            .envs(isolated.as_pairs())
             .env("JUDGEDESK_PARENT_PID", std::process::id().to_string())
             .env("JUDGEDESK_TREE_GUARD_REQUIRED", "1")
             .env("JUDGEDESK_TREE_GUARD_PATH", &guard_file)
@@ -1229,7 +1247,7 @@ fn malformed_or_unknown_request_terminates_generation_before_replacement() {
         );
 
         let mut replacement = Command::new(&exe)
-            .env("LOCALAPPDATA", &isolated_appdata)
+            .envs(isolated.as_pairs())
             .env("JUDGEDESK_PARENT_PID", std::process::id().to_string())
             .env("JUDGEDESK_TREE_GUARD_REQUIRED", "1")
             .env("JUDGEDESK_TREE_GUARD_PATH", &guard_file)
@@ -1296,8 +1314,7 @@ fn malformed_or_unknown_request_terminates_generation_before_replacement() {
 #[test]
 fn parent_eof_leaves_no_owned_process_or_port() {
     let temp = TempTestDir::new("parent-eof");
-    let isolated_appdata = temp.path().join("local");
-    let _ = fs::create_dir_all(&isolated_appdata);
+    let isolated = temp.isolated_env();
     let exe = locate_executor_binary();
 
     let guard_file = temp.path().join("process-tree.lock");
@@ -1305,7 +1322,7 @@ fn parent_eof_leaves_no_owned_process_or_port() {
     write_tree_guard(&guard_file, generation);
 
     let mut child = Command::new(&exe)
-        .env("LOCALAPPDATA", &isolated_appdata)
+        .envs(isolated.as_pairs())
         .env("JUDGEDESK_PARENT_PID", std::process::id().to_string())
         .env("JUDGEDESK_TREE_GUARD_REQUIRED", "1")
         .env("JUDGEDESK_TREE_GUARD_PATH", &guard_file)
@@ -1352,15 +1369,14 @@ fn parent_eof_leaves_no_owned_process_or_port() {
 fn updater_exclusive_handoff_waits_for_native_tree() {
     let exe = locate_executor_binary();
     let temp = TempTestDir::new("updater-handoff");
-    let isolated_appdata = temp.path().join("local");
-    let _ = fs::create_dir_all(&isolated_appdata);
+    let isolated = temp.isolated_env();
     let guard_file = temp.path().join("process-tree.lock");
     let generation = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
     write_tree_guard(&guard_file, generation);
 
     // Spawn live executor holding the generation lock
     let mut child = Command::new(&exe)
-        .env("LOCALAPPDATA", &isolated_appdata)
+        .envs(isolated.as_pairs())
         .env("JUDGEDESK_PARENT_PID", std::process::id().to_string())
         .env("JUDGEDESK_TREE_GUARD_REQUIRED", "1")
         .env("JUDGEDESK_TREE_GUARD_PATH", &guard_file)
@@ -1509,10 +1525,8 @@ fn client_module_url() -> String {
 #[test]
 fn node_rollback_reaches_compatible_executor() {
     let temp = TempTestDir::new("node-rollback");
-    let isolated_appdata = temp.path().join("local");
-    let _ = fs::create_dir_all(&isolated_appdata);
+    let isolated = temp.isolated_env();
     let root = repo_root();
-    let tsx_cli = root.join("node_modules/tsx/dist/cli.mjs");
     let client_url = client_module_url();
 
     // Invoke actual Node rollback client (server/executor/client.ts) via tsx
@@ -1544,9 +1558,10 @@ main();
 
     let output = Command::new("node")
         .current_dir(&root)
-        .arg(&tsx_cli)
+        .arg("--import")
+        .arg("tsx")
         .arg(&script_file)
-        .env("LOCALAPPDATA", &isolated_appdata)
+        .envs(isolated.as_pairs())
         .env_remove("JUDGEDESK_EXECUTOR_PATH")
         .output()
         .expect("execute node rollback client via tsx");
@@ -1606,8 +1621,7 @@ main();
 #[test]
 fn node_rollback_client_generation_contention() {
     let temp = TempTestDir::new("node-contention");
-    let isolated_appdata = temp.path().join("local");
-    let _ = fs::create_dir_all(&isolated_appdata);
+    let isolated = temp.isolated_env();
     let guard_file = temp.path().join("guard.lock");
     let generation_file = "1111111111111111111111111111111111111111111111111111111111111111";
     let generation_mismatch = "2222222222222222222222222222222222222222222222222222222222222222";
@@ -1617,7 +1631,6 @@ fn node_rollback_client_generation_contention() {
     )
     .expect("write guard file");
     let root = repo_root();
-    let tsx_cli = root.join("node_modules/tsx/dist/cli.mjs");
     let client_url = client_module_url();
 
     let script = format!(
@@ -1643,9 +1656,10 @@ main();
 
     let output = Command::new("node")
         .current_dir(&root)
-        .arg(&tsx_cli)
+        .arg("--import")
+        .arg("tsx")
         .arg(&script_file)
-        .env("LOCALAPPDATA", &isolated_appdata)
+        .envs(isolated.as_pairs())
         .env_remove("JUDGEDESK_EXECUTOR_PATH")
         .output()
         .expect("execute node rollback client with conflicting generation");
@@ -1685,10 +1699,8 @@ main();
 fn node_rollback_client_honors_explicit_override_path() {
     let packaged_exe = locate_packaged_executor_binary();
     let temp = TempTestDir::new("node-override");
-    let isolated_appdata = temp.path().join("local");
-    let _ = fs::create_dir_all(&isolated_appdata);
+    let isolated = temp.isolated_env();
     let root = repo_root();
-    let tsx_cli = root.join("node_modules/tsx/dist/cli.mjs");
     let client_url = client_module_url();
 
     let script = format!(
@@ -1712,9 +1724,10 @@ main();
 
     let output = Command::new("node")
         .current_dir(&root)
-        .arg(&tsx_cli)
+        .arg("--import")
+        .arg("tsx")
         .arg(&script_file)
-        .env("LOCALAPPDATA", &isolated_appdata)
+        .envs(isolated.as_pairs())
         .env("JUDGEDESK_EXECUTOR_PATH", &packaged_exe)
         .output()
         .expect("execute node rollback client with explicit override");
@@ -1738,8 +1751,14 @@ main();
 #[test]
 fn executor_rejects_incompatible_version_at_handshake() {
     let exe = locate_executor_binary();
-    let err = ExecutorClient::spawn_sync_with_args(&exe, &["--test-mock-health-version", "1.4.0"])
-        .expect_err("Incompatible version must fail handshake");
+    let temp = TempTestDir::new("incompatible-version");
+    let isolated = temp.isolated_env();
+    let err = ExecutorClient::spawn_sync_with_args_and_env(
+        &exe,
+        &["--test-mock-health-version", "1.4.0"],
+        &isolated.as_pairs(),
+    )
+    .expect_err("Incompatible version must fail handshake");
     assert!(
         err.to_string().contains("EXECUTOR_VERSION_MISMATCH"),
         "Expected version mismatch error, got: {err}"
@@ -1752,8 +1771,14 @@ fn executor_rejects_incompatible_version_at_handshake() {
 #[test]
 fn executor_rejects_unready_at_handshake() {
     let exe = locate_executor_binary();
-    let err = ExecutorClient::spawn_sync_with_args(&exe, &["--test-mock-health-unready"])
-        .expect_err("Unready executor must fail handshake");
+    let temp = TempTestDir::new("unready-handshake");
+    let isolated = temp.isolated_env();
+    let err = ExecutorClient::spawn_sync_with_args_and_env(
+        &exe,
+        &["--test-mock-health-unready"],
+        &isolated.as_pairs(),
+    )
+    .expect_err("Unready executor must fail handshake");
     assert!(
         err.to_string().contains("EXECUTOR_NOT_READY"),
         "Expected not ready error, got: {err}"
@@ -1766,8 +1791,14 @@ fn executor_rejects_unready_at_handshake() {
 #[test]
 fn executor_rejects_insecure_capabilities_at_handshake() {
     let exe = locate_executor_binary();
-    let err = ExecutorClient::spawn_sync_with_args(&exe, &["--test-mock-health-insecure"])
-        .expect_err("Insecure capabilities must fail handshake");
+    let temp = TempTestDir::new("insecure-capabilities");
+    let isolated = temp.isolated_env();
+    let err = ExecutorClient::spawn_sync_with_args_and_env(
+        &exe,
+        &["--test-mock-health-insecure"],
+        &isolated.as_pairs(),
+    )
+    .expect_err("Insecure capabilities must fail handshake");
     assert!(
         err.to_string().contains("EXECUTOR_INSECURE_CAPABILITIES"),
         "Expected insecure capabilities error, got: {err}"
@@ -1780,8 +1811,14 @@ fn executor_rejects_insecure_capabilities_at_handshake() {
 #[test]
 fn executor_protocol_malformed_fails_closed() {
     let exe = locate_executor_binary();
-    let err = ExecutorClient::spawn_sync_with_args(&exe, &["--test-mock-malformed-response"])
-        .expect_err("Malformed response must fail closed");
+    let temp = TempTestDir::new("malformed-response");
+    let isolated = temp.isolated_env();
+    let err = ExecutorClient::spawn_sync_with_args_and_env(
+        &exe,
+        &["--test-mock-malformed-response"],
+        &isolated.as_pairs(),
+    )
+    .expect_err("Malformed response must fail closed");
     assert!(
         err.to_string().contains("malformed") || err.to_string().contains("protocol error"),
         "Expected protocol error, got: {err}"
@@ -1794,8 +1831,14 @@ fn executor_protocol_malformed_fails_closed() {
 #[test]
 fn executor_protocol_unknown_id_fails_closed() {
     let exe = locate_executor_binary();
-    let err = ExecutorClient::spawn_sync_with_args(&exe, &["--test-mock-unknown-id"])
-        .expect_err("Unknown response ID must fail closed");
+    let temp = TempTestDir::new("unknown-id");
+    let isolated = temp.isolated_env();
+    let err = ExecutorClient::spawn_sync_with_args_and_env(
+        &exe,
+        &["--test-mock-unknown-id"],
+        &isolated.as_pairs(),
+    )
+    .expect_err("Unknown response ID must fail closed");
     assert!(
         err.to_string().contains("unknown correlation ID"),
         "Expected unknown correlation ID error, got: {err}"
@@ -1805,9 +1848,14 @@ fn executor_protocol_unknown_id_fails_closed() {
 #[test]
 fn protocol_terminal_shutdown_waits_for_the_executor_exit() {
     let exe = locate_executor_binary();
-    let client =
-        ExecutorClient::spawn_sync_with_args(&exe, &["--test-mock-health-then-unknown-drain"])
-            .expect("mock must complete the initial health handshake");
+    let temp = TempTestDir::new("protocol-terminal-shutdown");
+    let isolated = temp.isolated_env();
+    let client = ExecutorClient::spawn_sync_with_args_and_env(
+        &exe,
+        &["--test-mock-health-then-unknown-drain"],
+        &isolated.as_pairs(),
+    )
+    .expect("mock must complete the initial health handshake");
     assert!(client.health().ready);
 
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
@@ -1863,4 +1911,59 @@ fn executor_unavailable_graceful_propagation() {
         .run_sync(Box::new(run_spec))
         .expect_err("Must fail when unavailable");
     assert!(err.to_string().contains("SECURE_RUNNER_UNAVAILABLE"));
+}
+
+#[test]
+fn executor_boundary_spawns_never_touch_ambient_tmpdir_judgedesk_executor() {
+    let _environment = PROCESS_ENV_LOCK.lock().expect("lock process environment");
+    let canary = TempTestDir::new("ambient-tmpdir-canary");
+    let canary_tmp = canary.path().join("ambient-tmp");
+    let canary_local = canary.path().join("ambient-local");
+    fs::create_dir_all(&canary_tmp).expect("create canary tmp");
+    fs::create_dir_all(&canary_local).expect("create canary localappdata");
+
+    let temp = TempTestDir::new("isolated-executor-spawn");
+    let isolated = temp.isolated_env();
+    let exe = locate_executor_binary();
+
+    let restore = EnvironmentRestore::capture(&[
+        "LOCALAPPDATA",
+        "APPDATA",
+        "THEMIS_APP_DATA_DIR",
+        "TMPDIR",
+        "TEMP",
+        "TMP",
+    ]);
+    std::env::set_var("LOCALAPPDATA", &canary_local);
+    std::env::set_var("TMPDIR", &canary_tmp);
+    std::env::set_var("TEMP", &canary_tmp);
+    std::env::set_var("TMP", &canary_tmp);
+
+    let client = ExecutorClient::spawn_sync_with_env(&exe, &isolated.as_pairs())
+        .expect("spawn executor client with isolated env");
+    assert!(client.health().ready);
+    assert!(
+        !canary_tmp.join("JudgeDeskExecutor").exists(),
+        "ambient TMPDIR/JudgeDeskExecutor must never be created by isolated executor spawns"
+    );
+    assert!(
+        !canary_local.join("JudgeDesk").join("JudgeDeskExecutor").exists(),
+        "ambient LOCALAPPDATA/JudgeDesk/JudgeDeskExecutor must never be created by isolated executor spawns"
+    );
+    drop(client);
+    drop(restore);
+    assert!(
+        fs::read_dir(&canary_tmp)
+            .expect("read canary tmp")
+            .next()
+            .is_none(),
+        "ambient TMPDIR must be completely clean after client drop"
+    );
+    assert!(
+        fs::read_dir(&canary_local)
+            .expect("read canary localappdata")
+            .next()
+            .is_none(),
+        "ambient LOCALAPPDATA must be completely clean after client drop"
+    );
 }

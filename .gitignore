@@ -8,11 +8,13 @@ release-downloads/
 release-assets/
 release-assets-mac/
 release-assets-windows/
+release-assets-linux/
 public-release-assets/
 release-staging/
 release-v*/
 src-tauri/target/
 src-tauri/gen/
+src-tauri/toolchains/
 src-tauri/binaries/server-*
 src-tauri/binaries/judgedesk-executor-*
 native-executor/target/
@@ -32,6 +34,8 @@ tools/**/*.exe
 
 
 # Local verification artifacts include build caches, runtime copies and toolchains.
+/artifacts/
 /docs/verification/**/artifacts/
+release-assets-*.zip
 # Empty file left by a local command.
 /p.includes('teams')

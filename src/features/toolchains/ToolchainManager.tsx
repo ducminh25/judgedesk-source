@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { LocalExecutionPolicySnapshot } from "../../../shared/contracts.js";
+import { apiFetch } from "../../api.js";
 import {
   type LanguageProfileView,
   type ToolchainCertificationPlan,
@@ -36,6 +37,9 @@ const SOURCE_MODES: readonly ToolchainSourceMode[] = [
 
 export default function ToolchainManager({ onClose, firstRun = false }: Props) {
   const { t } = useTranslation();
+  const titleId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const {
     state,
     error,
@@ -49,28 +53,73 @@ export default function ToolchainManager({ onClose, firstRun = false }: Props) {
     diagnoseProfile,
   } = useToolchains();
 
+  const handleClose = useCallback(() => {
+    void apiFetch("/api/toolchains/prewarm", { method: "POST" }).catch(() => {});
+    onClose();
+  }, [onClose]);
+
+  useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const fallbackTrigger = document.querySelector<HTMLElement>('[data-toolchain-menu-trigger="true"]');
+    closeButtonRef.current?.focus();
+    return () => {
+      const target = previous?.isConnected && previous.tabIndex >= 0 ? previous : fallbackTrigger;
+      if (target?.isConnected) target.focus();
+    };
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
         event.stopPropagation();
-        onClose();
+        handleClose();
+      } else if (event.key === "Tab") {
+        const scope = dialogRef.current;
+        const controls: HTMLElement[] = scope
+          ? [...scope.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]')]
+              .filter((element) => element.tabIndex >= 0 && element.getClientRects().length > 0)
+          : [];
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (!first) {
+          event.preventDefault();
+          scope?.focus();
+          return;
+        }
+        if (
+          !scope?.contains(document.activeElement)
+          || (event.shiftKey && document.activeElement === first)
+          || (!event.shiftKey && document.activeElement === last)
+        ) {
+          event.preventDefault();
+          (event.shiftKey ? last : first).focus();
+        }
       }
     };
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [onClose]);
+  }, [handleClose]);
+
+  const displayError = error === "Failed to fetch" ? t("toolchains.loadError") : error;
 
   return (
-    <div className={`fixed inset-0 ${firstRun ? "z-[90]" : "z-50"} flex items-center justify-center bg-black/70 p-4`}>
-      <div className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-lg border border-surface-border bg-surface shadow-lg">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-lg border border-surface-border bg-surface shadow-lg outline-none"
+      >
         <div className="flex items-center justify-between border-b border-surface-border bg-surface-elevated p-4">
           <div className="flex min-w-0 items-center gap-3">
             <div className="rounded-md bg-indigo-500/10 p-2">
               <Cpu className="h-5 w-5 text-indigo-500 dark:text-indigo-400" />
             </div>
             <div className="min-w-0">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-text-primary">
+              <h2 id={titleId} className="text-sm font-bold uppercase tracking-wider text-text-primary">
                 {firstRun ? t("toolchains.setup.title") : t("toolchains.managerTitle")}
               </h2>
               <p className="mt-0.5 truncate text-2xs text-text-muted">
@@ -90,16 +139,17 @@ export default function ToolchainManager({ onClose, firstRun = false }: Props) {
                 || state.mutationsBlocked
               }
               onClick={() => void rescan()}
-              className="flex items-center gap-1.5 rounded border border-surface-border bg-input-bg px-2.5 py-1.5 text-2xs font-bold text-text-primary hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded border border-surface-border bg-input-bg px-2.5 py-1.5 text-2xs font-bold text-text-primary hover:bg-surface-hover focus-visible:outline-2 focus-visible:outline-indigo-500 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${state?.discovery.status === "running" || state?.discovery.refreshing ? "animate-spin" : ""}`} />
               {t("toolchains.rescan")}
             </button>
             <button
+              ref={closeButtonRef}
               type="button"
               aria-label={t("toolchains.close")}
-              onClick={onClose}
-              className="text-text-muted transition-colors hover:text-text-primary"
+              onClick={handleClose}
+              className="rounded p-1 text-text-muted transition-colors hover:bg-surface-hover hover:text-text-primary focus-visible:outline-2 focus-visible:outline-indigo-500 focus-visible:outline-offset-2"
             >
               <X className="h-5 w-5" />
             </button>
@@ -108,7 +158,7 @@ export default function ToolchainManager({ onClose, firstRun = false }: Props) {
 
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           {!state ? (
-            <LoadingState error={error} />
+            <LoadingState error={displayError} />
           ) : (
             <div className="space-y-4">
               <LocalExecutionPolicyNotice policy={state.executionPolicy} />
@@ -122,7 +172,7 @@ export default function ToolchainManager({ onClose, firstRun = false }: Props) {
                   {t("toolchains.registry.mutationsBlocked")}
                 </Notice>
               )}
-              {error && <Notice tone="danger">{error}</Notice>}
+              {displayError && <Notice tone="danger">{displayError}</Notice>}
               {state.manifestError && (
                 <Notice tone="warning">
                   {t("toolchains.manifestUnavailable")}: {state.manifestError}
@@ -160,11 +210,8 @@ export default function ToolchainManager({ onClose, firstRun = false }: Props) {
           </span>
           <button
             type="button"
-            onClick={() => {
-              void fetch("/api/toolchains/prewarm", { method: "POST" }).catch(() => {});
-              onClose();
-            }}
-            className="rounded bg-indigo-600 px-5 py-2 text-xs font-bold uppercase tracking-wider text-white transition hover:bg-indigo-500"
+            onClick={handleClose}
+            className="rounded bg-indigo-600 px-5 py-2 text-xs font-bold uppercase tracking-wider text-white transition hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-indigo-500 focus-visible:outline-offset-2"
           >
             {firstRun ? t("toolchains.setup.finish") : t("toolchains.close")}
           </button>
@@ -453,6 +500,15 @@ function ProfileRow({
             );
           })}
         </fieldset>
+
+        {(profile.localPolicy.executionMode === "managed_only"
+          || profile.localPolicy.executionMode === "unsupported"
+          || (profile.localPolicy.executionMode === "freeze_required"
+            && (profile.selection.mode === "local_path" || profile.selection.mode === "local_auto"))) && (
+          <p className="mt-2 text-2xs leading-relaxed text-text-muted">
+            {t(`toolchains.registry.localExecution.${profile.localPolicy.executionMode}`)}
+          </p>
+        )}
 
         {profile.selection.mode === "local_path" && (
           <div className="mt-3 space-y-2 rounded border border-surface-border bg-surface-elevated p-2.5">

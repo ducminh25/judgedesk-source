@@ -1,8 +1,8 @@
 # Master Implementation Plan — JudgeDesk
 
 **Project Name**: JudgeDesk  
-**Released Baseline**: `v1.5.0` (`v1.5.x` Production Stable)
-**Development Target**: `v1.6.0` — see [`pure-rust-core-detailed-implementation-plan.md`](./pure-rust-core-detailed-implementation-plan.md); keep all eight version files at `1.5.0` until the final coordinated release bump.
+**Application Source Baseline**: `v1.5.5` (8-file application lockstep; `crates/judgedesk-core/Cargo.toml` at `1.5.1`; historical v1.5 baseline `v1.5.0`)
+**Development Target**: `v1.6.0` — see [`pure-rust-core-detailed-implementation-plan.md`](./pure-rust-core-detailed-implementation-plan.md); keep all eight application version files at `1.5.5` until the final coordinated `WP10.3` release bump.
 **Document Status**: Official / Approved  
 **Classification**: Implementation History & Engineering Standards  
 
@@ -10,7 +10,7 @@
 
 ## 1. Executive Implementation History
 
-JudgeDesk đã trải qua 11 giai đoạn triển khai cốt lõi để hoàn thiện từ một nguyên mẫu ứng dụng chấm bài cơ bản thành hệ thống chấm bài thi lập trình thi đấu ngoại tuyến đa nền tảng hoàn chỉnh:
+JudgeDesk đã trải qua 12 giai đoạn triển khai cốt lõi để hoàn thiện từ một nguyên mẫu ứng dụng chấm bài cơ bản thành hệ thống chấm bài thi lập trình thi đấu ngoại tuyến đa nền tảng hoàn chỉnh:
 
 ```mermaid
 timeline
@@ -26,6 +26,7 @@ timeline
     v1.4.45 : Nâng Giới Hạn RAM 1024 MB : Mở rộng trần Memory Limit lên 1024 MB trên Windows/macOS : Tối ưu Compiler Staging
     v1.4.46 : Bài Tương Tác & Chấm Điểm Phân Số : Dual-Job Runner cho Bài Interactive : Rational Scoring Engine triệt tiêu sai số float : Precompiled Header C++14
     v1.5.0 : Universal PCH C++, Di Trú Chính Sách & Brand Refresh : Universal PCH cho mọi compiler C++ : Tự động di trú Execution Policy : In-App Core Updater & Nút Ủng hộ : Bộ nhận diện thương hiệu mới
+    v1.5.1 - v1.5.5 : Chuẩn Hóa Giao Diện Native, Compile Profiles, OSD Themis Web & Nền Tảng Rust Core : Cấu hình Compile Profile C/C++ (Themis, IOI/ICPC 2025, World Finals, Custom) : Tương thích OSD Themis Web & Lịch sử nộp bài : Selective Prewarm : Hardening X-JudgeDesk-Session & Nền tảng Pure-Rust Core Bước 1-5
 ```
 
 ---
@@ -95,14 +96,21 @@ timeline
 * [x] **Cải tiến Trình Cập nhật & Nút Ủng hộ Toolbar**: Nút cập nhật nổi bật trên toolbar với tiến trình tải Core ngầm và khởi động lại 1-chạm; bổ sung nút mời cà phê / donate.
 * [x] **Bộ Nhận diện Thương hiệu & Biểu tượng Mới**: Logo và bộ icon ứng dụng mới hiện đại, sắc nét trên cả Windows và macOS.
 
+### Cột Mốc 12: Cấu Hình Compile Profiles, Tương Thích OSD Themis Web, Hardening & Nền Tảng Pure-Rust Core (v1.5.1 - v1.5.5)
+* [x] **Cấu hình Compile Profile C/C++ theo từng bài toán (`ProblemConfigModal` — tab `compile`)**: Hỗ trợ 4 chế độ (`themis`, `modern_ioi_icpc_2025`, `icpc_world_finals`, `custom`) kèm bộ lọc `assertSafeCompileFlag` và tích hợp vào định danh cache Universal PCH.
+* [x] **Tương thích hoàn toàn OSD Themis Web (`docs/osd-themis-compatibility.md`)**: Nhận diện tên file không dấu chấm (`0[HS01][SUM]cpp`), atomic claim `.judgedesk-osd-*`, kiểm tra ổn định file theo `fd`/`inode`/`mtime`/SHA-256, lưu trữ `$History`, và xuất log CRLF chuẩn Themis (`logs/<raw-filename>.log`).
+* [x] **Selective Background Prewarm (`nativeCompilerKindsToPrewarm`)**: Chỉ prewarm compiler cho các ngôn ngữ thực tế có bài nộp trong phiên chấm.
+* [x] **Khóa biên bảo mật Desktop API (`X-JudgeDesk-Session`) & Nền tảng Pure-Rust Core (`crates/judgedesk-core` Bước 1–5)**: Ràng buộc token theo phiên khởi chạy, kiểm tra `Host`/`Origin`, cô lập `OwnedWorkspace`, chuyển compiler/custom checker/interactor trong `judgedesk-core` qua `ExecutorClient` và nâng cấp `Rational` sang `BigUint` (xem chi tiết tiến độ và các khoảng trống còn lại tại [`pure-rust-core-next-steps-audit.md`](./pure-rust-core-next-steps-audit.md)).
+
 ---
 
 ## 3. Hiện Trạng Kiểm Thử & Đo Lường Chất Lượng
 
-| Tiêu Chí Đo Lường | Mục Tiêu | Hiện Trạng Thực Tế (v1.5.0) |
+| Tiêu Chí Đo Lường | Mục Tiêu | Hiện Trạng Thực Tế (`v1.5.0`–`v1.5.5`) |
 | :--- | :--- | :--- |
-| **Hệ thống Unit & Integration Tests** | Toàn bộ pass 100% | **492 tests (482 Passed, 0 Failed, 10 Skipped)** |
-| **Kiểm tra TypeScript Lint** | 0 lỗi biên dịch | **Clean (`tsc --noEmit`: Code 0)** |
+| **Hệ thống Unit & Integration Tests (Node/Server)** | Toàn bộ pass 100% | **>700 tests (0 Failed; xem chi tiết trong `STATUS.md` / `WORKLOG.md`)** |
+| **Hệ thống Kiểm thử `crates/judgedesk-core` (Working Tree)** | Toàn bộ pass 100% | **132/132 tests trên Windows x64, 133/133 tests trên macOS ARM64** |
+| **Kiểm tra TypeScript & Quality Gate (`check:fast`)** | 0 lỗi biên dịch / 0 vi phạm | **Clean (`tsc --noEmit` & `check-quality-gate.js`: Code 0)** |
 | **Tốc độ biên dịch C++ với PCH** | < 300 ms | **~230 ms (tăng tốc gấp ~16.5x so với không có PCH)** |
 | **Độ tương thích nền tảng** | Windows x64 & macOS ARM64 | **Đạt chuẩn trên cả Windows 10/11 và macOS Apple Silicon** |
 
@@ -110,4 +118,4 @@ timeline
 
 ## 4. Kế Hoạch Tiếp Theo
 
-Mọi tính năng mới hoặc kế hoạch mở rộng trong tương lai sẽ được thảo luận và thống nhất trực tiếp với tác giả trước khi bổ sung vào tài liệu triển khai.
+Mọi tính năng mới hoặc kế hoạch mở rộng trong tương lai (bao gồm lộ trình hoàn tất Pure-Rust Core `v1.6.0` tại [`pure-rust-core-detailed-implementation-plan.md`](./pure-rust-core-detailed-implementation-plan.md)) sẽ được thảo luận và thống nhất trực tiếp với tác giả trước khi triển khai.

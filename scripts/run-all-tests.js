@@ -183,7 +183,7 @@ export function resolveTestAppDataDir(env) {
     }
     return { dir: env.THEMIS_APP_DATA_DIR, owned: false };
   }
-  const ownedDir = fs.mkdtempSync(path.join(os.tmpdir(), "jd_test_server_appdata_"));
+  const ownedDir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), "jd_test_server_appdata_"));
   try {
     fs.writeFileSync(path.join(ownedDir, ".judgedesk-test-root"), "judgedesk-test-owned\n", "utf8");
   } catch (markerError) {
@@ -198,6 +198,45 @@ export function resolveTestAppDataDir(env) {
     throw markerError;
   }
   return { dir: ownedDir, owned: true };
+}
+
+export function prepareTestRunnerEnv(baseEnv = process.env) {
+  const env = { ...baseEnv };
+  const resolved = resolveTestAppDataDir(env);
+  try {
+    env.THEMIS_APP_DATA_DIR = resolved.dir;
+    const testLocalAppData = path.join(resolved.dir, "localappdata");
+    const testAppData = path.join(resolved.dir, "roamingappdata");
+    const testTempDir = path.join(resolved.dir, "temp");
+    fs.mkdirSync(testLocalAppData, { recursive: true });
+    fs.mkdirSync(testAppData, { recursive: true });
+    fs.mkdirSync(testTempDir, { recursive: true });
+    fs.writeFileSync(path.join(testLocalAppData, ".judgedesk-test-root"), "judgedesk-test-owned\n", "utf8");
+    fs.writeFileSync(path.join(testAppData, ".judgedesk-test-root"), "judgedesk-test-owned\n", "utf8");
+    fs.writeFileSync(path.join(testTempDir, ".judgedesk-test-root"), "judgedesk-test-owned\n", "utf8");
+    env.LOCALAPPDATA = testLocalAppData;
+    env.APPDATA = testAppData;
+    env.TMPDIR = testTempDir;
+    env.TEMP = testTempDir;
+    env.TMP = testTempDir;
+    return {
+      env,
+      isolatedAppData: resolved.owned ? resolved.dir : null,
+      ownedByRunner: resolved.owned,
+    };
+  } catch (setupError) {
+    if (resolved.owned && fs.existsSync(resolved.dir)) {
+      try {
+        fs.rmSync(resolved.dir, { recursive: true, force: true });
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [setupError, cleanupError],
+          `Failed to configure and clean owned test root at ${resolved.dir}`,
+        );
+      }
+    }
+    throw setupError;
+  }
 }
 
 export function evaluateChildResult(result, cleanupError) {
@@ -267,6 +306,8 @@ export function main() {
   }
 
   const runnerArgs = [
+    "--import",
+    "tsx",
     "--test",
     "--test-concurrency=1",
     ...extraFlags,
@@ -275,30 +316,21 @@ export function main() {
 
   let isolatedAppData = null;
   let ownedByRunner = false;
-  const env = { ...process.env };
+  let env;
   try {
-    const resolved = resolveTestAppDataDir(env);
-    env.THEMIS_APP_DATA_DIR = resolved.dir;
-    const testLocalAppData = path.join(resolved.dir, "localappdata");
-    const testAppData = path.join(resolved.dir, "roamingappdata");
-    fs.mkdirSync(testLocalAppData, { recursive: true });
-    fs.mkdirSync(testAppData, { recursive: true });
-    env.LOCALAPPDATA = testLocalAppData;
-    env.APPDATA = testAppData;
-    if (resolved.owned) {
-      isolatedAppData = resolved.dir;
-      ownedByRunner = true;
-    }
+    const prepared = prepareTestRunnerEnv(process.env);
+    env = prepared.env;
+    isolatedAppData = prepared.isolatedAppData;
+    ownedByRunner = prepared.ownedByRunner;
   } catch (err) {
     console.error("[run-all-tests] Fatal configuration error:", err.message);
     process.exit(1);
   }
 
-  const tsxCli = path.join(repoRoot, "node_modules", "tsx", "dist", "cli.mjs");
   let result;
   let cleanupError = null;
   try {
-    result = spawnSync(process.execPath, [tsxCli, ...runnerArgs], {
+    result = spawnSync(process.execPath, runnerArgs, {
       cwd: repoRoot,
       stdio: "inherit",
       env,

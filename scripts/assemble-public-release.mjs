@@ -13,6 +13,12 @@ fs.mkdirSync(publicDir, { recursive: true });
 const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
 const version = pkg.version;
 
+const optionalLinuxFiles = [
+  `JudgeDesk_${version}_amd64.deb`,
+  `JudgeDesk-${version}-1.x86_64.rpm`,
+  `JudgeDesk_${version}_amd64.AppImage`,
+].filter((file) => fs.existsSync(path.join(staging, file)));
+
 const publicFiles = [
   `JudgeDesk_${version}_core_aarch64.app.tar.gz`,
   `JudgeDesk_${version}_core_aarch64.dmg`,
@@ -20,6 +26,7 @@ const publicFiles = [
   `JudgeDesk_${version}_full_aarch64.app.tar.gz`,
   `JudgeDesk_${version}_full_aarch64.dmg`,
   `JudgeDesk_${version}_full_x64_en-US.msi`,
+  ...optionalLinuxFiles,
   "latest.json",
 ];
 

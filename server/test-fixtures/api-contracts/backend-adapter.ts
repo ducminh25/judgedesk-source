@@ -20,6 +20,7 @@ import { drainToolchainDiscovery } from "../../toolchains/discovery.js";
 import { executorClient } from "../../executor/client.js";
 
 import type { IsolatedTestEnvironment } from "./test-environment.js";
+import { TOOLCHAIN_CATALOG } from "../../toolchains/manifest.js";
 import type { ToolchainDescriptor } from "../../toolchains/types.js";
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
@@ -126,6 +127,18 @@ export class NodeBackendAdapter implements BackendAdapter {
       options?.beforeCommit?.();
     };
 
+    const testManifestLoader = async (): Promise<readonly ToolchainDescriptor[]> => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      return TOOLCHAIN_CATALOG.map((entry) => ({
+        ...entry,
+        manifestSchemaVersion: 2 as const,
+        downloadUrl: `https://downloads.judgedesk.internal/${entry.id}.${entry.archiveFormat}`,
+        sha256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        sizeBytes: 1024,
+        installedSizeBytes: 4096,
+      }));
+    };
+
     registerJobRoutes(app);
     registerSystemRoutes(app, this.shutdownDeps, testDirectoryPicker);
     registerProblemRoutes(app);
@@ -134,6 +147,8 @@ export class NodeBackendAdapter implements BackendAdapter {
       app,
       testInstaller,
       (op) => this.trackBackgroundOperation(op),
+      undefined,
+      testManifestLoader,
     );
     registerBatchJudgeRoute(app);
     registerOsdRoutes(app);

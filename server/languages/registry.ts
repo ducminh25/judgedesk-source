@@ -13,7 +13,7 @@ import {
   validateToolchainVersionPolicy,
 } from "./version-policy.js";
 
-export const LANGUAGE_REGISTRY_REVISION = 6;
+export const LANGUAGE_REGISTRY_REVISION = 7;
 export const CPP_LANGUAGE_PROFILE_ID = "cpp-legacy-v1";
 export const C_LANGUAGE_PROFILE_ID = "c-gcc14";
 export const PYTHON_LANGUAGE_PROFILE_ID = "python-cpython312";
@@ -261,7 +261,7 @@ const LANGUAGE_CATALOG = [
     toolchainKind: "cpp",
     localVersionPolicy: LOCAL_VERSION_POLICIES.cpp,
     localExecution: [
-      { platform: "win32", arch: "x64", mode: "quick_verified_direct" },
+      { platform: "win32", arch: "x64", mode: "freeze_required" },
       { platform: "darwin", arch: "arm64", mode: "quick_verified_direct" },
     ],
     freshInstallMode: "local_auto",
@@ -296,7 +296,7 @@ const LANGUAGE_CATALOG = [
     toolchainKind: "c",
     localVersionPolicy: LOCAL_VERSION_POLICIES.c,
     localExecution: [
-      { platform: "win32", arch: "x64", mode: "quick_verified_direct" },
+      { platform: "win32", arch: "x64", mode: "managed_only" },
       { platform: "darwin", arch: "arm64", mode: "quick_verified_direct" },
     ],
     freshInstallMode: "local_auto",
@@ -336,7 +336,7 @@ const LANGUAGE_CATALOG = [
     toolchainKind: "python",
     localVersionPolicy: LOCAL_VERSION_POLICIES.python,
     localExecution: [
-      { platform: "win32", arch: "x64", mode: "quick_verified_direct" },
+      { platform: "win32", arch: "x64", mode: "managed_only" },
       { platform: "darwin", arch: "arm64", mode: "quick_verified_direct" },
     ],
     freshInstallMode: "local_auto",
@@ -757,6 +757,16 @@ export function getRegisteredProfileForKind(
   const entry = LANGUAGE_REGISTRY.find((candidate) => candidate.toolchainKind === kind);
   if (!entry) throw new Error(`No language profile is registered for '${kind}'.`);
   return entry;
+}
+
+export function getLocalExecutionModeForHost(
+  kind: ToolchainKind,
+  platform: "win32" | "darwin",
+  arch: "x64" | "arm64",
+): LocalExecutionMode | undefined {
+  return getRegisteredProfileForKind(kind).localExecution.find(
+    (entry) => entry.platform === platform && entry.arch === arch,
+  )?.mode;
 }
 
 export function getRegisteredProfileForExtension(

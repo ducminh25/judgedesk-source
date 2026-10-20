@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { it } from "node:test";
 import { createInstance } from "i18next";
 import { I18nextProvider, initReactI18next } from "react-i18next";
@@ -29,3 +30,14 @@ for (const language of ["vi", "en"] as const) {
     assert.match(markup, language === "vi" ? /không thể lưu/ : /cannot be saved/);
   });
 }
+
+it("yields Escape key handling to nested checker source preview modal without closing parent config modal", () => {
+  const modalSource = readFileSync(new URL("./ProblemConfigModal.tsx", import.meta.url), "utf8");
+  const basicSource = readFileSync(
+    new URL("../features/problem-config/BasicProblemSettings.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(modalSource, /topDialog\?\.dataset\.nestedModal/);
+  assert.match(modalSource, /querySelector\("\[data-nested-modal\]"\)/);
+  assert.match(basicSource, /data-nested-modal="checker-source-preview"/);
+});

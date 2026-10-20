@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   C_LANGUAGE_PROFILE_ID,
   CPP_LANGUAGE_PROFILE_ID,
+  getLocalExecutionModeForHost,
   getRegisteredLanguageProfile,
   getRegisteredProfileForExtension,
   getRegisteredProfileForKind,
@@ -166,4 +167,20 @@ test("registered profiles preserve current submission and checker adapters", () 
   assert.deepEqual(python.extensions, [".py"]);
   assert.equal(python.roles.submission.compileAdapterId, undefined);
   assert.equal(python.roles.checker?.launchAdapterId, "legacy.python.checker-launch");
+});
+
+test("Windows local execution never advertises inaccessible direct toolchains", () => {
+  const mode = (kind: "cpp" | "c" | "python") =>
+    getLocalExecutionModeForHost(kind, "win32", "x64");
+
+  assert.equal(mode("cpp"), "freeze_required");
+  assert.equal(mode("c"), "managed_only");
+  assert.equal(mode("python"), "managed_only");
+
+  for (const kind of ["cpp", "c", "python"] as const) {
+    assert.equal(
+      getLocalExecutionModeForHost(kind, "darwin", "arm64"),
+      "quick_verified_direct",
+    );
+  }
 });

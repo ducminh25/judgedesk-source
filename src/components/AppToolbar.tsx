@@ -134,20 +134,33 @@ export default function AppToolbar({
         setUtilityMenuOpen(false);
       }
     };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setUtilityMenuOpen(false);
-      utilityMenuButtonRef.current?.focus();
+    const closeOnShortcutOrEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setUtilityMenuOpen(false);
+        utilityMenuButtonRef.current?.focus();
+        return;
+      }
+      const isModifierOnly =
+        event.key === "Control" ||
+        event.key === "Meta" ||
+        event.key === "Alt" ||
+        event.key === "Shift";
+      if (
+        /^F([1-9]|1[0-2])$/.test(event.key) ||
+        (!isModifierOnly && (event.ctrlKey || event.metaKey))
+      ) {
+        setUtilityMenuOpen(false);
+      }
     };
     const closeOnWindowBlur = () => setUtilityMenuOpen(false);
     document.addEventListener("pointerdown", closeWhenOutside);
     document.addEventListener("focusin", closeWhenOutside);
-    document.addEventListener("keydown", closeOnEscape);
+    document.addEventListener("keydown", closeOnShortcutOrEscape);
     window.addEventListener("blur", closeOnWindowBlur);
     return () => {
       document.removeEventListener("pointerdown", closeWhenOutside);
       document.removeEventListener("focusin", closeWhenOutside);
-      document.removeEventListener("keydown", closeOnEscape);
+      document.removeEventListener("keydown", closeOnShortcutOrEscape);
       window.removeEventListener("blur", closeOnWindowBlur);
     };
   }, [utilityMenuOpen]);
@@ -159,22 +172,35 @@ export default function AppToolbar({
         setBrandMenuOpen(false);
       }
     };
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      setBrandMenuOpen(false);
-      brandMenuButtonRef.current?.focus();
+    const closeOnShortcutOrEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setBrandMenuOpen(false);
+        brandMenuButtonRef.current?.focus();
+        return;
+      }
+      const isModifierOnly =
+        event.key === "Control" ||
+        event.key === "Meta" ||
+        event.key === "Alt" ||
+        event.key === "Shift";
+      if (
+        /^F([1-9]|1[0-2])$/.test(event.key) ||
+        (!isModifierOnly && (event.ctrlKey || event.metaKey))
+      ) {
+        setBrandMenuOpen(false);
+      }
     };
     const closeOnWindowBlur = () => setBrandMenuOpen(false);
     const closeOnScroll = () => setBrandMenuOpen(false);
     document.addEventListener("pointerdown", closeWhenOutside);
     document.addEventListener("focusin", closeWhenOutside);
-    document.addEventListener("keydown", closeOnEscape);
+    document.addEventListener("keydown", closeOnShortcutOrEscape);
     window.addEventListener("blur", closeOnWindowBlur);
     window.addEventListener("scroll", closeOnScroll, true);
     return () => {
       document.removeEventListener("pointerdown", closeWhenOutside);
       document.removeEventListener("focusin", closeWhenOutside);
-      document.removeEventListener("keydown", closeOnEscape);
+      document.removeEventListener("keydown", closeOnShortcutOrEscape);
       window.removeEventListener("blur", closeOnWindowBlur);
       window.removeEventListener("scroll", closeOnScroll, true);
     };
@@ -325,6 +351,7 @@ export default function AppToolbar({
           <button
             ref={utilityMenuButtonRef}
             type="button"
+            data-toolchain-menu-trigger="true"
             onClick={() => {
               setUtilityMenuOpen((open) => {
                 if (!open) onRequestHostStatus();
@@ -586,7 +613,7 @@ export function HostStatusMenu({
       </div>
       {status ? (
         <>
-          <StatusRow label="Native protection" ready={status.secureRunner.ready} installed={status.secureRunner.mode !== "unavailable"} incompleteLabel={t("toolbar.statusMenu.unavailable")} />
+          <StatusRow label={t("toolbar.statusMenu.nativeProtection", "Native protection")} ready={status.secureRunner.ready} installed={status.secureRunner.mode !== "unavailable"} incompleteLabel={t("toolbar.statusMenu.unavailable")} />
           {!status.secureRunner.ready && status.secureRunner.diagnostics.length > 0 && (
             <div className="mx-2 my-1 rounded border border-rose-200 bg-rose-50 p-2 text-[9px] text-rose-700 dark:border-rose-900 dark:bg-rose-950/20 dark:text-rose-300">
               {status.secureRunner.diagnostics.join("; ")}
@@ -616,7 +643,7 @@ export function HostStatusMenu({
           </div>
           {status.build && (
             <div className="px-2 pt-1 text-[10px] text-text-muted">
-              JudgeDesk <span className="font-mono text-text-primary">v{status.build.appVersion}</span>
+              JudgeDesk <span className="font-mono text-text-primary">v{status.build.appVersion || APP_VERSION}</span>
               {" · "}
               <span className="font-mono text-text-primary">
                 {status.build.gitCommit === "unknown" ? "unknown" : status.build.gitCommit.slice(0, 12)}

@@ -58,6 +58,10 @@ impl OwnedTestEnvironment {
 
     pub fn with_isolated_roots<T>(&self, operation: impl FnOnce() -> T) -> T {
         let replacements = [
+            (
+                "THEMIS_APP_DATA_DIR",
+                self.root.join("local").join("ThemisV2").into_os_string(),
+            ),
             ("LOCALAPPDATA", self.root.join("local").into_os_string()),
             ("APPDATA", self.root.join("roaming").into_os_string()),
             ("TEMP", self.root.join("temp").into_os_string()),
@@ -118,16 +122,16 @@ impl Drop for OwnedTestEnvironment {
 }
 
 pub fn ensure_test_environment() {
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    {
+        init_macos_tree_guard();
+    }
     INIT_TEST_ENV.call_once(|| {
-        #[cfg(target_os = "macos")]
-        {
-            init_macos_tree_guard();
-        }
         init_executor_binary();
     });
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn init_macos_tree_guard() {
     use std::fs::{self, OpenOptions};
     use std::io::Write;
@@ -144,7 +148,7 @@ fn init_macos_tree_guard() {
     }
 
     let dir =
-        std::env::temp_dir().join(format!("judgedesk-test-tree-guard-{}", std::process::id()));
+        PathBuf::from("/tmp").join(format!("judgedesk-test-tree-guard-{}", std::process::id()));
     let _ = fs::create_dir_all(&dir);
     let guard_path = dir.join("process-tree.generation");
     let generation = format!("{:064x}", std::process::id());

@@ -135,6 +135,11 @@ test("formatScore formats terminating decimals, repeating fractions, and floats 
   assert.equal(formatScore(2.99999999999999), "3");
   assert.equal(formatScore(3.499999999999987), "3.5");
 
+  // Terminating decimals up to 4 places (e.g. 1/40 = 0.025, 141/40 = 3.525)
+  assert.equal(formatScore({ n: 1, d: 40 }), "0.025");
+  assert.equal(formatScore({ n: 141, d: 40 }), "3.525");
+  assert.equal(formatScore("0.025"), "0.025");
+
   // Repeating fractions
   assert.equal(formatScore("1/3"), "1/3");
   assert.equal(formatScore("5/3"), "5/3");

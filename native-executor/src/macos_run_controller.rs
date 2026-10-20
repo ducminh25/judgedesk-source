@@ -132,7 +132,7 @@ impl ExecutorRunState {
     }
 
     fn record_prepared(&mut self, source: EventSource, anchor: ProcessIdentity) -> io::Result<()> {
-        self.require_anchor(anchor)?;
+        self.bind_anchor(anchor)?;
         if !self.cleanup.is_requested() {
             return Err(invalid("prepared result arrived before cleanup request"));
         }
@@ -179,14 +179,42 @@ fn invalid(message: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message.into())
 }
 
+#[cfg(any(target_os = "macos", test))]
+fn send_controller_command<W, T>(
+    open: bool,
+    writer: &mut W,
+    command: &T,
+    identity: &crate::guardian_protocol::FrameIdentity,
+    closed_message: &'static str,
+) -> io::Result<()>
+where
+    W: io::Write,
+    T: serde::Serialize + crate::guardian_protocol::AuthenticatedFrame,
+{
+    if !open {
+        return Err(io::Error::new(io::ErrorKind::BrokenPipe, closed_message));
+    }
+    crate::guardian_protocol::write_authenticated_frame(writer, command, identity)
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn is_peer_closed_write_error(error: &io::Error) -> bool {
+    matches!(
+        error.kind(),
+        io::ErrorKind::BrokenPipe | io::ErrorKind::ConnectionReset
+    )
+}
+
 #[cfg(target_os = "macos")]
 mod imp {
-    use super::{invalid, EventSource, ExecutorRunState};
+    use super::{
+        invalid, is_peer_closed_write_error, send_controller_command, EventSource, ExecutorRunState,
+    };
     use crate::fault_trace::{FaultTrace, FaultTraceEvent};
     use crate::guardian_io::{FrameRead, FrameReader};
     use crate::guardian_protocol::{
-        generate_nonce, write_authenticated_frame, CleanupCause, FrameIdentity, GuardianCommand,
-        GuardianEvent, ProcessIdentity, SupervisorDirectCommand, SupervisorEvent,
+        generate_nonce, CleanupCause, FrameIdentity, GuardianCommand, GuardianEvent,
+        ProcessIdentity, SupervisorDirectCommand, SupervisorEvent,
     };
     use crate::macos_interactive::PairControl;
     use crate::macos_run_guardian::{
@@ -610,7 +638,7 @@ mod imp {
                     CleanupCause::InternalError,
                     format!("cannot send guardian commit: {error}"),
                 )?;
-                return self.handle_guardian_loss("guardian commit write failed");
+                return self.preferred_cleanup();
             }
             self.state.record_committed()?;
 
@@ -748,7 +776,7 @@ mod imp {
         fn handle_precommit_guardian(&mut self, event: GuardianEvent) -> io::Result<()> {
             match event {
                 GuardianEvent::PairPinRegistered { anchor, member, .. } => {
-                    self.state.require_anchor(anchor)?;
+                    self.state.bind_anchor(anchor)?;
                     let expected = self
                         .pair_member
                         .as_ref()
@@ -896,11 +924,9 @@ mod imp {
             if !self.guardian_open {
                 return self.handle_guardian_loss("guardian channel unavailable before cancel");
             }
-            if let Err(error) = self.send_guardian(&GuardianCommand::cancel(&self.identity, cause))
-            {
-                self.append_diagnostic(format!("cannot send guardian cancel: {error}"));
-                return self.handle_guardian_loss("guardian cancel write failed");
-            }
+            let cancel_error = self
+                .send_guardian(&GuardianCommand::cancel(&self.identity, cause))
+                .err();
 
             let deadline = checked_deadline(PREFERRED_CLEANUP_TIMEOUT)?;
             loop {
@@ -909,12 +935,18 @@ mod imp {
                 }
                 if Instant::now() >= deadline {
                     if !self.ensure_guardian_terminated()? {
+                        if let Some(error) = &cancel_error {
+                            self.append_diagnostic(format!("cannot send guardian cancel: {error}"));
+                        }
                         return self.fail_closed(
                             "guardian cleanup timed out and exact direct child could not be reaped",
                         );
                     }
                     if self.guardian_result.is_some() {
                         return self.finish_preferred_result();
+                    }
+                    if let Some(error) = &cancel_error {
+                        self.append_diagnostic(format!("cannot send guardian cancel: {error}"));
                     }
                     return self.handle_guardian_loss("guardian cleanup timed out before prepared");
                 }
@@ -952,6 +984,11 @@ mod imp {
                     }
                     ControllerInput::GuardianEof => {
                         if self.guardian_result.is_none() {
+                            if let Some(error) = &cancel_error {
+                                self.append_diagnostic(format!(
+                                    "cannot send guardian cancel: {error}"
+                                ));
+                            }
                             if !self.ensure_guardian_terminated()? {
                                 return self.fail_closed(
                                     "guardian EOF occurred but the direct child was not reapable",
@@ -964,6 +1001,9 @@ mod imp {
                         if self.guardian_result.is_some() {
                             return self.finish_preferred_result();
                         }
+                        if let Some(error) = &cancel_error {
+                            self.append_diagnostic(format!("cannot send guardian cancel: {error}"));
+                        }
                         return self.handle_guardian_loss("guardian exited before prepared");
                     }
                     ControllerInput::DirectEof | ControllerInput::Tick => {}
@@ -974,7 +1014,7 @@ mod imp {
         fn handle_cleanup_guardian(&mut self, event: GuardianEvent) -> io::Result<()> {
             match event {
                 GuardianEvent::PairQuiescent { anchor, member, .. } => {
-                    self.state.require_anchor(anchor)?;
+                    self.state.bind_anchor(anchor)?;
                     let pin = self
                         .pair_pin
                         .as_mut()
@@ -1019,6 +1059,19 @@ mod imp {
 
         fn handle_cleanup_direct(&mut self, event: SupervisorEvent) -> io::Result<()> {
             match event {
+                SupervisorEvent::StdioReady { anchor, .. } if !self.stdio_ready => {
+                    self.state.require_anchor(anchor)?;
+                    if self.paired.is_none()
+                        || self
+                            .paired
+                            .as_ref()
+                            .is_some_and(|pair| pair.stdio.is_some())
+                    {
+                        return Err(invalid("unexpected interactive stdio acknowledgement"));
+                    }
+                    self.stdio_ready = true;
+                    Ok(())
+                }
                 SupervisorEvent::Registered { anchor, .. } if !self.state.direct_registered => {
                     self.state.record_direct_registered(anchor)
                 }
@@ -1119,15 +1172,26 @@ mod imp {
                         for signal in [libc::SIGSTOP, libc::SIGKILL] {
                             if let Err(signal_error) = pin.signal_group(signal) {
                                 // Darwin can reject a signal to a group containing only our
-                                // terminal owned member. The error itself grants no drain
-                                // proof: independently require physical quiescence before
-                                // consuming that member's wait status.
+                                // terminal owned member (or only zombies while an external
+                                // reaper finishes reaping another zombie). The error itself
+                                // grants no drain proof: independently require physical
+                                // quiescence before consuming that member's wait status.
                                 match pin.reap_after_quiescence(&[]) {
                                     Ok(_) => {
                                         self.pair_pin_released = true;
                                         break;
                                     }
                                     Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                                        if signal_error.raw_os_error() == Some(libc::EPERM)
+                                            && pin.poll_exit_unreaped()?
+                                            && crate::macos_process::inventory_live_process_group(
+                                                anchor.pgid,
+                                            )?
+                                            .members
+                                            .is_empty()
+                                        {
+                                            break;
+                                        }
                                         return Err(signal_error);
                                     }
                                     Err(error) => {
@@ -1355,7 +1419,10 @@ mod imp {
                     }
                 });
             }
-            if !self.guardian_exit_reported && self.guardian_child.try_wait()?.is_some() {
+            if !self.guardian_open
+                && !self.guardian_exit_reported
+                && self.guardian_child.try_wait()?.is_some()
+            {
                 self.guardian_exit_reported = true;
                 return Ok(ControllerInput::GuardianExited);
             }
@@ -1363,34 +1430,23 @@ mod imp {
         }
 
         fn send_guardian(&mut self, command: &GuardianCommand) -> io::Result<()> {
-            if !self.guardian_open {
-                return Err(io::Error::new(
-                    io::ErrorKind::BrokenPipe,
-                    "guardian control channel is closed",
-                ));
-            }
-            if let Err(error) =
-                write_authenticated_frame(&mut self.guardian_control, command, &self.identity)
-            {
-                self.guardian_open = false;
-                return Err(error);
-            }
-            Ok(())
+            send_controller_command(
+                self.guardian_open,
+                &mut self.guardian_control,
+                command,
+                &self.identity,
+                "guardian control channel is closed",
+            )
         }
 
         fn send_direct(&mut self, command: &SupervisorDirectCommand) -> io::Result<()> {
-            if !self.direct_open {
-                return Err(io::Error::new(
-                    io::ErrorKind::BrokenPipe,
-                    "direct supervisor channel is closed",
-                ));
-            }
-            if let Err(error) = write_authenticated_frame(&mut self.direct, command, &self.identity)
-            {
-                self.direct_open = false;
-                return Err(error);
-            }
-            Ok(())
+            send_controller_command(
+                self.direct_open,
+                &mut self.direct,
+                command,
+                &self.identity,
+                "direct supervisor channel is closed",
+            )
         }
 
         fn request_cleanup(
@@ -1424,12 +1480,19 @@ mod imp {
                 .map(|pair| pair.control.stdout_bytes(pair.side))
                 .unwrap_or(0);
             if bytes > self.reported_stdout {
-                self.send_direct(&SupervisorDirectCommand::output_progress(
+                match self.send_direct(&SupervisorDirectCommand::output_progress(
                     &self.identity,
                     self.state.anchor()?,
                     bytes,
-                ))?;
-                self.reported_stdout = bytes;
+                )) {
+                    Ok(()) => {
+                        self.reported_stdout = bytes;
+                    }
+                    Err(error) if is_peer_closed_write_error(&error) => {
+                        self.reported_stdout = bytes;
+                    }
+                    Err(error) => return Err(error),
+                }
             }
             Ok(())
         }
@@ -1718,6 +1781,74 @@ mod imp {
             ))
         }
     }
+
+    #[cfg(test)]
+    pub(super) struct CleanupTestHarnessInput<'a> {
+        pub(super) root: &'a Path,
+        pub(super) spec: &'a RunSpec,
+        pub(super) active: &'a ActiveRuns,
+        pub(super) spawned: SpawnedRunGuardian,
+        pub(super) generation_guard: Arc<ProcessTreeGuard>,
+        pub(super) state: ExecutorRunState,
+        pub(super) ready_tx: std::sync::mpsc::SyncSender<io::Result<()>>,
+        pub(super) start_rx: std::sync::mpsc::Receiver<()>,
+    }
+
+    #[cfg(test)]
+    pub(super) struct CleanupTestHarnessOutcome {
+        pub(super) result: io::Result<RunResult>,
+        pub(super) guardian_prepared: bool,
+        pub(super) guardian_open: bool,
+        pub(super) guardian_exit_reported: bool,
+        pub(super) group_proven: bool,
+        pub(super) active_handle_cleared: bool,
+    }
+
+    #[cfg(test)]
+    pub(super) fn run_preferred_cleanup_for_test(
+        input: CleanupTestHarnessInput<'_>,
+    ) -> io::Result<CleanupTestHarnessOutcome> {
+        let CleanupTestHarnessInput {
+            root,
+            spec,
+            active,
+            spawned,
+            generation_guard,
+            state,
+            ready_tx,
+            start_rx,
+        } = input;
+        let cancellation = Arc::new(RunCancellation {
+            cancelled: AtomicBool::new(false),
+            _generation_guard: generation_guard,
+        });
+        let mut controller =
+            match RunController::new(root, spec, active, spawned, None, cancellation, None) {
+                Ok(controller) => controller,
+                Err(error) => {
+                    let _ = ready_tx.send(Err(io::Error::new(error.kind(), error.to_string())));
+                    return Err(error);
+                }
+            };
+        controller.state = state;
+        if let Err(error) = controller.insert_active_record().map_err(io::Error::other) {
+            let _ = ready_tx.send(Err(io::Error::new(error.kind(), error.to_string())));
+            return Err(error);
+        }
+        let _ = ready_tx.send(Ok(()));
+        start_rx
+            .recv()
+            .map_err(|_| io::Error::other("cleanup test start channel closed"))?;
+        let result = controller.preferred_cleanup();
+        Ok(CleanupTestHarnessOutcome {
+            result,
+            guardian_prepared: controller.state.guardian_prepared,
+            guardian_open: controller.guardian_open,
+            guardian_exit_reported: controller.guardian_exit_reported,
+            group_proven: controller.group_proven,
+            active_handle_cleared: controller.active_handle.is_none(),
+        })
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -1736,13 +1867,109 @@ pub fn run_with_guardian(
 
 #[cfg(test)]
 mod tests {
-    use super::{CleanupCause, EventSource, ExecutorRunState, ProcessIdentity};
+    use super::{
+        is_peer_closed_write_error, send_controller_command, CleanupCause, EventSource,
+        ExecutorRunState, ProcessIdentity,
+    };
+    use crate::guardian_io::{FrameRead, FrameReader};
+    use crate::guardian_protocol::{
+        write_authenticated_frame, FrameIdentity, GuardianCommand, GuardianEvent,
+    };
+    use crate::protocol::{RunReason, RunResult};
+    use std::io::{self, Cursor, Read, Write};
+
+    struct HalfClosedStream {
+        read_cursor: Cursor<Vec<u8>>,
+        write_error_kind: io::ErrorKind,
+    }
+
+    impl Read for HalfClosedStream {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            self.read_cursor.read(buf)
+        }
+    }
+
+    impl Write for HalfClosedStream {
+        fn write(&mut self, _buf: &[u8]) -> io::Result<usize> {
+            Err(io::Error::new(
+                self.write_error_kind,
+                "guardian already exited after queueing prepared",
+            ))
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
 
     fn identity(pid: i32, pgid: i32, start_abstime: u64) -> ProcessIdentity {
         ProcessIdentity {
             pid,
             pgid,
             start_abstime,
+        }
+    }
+
+    fn frame_identity() -> FrameIdentity {
+        FrameIdentity::new(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef".to_string(),
+            "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789".to_string(),
+            "local_python_checker_probe_1".to_string(),
+        )
+        .unwrap()
+    }
+
+    #[cfg(target_os = "macos")]
+    struct TestDirectory(std::path::PathBuf);
+
+    #[cfg(target_os = "macos")]
+    impl TestDirectory {
+        fn new() -> Self {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            static NEXT_DIR: AtomicU64 = AtomicU64::new(0);
+            let suffix = NEXT_DIR.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!(
+                "judgedesk-controller-cleanup-test-{}-{suffix}",
+                std::process::id()
+            ));
+            std::fs::create_dir_all(&path).expect("create controller cleanup test directory");
+            Self(path)
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn sample_spec(run_id: &str) -> crate::protocol::RunSpec {
+        use crate::protocol::{RunLimits, RunRole, RunSpec};
+        use std::collections::BTreeMap;
+        RunSpec {
+            run_id: run_id.into(),
+            role: RunRole::Submission,
+            workspace_id: "workspace".into(),
+            executable_id: "workspaces/workspace/program".into(),
+            args: Vec::new(),
+            stdin_file: None,
+            stdout_file: "stdout.txt".into(),
+            stderr_file: "stderr.txt".into(),
+            environment: BTreeMap::new(),
+            toolchain: None,
+            local_toolchain: None,
+            limits: RunLimits {
+                wall_time_ms: 1_000,
+                memory_bytes: 64 * 1024 * 1024,
+                process_count: 1,
+                thread_count: 16,
+                output_bytes: 1024,
+                total_write_bytes: 2048,
+                open_files: 32,
+                created_files: 16,
+            },
         }
     }
 
@@ -1797,5 +2024,469 @@ mod tests {
             .unwrap();
         assert_eq!(state.cleanup_cause(), Some(CleanupCause::Cancelled));
         state.record_prepared(EventSource::Direct, anchor).unwrap();
+    }
+
+    #[test]
+    fn pre_commit_cancellation_binds_and_authenticates_anchor_on_prepared() {
+        let anchor = identity(70, 70, 700);
+        let mut state = ExecutorRunState::default();
+        state
+            .request_cleanup(None, CleanupCause::Cancelled)
+            .unwrap();
+        state
+            .record_prepared(EventSource::Guardian, anchor)
+            .unwrap();
+        assert_eq!(state.anchor().unwrap(), anchor);
+        state.record_direct_registered(anchor).unwrap();
+        state.record_prepared(EventSource::Direct, anchor).unwrap();
+        assert!(state
+            .record_guardian_started(identity(71, 71, 710))
+            .is_err());
+    }
+
+    #[test]
+    fn preferred_cleanup_drains_buffered_prepared_after_cancel_broken_pipe() {
+        let anchor = identity(80, 80, 800);
+        let target = identity(81, 80, 810);
+        let frame_id = frame_identity();
+        let build_cleanup_state = || {
+            let mut state = ExecutorRunState::default();
+            state.record_direct_registered(anchor).unwrap();
+            state.record_direct_ready(anchor).unwrap();
+            state.record_guardian_started(anchor).unwrap();
+            state.record_committed().unwrap();
+            state
+                .record_target(EventSource::Guardian, anchor, target)
+                .unwrap();
+            state
+                .request_cleanup(Some(anchor), CleanupCause::TargetExited)
+                .unwrap();
+            state
+        };
+
+        let prepared_result = RunResult {
+            run_id: frame_id.run_id.clone(),
+            reason: RunReason::Exited,
+            exit_code: Some(0),
+            signal_or_status: None,
+            security_setup_time_us: 100,
+            wall_time_us: 1500,
+            result_collection_time_us: 50,
+            user_cpu_time_us: Some(1000),
+            kernel_cpu_time_us: Some(200),
+            peak_memory_bytes: Some(1024),
+            stdout_bytes: 42,
+            stderr_bytes: 0,
+            created_files: Some(0),
+            diagnostic: None,
+        };
+        let mut queued_bytes = Vec::new();
+        write_authenticated_frame(
+            &mut queued_bytes,
+            &GuardianEvent::prepared(&frame_id, anchor, prepared_result.clone()),
+            &frame_id,
+        )
+        .unwrap();
+
+        let guardian_open = true;
+        let mut stream = HalfClosedStream {
+            read_cursor: Cursor::new(queued_bytes),
+            write_error_kind: io::ErrorKind::BrokenPipe,
+        };
+        let cancel_err = send_controller_command(
+            guardian_open,
+            &mut stream,
+            &GuardianCommand::cancel(&frame_id, CleanupCause::TargetExited),
+            &frame_id,
+            "guardian control channel is closed",
+        )
+        .expect_err("cancel write fails with BrokenPipe after guardian exits");
+        assert!(is_peer_closed_write_error(&cancel_err));
+
+        let mut reader = FrameReader::new();
+        match reader
+            .receive::<_, GuardianEvent>(&mut stream, &frame_id)
+            .unwrap()
+        {
+            FrameRead::Frame(GuardianEvent::Prepared {
+                anchor: event_anchor,
+                result,
+                ..
+            }) => {
+                let mut verify_state = build_cleanup_state();
+                verify_state
+                    .record_prepared(EventSource::Guardian, event_anchor)
+                    .unwrap();
+                assert_eq!(result.run_id, prepared_result.run_id);
+                assert!(matches!(result.reason, RunReason::Exited));
+            }
+            other => panic!("expected buffered GuardianEvent::Prepared, got {other:?}"),
+        }
+        assert!(matches!(
+            reader
+                .receive::<_, GuardianEvent>(&mut stream, &frame_id)
+                .unwrap(),
+            FrameRead::Eof
+        ));
+
+        #[cfg(target_os = "macos")]
+        {
+            use crate::macos_run_guardian::{GuardianChild, SpawnedRunGuardian};
+            use crate::platform::ActiveRuns;
+            use std::collections::HashMap;
+            use std::os::fd::AsRawFd;
+            use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+            use std::os::unix::net::UnixStream;
+            use std::sync::{mpsc, Arc, Mutex};
+            use std::time::Duration;
+
+            let test_dir = TestDirectory::new();
+            let root = crate::workspace::initialize_root(test_dir.0.join("executor-root")).unwrap();
+            let profile_dir = crate::platform::macos::trusted_profile_directory(&root).unwrap();
+            let profile_path =
+                profile_dir.join(format!("{}-{}.sb", frame_id.run_id, frame_id.token));
+            {
+                let mut profile_file = std::fs::OpenOptions::new()
+                    .create_new(true)
+                    .write(true)
+                    .mode(0o600)
+                    .open(&profile_path)
+                    .unwrap();
+                profile_file.write_all(b"(version 1)").unwrap();
+                profile_file.sync_all().unwrap();
+                std::fs::set_permissions(&profile_path, std::fs::Permissions::from_mode(0o600))
+                    .unwrap();
+            }
+            assert!(profile_path.exists());
+
+            let lock_path = test_dir.0.join("process-tree.generation");
+            {
+                let mut lock_file = std::fs::OpenOptions::new()
+                    .create_new(true)
+                    .read(true)
+                    .write(true)
+                    .mode(0o600)
+                    .open(&lock_path)
+                    .unwrap();
+                lock_file
+                    .write_all(
+                        crate::tree_guard::generation_contents(&frame_id.generation).as_bytes(),
+                    )
+                    .unwrap();
+                lock_file.sync_all().unwrap();
+                std::fs::set_permissions(&lock_path, std::fs::Permissions::from_mode(0o600))
+                    .unwrap();
+            }
+            let generation_guard = {
+                std::env::set_var(crate::tree_guard::REQUIRED_ENV, "1");
+                std::env::set_var(crate::tree_guard::PATH_ENV, &lock_path);
+                std::env::set_var(crate::tree_guard::GENERATION_ENV, &frame_id.generation);
+                std::env::set_var(
+                    crate::tree_guard::PARENT_PID_ENV,
+                    unsafe { libc::getppid() }.to_string(),
+                );
+                let acquired = crate::tree_guard::acquire_from_environment();
+                std::env::remove_var(crate::tree_guard::REQUIRED_ENV);
+                std::env::remove_var(crate::tree_guard::PATH_ENV);
+                std::env::remove_var(crate::tree_guard::GENERATION_ENV);
+                std::env::remove_var(crate::tree_guard::PARENT_PID_ENV);
+                Arc::new(acquired.unwrap())
+            };
+            let probe_file = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .custom_flags(libc::O_CLOEXEC)
+                .open(&lock_path)
+                .unwrap();
+            assert_ne!(
+                unsafe { libc::flock(probe_file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) },
+                0,
+                "exclusive flock probe must fail with EWOULDBLOCK while generation guard is held"
+            );
+
+            let guardian_pid = unsafe { libc::fork() };
+            assert!(guardian_pid >= 0, "fork test guardian child");
+            if guardian_pid == 0 {
+                unsafe { libc::_exit(0) };
+            }
+
+            let (guardian_control, mut guardian_peer) = UnixStream::pair().unwrap();
+            let (direct, direct_peer) = UnixStream::pair().unwrap();
+            for fd in [
+                guardian_control.as_raw_fd(),
+                guardian_peer.as_raw_fd(),
+                direct.as_raw_fd(),
+                direct_peer.as_raw_fd(),
+            ] {
+                assert_eq!(
+                    unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) },
+                    0,
+                    "set FD_CLOEXEC on test UnixStream"
+                );
+            }
+
+            let spawned = SpawnedRunGuardian {
+                identity: frame_id.clone(),
+                guardian: identity(guardian_pid, guardian_pid, 790),
+                child: GuardianChild::for_test_pid(guardian_pid),
+                control: guardian_control,
+                direct,
+            };
+            let active: ActiveRuns = Arc::new(Mutex::new(HashMap::new()));
+            let active_for_worker = Arc::clone(&active);
+            let root_for_worker = root.clone();
+            let spec = sample_spec(&frame_id.run_id);
+            let controller_state = build_cleanup_state();
+            let (ready_tx, ready_rx) = mpsc::sync_channel(1);
+            let (start_tx, start_rx) = mpsc::sync_channel(1);
+            let (done_tx, done_rx) = mpsc::sync_channel(1);
+
+            std::thread::spawn(move || {
+                let outcome = super::imp::run_preferred_cleanup_for_test(
+                    super::imp::CleanupTestHarnessInput {
+                        root: &root_for_worker,
+                        spec: &spec,
+                        active: &active_for_worker,
+                        spawned,
+                        generation_guard,
+                        state: controller_state,
+                        ready_tx,
+                        start_rx,
+                    },
+                );
+                let _ = done_tx.send(outcome);
+            });
+
+            ready_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("controller test harness ready channel")
+                .expect("controller test harness initialized");
+            assert!(
+                active.lock().unwrap().contains_key(&frame_id.run_id),
+                "active cancellation record must be installed before preferred_cleanup"
+            );
+
+            write_authenticated_frame(
+                &mut guardian_peer,
+                &GuardianEvent::prepared(&frame_id, anchor, prepared_result.clone()),
+                &frame_id,
+            )
+            .unwrap();
+            // Closing the peer socket after RunController::new configured SO_NOSIGPIPE forces
+            // GuardianCommand::Cancel inside RunController::preferred_cleanup() to fail with
+            // EPIPE (BrokenPipe) while GuardianEvent::Prepared remains buffered on guardian_control.
+            drop(guardian_peer);
+            drop(direct_peer);
+            start_tx
+                .send(())
+                .expect("start RunController::preferred_cleanup");
+
+            let outcome = match done_rx.recv_timeout(Duration::from_millis(500)) {
+                Ok(Ok(outcome)) => outcome,
+                Ok(Err(error)) => {
+                    panic!("RunController::preferred_cleanup returned error: {error}")
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    panic!("RunController::preferred_cleanup worker disconnected unexpectedly")
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    let active_retained = active.lock().unwrap().contains_key(&frame_id.run_id);
+                    let guard_still_held = unsafe {
+                        libc::flock(probe_file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB)
+                    } != 0;
+                    panic!(
+                        "RunController::preferred_cleanup failed to drain buffered GuardianEvent::Prepared after Cancel BrokenPipe (timed out in fail_closed; activeRetained={active_retained}, generationGuardHeld={guard_still_held})"
+                    );
+                }
+            };
+
+            let result = outcome
+                .result
+                .expect("RunController::preferred_cleanup must return buffered Prepared result");
+            assert_eq!(result.run_id, prepared_result.run_id);
+            assert!(matches!(result.reason, RunReason::Exited));
+            assert_eq!(result.exit_code, Some(0));
+            assert_eq!(result.stdout_bytes, 42);
+            assert_eq!(result.diagnostic, None);
+            assert!(outcome.guardian_prepared);
+            assert!(!outcome.guardian_open);
+            assert!(outcome.guardian_exit_reported);
+            assert!(outcome.group_proven);
+            assert!(outcome.active_handle_cleared);
+            assert!(
+                !active.lock().unwrap().contains_key(&frame_id.run_id),
+                "active cancellation record must be removed after preferred_cleanup proof"
+            );
+            assert!(
+                !profile_path.exists(),
+                "Seatbelt run profile must be cleaned up after preferred_cleanup proof"
+            );
+
+            let mut raw_status = 0_i32;
+            let waited = unsafe { libc::waitpid(guardian_pid, &mut raw_status, libc::WNOHANG) };
+            assert_eq!(
+                waited, -1,
+                "exact guardian child must already be reaped by RunController::preferred_cleanup"
+            );
+            assert_eq!(
+                io::Error::last_os_error().raw_os_error(),
+                Some(libc::ECHILD)
+            );
+
+            let lock_rc =
+                unsafe { libc::flock(probe_file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+            assert_eq!(
+                lock_rc, 0,
+                "generation guard shared flock must be released after RunController cleanup"
+            );
+            unsafe {
+                libc::flock(probe_file.as_raw_fd(), libc::LOCK_UN);
+            }
+
+            // Phase 2: Also prove that if poll_controller_streams times out while guardian_child
+            // is already a zombie (exited) and guardian_open is still true, next_input() does not
+            // report GuardianExited before draining the subsequent Prepared frame and EOF.
+            {
+                let mut profile_file = std::fs::OpenOptions::new()
+                    .create_new(true)
+                    .write(true)
+                    .mode(0o600)
+                    .open(&profile_path)
+                    .unwrap();
+                profile_file.write_all(b"(version 1)").unwrap();
+                profile_file.sync_all().unwrap();
+                std::fs::set_permissions(&profile_path, std::fs::Permissions::from_mode(0o600))
+                    .unwrap();
+            }
+            let generation_guard_2 = {
+                std::env::set_var(crate::tree_guard::REQUIRED_ENV, "1");
+                std::env::set_var(crate::tree_guard::PATH_ENV, &lock_path);
+                std::env::set_var(crate::tree_guard::GENERATION_ENV, &frame_id.generation);
+                std::env::set_var(
+                    crate::tree_guard::PARENT_PID_ENV,
+                    unsafe { libc::getppid() }.to_string(),
+                );
+                let acquired = crate::tree_guard::acquire_from_environment();
+                std::env::remove_var(crate::tree_guard::REQUIRED_ENV);
+                std::env::remove_var(crate::tree_guard::PATH_ENV);
+                std::env::remove_var(crate::tree_guard::GENERATION_ENV);
+                std::env::remove_var(crate::tree_guard::PARENT_PID_ENV);
+                Arc::new(acquired.unwrap())
+            };
+            let guardian_pid_2 = unsafe { libc::fork() };
+            assert!(guardian_pid_2 >= 0, "fork second test guardian child");
+            if guardian_pid_2 == 0 {
+                unsafe { libc::_exit(0) };
+            }
+            // Wait until guardian_pid_2 is an unreaped zombie so try_wait() would immediately
+            // succeed if next_input() polled child exit while guardian_open was still true.
+            for _ in 0..200 {
+                let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+                let rc = unsafe {
+                    libc::waitid(
+                        libc::P_PID,
+                        guardian_pid_2 as libc::id_t,
+                        &mut info,
+                        libc::WEXITED | libc::WNOWAIT | libc::WNOHANG,
+                    )
+                };
+                if rc == 0 && info.si_pid == guardian_pid_2 {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(1));
+            }
+
+            let (guardian_control_2, mut guardian_peer_2) = UnixStream::pair().unwrap();
+            let (direct_2, direct_peer_2) = UnixStream::pair().unwrap();
+            for fd in [
+                guardian_control_2.as_raw_fd(),
+                guardian_peer_2.as_raw_fd(),
+                direct_2.as_raw_fd(),
+                direct_peer_2.as_raw_fd(),
+            ] {
+                assert_eq!(
+                    unsafe { libc::fcntl(fd, libc::F_SETFD, libc::FD_CLOEXEC) },
+                    0,
+                    "set FD_CLOEXEC on second test UnixStream"
+                );
+            }
+            let spawned_2 = SpawnedRunGuardian {
+                identity: frame_id.clone(),
+                guardian: identity(guardian_pid_2, guardian_pid_2, 791),
+                child: GuardianChild::for_test_pid(guardian_pid_2),
+                control: guardian_control_2,
+                direct: direct_2,
+            };
+            let active_for_worker_2 = Arc::clone(&active);
+            let root_for_worker_2 = root.clone();
+            let spec_2 = sample_spec(&frame_id.run_id);
+            let controller_state_2 = build_cleanup_state();
+            let (ready_tx_2, ready_rx_2) = mpsc::sync_channel(1);
+            let (start_tx_2, start_rx_2) = mpsc::sync_channel(1);
+            let (done_tx_2, done_rx_2) = mpsc::sync_channel(1);
+
+            std::thread::spawn(move || {
+                let outcome = super::imp::run_preferred_cleanup_for_test(
+                    super::imp::CleanupTestHarnessInput {
+                        root: &root_for_worker_2,
+                        spec: &spec_2,
+                        active: &active_for_worker_2,
+                        spawned: spawned_2,
+                        generation_guard: generation_guard_2,
+                        state: controller_state_2,
+                        ready_tx: ready_tx_2,
+                        start_rx: start_rx_2,
+                    },
+                );
+                let _ = done_tx_2.send(outcome);
+            });
+
+            ready_rx_2
+                .recv_timeout(Duration::from_secs(2))
+                .expect("second controller test harness ready channel")
+                .expect("second controller test harness initialized");
+            start_tx_2
+                .send(())
+                .expect("start second RunController::preferred_cleanup");
+            // Allow at least one 2ms poll_controller_streams cycle to return ready.guardian=false
+            // while guardian_pid_2 is already a zombie and guardian_open is true.
+            std::thread::sleep(Duration::from_millis(8));
+            write_authenticated_frame(
+                &mut guardian_peer_2,
+                &GuardianEvent::prepared(&frame_id, anchor, prepared_result.clone()),
+                &frame_id,
+            )
+            .unwrap();
+            drop(guardian_peer_2);
+            drop(direct_peer_2);
+
+            let outcome_2 = done_rx_2
+                .recv_timeout(Duration::from_millis(500))
+                .expect("second RunController::preferred_cleanup must not enter fail_closed when guardian_child is already a zombie before Prepared arrives")
+                .expect("second RunController::preferred_cleanup returned Ok");
+            let result_2 = outcome_2
+                .result
+                .expect("second RunController::preferred_cleanup must return Prepared result");
+            assert_eq!(result_2.run_id, prepared_result.run_id);
+            assert!(outcome_2.guardian_prepared);
+            assert!(!outcome_2.guardian_open);
+            assert!(outcome_2.guardian_exit_reported);
+            assert!(outcome_2.group_proven);
+            assert!(outcome_2.active_handle_cleared);
+            assert!(!active.lock().unwrap().contains_key(&frame_id.run_id));
+            assert!(!profile_path.exists());
+            let waited_2 = unsafe { libc::waitpid(guardian_pid_2, &mut raw_status, libc::WNOHANG) };
+            assert_eq!(waited_2, -1);
+            assert_eq!(
+                io::Error::last_os_error().raw_os_error(),
+                Some(libc::ECHILD)
+            );
+            let lock_rc_2 =
+                unsafe { libc::flock(probe_file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+            assert_eq!(lock_rc_2, 0);
+            unsafe {
+                libc::flock(probe_file.as_raw_fd(), libc::LOCK_UN);
+            }
+        }
     }
 }

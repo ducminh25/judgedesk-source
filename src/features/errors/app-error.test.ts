@@ -35,6 +35,7 @@ describe("app-error", () => {
   it("formats 3-part structured error for backend connection failure", () => {
     const error = formatAppError(new Error("Failed to fetch"));
 
+    assert.equal(error.code, "BACKEND_CONNECTION");
     assert.match(error.title, /kết nối|connect/i);
     assert.match(error.reason, /Backend|Dịch vụ/i);
     assert.match(error.action, /khởi động lại|restart/i);

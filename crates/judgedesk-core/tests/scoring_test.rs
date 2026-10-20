@@ -7,12 +7,14 @@ fn test_case(name: &str, status: &str, score: serde_json::Value) -> TestCaseRun 
         name: name.to_string(),
         status: status.to_string(),
         score,
+        score_exact: None,
         execution_time: Some(1),
         peak_memory: None,
         checker_message: None,
         expected_output_preview: None,
         actual_output_preview: None,
         error_detail: None,
+        execution: None,
     }
 }
 
@@ -89,6 +91,8 @@ fn test_complete_group_and_dependencies_clear_scores() {
             passed: 2,
             score: 0.0,
             max_score: 15.0,
+            score_exact: None,
+            max_score_exact: None,
             status: "PARTIAL".to_string(),
         }
     );
@@ -116,6 +120,8 @@ fn test_configured_total_score_and_rounding() {
             passed: 2,
             score: 100.0,
             max_score: 100.0,
+            score_exact: None,
+            max_score_exact: None,
             status: "AC".to_string(),
         }
     );
@@ -175,6 +181,8 @@ fn test_polygon_test_points_without_groups() {
             passed: 2,
             score: 0.8,
             max_score: 1.2,
+            score_exact: None,
+            max_score_exact: None,
             status: "PARTIAL".to_string(),
         }
     );

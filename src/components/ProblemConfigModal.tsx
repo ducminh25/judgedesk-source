@@ -77,6 +77,12 @@ export default function ProblemConfigModal({ problemName, testPath, initialConfi
       const topDialog = visibleDialogs[visibleDialogs.length - 1];
       if (topDialog && !rootRef.current?.contains(topDialog)) return;
       if (event.key === "Escape") {
+        if (
+          topDialog?.dataset.nestedModal
+          || rootRef.current?.querySelector("[data-nested-modal]")
+        ) {
+          return;
+        }
         event.preventDefault();
         event.stopImmediatePropagation();
         if (confirmingSave) setConfirmingSave(false);
@@ -220,7 +226,7 @@ export default function ProblemConfigModal({ problemName, testPath, initialConfi
               <p className="mt-2 text-text-muted">{t("problemConfig.quickGroup.hint")}</p>
               {quickGroupError && <p role="alert" className="mt-1 text-rose-700 dark:text-rose-300">{quickGroupError}</p>}
             </div>}
-            <TestConfigurationTable config={editor.polygonConfig} tests={editor.testDetails} selectedTests={editor.selectedTests} showContent={showContent} isLoading={editor.isLoading} totalPoints={editor.totalPoints}
+            <TestConfigurationTable config={editor.polygonConfig} defaultTimeLimit={editor.config.timeLimit} tests={editor.testDetails} selectedTests={editor.selectedTests} showContent={showContent} isLoading={editor.isLoading} totalPoints={editor.totalPoints}
               onToggleAll={editor.toggleAllTests} onToggleTest={editor.toggleTest} onOpenEdit={(nextPopover, input, batchTotal) => {
                 nestedReturnRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
                 setPopover(nextPopover); setPopoverInput(input); if (batchTotal !== undefined) setBatchPointsTotal(batchTotal);

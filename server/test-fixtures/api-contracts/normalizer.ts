@@ -21,6 +21,9 @@ export function normalizeVolatile(value: unknown, options: NormalizerOptions = {
     // Normalize all backslashes first for cross-platform stability
     let result = value.replace(/\\/g, "/");
 
+    const runtimeTempRoot = TEMP_ROOT.replace(/\\/g, "/");
+    result = result.replace(new RegExp(escapeRegExp(runtimeTempRoot), "gi"), "<TEMP_ROOT>/judgedesk");
+
     if (options.envRootDir) {
       const envRoot = options.envRootDir.replace(/\\/g, "/");
       result = result.replace(new RegExp(escapeRegExp(envRoot), "gi"), "<TEMP_ROOT>/<ISOLATED_ENV>");
@@ -54,6 +57,10 @@ export function normalizeVolatile(value: unknown, options: NormalizerOptions = {
     result = result.replace(
       /<TEMP_ROOT>(?:\/<ISOLATED_ENV>)?(?:\/temp)?\/contract_ctx_[^/]+/g,
       "<TEMP_ROOT>/<TEST_CONTEXT>",
+    );
+    result = result.replace(
+      /<TEMP_ROOT>(?:\/<ISOLATED_ENV>)+(?:\/temp)?\/judgedesk\b/g,
+      "<TEMP_ROOT>/judgedesk",
     );
 
     // Replace UUIDs
@@ -107,8 +114,38 @@ export function normalizeVolatile(value: unknown, options: NormalizerOptions = {
         typeof val === "string"
       ) {
         result[key] = "<REVISION>";
-      } else if (key === "appVersion" && (val === "development" || val === "1.5.0" || val === "1.5.1" || val === "1.5.2")) {
+      } else if (
+        key === "appVersion" &&
+        (val === "development" ||
+          val === "1.5.0" ||
+          val === "1.5.1" ||
+          val === "1.5.2" ||
+          val === "1.5.5" ||
+          val === "1.6.0")
+      ) {
         result[key] = "1.5.0";
+      } else if (
+        key === "build" &&
+        typeof val === "object" &&
+        val !== null &&
+        !Array.isArray(val) &&
+        "appVersion" in val
+      ) {
+        const buildRec = val as Record<string, unknown>;
+        result[key] = {
+          appVersion:
+            buildRec.appVersion === "development" ||
+            buildRec.appVersion === "1.5.0" ||
+            buildRec.appVersion === "1.5.1" ||
+            buildRec.appVersion === "1.5.2" ||
+            buildRec.appVersion === "1.5.5" ||
+            buildRec.appVersion === "1.6.0"
+              ? "1.5.0"
+              : normalizeVolatile(buildRec.appVersion, options),
+          buildNumber: "local",
+          builtAt: "development",
+          gitCommit: "unknown",
+        };
       } else {
         result[key] = normalizeVolatile(val, options);
       }

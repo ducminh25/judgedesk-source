@@ -65,6 +65,8 @@ struct ProcessMonitor {
     descriptor: RawFd,
     pid: i32,
     observed_exit: bool,
+    #[cfg(target_os = "linux")]
+    start_ticks: Option<u64>,
 }
 
 impl BackendTreeGuard {
@@ -475,7 +477,46 @@ impl BackendProcess {
     }
 }
 
+#[cfg(target_os = "linux")]
+fn read_linux_process_stat(pid: i32) -> io::Result<(char, u64)> {
+    if pid <= 0 {
+        return Err(io::Error::from_raw_os_error(libc::EINVAL));
+    }
+    let stat_path = format!("/proc/{pid}/stat");
+    let stat = fs::read_to_string(&stat_path)?;
+    let close_paren = stat
+        .rfind(')')
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "malformed /proc/pid/stat"))?;
+    let after_comm = stat
+        .get(close_paren + 1..)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "truncated /proc/pid/stat"))?;
+    let mut fields = after_comm.split_whitespace();
+    let state_str = fields.next().ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "missing state in /proc/pid/stat",
+        )
+    })?;
+    let state = state_str.chars().next().ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidData, "empty state in /proc/pid/stat")
+    })?;
+    let start_ticks_str = fields.nth(18).ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "missing starttime in /proc/pid/stat",
+        )
+    })?;
+    let start_ticks = start_ticks_str.parse::<u64>().map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid starttime in /proc/pid/stat",
+        )
+    })?;
+    Ok((state, start_ticks))
+}
+
 impl ProcessMonitor {
+    #[cfg(target_os = "macos")]
     fn new(pid: i32) -> io::Result<Self> {
         let descriptor = unsafe { libc::kqueue() };
         if descriptor < 0 {
@@ -519,6 +560,60 @@ impl ProcessMonitor {
         })
     }
 
+    #[cfg(target_os = "linux")]
+    fn new(pid: i32) -> io::Result<Self> {
+        let start_ticks = match read_linux_process_stat(pid) {
+            Ok((state, ticks)) => {
+                if state == 'Z' || state == 'X' {
+                    return Ok(Self {
+                        descriptor: -1,
+                        pid,
+                        observed_exit: true,
+                        start_ticks: Some(ticks),
+                    });
+                }
+                Some(ticks)
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                return Err(io::Error::from_raw_os_error(libc::ESRCH));
+            }
+            Err(_) => {
+                if unsafe { libc::kill(pid, 0) } != 0
+                    && io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
+                {
+                    return Err(io::Error::from_raw_os_error(libc::ESRCH));
+                }
+                None
+            }
+        };
+        let raw_fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, libc::O_NONBLOCK) };
+        let descriptor = if raw_fd >= 0 {
+            let fd = raw_fd as RawFd;
+            if let Err(error) = make_fd_close_on_exec(fd) {
+                unsafe {
+                    libc::close(fd);
+                }
+                return Err(error);
+            }
+            fd
+        } else {
+            let error = io::Error::last_os_error();
+            if error.raw_os_error() == Some(libc::ESRCH)
+                || error.raw_os_error() == Some(libc::EINVAL)
+            {
+                return Err(error);
+            }
+            -1
+        };
+        Ok(Self {
+            descriptor,
+            pid,
+            observed_exit: false,
+            start_ticks,
+        })
+    }
+
+    #[cfg(target_os = "macos")]
     fn exited(&mut self) -> io::Result<bool> {
         if self.observed_exit {
             return Ok(true);
@@ -549,6 +644,56 @@ impl ProcessMonitor {
                 && io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH);
             self.observed_exit = missing;
             Ok(missing)
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn exited(&mut self) -> io::Result<bool> {
+        if self.observed_exit {
+            return Ok(true);
+        }
+        if self.descriptor >= 0 {
+            let mut poll_fd = libc::pollfd {
+                fd: self.descriptor,
+                events: libc::POLLIN,
+                revents: 0,
+            };
+            let polled = unsafe { libc::poll(&mut poll_fd, 1, 0) };
+            if polled < 0 {
+                let error = io::Error::last_os_error();
+                if error.raw_os_error() != Some(libc::EINTR) {
+                    return Err(error);
+                }
+            } else if polled > 0
+                && (poll_fd.revents & (libc::POLLIN | libc::POLLERR | libc::POLLHUP)) != 0
+            {
+                self.observed_exit = true;
+                return Ok(true);
+            }
+        }
+        match read_linux_process_stat(self.pid) {
+            Ok((state, start_ticks)) => {
+                if state == 'Z'
+                    || state == 'X'
+                    || self
+                        .start_ticks
+                        .is_some_and(|expected| expected != start_ticks)
+                {
+                    self.observed_exit = true;
+                    return Ok(true);
+                }
+                Ok(false)
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                self.observed_exit = true;
+                Ok(true)
+            }
+            Err(_) => {
+                let missing = unsafe { libc::kill(self.pid, 0) } != 0
+                    && io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH);
+                self.observed_exit = missing;
+                Ok(missing)
+            }
         }
     }
 
@@ -1016,4 +1161,87 @@ pub(super) fn try_run_internal_mode() -> Option<i32> {
         return Some(64);
     }
     Some(if supervisor_main().is_ok() { 0 } else { 70 })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        BackendProcess, ProcessMonitor, ProvisionalTreeLock, GENERATION_FILE, OWNER_LOCK_FILE,
+    };
+    use fs4::FileExt;
+    use judgedesk_native_executor::tree_guard::generation_contents;
+    use std::fs::{self, OpenOptions};
+    use std::process::{Command, Stdio};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::time::Duration;
+
+    static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(0);
+    const GENERATION: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    #[test]
+    fn provisional_tree_lock_publishes_the_runtime_guard_contract() {
+        let suffix = NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed);
+        let directory = std::env::temp_dir().join(format!(
+            "judgedesk-unix-process-supervisor-test-{}-{suffix}",
+            std::process::id()
+        ));
+        fs::create_dir(&directory).expect("create test directory");
+        let mut lock = ProvisionalTreeLock::acquire(&directory, Duration::from_secs(1))
+            .expect("acquire provisional lock");
+        lock.write_generation(GENERATION)
+            .expect("write runtime guard contract");
+        lock.release().expect("release provisional lock");
+
+        assert_eq!(
+            fs::read_to_string(directory.join(GENERATION_FILE)).expect("read runtime guard"),
+            generation_contents(GENERATION)
+        );
+
+        let owner = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(directory.join(OWNER_LOCK_FILE))
+            .expect("open supervisor owner lock");
+        owner.try_lock().expect("lock supervisor owner barrier");
+        let guard = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(directory.join(GENERATION_FILE))
+            .expect("open executor generation guard");
+        guard
+            .try_lock_shared()
+            .expect("executor shared guard must not conflict with supervisor owner barrier");
+        FileExt::unlock(&guard).expect("unlock executor shared guard");
+        FileExt::unlock(&owner).expect("unlock supervisor owner barrier");
+
+        fs::remove_dir_all(directory).expect("remove test directory");
+    }
+
+    #[test]
+    fn process_monitor_tracks_running_and_terminated_child_process() {
+        let mut child = Command::new("/bin/sleep")
+            .arg("30")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn sleep process");
+        let pid = i32::try_from(child.id()).expect("valid child PID");
+        let mut backend = BackendProcess {
+            pid,
+            monitor: ProcessMonitor::new(pid).expect("create process monitor"),
+        };
+        assert!(
+            !backend.monitor.exited().expect("check running child"),
+            "child must still be running"
+        );
+        backend
+            .terminate(Duration::from_secs(2))
+            .expect("terminate monitored child");
+        let _ = child.wait();
+        assert!(
+            backend.monitor.exited().expect("check terminated child"),
+            "child must be observed as exited"
+        );
+    }
 }

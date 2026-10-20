@@ -9,6 +9,9 @@ test("Java runtime launch is deterministic and receives an explicit memory envel
     256 * 1024 * 1024,
   );
   assert.ok(args.includes("-XX:+UseSerialGC"));
+  assert.ok(args.includes("-XX:TieredStopAtLevel=1"));
+  assert.ok(args.includes("-Xshare:auto"));
+  assert.ok(args.includes("-XX:-UsePerfData"));
   assert.ok(args.includes("-XX:ActiveProcessorCount=1"));
   assert.ok(args.includes(`-XX:MaxRAM=${256 * 1024 * 1024}`));
   assert.deepEqual(args.slice(-3), [

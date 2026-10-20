@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import test, { after } from "node:test";
@@ -10,7 +11,7 @@ interface OwnedMacosTreeGuard {
   directory: string;
 }
 
-interface OwnedWindowsExecutorEnvironment {
+interface OwnedExecutorEnvironment {
   root: string;
   hostExecutorRoot: string;
   hostExecutorState: Map<string, string>;
@@ -42,18 +43,37 @@ function snapshotTree(root: string): Map<string, string> {
   return new Map([...state.entries()].sort(([left], [right]) => left.localeCompare(right)));
 }
 
-function provisionWindowsExecutorEnvironment(): OwnedWindowsExecutorEnvironment | null {
-  if (process.platform !== "win32") return null;
+function writeTestRootMarker(directory: string): void {
+  fs.mkdirSync(directory, { recursive: true });
+  fs.writeFileSync(path.join(directory, ".judgedesk-test-root"), TEST_ROOT_MARKER, {
+    encoding: "utf8",
+    flag: "wx",
+  });
+}
 
+function provisionExecutorEnvironment(): OwnedExecutorEnvironment | null {
+  if (process.platform !== "win32" && process.platform !== "darwin") return null;
+
+  const hostTmpDir = os.tmpdir();
   const hostLocalAppData = process.env.LOCALAPPDATA
     || path.join(os.homedir(), "AppData", "Local");
   const hostThemisRoot = process.env.THEMIS_APP_DATA_DIR
-    || path.join(hostLocalAppData, "ThemisV2");
-  const hostExecutorRoot = path.join(hostLocalAppData, "JudgeDesk", "JudgeDeskExecutor");
+    || (process.platform === "win32"
+      ? path.join(hostLocalAppData, "ThemisV2")
+      : path.join(os.homedir(), "Library", "Application Support", "ThemisV2"));
+  const hostExecutorRoot = process.platform === "win32"
+    ? path.join(hostLocalAppData, "JudgeDesk", "JudgeDeskExecutor")
+    : path.join(hostTmpDir, "JudgeDeskExecutor");
+  const pythonPackageId = process.platform === "win32"
+    ? "python-windows-x64"
+    : process.arch === "arm64"
+      ? "python-macos-arm64"
+      : "python-macos-x64";
   const hostExecutorState = snapshotTree(hostExecutorRoot);
   const keys = [
     "LOCALAPPDATA",
     "APPDATA",
+    "TMPDIR",
     "TEMP",
     "TMP",
     "THEMIS_APP_DATA_DIR",
@@ -61,33 +81,32 @@ function provisionWindowsExecutorEnvironment(): OwnedWindowsExecutorEnvironment 
   const previous: Record<string, string | undefined> = {};
   for (const key of keys) previous[key] = process.env[key];
 
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "jd_test_executor_security_"));
+  const root = fs.mkdtempSync(path.join(hostTmpDir, "jd_test_executor_security_"));
   try {
-    fs.writeFileSync(path.join(root, ".judgedesk-test-root"), TEST_ROOT_MARKER, {
-      encoding: "utf8",
-      flag: "wx",
-    });
+    writeTestRootMarker(root);
     const localAppData = path.join(root, "localappdata");
     const roamingAppData = path.join(root, "roamingappdata");
     const temp = path.join(root, "temp");
     const isolatedThemisRoot = path.join(localAppData, "ThemisV2");
-    fs.mkdirSync(localAppData, { recursive: true });
-    fs.mkdirSync(roamingAppData, { recursive: true });
-    fs.mkdirSync(temp, { recursive: true });
+    writeTestRootMarker(localAppData);
+    writeTestRootMarker(roamingAppData);
+    writeTestRootMarker(temp);
+    writeTestRootMarker(isolatedThemisRoot);
     const hostPythonPackage = path.join(
       hostThemisRoot,
       "toolchains",
-      "python-windows-x64",
+      pythonPackageId,
     );
     if (fs.existsSync(hostPythonPackage)) {
       fs.cpSync(
         hostPythonPackage,
-        path.join(isolatedThemisRoot, "toolchains", "python-windows-x64"),
-        { recursive: true, errorOnExist: true },
+        path.join(isolatedThemisRoot, "toolchains", pythonPackageId),
+        { recursive: true, errorOnExist: true, verbatimSymlinks: true },
       );
     }
     process.env.LOCALAPPDATA = localAppData;
     process.env.APPDATA = roamingAppData;
+    process.env.TMPDIR = temp;
     process.env.TEMP = temp;
     process.env.TMP = temp;
     process.env.THEMIS_APP_DATA_DIR = isolatedThemisRoot;
@@ -102,7 +121,7 @@ function provisionWindowsExecutorEnvironment(): OwnedWindowsExecutorEnvironment 
     if (cleanupErrors.length > 0) {
       throw new AggregateError(
         [setupError, ...cleanupErrors],
-        `Failed to provision and clean isolated Windows executor root at ${root}`,
+        `Failed to provision and clean isolated executor root at ${root}`,
       );
     }
     throw setupError;
@@ -145,7 +164,7 @@ function provisionMacosTreeGuard(): OwnedMacosTreeGuard | null {
   return { directory };
 }
 
-const ownedWindowsExecutorEnvironment = provisionWindowsExecutorEnvironment();
+const ownedExecutorEnvironment = provisionExecutorEnvironment();
 const ownedMacosTreeGuard = provisionMacosTreeGuard();
 const [
   { executorClient },
@@ -187,26 +206,26 @@ after(async () => {
       errors.push(error);
     }
   }
-  if (ownedWindowsExecutorEnvironment) {
-    for (const [key, value] of Object.entries(ownedWindowsExecutorEnvironment.previous)) {
+  if (ownedExecutorEnvironment) {
+    for (const [key, value] of Object.entries(ownedExecutorEnvironment.previous)) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
     try {
-      fs.rmSync(ownedWindowsExecutorEnvironment.root, { recursive: true, force: true });
+      fs.rmSync(ownedExecutorEnvironment.root, { recursive: true, force: true });
       assert.equal(
-        fs.existsSync(ownedWindowsExecutorEnvironment.root),
+        fs.existsSync(ownedExecutorEnvironment.root),
         false,
-        `isolated Windows executor root still exists: ${ownedWindowsExecutorEnvironment.root}`,
+        `isolated executor root still exists: ${ownedExecutorEnvironment.root}`,
       );
     } catch (error) {
       errors.push(error);
     }
     try {
       assert.deepEqual(
-        snapshotTree(ownedWindowsExecutorEnvironment.hostExecutorRoot),
-        ownedWindowsExecutorEnvironment.hostExecutorState,
-        "real JudgeDeskExecutor AppData changed during the security integration suite",
+        snapshotTree(ownedExecutorEnvironment.hostExecutorRoot),
+        ownedExecutorEnvironment.hostExecutorState,
+        "real JudgeDeskExecutor state changed during the security integration suite",
       );
     } catch (error) {
       errors.push(error);
@@ -215,6 +234,24 @@ after(async () => {
   if (errors.length > 0) {
     throw new AggregateError(errors, "Security integration teardown failed.");
   }
+});
+
+test("security integration harness isolates TMPDIR, TEMP, TMP, and AppData roots", () => {
+  assert.ok(ownedExecutorEnvironment, "expected isolated executor environment on win32/darwin");
+  const expectedTemp = path.join(ownedExecutorEnvironment.root, "temp");
+  assert.equal(process.env.TMPDIR, expectedTemp);
+  assert.equal(process.env.TEMP, expectedTemp);
+  assert.equal(process.env.TMP, expectedTemp);
+  assert.equal(process.env.LOCALAPPDATA, path.join(ownedExecutorEnvironment.root, "localappdata"));
+  assert.equal(process.env.APPDATA, path.join(ownedExecutorEnvironment.root, "roamingappdata"));
+  assert.equal(
+    process.env.THEMIS_APP_DATA_DIR,
+    path.join(ownedExecutorEnvironment.root, "localappdata", "ThemisV2"),
+  );
+  assert.notEqual(
+    path.join(expectedTemp, "JudgeDeskExecutor"),
+    ownedExecutorEnvironment.hostExecutorRoot,
+  );
 });
 
 test("security fixtures can only reach the native executor harness", () => {
@@ -331,6 +368,72 @@ test(
   },
 );
 
+test(
+  "concurrent managed runtimes cannot cross per-run AppContainer workspaces",
+  { timeout: 20_000, skip: process.platform !== "win32" },
+  async () => {
+    const health = await executorClient.start();
+    assert.equal(health.ready, true, health.diagnostics.join("; "));
+    const runtimeRoot = path.join(
+      health.executorRoot,
+      "toolchains",
+      `managed-sibling-${crypto.randomUUID()}`,
+    );
+    const runtimeExecutable = path.join(runtimeRoot, "probe.exe");
+    const first = await createExecutorWorkspace();
+    const second = await createExecutorWorkspace();
+    fs.mkdirSync(runtimeRoot, { recursive: true });
+    fs.copyFileSync(helperBinary, runtimeExecutable);
+    try {
+      const firstSecret = path.join(first.path, "secret.txt");
+      const secondSecret = path.join(second.path, "secret.txt");
+      fs.writeFileSync(firstSecret, "FIRST_PRIVATE", "utf8");
+      fs.writeFileSync(secondSecret, "SECOND_PRIVATE", "utf8");
+
+      const runProbe = async (
+        workspace: typeof first,
+        siblingSecret: string,
+        label: string,
+      ) => {
+        const result = await executorClient.run(buildSubmissionExecutorRunSpec({
+          runId: `managed_sibling_${label}_${crypto.randomUUID().replaceAll("-", "_")}`,
+          workspaceId: workspace.id,
+          executableId: "local-toolchain/probe.exe",
+          args: ["--test-file-network-probe", siblingSecret],
+          environment: { JUDGEDESK_SCRATCH_ISOLATED: "1" },
+          localToolchain: {
+            rootPath: runtimeRoot,
+            executableRelativePath: "probe.exe",
+            isolation: "strict",
+          },
+          timeLimitMs: 3_000,
+          memoryBytes: 128 * MiB,
+        }));
+        const stdout = fs.readFileSync(
+          path.join(workspace.path, "stdout.txt"),
+          "utf8",
+        );
+        assert.equal(result.reason, "exited", JSON.stringify(result));
+        assert.equal(result.exitCode, 0, stdout);
+        const probe = JSON.parse(stdout) as Record<string, unknown>;
+        assert.equal(probe.readBlocked, true, stdout);
+        assert.equal(probe.writeBlocked, true, stdout);
+      };
+
+      await Promise.all([
+        runProbe(first, secondSecret, "first"),
+        runProbe(second, firstSecret, "second"),
+      ]);
+      assert.equal(fs.readFileSync(firstSecret, "utf8"), "FIRST_PRIVATE");
+      assert.equal(fs.readFileSync(secondSecret, "utf8"), "SECOND_PRIVATE");
+    } finally {
+      first.dispose();
+      second.dispose();
+      fs.rmSync(runtimeRoot, { recursive: true, force: true });
+    }
+  },
+);
+
 test("submission cannot modify the immutable artifact cache", async () => {
   const artifact = await importExecutorArtifact(helperBinary);
   const workspace = await createExecutorWorkspace();
@@ -427,6 +530,114 @@ test(
       assert.doesNotMatch(child.stdout, /SECURITY_ESCAPE/);
     } finally {
       fs.rmSync(hostDirectory, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  "managed Python denial can be handled without turning a safe run into RE or JE",
+  {
+    timeout: 20_000,
+    skip: !managedPython.ready,
+  },
+  async () => {
+    const hostDirectory = fs.mkdtempSync(path.join(os.homedir(), ".judgedesk-denial-boundary-"));
+    const secretPath = path.join(hostDirectory, "secret.txt");
+    fs.writeFileSync(secretPath, "PRIVATE", "utf8");
+    try {
+      for (const role of ["submission", "checker-runtime"] as const) {
+        const attempt = await runManagedPython(["deny-and-continue", secretPath], role);
+        assert.equal(attempt.result.reason, "exited", `${role}: ${JSON.stringify(attempt.result)}`);
+        assert.equal(attempt.result.exitCode, 0, `${role}: ${attempt.stdout}`);
+        assert.match(attempt.stdout, /^SAFE$/m, role);
+        assert.doesNotMatch(attempt.stdout, /SECURITY_ESCAPE/, role);
+      }
+      assert.equal(fs.readFileSync(secretPath, "utf8"), "PRIVATE");
+    } finally {
+      fs.rmSync(hostDirectory, { recursive: true, force: true });
+    }
+  },
+);
+
+test(
+  "strict Scratch compatibility boundary denies private files and network",
+  {
+    timeout: 20_000,
+    skip: process.platform !== "win32",
+  },
+  async () => {
+    const health = await executorClient.start();
+    assert.equal(health.ready, true, health.diagnostics.join("; "));
+    const runtimeRoot = path.join(
+      health.executorRoot,
+      "toolchains",
+      `scratch-boundary-${crypto.randomUUID()}`,
+    );
+    const runtimeExecutable = path.join(runtimeRoot, "probe.exe");
+    const privateDirectory = fs.mkdtempSync(
+      path.join(os.homedir(), ".judgedesk-scratch-boundary-"),
+    );
+    const sentinel = path.join(privateDirectory, "private.txt");
+    const workspace = await createExecutorWorkspace();
+    let acceptedLoopbackConnections = 0;
+    const loopbackServer = net.createServer((socket) => {
+      acceptedLoopbackConnections += 1;
+      socket.destroy();
+    });
+    await new Promise<void>((resolve, reject) => {
+      loopbackServer.once("error", reject);
+      loopbackServer.listen(0, "127.0.0.1", () => {
+        loopbackServer.off("error", reject);
+        resolve();
+      });
+    });
+    const loopbackAddress = loopbackServer.address();
+    assert.ok(loopbackAddress && typeof loopbackAddress !== "string");
+    fs.mkdirSync(runtimeRoot, { recursive: true });
+    fs.copyFileSync(helperBinary, runtimeExecutable);
+    fs.writeFileSync(sentinel, "PRIVATE", "utf8");
+    try {
+      const result = await executorClient.run(buildSubmissionExecutorRunSpec({
+        runId: `scratch_boundary_${crypto.randomUUID().replaceAll("-", "_")}`,
+        workspaceId: workspace.id,
+        executableId: "local-toolchain/probe.exe",
+        args: [
+          "--test-file-network-probe",
+          sentinel,
+          String(loopbackAddress.port),
+        ],
+        environment: { JUDGEDESK_SCRATCH_ISOLATED: "1" },
+        localToolchain: {
+          rootPath: runtimeRoot,
+          executableRelativePath: "probe.exe",
+          isolation: "strict",
+        },
+        timeLimitMs: 3_000,
+        memoryBytes: 128 * MiB,
+      }));
+      const stdout = fs.readFileSync(
+        path.join(workspace.path, "stdout.txt"),
+        "utf8",
+      );
+      assert.equal(result.reason, "exited", JSON.stringify(result));
+      assert.equal(result.exitCode, 0, stdout);
+      const probe = JSON.parse(stdout) as Record<string, unknown>;
+      assert.equal(probe.readBlocked, true, stdout);
+      assert.equal(probe.writeBlocked, true, stdout);
+      assert.equal(probe.networkConnected, false, stdout);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.equal(acceptedLoopbackConnections, 0);
+      assert.equal(fs.readFileSync(sentinel, "utf8"), "PRIVATE");
+    } finally {
+      workspace.dispose();
+      await new Promise<void>((resolve, reject) => {
+        loopbackServer.close((error) => {
+          if (error) reject(error);
+          else resolve();
+        });
+      });
+      fs.rmSync(runtimeRoot, { recursive: true, force: true });
+      fs.rmSync(privateDirectory, { recursive: true, force: true });
     }
   },
 );

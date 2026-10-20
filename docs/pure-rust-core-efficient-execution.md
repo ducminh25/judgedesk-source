@@ -1,10 +1,41 @@
 # Rust core — rigorous, practical execution
 
-> 2026-10-01 proposed execution revision. Apply only after adoption and package authorization.
-> Current live package verdicts remain in [STATUS](verification/pure-rust-core/STATUS.md). Version 1.5.1 until WP10.3.
-> 2026-10-02: direct N0 authorization and limited N0 → WP0.6 ordering adoption are recorded. Continue that bounded package; other roadmap changes remain proposed.
+> **2026-10-17 Adopted Execution Revision (Direct Human Authorization by Mon):**
+> - Adopts **4 Macro-Milestones (`M1`–`M4`)** batching the remaining 46 work packages (`WP0.6`–`WP10.6`) and 11 phase gates (`G0`–`G10`), **Tiered & Scoped Re-verification**, **Persistent Incremental Build Caches**, and **JSON-Only Hash Binding** (eliminating per-micro-WP tarball/rebuild cycles and prose Markdown `(bytes, sha256)` self-referential traps).
+> - Preserves **100% Engineering Rigor**: strict TDD (`RED` → `GREEN`), fresh-context 5-axis adversarial subagent review, zero-tolerance quality floor (`npm run check:fast`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo test --locked`), Windows x64 + live Apple Silicon Mac (`judgedesk-mac`) execution, 1-to-1 `WP*` Traceability Matrix, fail-closed OS sandboxes, exact `BigUint` rational scoring, 8-file version lockstep `1.5.5` (`crates/judgedesk-core` at `1.5.1` until `WP10.3`), and independent Milestone review.
+> - Current live package and milestone verdicts remain in [STATUS](verification/pure-rust-core/STATUS.md).
 
 Read the [complete task contract](pure-rust-core-detailed-implementation-plan.md) and [role workflow](pure-rust-core-review-workflow.md). Efficiency comes from decisive preconditions, focused changes, applicable evidence and clear ownership. It never removes a test, security threshold, supported profile, host audit or independent verdict.
+
+## 2026-10-17 Adopted Macro-Milestone & Streamlined Execution Protocol
+
+1. **Macro-Milestone Batching (`N0` Prerequisite + `M1`–`M4`):**
+   Instead of stopping for 56 separate micro-WP freeze/tarball/review handoffs across `WP0.6`–`WP10.6` and `G0`–`G10`, implementation and independent verification are batched into `N0` plus **4 Macro-Milestones**:
+   - **Prerequisite `N0` (`N0-C10-GATE-R1` Scoped Closure):** Resolve the single remaining open P2 finding `N0-C10-GATE-R1` (`npm run test:macos-process-supervisor` generation-guard / prewarm isolation on macOS) under **Scoped Re-verification** (see Rule 3 below), retaining all independently verified Windows and Mac gates from `codex-independent-review-20261017T054000Z` / `codex-review-closure-20261017T065802Z` by `evidenceMode: reference`.
+   - **Macro-Milestone 1 (`M1`: `WP0.6` → `G5` — Core Judging, Security, Toolchains, Batch & Interactive Semantics):** Batches `WP0.6`, `WP0.7`, `G0`, `WP1.1`–`WP1.7`, `G1`, `WP2.1`–`WP2.7`, `G2`, `N1`, `WP3.1`–`WP3.3`, `G3`, `WP4.1`–`WP4.5`, `G4`, `WP5.1`–`WP5.4`, and `G5`. Leverages the existing Phase A (`Bước 1–5`) implementation in `crates/judgedesk-core`, closes the remaining parity gaps in ordered TDD sub-slices with fresh-context 5-axis adversarial review per slice, maps every `WP*` requirement to exact code + test coverage in a **1-to-1 Traceability Matrix**, and undergoes one unified independent review at `G5`.
+   - **Macro-Milestone 2 (`M2`: `WP6.1a` → `G6` — OSD Daemon & Complete HTTP Route Parity):** Batches `WP6.1a`, `WP6.1b`, `WP6.1c`, `WP6.2`, `WP6.3`, and `G6`. Implements the Rust OSD daemon (`crates/judgedesk-core/src/server/routes/osd.rs`) and completes all workspace, config, archive, export, and lifecycle route contracts, verified once at `G6`.
+   - **Macro-Milestone 3 (`M3`: `WP7.1` → `G8` — Universal PCH, Prewarm & 100% Node-vs-Rust Semantic Parity):** Batches `WP7.1`–`WP7.4`, `G7`, `WP8.1`–`WP8.3`, and `G8`. Implements Universal PCH + selective background prewarm and proves 100% sequential Node-vs-Rust corpus parity across all 6 languages, verdicts, exact rational scores, and rankings, verified once at `G8`.
+   - **Macro-Milestone 4 (`M4`: `V9.1` → `G10` — Desktop Packaging Matrix, `v1.6.0` Cutover & Decommission):** Batches `V9.1`–`V9.4`, `G9`, `WP10.1`–`WP10.6`, and `G10`. Executes full Windows MSI and macOS `.app` packaging, resource/single-instance/supervisor gates, GUI matrix, default backend switch to Rust (with Node rollback), atomic 8-file bump to `v1.6.0`, and separately authorized Node decommission.
+
+2. **Tiered Verification & Persistent Incremental Build Caches:**
+   - **Inner Development Loop (Sub-Slices within a Milestone):** Run directly against the workspace on Windows x64 and a persistent development directory on `judgedesk-mac` (preserving `target/` for incremental Cargo builds) using `npm run check:fast`, `cargo clippy --locked --all-targets -- -D warnings`, and focused `cargo test --locked` / `node scripts/run-all-tests.js --filter=...`. Do **not** build `.msi`/`.app` installers or re-extract source tarballs on every sub-slice.
+   - **Milestone Gate (`VERIFYING` Handoff at `G5`, `G6`, `G8`):** Run `npm run check:full` and `npm run test:security` on both Windows x64 and live Apple Silicon Mac (`judgedesk-mac`), plus the milestone-specific integration suites (`test-build-feature-identity.mjs` in `M1`; OSD suites in `M2`; PCH benchmark and full Node-vs-Rust parity harness in `M3`).
+   - **Packaging & Platform Resource Gates (`N0` Mac Supervisor, and `M4` / `G9`–`G10`):** Full `.msi`/`.app` installer builds, `windows-resource-gate.ps1` (`512 MiB` / `1024 MiB`), `windows-single-instance-gate.ps1`, `test:macos-process-supervisor`, and `test:macos-packaged-checkers` are required only when `native-executor` or `src-tauri` packaging/supervisor code is modified (such as `N0-C10-GATE-R1`) and at **Macro-Milestone 4 (`G9`–`G10`)**.
+
+3. **Scoped Re-verification on Bounded Remediation Rounds:**
+   - When an independent review (`V7` or a Milestone review) verifies a set of gates and isolates specific open findings, the subsequent remediation round **only re-runs the gates affected by the touched files plus fast/unit/core regression checks** (`npm run check:fast`, `npm run test:rust`, and the specific failing gate/suite), retaining unaffected independently verified gates by `evidenceMode: reference` as long as their owning layers were not modified.
+   - Specifically for **`N0` (`N0-C10-GATE-R1`)**: because `codex-independent-review-20261017T054000Z` / `codex-review-closure-20261017T065802Z` already independently passed Windows `test:server` (`948/958`) and Mac `check:fast`, `OSD 8/8`, `test:server` (`950/958`), `harmless 23/23`, `logger falsifier`, `91-row production`, `74/74 focused union`, `check:full` (`9/9` Rust + `950/958` server), `test:security` (`17/20`), and `.app` codesign, the `N0-C10-GATE-R1` remediation and its independent re-review only need to execute:
+     1. Passive root-cause attribution + TDD `RED` → `GREEN` + 5-axis adversarial review for `N0-C10-GATE-R1`,
+     2. `npm run check:fast` and `npm run test:rust` on Windows and Mac (plus `npm run test:server` if `server/` is touched), and
+     3. Re-building the Mac `.app` (if `src-tauri` / `native-executor` / `server` is touched) and passing `npm run test:macos-process-supervisor` (repeated `3/3` consecutive runs to prove determinism) + `npm run test:macos-packaged-checkers` (with port rebind and zero orphan processes/descriptors) on `judgedesk-mac`, while retaining the unchanged Windows/Mac gates by `evidenceMode: reference`.
+
+4. **JSON-Only Hash Binding (Zero Prose Hash Ceremony):**
+   - Markdown documents (`STATUS.md`, `WORKLOG.md`, reports, handoffs, and reviewer/remediator prompts) **must never hardcode `(bytes, sha256)` tuples** for evidence logs, historical manifests, or self-referential markdown files.
+   - All file byte sizes and SHA-256 digests are recorded exclusively in machine-generated JSON manifests (`evidence-final-manifest.json` / `review-evidence-manifest.json` + `.sha256` sidecar). Prompts and reports reference artifacts by relative path only.
+
+5. **Streamlined Protected-State Auditing:**
+   - All unit and integration tests must isolate `THEMIS_APP_DATA_DIR`, `LOCALAPPDATA`, and `TMPDIR`/`TEMP` inside test-owned temporary directories (`OwnedWorkspace`).
+   - Full `before`/`after` SHA-256 inventories of the 4 host Protected Roots (`ThemisV2` and `JudgeDeskExecutor` on Windows and Mac) are captured **once per Milestone `VERIFYING` window** (and whenever running packaged `.app`/`.msi` gates that touch host default paths), rather than on every inner-loop test run.
 
 ## One accountable cycle
 

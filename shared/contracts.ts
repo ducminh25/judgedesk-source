@@ -190,6 +190,7 @@ export interface ProblemConfig {
   totalScore: number | string | null;
   defaultScore: number | string;
   testScores: Record<string, number | string>;
+  timeLimit?: number;
   memoryLimit?: number;
   polygonConfig?: PolygonConfig;
   checkerType?: string;
@@ -242,7 +243,11 @@ export interface HostStatus {
     docker: { installed: boolean; ready: boolean };
   };
   secureRunner: {
-    mode: "windows-lpac-job" | "macos-seatbelt-native" | "unavailable";
+    mode:
+      | "windows-lpac-job"
+      | "macos-seatbelt-native"
+      | "linux-bwrap-cgroup-seccomp"
+      | "unavailable";
     ready: boolean;
     executorVersion: string;
     selfTestAt?: string;

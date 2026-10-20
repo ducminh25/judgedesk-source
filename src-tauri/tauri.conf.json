@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "JudgeDesk",
-  "version": "1.5.5",
+  "version": "1.6.0",
   "identifier": "com.themisv2.judge",
   "build": {
     "beforeDevCommand": "npm run dev:frontend",
@@ -22,7 +22,16 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": "'self' customprotocol: asset:",
+        "connect-src": "'self' ipc: http://ipc.localhost http://127.0.0.1:* ws://localhost:5173 ws://127.0.0.1:5173",
+        "font-src": "'self' data:",
+        "img-src": "'self' asset: http://asset.localhost blob: data:",
+        "style-src": "'self' 'unsafe-inline'",
+        "object-src": "'none'",
+        "base-uri": "'none'",
+        "frame-ancestors": "'none'"
+      }
     }
   },
   "bundle": {
@@ -51,6 +60,36 @@
     "externalBin": ["binaries/server", "binaries/judgedesk-executor"],
     "macOS": {
       "minimumSystemVersion": "11.0"
+    },
+    "linux": {
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libgtk-3-0t64 | libgtk-3-0",
+          "libglib2.0-0t64 | libglib2.0-0",
+          "libayatana-appindicator3-1 | libappindicator3-1",
+          "librsvg2-2",
+          "bubblewrap",
+          "zenity",
+          "g++",
+          "python3"
+        ],
+        "section": "education",
+        "priority": "optional"
+      },
+      "rpm": {
+        "depends": [
+          "bubblewrap",
+          "zenity",
+          "python3"
+        ],
+        "recommends": [
+          "gcc-c++"
+        ]
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      }
     },
     "windows": {
       "wix": {

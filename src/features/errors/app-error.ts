@@ -4,6 +4,7 @@ export type ErrorSeverity = "error" | "warning" | "info";
 
 export interface AppError {
   id?: string;
+  code?: string;
   title: string;
   reason?: string;
   action?: string;
@@ -77,6 +78,7 @@ export function formatAppError(
   const sanitized = sanitizeErrorMessage(rawStr);
 
   // Default baseline
+  let resolvedCode = errorCode || undefined;
   let title = options.title || translate("appErrors.generic.title", "Đã xảy ra sự cố");
   let reason = options.reason || translate("appErrors.generic.reason", "Thao tác không thể hoàn tất.");
   let action = options.action || translate("appErrors.generic.action", "Vui lòng kiểm tra lại dữ liệu và thử lại.");
@@ -92,6 +94,7 @@ export function formatAppError(
     || lowerStr.includes("networkerror")
     || lowerStr.includes("backendconnection")
   ) {
+    resolvedCode = "BACKEND_CONNECTION";
     title = options.title || translate("appErrors.backendConnection.title", "Không thể kết nối dịch vụ chấm bài");
     reason = options.reason || translate("appErrors.backendConnection.reason", "Dịch vụ xử lý nền (Backend Service) chưa sẵn sàng hoặc bị chặn bởi phần mềm bảo mật.");
     action = options.action || translate("appErrors.backendConnection.action", "Hãy kiểm tra quyền ứng dụng và khởi động lại JudgeDesk.");
@@ -195,6 +198,7 @@ export function formatAppError(
 
   return {
     id: globalThis.crypto ? globalThis.crypto.randomUUID() : String(Date.now()),
+    code: resolvedCode,
     title,
     reason,
     action,

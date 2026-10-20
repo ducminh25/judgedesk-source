@@ -49,6 +49,7 @@ export interface CachedManagedSupportRoot {
 }
 
 const artifactCache = new Map<string, { fingerprint: string; artifact: ExecutorArtifact }>();
+const inFlightToolchainImports = new Map<string, Promise<void>>();
 const MANAGED_CACHE_SCHEMA = "4-receipt-digest";
 
 export async function findCachedManagedToolchain(
@@ -118,7 +119,7 @@ export async function createExecutorWorkspace(
 ): Promise<ExecutorWorkspace> {
   const health = await executorClient.start();
   if (!health.ready) throw new Error(health.diagnostics.join("; ") || "SECURE_RUNNER_UNAVAILABLE");
-  const id = crypto.randomUUID().replaceAll("-", "_");
+  const id = crypto.randomBytes(4).toString("hex");
   const workspacePath = path.join(health.executorRoot, "workspaces", id);
   fs.mkdirSync(workspacePath, { recursive: false });
   return {
@@ -242,13 +243,39 @@ export async function importManagedToolchain(
     packageDigest,
   );
   if (!fs.existsSync(marker) || fs.readFileSync(marker, "utf8") !== expectedMarker) {
-    const staging = `${destinationRoot}.staging.${process.pid}`;
-    fs.rmSync(staging, { recursive: true, force: true });
-    fs.cpSync(sourceRoot, staging, { recursive: true, dereference: true, force: false });
-    rewriteManagedToolchainSymlinks(sourceRoot, staging);
-    fs.writeFileSync(path.join(staging, ".judgedesk-import-complete"), expectedMarker, "utf8");
-    fs.rmSync(destinationRoot, { recursive: true, force: true });
-    fs.renameSync(staging, destinationRoot);
+    const importKey = destinationRoot.toLowerCase();
+    let activeImport = inFlightToolchainImports.get(importKey);
+    if (!activeImport) {
+      activeImport = (async () => {
+        if (fs.existsSync(marker) && fs.readFileSync(marker, "utf8") === expectedMarker) {
+          return;
+        }
+        const staging = `${destinationRoot}.staging.${process.pid}.${crypto.randomUUID()}`;
+        await fs.promises.rm(staging, { recursive: true, force: true });
+        try {
+          await fs.promises.cp(sourceRoot, staging, {
+            recursive: true,
+            dereference: true,
+            force: false,
+          });
+          rewriteManagedToolchainSymlinks(sourceRoot, staging);
+          await fs.promises.writeFile(
+            path.join(staging, ".judgedesk-import-complete"),
+            expectedMarker,
+            "utf8",
+          );
+          await fs.promises.rm(destinationRoot, { recursive: true, force: true });
+          await fs.promises.rename(staging, destinationRoot);
+        } catch (error) {
+          await fs.promises.rm(staging, { recursive: true, force: true }).catch(() => {});
+          throw error;
+        }
+      })().finally(() => {
+        inFlightToolchainImports.delete(importKey);
+      });
+      inFlightToolchainImports.set(importKey, activeImport);
+    }
+    await activeImport;
   }
   const relativeExecutable = entrypoint.executableRelativePath;
   const cachedExecutable = path.join(destinationRoot, relativeExecutable);

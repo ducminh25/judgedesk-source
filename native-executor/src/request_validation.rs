@@ -12,13 +12,12 @@ pub(crate) const BUILTIN_TOOLCHAINS_ENV: &str = "JUDGEDESK_BUILTIN_TOOLCHAINS_DI
 const PACKAGE_RECEIPT: &str = ".judgedesk-package.json";
 const CACHE_MARKER: &str = ".judgedesk-import-complete";
 const CACHE_SCHEMA: &str = "4-receipt-digest";
-const MANAGED_RUNTIME_MARKERS: [&str; 6] = [
+const MANAGED_RUNTIME_MARKERS: [&str; 5] = [
     "JUDGEDESK_PYTHON_ISOLATED",
     "JUDGEDESK_NODE_ISOLATED",
     "JUDGEDESK_JAVA_ISOLATED",
     "JUDGEDESK_DOTNET_ISOLATED",
     "JUDGEDESK_SCRATCH_ISOLATED",
-    "JUDGEDESK_PASCAL_ISOLATED",
 ];
 const MAX_RECEIPT_BYTES: u64 = 16 * 1024;
 
@@ -133,34 +132,21 @@ fn validate_run_with_builtin_root(
             (Some(grant), None) => {
                 let (executable, package_root) =
                     resolve_granted_toolchain(&canonical_root, spec, grant, built_in_root)?;
-                let isolation = if grant.package_id.starts_with("scratch-") {
-                    LocalToolchainIsolation::ResourceOnly
-                } else {
-                    LocalToolchainIsolation::Strict
-                };
-                (executable, Some(package_root), isolation)
+                (
+                    executable,
+                    Some(package_root),
+                    LocalToolchainIsolation::Strict,
+                )
             }
             (None, Some(grant)) => {
                 let (executable, local_root) = resolve_local_toolchain(spec, grant)?;
                 (executable, Some(local_root), grant.isolation)
             }
-            (None, None) => {
-                let isolation = if spec
-                    .environment
-                    .get("JUDGEDESK_PASCAL_ISOLATED")
-                    .map(String::as_str)
-                    == Some("1")
-                {
-                    LocalToolchainIsolation::ResourceOnly
-                } else {
-                    LocalToolchainIsolation::Strict
-                };
-                (
-                    resolve_relative(&canonical_root, &spec.executable_id, true)?,
-                    None,
-                    isolation,
-                )
-            }
+            (None, None) => (
+                resolve_relative(&canonical_root, &spec.executable_id, true)?,
+                None,
+                LocalToolchainIsolation::Strict,
+            ),
             (Some(_), Some(_)) => unreachable!(),
         };
     let in_workspace = executable.starts_with(&workspace);
@@ -646,6 +632,7 @@ pub(crate) fn validate_environment(environment: &BTreeMap<String, String>) -> Re
             || normalized.starts_with("JUDGEDESK_BOOTSTRAP_")
             || normalized.starts_with("JUDGEDESK_PROBE_")
             || normalized == "JUDGEDESK_INTERACTIVE_FAULT_PAUSE"
+            || normalized == "JUDGEDESK_PASCAL_ISOLATED"
             || normalized == "JUDGEDESK_SENTINEL"
             || normalized == "JUDGEDESK_START";
         if loader_control || executor_control {
@@ -887,6 +874,7 @@ mod tests {
             "JUDGEDESK_PROBE_SENTINEL",
             "JUDGEDESK_INTERACTIVE_FAULT_PAUSE",
             "judgedesk_interactive_fault_pause",
+            "JUDGEDESK_PASCAL_ISOLATED",
         ] {
             let environment = BTreeMap::from([(key.to_string(), "attacker-controlled".into())]);
             assert!(

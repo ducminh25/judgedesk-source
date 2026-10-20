@@ -85,6 +85,67 @@ test("updater manifest maps signed Core and Full bundles with exact size metadat
   assert.equal(JSON.parse(fs.readFileSync(outputPath, "utf8")).version, "1.3.4");
 });
 
+test("updater manifest isolates Linux deb, rpm, and AppImage targets so installers never cross-update", (t) => {
+  const root = createStaging(t);
+  const linuxBundles = [
+    {
+      filename: "JudgeDesk_1.3.4_amd64.deb",
+      installedSizeBytes: 155_000_000,
+    },
+    {
+      filename: "JudgeDesk-1.3.4-1.x86_64.rpm",
+      installedSizeBytes: 156_000_000,
+    },
+    {
+      filename: "JudgeDesk_1.3.4_amd64.AppImage",
+      installedSizeBytes: 120_000_000,
+    },
+  ];
+  for (const bundle of linuxBundles) {
+    fs.writeFileSync(path.join(root, bundle.filename), `linux-payload:${bundle.filename}`);
+    fs.writeFileSync(path.join(root, `${bundle.filename}.sig`), `sig:${bundle.filename}\n`);
+    fs.writeFileSync(path.join(root, `${bundle.filename}.metadata.json`), JSON.stringify({
+      schemaVersion: 1,
+      edition: "core",
+      platform: "linux",
+      arch: "x86_64",
+      installedSizeBytes: bundle.installedSizeBytes,
+    }));
+  }
+
+  const { manifest } = generateUpdaterManifest({
+    assetsDirectory: root,
+    repository: "owner/repository",
+    tag: "v1.3.4",
+    publicationDate: new Date("2026-08-13T00:00:00.000Z"),
+  });
+
+  assert.ok(manifest.platforms["linux-x86_64-deb-core"].url.endsWith("JudgeDesk_1.3.4_amd64.deb"));
+  assert.ok(manifest.platforms["linux-x86_64-core"].url.endsWith("JudgeDesk_1.3.4_amd64.deb"));
+  assert.ok(manifest.platforms["linux-x86_64-rpm-core"].url.endsWith("JudgeDesk-1.3.4-1.x86_64.rpm"));
+  assert.ok(manifest.platforms["linux-x86_64-appimage-core"].url.endsWith("JudgeDesk_1.3.4_amd64.AppImage"));
+
+  const publicRoot = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-public-linux-"));
+  t.after(() => fs.rmSync(publicRoot, { recursive: true, force: true }));
+  const publicFiles = [
+    ...expectedPublicReleaseAssets("v1.3.4").filter((name) => name !== "SHA256SUMS"),
+    ...linuxBundles.map((b) => b.filename),
+  ].sort();
+  for (const filename of publicFiles) {
+    fs.copyFileSync(path.join(root, filename), path.join(publicRoot, filename));
+  }
+  const checksumLines = publicFiles.map((filename) => {
+    const hash = crypto.createHash("sha256")
+      .update(fs.readFileSync(path.join(publicRoot, filename)))
+      .digest("hex");
+    return `${hash}  ${filename}`;
+  });
+  fs.writeFileSync(path.join(publicRoot, "SHA256SUMS"), `${checksumLines.join("\n")}\n`);
+
+  const verified = verifyPublicReleaseAssets({ assetsDirectory: publicRoot, tag: "v1.3.4" });
+  assert.equal(verified.assets.length, 11);
+});
+
 test("updater manifest rejects a missing edition bundle and mismatched metadata", (t) => {
   const root = createStaging(t);
   fs.rmSync(path.join(root, VARIANTS[0].filename));

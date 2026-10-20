@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile as execFileCallback, spawn } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -35,6 +36,9 @@ const logDescriptor = fs.openSync(logPath, "a");
 const executorRoot = path.join(os.tmpdir(), "JudgeDeskExecutor");
 const baselineWorkspaces = directoryEntrySet(path.join(executorRoot, "workspaces"));
 const baselineProfiles = directoryEntrySet(path.join(executorRoot, "profiles"));
+const apiToken = crypto.randomBytes(32).toString("hex");
+const rustCoreEnv = process.env.JUDGEDESK_PURE_RUST_CORE?.trim().toLowerCase();
+const useNodeSidecarRollback = rustCoreEnv === "0" || rustCoreEnv === "false";
 let gui = null;
 let baseUrl = "";
 let downloadedPython = false;
@@ -66,7 +70,7 @@ try {
   provisionFixture();
   fs.mkdirSync(appData, { recursive: true, mode: 0o700 });
   gui = spawn(guiCommand, [], {
-    env: { ...process.env, THEMIS_APP_DATA_DIR: appData },
+    env: { ...process.env, THEMIS_APP_DATA_DIR: appData, JUDGEDESK_API_TOKEN: apiToken },
     stdio: ["ignore", logDescriptor, logDescriptor],
   });
   gui.once("error", (error) => {
@@ -74,27 +78,35 @@ try {
   });
 
   const inventory = await waitForCoreInventory();
-  const server = inventory.find((row) => row.command === serverCommand);
-  assert.ok(server, "Packaged backend process was not found.");
-  const port = await waitForListeningPort(server.pid);
+  const backendProcess = useNodeSidecarRollback
+    ? inventory.find((row) => row.command === serverCommand)
+    : inventory.find((row) => row.command === guiCommand);
+  assert.ok(backendProcess, "Packaged backend process was not found.");
+  const port = await waitForListeningPort(backendProcess.pid);
   baseUrl = `http://127.0.0.1:${port}`;
 
   const status = await requestJson("GET", "/api/status");
   assert.equal(status.secureRunner?.ready, true);
+  assert.equal(status.build?.backend, useNodeSidecarRollback ? "node" : "rust");
   assert.equal(status.build?.gitCommit, await currentCommit());
 
   const initialToolchains = await requestJson("GET", "/api/toolchains");
-  assert.equal(initialToolchains.registryRevision, 6);
+  assert.equal(
+    initialToolchains.registryRevision,
+    useNodeSidecarRollback ? 7 : 1,
+  );
   assert.deepEqual(
     initialToolchains.profiles?.map((profile) => profile.id),
-    [
-      "cpp-legacy-v1",
-      "c-gcc14",
-      "python-cpython312",
-      "pascal-fpc322",
-      "java-temurin21",
-      "scratch-turbowarp-v1",
-    ],
+    useNodeSidecarRollback
+      ? [
+        "cpp-legacy-v1",
+        "c-gcc14",
+        "python-cpython312",
+        "pascal-fpc322",
+        "java-temurin21",
+        "scratch-turbowarp-v1",
+      ]
+      : ["cpp", "c", "python", "pascal", "java", "scratch"],
   );
   for (const profile of initialToolchains.profiles || []) {
     assert.deepEqual(
@@ -119,9 +131,15 @@ try {
     downloadedPython = true;
     await waitForManagedPythonInstallation();
   }
+  const managedPythonInstalled = initialToolchains.toolchains?.some(
+    (toolchain) => toolchain.id === "python-macos-arm64" && toolchain.installed === true,
+  ) || downloadedPython;
+  const expectedPythonSource = useNodeSidecarRollback || managedPythonInstalled
+    ? "managed"
+    : "system";
   const selection = await requestJson("POST", "/api/toolchains/custom-path", {
     kind: "python",
-    preferredSource: "managed",
+    preferredSource: expectedPythonSource,
   });
   assert.equal(selection.success, true);
   await requestJson("POST", "/api/toolchains/rescan");
@@ -129,7 +147,7 @@ try {
     const toolchains = await requestJson("GET", "/api/toolchains");
     return toolchains.discovery?.status === "complete"
       && toolchains.capabilities?.cpp?.submissionReady === true
-      && toolchains.active?.python?.source === "managed"
+      && toolchains.active?.python?.source === expectedPythonSource
       && toolchains.capabilities?.python?.checkerReady === true
       ? toolchains
       : false;
@@ -154,10 +172,14 @@ try {
   assert.equal(lockedToolchains.mutationsBlocked, true);
   const blockedRescan = await fetch(`${baseUrl}/api/toolchains/rescan`, {
     method: "POST",
+    headers: { "x-judgedesk-session": apiToken },
     signal: AbortSignal.timeout(30_000),
   });
   assert.equal(blockedRescan.status, 409);
-  assert.match(await blockedRescan.text(), /while judging is in progress/i);
+  assert.match(
+    await blockedRescan.text(),
+    /while (?:judging is in progress|a judging session is active)/i,
+  );
   const cancelStartedAt = Date.now();
   const cancellation = await requestJson("POST", "/api/batch-judge/cancel", {
     jobId: cancelJobId,
@@ -165,8 +187,24 @@ try {
   assert.equal(cancellation.success, true);
   assert.ok(Date.now() - cancelStartedAt < 20_000, "checker cancellation exceeded its drain bound");
   const cancelEvents = await cancelledRun;
-  assertNoJudgeError(cancelEvents);
-  assert.ok(cancelEvents.some((event) => event.type === "done"));
+  const nonCancelError = cancelEvents.find(
+    (event) =>
+      event.type === "error"
+      && !String(event.data?.message || "").includes("JUDGE_CANCELLED"),
+  );
+  assert.equal(
+    nonCancelError,
+    undefined,
+    nonCancelError ? JSON.stringify(nonCancelError) : "",
+  );
+  assert.ok(
+    cancelEvents.some(
+      (event) =>
+        event.type === "done"
+        || (event.type === "error"
+          && String(event.data?.message || "").includes("JUDGE_CANCELLED")),
+    ),
+  );
   await waitFor(async () => {
     const rows = await processRows();
     return !rows.some((row) => isPackagedPythonChecker(row, activePythonPath));
@@ -289,7 +327,10 @@ async function runJudge(jobId, problems) {
   ]));
   const response = await fetch(`${baseUrl}/api/batch-judge`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      "x-judgedesk-session": apiToken,
+    },
     body: JSON.stringify({
       thisinhPath: contestants,
       testPath: tests,
@@ -328,9 +369,21 @@ function assertAccepted(events, problemName, marker) {
 }
 
 function isPackagedPythonChecker(row, activePythonPath) {
-  return row.command.includes("/checker.py")
+  const realActivePythonPath = (() => {
+    try {
+      return fs.realpathSync(activePythonPath);
+    } catch {
+      return activePythonPath;
+    }
+  })();
+  const activePythonDir = path.dirname(realActivePythonPath);
+  const hasCheckerArg = row.command.includes("/checker.py")
+    || /(?:^|\s)checker\.py(?:\s|$)/.test(row.command);
+  return hasCheckerArg
     && (
       row.command.includes(activePythonPath)
+      || row.command.includes(realActivePythonPath)
+      || row.command.includes(activePythonDir)
       || row.command.includes("/JudgeDeskExecutor/toolchains/")
     );
 }
@@ -349,9 +402,13 @@ async function waitForManagedPythonInstallation() {
 }
 
 async function requestJson(method, pathname, body) {
+  const headers = { "x-judgedesk-session": apiToken };
+  if (body !== undefined) {
+    headers["content-type"] = "application/json";
+  }
   const response = await fetch(`${baseUrl}${pathname}`, {
     method,
-    headers: body === undefined ? undefined : { "content-type": "application/json" },
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
     signal: AbortSignal.timeout(30_000),
   });
@@ -364,11 +421,17 @@ async function waitForCoreInventory() {
   return waitFor(async () => {
     if (failure) throw failure;
     const rows = await processRows();
-    const commands = [guiCommand, helperCommand, serverCommand, executorCommand];
-    const matches = rows.filter((row) => commands.includes(row.command));
-    return commands.every(
+    const expectedCommands = useNodeSidecarRollback
+      ? [guiCommand, helperCommand, serverCommand, executorCommand]
+      : [guiCommand, helperCommand, executorCommand];
+    const allCommands = [guiCommand, helperCommand, serverCommand, executorCommand];
+    const matches = rows.filter((row) => allCommands.includes(row.command));
+    const expectedOk = expectedCommands.every(
       (command) => matches.filter((row) => row.command === command).length === 1,
-    ) ? matches : false;
+    );
+    const serverForbiddenOk = useNodeSidecarRollback
+      || matches.filter((row) => row.command === serverCommand).length === 0;
+    return expectedOk && serverForbiddenOk ? matches : false;
   }, 15_000, "packaged app did not establish one complete process generation");
 }
 
@@ -383,8 +446,22 @@ async function waitForListeningPort(pid) {
         "-sTCP:LISTEN",
         "-Fn",
       ]);
-      const match = stdout.match(/^n127\.0\.0\.1:(\d+)$/m);
-      return match ? Number(match[1]) : false;
+      const ports = Array.from(
+        stdout.matchAll(/^n127\.0\.0\.1:(\d+)$/gm),
+        (match) => Number(match[1]),
+      ).reverse();
+      for (const candidate of ports) {
+        try {
+          const response = await fetch(`http://127.0.0.1:${candidate}/api/status`, {
+            headers: { "x-judgedesk-session": apiToken },
+            signal: AbortSignal.timeout(1_000),
+          });
+          if (response.ok) return candidate;
+        } catch {
+          // Skip non-HTTP listeners such as the single-instance activation socket.
+        }
+      }
+      return false;
     } catch {
       return false;
     }

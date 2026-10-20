@@ -104,7 +104,6 @@ export const CANONICAL_CONTRACT_CASES: ContractCase[] = [
     path: () => "/api/toolchains/rescan",
     expectedStatus: 202,
     fixtureFile: "post-toolchains-rescan.json",
-    knownRustGap: "Rust does not implement /api/toolchains/rescan (Phase 2)",
   },
   {
     id: "put-toolchains-execution-policy",
@@ -115,7 +114,6 @@ export const CANONICAL_CONTRACT_CASES: ContractCase[] = [
     body: () => JSON.stringify({ allowResourceOnlyLocalExecution: false }),
     expectedStatus: 200,
     fixtureFile: "put-toolchains-execution-policy.json",
-    knownRustGap: "Rust does not persist execution-policy updates (Phase 2)",
   },
   {
     id: "post-toolchains-prewarm",
@@ -124,18 +122,19 @@ export const CANONICAL_CONTRACT_CASES: ContractCase[] = [
     path: () => "/api/toolchains/prewarm",
     expectedStatus: 200,
     fixtureFile: "post-toolchains-prewarm.json",
-    knownRustGap: "Rust does not implement background prewarm route (Phase 7)",
   },
   {
     id: "put-toolchain-preference",
     name: "Toolchain Preference Update",
     method: "PUT",
-    path: () => "/api/toolchains/profiles/cpp-legacy-v1/preference",
+    path: () =>
+      process.platform === "darwin"
+        ? "/api/toolchains/profiles/python-cpython312/preference"
+        : "/api/toolchains/profiles/cpp-legacy-v1/preference",
     headers: () => ({ "Content-Type": "application/json" }),
     body: () => JSON.stringify({ mode: "managed" }),
     expectedStatus: 200,
     fixtureFile: "put-toolchain-preference.json",
-    knownRustGap: "Rust profile preference route not decomposed (Phase 2)",
   },
   {
     id: "post-toolchain-certification-plan",
@@ -144,7 +143,6 @@ export const CANONICAL_CONTRACT_CASES: ContractCase[] = [
     path: () => "/api/toolchains/profiles/cpp-legacy-v1/certification-plan",
     expectedStatus: 422,
     fixtureFile: "post-toolchain-certification-plan.json",
-    knownRustGap: "Rust compiler service certification plan not implemented (Phase 3)",
   },
   {
     id: "post-toolchain-certify",
@@ -153,7 +151,6 @@ export const CANONICAL_CONTRACT_CASES: ContractCase[] = [
     path: () => "/api/toolchains/profiles/cpp-legacy-v1/certify",
     expectedStatus: 422,
     fixtureFile: "post-toolchain-certify.json",
-    knownRustGap: "Rust toolchain certify route not implemented (Phase 3)",
   },
   {
     id: "post-toolchain-diagnose",
@@ -162,7 +159,6 @@ export const CANONICAL_CONTRACT_CASES: ContractCase[] = [
     path: () => "/api/toolchains/profiles/cpp-legacy-v1/diagnose",
     expectedStatus: 200,
     fixtureFile: "post-toolchain-diagnose.json",
-    knownRustGap: "Rust toolchain diagnose profile route not implemented (Phase 3)",
   },
   {
     id: "post-toolchain-custom-path",
@@ -173,7 +169,6 @@ export const CANONICAL_CONTRACT_CASES: ContractCase[] = [
     body: (ctx) => JSON.stringify({ kind: "cpp", path: ctx.tempDir }),
     expectedStatus: 200,
     fixtureFile: "post-toolchain-custom-path.json",
-    knownRustGap: "Rust custom-path preference update not fully decoupled (Phase 2)",
   },
   {
     id: "post-toolchain-cancel",
@@ -182,16 +177,17 @@ export const CANONICAL_CONTRACT_CASES: ContractCase[] = [
     path: () => "/api/toolchains/gcc-windows-x64/cancel",
     expectedStatus: 200,
     fixtureFile: "post-toolchain-cancel.json",
-    knownRustGap: "Rust install cancellation not implemented (Phase 2)",
   },
   {
     id: "post-toolchain-install",
     name: "Toolchain Install",
     method: "POST",
-    path: () => "/api/toolchains/fpc-windows-x64/install",
+    path: () =>
+      process.platform === "darwin"
+        ? "/api/toolchains/python-macos-arm64/install"
+        : "/api/toolchains/fpc-windows-x64/install",
     expectedStatus: 202,
     fixtureFile: "post-toolchain-install.json",
-    knownRustGap: "Rust does not implement toolchain download/install (Phase 2)",
   },
   {
     id: "post-select-directory-canceled",
@@ -204,7 +200,6 @@ export const CANONICAL_CONTRACT_CASES: ContractCase[] = [
     body: () => JSON.stringify({ defaultPath: "" }),
     expectedStatus: 200,
     fixtureFile: "post-select-directory-canceled.json",
-    knownRustGap: "Rust does not implement select-directory route yet (Phase 1)",
     before: () => {
       const mock = process.env.JUDGEDESK_TEST_SELECT_FILE || process.env.JUDGEDESK_TEST_SELECT_DIRECTORY;
       if (mock && fs.existsSync(path.dirname(mock))) {
@@ -223,7 +218,6 @@ export const CANONICAL_CONTRACT_CASES: ContractCase[] = [
     body: () => JSON.stringify({ defaultPath: "" }),
     expectedStatus: 200,
     fixtureFile: "post-select-directory-success.json",
-    knownRustGap: "Rust does not implement select-directory route yet (Phase 1)",
     before: (ctx) => {
       const mock = process.env.JUDGEDESK_TEST_SELECT_FILE || process.env.JUDGEDESK_TEST_SELECT_DIRECTORY;
       if (mock && fs.existsSync(path.dirname(mock))) {
@@ -238,7 +232,6 @@ export const CANONICAL_CONTRACT_CASES: ContractCase[] = [
     path: (ctx) => `/api/fetch-contestants?path=${encodeURIComponent(ctx.contestantDir)}`,
     expectedStatus: 200,
     fixtureFile: "get-fetch-contestants.json",
-    knownRustGap: "Rust fetch-contestants not exposed on standalone server (Phase 6)",
   },
   {
     id: "get-fetch-problems",
@@ -247,7 +240,6 @@ export const CANONICAL_CONTRACT_CASES: ContractCase[] = [
     path: (ctx) => `/api/fetch-problems?path=${encodeURIComponent(path.dirname(ctx.problemDir))}`,
     expectedStatus: 200,
     fixtureFile: "get-fetch-problems.json",
-    knownRustGap: "Rust fetch-problems not exposed on standalone server (Phase 6)",
   },
   {
     id: "get-fetch-tests",
@@ -256,7 +248,6 @@ export const CANONICAL_CONTRACT_CASES: ContractCase[] = [
     path: (ctx) => `/api/fetch-tests?path=${encodeURIComponent(ctx.problemDir)}`,
     expectedStatus: 200,
     fixtureFile: "get-fetch-tests.json",
-    knownRustGap: "Rust fetch-tests returns empty list or incomplete pair validation (Phase 6)",
   },
   {
     id: "get-fetch-polygon-tests",
@@ -265,7 +256,6 @@ export const CANONICAL_CONTRACT_CASES: ContractCase[] = [
     path: (ctx) => `/api/fetch-polygon-tests?path=${encodeURIComponent(ctx.problemDir)}&problem=aplusb`,
     expectedStatus: 200,
     fixtureFile: "get-fetch-polygon-tests.json",
-    knownRustGap: "Rust fetch-polygon-tests previews not implemented (Phase 6)",
   },
   {
     id: "post-polygon-config",
@@ -304,7 +294,6 @@ export const CANONICAL_CONTRACT_CASES: ContractCase[] = [
     body: (ctx) => ctx.exportPayload,
     expectedStatus: 200,
     fixtureFile: "post-open-excel.json",
-    knownRustGap: "Rust score export parser lacks Excel spawn suppression and diagnostic verification (Phase 6)",
   },
   {
     id: "post-batch-judge",
@@ -321,7 +310,6 @@ export const CANONICAL_CONTRACT_CASES: ContractCase[] = [
     expectedStatus: 200,
     streaming: "ndjson",
     fixtureFile: "post-batch-judge-stream.json",
-    knownRustGap: "Rust drops problemConfigs and emits metadata before progress (Phase 4)",
   },
   {
     id: "post-batch-judge-cancel",
@@ -332,7 +320,6 @@ export const CANONICAL_CONTRACT_CASES: ContractCase[] = [
     body: () => JSON.stringify({ jobId: "job_pre_cancel_test" }),
     expectedStatus: 200,
     fixtureFile: "post-batch-judge-cancel.json",
-    knownRustGap: "Rust cancel ignores jobId and lacks pending pre-admission registration (Phase 4)",
   },
   {
     id: "get-osd-status",
@@ -357,7 +344,6 @@ export const CANONICAL_CONTRACT_CASES: ContractCase[] = [
       }),
     expectedStatus: 200,
     fixtureFile: "post-osd-start.json",
-    knownRustGap: "Rust OSD watcher not integrated (Phase 6)",
   },
   {
     id: "post-osd-stop",
@@ -366,7 +352,6 @@ export const CANONICAL_CONTRACT_CASES: ContractCase[] = [
     path: () => "/api/osd/stop",
     expectedStatus: 200,
     fixtureFile: "post-osd-stop.json",
-    knownRustGap: "Rust OSD stop watcher not integrated (Phase 6)",
   },
   {
     id: "get-osd-events",
@@ -376,7 +361,6 @@ export const CANONICAL_CONTRACT_CASES: ContractCase[] = [
     expectedStatus: 200,
     streaming: "sse",
     fixtureFile: "get-osd-events.json",
-    knownRustGap: "Rust OSD SSE event stream not fully integrated (Phase 6)",
   },
   {
     id: "delete-toolchain",
@@ -385,7 +369,6 @@ export const CANONICAL_CONTRACT_CASES: ContractCase[] = [
     path: () => "/api/toolchains/fpc-windows-x64",
     expectedStatus: 200,
     fixtureFile: "delete-toolchain.json",
-    knownRustGap: "Rust uninstall route not implemented (Phase 2)",
   },
   {
     id: "post-shutdown",
@@ -394,6 +377,5 @@ export const CANONICAL_CONTRACT_CASES: ContractCase[] = [
     path: () => "/api/shutdown",
     expectedStatus: 200,
     fixtureFile: "post-shutdown.json",
-    knownRustGap: "Rust shutdown lacks graceful active session drain check (Phase 1)",
   },
 ];

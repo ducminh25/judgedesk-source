@@ -401,3 +401,112 @@ test("score export outputs sorted scoreboard and sorts detail sheet problems lef
   );
   assert.deepEqual(aliceProblemsInOrder, ["A_SUM", "B_SORT"]);
 });
+
+test("score export caps cell strings below OpenXML 32767-char limit, strips XML control chars, and bounds column width", async () => {
+  const hugeDebugText = `debug\x00\x07\x0B_${"X".repeat(50_000)}`;
+  const result: BatchJudgeResult = {
+    success: true,
+    contestants: [{
+      contestantName: "12000034",
+      problems: [{
+        problemName: "CAU4",
+        language: "cpp",
+        compileStatus: "OK",
+        compileError: "",
+        compileTime: 50,
+        testCases: [{
+          name: "Test01",
+          status: "RE",
+          executionTime: 100,
+          score: 0,
+          errorDetail: hugeDebugText,
+          checkerMessage: hugeDebugText,
+        }],
+        summary: { total: 1, passed: 0, maxScore: 5, score: 0, status: "RE" },
+      }],
+    }],
+  };
+  const mockT = (key: string) => key;
+  const workbookBytes = await buildScoreWorkbookBytes(
+    result,
+    ["12000034"],
+    ["CAU4"],
+    createScoreWorkbookLabels(mockT as any),
+  );
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(Buffer.from(workbookBytes));
+  const detailSheet = workbook.getWorksheet("export.detailsTitle")!;
+  const resultsCell = String(detailSheet.getCell("F4").value ?? "");
+  const errorDetailCell = String(detailSheet.getCell("K4").value ?? "");
+  const checkerMessageCell = String(detailSheet.getCell("L4").value ?? "");
+
+  assert.ok(resultsCell.length <= 32_767, `Results cell length ${resultsCell.length} exceeds Excel 32767 limit`);
+  assert.ok(errorDetailCell.length <= 32_767, `Error detail cell length ${errorDetailCell.length} exceeds Excel 32767 limit`);
+  assert.ok(checkerMessageCell.length <= 32_767, `Checker message cell length ${checkerMessageCell.length} exceeds Excel 32767 limit`);
+  assert.ok(!/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(resultsCell), "Results cell must not contain invalid XML control characters");
+  for (const col of detailSheet.columns) {
+    assert.ok((col.width ?? 0) <= 255, `Column width ${col.width} exceeds Excel 255 limit`);
+  }
+});
+
+test("score export preserves exact terminating decimals up to 4 places (3.525, 0.025, 27.025, 15.025) in Summary and Details", async () => {
+  const result: BatchJudgeResult = {
+    success: true,
+    contestants: [
+      {
+        contestantName: "C03_Verdicts_Mix_cpp",
+        problems: [
+          {
+            problemName: "01_Fast",
+            language: "cpp",
+            compileStatus: "OK",
+            testCases: [{ name: "test01", status: "AC", executionTime: 5, score: 23.5, scoreExact: { n: 47, d: 2 } }],
+            summary: { total: 1, passed: 1, maxScore: 25, score: 23.5, scoreExact: { n: 47, d: 2 }, status: "PARTIAL" },
+          },
+          {
+            problemName: "04_Weighted",
+            language: "cpp",
+            compileStatus: "OK",
+            testCases: [{ name: "test01", status: "AC", executionTime: 5, score: 3.525, scoreExact: { n: 141, d: 40 } }],
+            summary: { total: 1, passed: 1, maxScore: 10, score: 3.525, scoreExact: { n: 141, d: 40 }, status: "PARTIAL" },
+          },
+        ],
+      },
+      {
+        contestantName: "C04_Edge_And_CE_cpp",
+        problems: [
+          {
+            problemName: "01_Fast",
+            language: "cpp",
+            compileStatus: "OK",
+            testCases: [{ name: "test01", status: "AC", executionTime: 5, score: 15, scoreExact: { n: 15, d: 1 } }],
+            summary: { total: 1, passed: 1, maxScore: 15, score: 15, scoreExact: { n: 15, d: 1 }, status: "AC" },
+          },
+          {
+            problemName: "04_Weighted",
+            language: "cpp",
+            compileStatus: "OK",
+            testCases: [{ name: "test01", status: "AC", executionTime: 5, score: 0.025, scoreExact: { n: 1, d: 40 } }],
+            summary: { total: 1, passed: 1, maxScore: 10, score: 0.025, scoreExact: { n: 1, d: 40 }, status: "PARTIAL" },
+          },
+        ],
+      },
+    ],
+  };
+  const mockT = (key: string) => key;
+  const workbookBytes = await buildScoreWorkbookBytes(
+    result,
+    ["C03_Verdicts_Mix_cpp", "C04_Edge_And_CE_cpp"],
+    ["01_Fast", "04_Weighted"],
+    createScoreWorkbookLabels(mockT as any),
+  );
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(Buffer.from(workbookBytes));
+  const summarySheet = workbook.getWorksheet("export.scoreboardTitle")!;
+  assert.equal(summarySheet.getCell("C2").value, 3.525);
+  assert.equal(summarySheet.getCell("D2").value, 27.025);
+  assert.equal(summarySheet.getCell("C3").value, 0.025);
+  assert.equal(summarySheet.getCell("D3").value, 15.025);
+});
+
+

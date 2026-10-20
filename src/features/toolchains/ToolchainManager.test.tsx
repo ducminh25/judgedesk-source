@@ -44,12 +44,12 @@ async function renderWithTranslations(element: ReactNode) {
               advanced: "Advanced",
               supportedLocalVersions: "Tested local versions",
               localExecution: {
-                freeze_required: "Freeze required",
-                managed_only: "Managed only",
+                freeze_required: "Direct local judging is disabled. You may create a private immutable copy for this computer before a contest.",
+                managed_only: "Local installations are detected for diagnostics only. Use the managed package for secure judging.",
               },
               freezeForContest: "Freeze for contest",
-              localPolicyLegacyDisabled: "Legacy resource-only execution is disabled. Local compilers are checked automatically in the strict sandbox.",
-              localPolicyRecovery: "The saved execution policy could not be read. Strict sandbox isolation remains required.",
+              localPolicyLegacyDisabled: "Legacy resource-only execution is disabled. Toolchains must satisfy strict sandbox isolation (managed package, certified contest freeze, or platform-approved local toolchain); incompatible selections remain unavailable, without a compiler fallback.",
+              localPolicyRecovery: "The saved local execution policy could not be read or is invalid. Strict sandbox isolation remains required for all toolchains. The file has been preserved for recovery.",
               resourceOnly: {
                 title: "Advanced local execution",
                 description: "Filesystem and network are not isolated.",
@@ -118,7 +118,7 @@ describe("toolchain settings UI regressions", () => {
     assert.match(markup, /Compilers &amp; Runtimes Manager/);
   });
 
-  it("explains disabled legacy policies without offering a less-secure toggle", async () => {
+  it("explains disabled legacy policies with host-accurate strict sandbox requirements and no less-secure toggle", async () => {
     const { LocalExecutionPolicyNotice } = await import("./ToolchainManager.js");
     const markup = await renderWithTranslations(
       <LocalExecutionPolicyNotice policy={{
@@ -129,7 +129,7 @@ describe("toolchain settings UI regressions", () => {
       }} />,
     );
     assert.match(markup, /Legacy resource-only execution is disabled/);
-    assert.match(markup, /checked automatically/);
+    assert.match(markup, /managed package, certified contest freeze, or platform-approved local toolchain/);
     assert.doesNotMatch(markup, /type="checkbox"|role="switch"/);
     const healthy = await renderWithTranslations(
       <LocalExecutionPolicyNotice policy={{
@@ -304,6 +304,8 @@ describe("toolchain settings UI regressions", () => {
     assert.match(markup, /Download and apply for JudgeDesk/);
     assert.doesNotMatch(markup, /toolchains\.registry\.advanced/);
     assert.doesNotMatch(markup, /Tested local versions/);
+    assert.match(markup, /Direct local judging is disabled\. You may create a private immutable copy/);
+    assert.match(markup, /Local installations are detected for diagnostics only\. Use the managed package for secure judging\./);
     assert.match(markup, /Freeze for contest/);
     assert.match(markup, /Uninstall/);
 
@@ -352,6 +354,63 @@ describe("toolchain settings UI regressions", () => {
     assert.match(source, /\/api\/toolchains\/prewarm/);
   });
 
+  it("enforces modal dialog semantics, focus confinement, and z-index above toolbar menus", () => {
+    const source = readFileSync(
+      new URL("./ToolchainManager.tsx", import.meta.url),
+      "utf8",
+    );
+    assert.match(source, /role="dialog"/);
+    assert.match(source, /aria-modal="true"/);
+    assert.match(source, /aria-labelledby=\{titleId\}/);
+    assert.match(source, /z-\[100\]/);
+    assert.doesNotMatch(source, /\? "z-\[90\]" : "z-50"/);
+    assert.match(source, /event\.key === "Tab"/);
+    assert.match(source, /data-toolchain-menu-trigger/);
+  });
+
+  it("uses accurate Vietnamese status label and policy strings in locale files", () => {
+    const viLocale = JSON.parse(
+      readFileSync(new URL("../../locales/vi.json", import.meta.url), "utf8"),
+    ) as {
+      toolchains: {
+        registry: {
+          localPolicyLegacyDisabled: string;
+          localPolicyRecovery: string;
+          statuses: { not_available: string };
+        };
+      };
+    };
+    const enLocale = JSON.parse(
+      readFileSync(new URL("../../locales/en.json", import.meta.url), "utf8"),
+    ) as {
+      toolchains: {
+        registry: {
+          localPolicyLegacyDisabled: string;
+          localPolicyRecovery: string;
+          statuses: { not_available: string };
+        };
+      };
+    };
+    assert.equal(viLocale.toolchains.registry.statuses.not_available, "Chưa khả dụng");
+    assert.equal(enLocale.toolchains.registry.statuses.not_available, "Not available");
+    assert.doesNotMatch(
+      viLocale.toolchains.registry.localPolicyLegacyDisabled,
+      /Compiler C\/C\+\+ và Python local được tự động kiểm tra/,
+    );
+    assert.doesNotMatch(
+      enLocale.toolchains.registry.localPolicyLegacyDisabled,
+      /Local C\/C\+\+ and Python toolchains are checked automatically/,
+    );
+  });
+
+  it("suppresses transient initial fetch errors while retries remain", () => {
+    const source = readFileSync(
+      new URL("./useToolchains.ts", import.meta.url),
+      "utf8",
+    );
+    assert.match(source, /suppressError:\s*retriesRemaining\s*>\s*0/);
+  });
+
   it("does not force a toolchain wizard on first launch", () => {
     const appSource = readFileSync(
       new URL("../../App.tsx", import.meta.url),
@@ -370,5 +429,15 @@ describe("toolchain settings UI regressions", () => {
     const requestSource = appSource.slice(requestStart, requestEnd);
     assert.doesNotMatch(requestSource, /hostStatus\s*\|\|/);
     assert.match(requestSource, /hostStatusRefreshRef\.current\?\.request\(\)/);
+  });
+
+  it("does not dispose or reset hostStatus when switching UI language", () => {
+    const appSource = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
+    const effectStart = appSource.indexOf("const refresh = createHostStatusRefresh(");
+    const effectEnd = appSource.indexOf("// Themis Toolchain Detection", effectStart);
+    assert.notEqual(effectStart, -1);
+    assert.notEqual(effectEnd, -1);
+    const effectSource = appSource.slice(effectStart, effectEnd);
+    assert.match(effectSource, /\},\s*\[loadHelpToolchains,\s*requestHostStatus\]\)/);
   });
 });

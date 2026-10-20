@@ -6,7 +6,10 @@ import { APP_ROOT, IS_PRODUCTION, SERVER_PORT } from "./server/runtime.js";
 import { executorClient } from "./server/executor/client.js";
 import { registerExportRoutes } from "./server/routes/export-routes.js";
 import { registerProblemRoutes } from "./server/routes/problem-routes.js";
-import { registerSystemRoutes } from "./server/routes/system-routes.js";
+import {
+  drainServerForProcessExit,
+  registerSystemRoutes,
+} from "./server/routes/system-routes.js";
 import { registerToolchainRoutes } from "./server/routes/toolchain-routes.js";
 import { registerOsdRoutes } from "./server/routes/osd-routes.js";
 import { startParentWatchdog } from "./server/platform/parent-watchdog.js";
@@ -18,11 +21,17 @@ import {
 } from "./server/toolchains/migration.js";
 import { serverLifecycle } from "./server/platform/server-lifecycle.js";
 import { BUILD_METADATA } from "./server/build-metadata.js";
+import {
+  createDesktopApiMiddleware,
+  processApiSessionTokenStore,
+} from "./server/platform/api-session.js";
+
+const apiSessionToken = processApiSessionTokenStore.consume(process.env, IS_PRODUCTION);
 
 startParentWatchdog(process.env.JUDGEDESK_PARENT_PID, async () => {
   console.error("[Tauri Shell] Parent process ended; shutting down backend sidecars.");
   try {
-    await serverLifecycle.drain();
+    await drainServerForProcessExit();
     process.exit(0);
   } catch (err) {
     console.error("[Server Teardown] Parent watchdog drain failed:", err);
@@ -57,12 +66,20 @@ async function startServer() {
   });
   const app = express();
 
+  if (apiSessionToken !== null) {
+    app.use("/api", createDesktopApiMiddleware({
+      port: SERVER_PORT,
+      token: apiSessionToken,
+    }));
+  }
+
   // Use JSON and URL encoded parsers
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-  // CORS Middleware
-  app.use((req, res, next) => {
+  // Direct browser development is intentionally separate from the authenticated
+  // desktop boundary. Packaged production cannot enter this branch.
+  if (apiSessionToken === null) app.use((req, res, next) => {
     const origin = req.headers.origin;
     const allowedOrigins = new Set([
       "http://localhost:5173",
@@ -77,6 +94,7 @@ async function startServer() {
     }
     res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
     res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.header("Access-Control-Max-Age", "86400");
     if (req.method === "OPTIONS") {
       return res.sendStatus(200);
     }
@@ -122,17 +140,18 @@ async function startServer() {
     });
   }
 
-  app.listen(SERVER_PORT, "127.0.0.1", () => {
+  const httpServer = app.listen(SERVER_PORT, "127.0.0.1", () => {
     console.log(`JUDGEDESK_BUILD_IDENTITY=${JSON.stringify(BUILD_METADATA)}`);
     console.log(`[Online Judge Server] Live on http://127.0.0.1:${SERVER_PORT}`);
     console.log(`[Performance] Backend ready in ${(performance.now() - serverStartupStarted).toFixed(1)} ms`);
   });
+  httpServer.keepAliveTimeout = 65_000;
+  httpServer.headersTimeout = 66_000;
 }
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, () => {
-    serverLifecycle
-      .drain()
+    drainServerForProcessExit()
       .then(() => process.exit(0))
       .catch((err) => {
         console.error(`[Server Teardown] Teardown failed on ${signal}:`, err);

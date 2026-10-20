@@ -101,6 +101,7 @@ describe("Help Center", () => {
     assert.match(markup, /Allow less-safe local mode/);
     assert.match(markup, /Off \(default\)/);
     assert.match(markup, /full sandbox/);
+    assert.match(markup, /Bubblewrap bwrap/);
     assert.match(markup, /TLE, MLE, and process-tree cleanup/);
     assert.match(markup, /does NOT isolate the filesystem or network/);
     assert.doesNotMatch(markup, /host process/i);
@@ -167,6 +168,7 @@ describe("Help Center", () => {
     assert.equal(isHelpShortcut({ key: "F2" }), false);
     assert.equal(defaultAppDataPath("win32"), "%LOCALAPPDATA%\\ThemisV2");
     assert.equal(defaultAppDataPath("darwin"), "~/Library/Application Support/ThemisV2");
+    assert.equal(defaultAppDataPath("linux"), "~/.local/share/ThemisV2");
   });
 
   it("wires F1 to the same Help Center state in App", () => {

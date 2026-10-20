@@ -849,11 +849,11 @@ mod windows {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 #[path = "process_supervisor_macos.rs"]
 mod macos;
 
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
 mod portable {
     use std::io;
     use std::path::{Path, PathBuf};
@@ -904,9 +904,9 @@ mod portable {
     }
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use macos as platform;
-#[cfg(not(any(windows, target_os = "macos")))]
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
 use portable as platform;
 #[cfg(windows)]
 use windows as platform;

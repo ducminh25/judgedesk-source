@@ -30,6 +30,7 @@ export interface UseAppShortcutsOptions {
   activeLog: unknown;
   loadModal: "tests" | "contestants" | null;
   helpSection: HelpSectionId | null;
+  showChangelog?: boolean;
   openToolchains: boolean;
   showOsdModal: boolean;
   pendingScoreDeletion: PendingScoreDeletion | null;
@@ -41,6 +42,7 @@ export interface UseAppShortcutsOptions {
   onCloseActiveLog: () => void;
   onCloseLoadModal: () => void;
   onCloseHelpSection: () => void;
+  onCloseChangelog?: () => void;
   onCloseOpenToolchains: () => void;
   onCloseShowOsdModal: () => void;
   onClosePendingScoreDeletion: () => void;
@@ -88,6 +90,7 @@ export function useAppShortcuts({
   activeLog,
   loadModal,
   helpSection,
+  showChangelog,
   openToolchains,
   showOsdModal,
   pendingScoreDeletion,
@@ -98,6 +101,7 @@ export function useAppShortcuts({
   onCloseActiveLog,
   onCloseLoadModal,
   onCloseHelpSection,
+  onCloseChangelog,
   onCloseOpenToolchains,
   onCloseShowOsdModal,
   onClosePendingScoreDeletion,
@@ -154,6 +158,11 @@ export function useAppShortcuts({
             onCloseLoadModal();
             return;
           }
+          if (showChangelog && onCloseChangelog) {
+            event.preventDefault();
+            onCloseChangelog();
+            return;
+          }
           if (helpSection) {
             event.preventDefault();
             onCloseHelpSection();
@@ -185,6 +194,7 @@ export function useAppShortcuts({
         const isAnyModalOpen =
           !!loadModal ||
           !!helpSection ||
+          !!showChangelog ||
           openToolchains ||
           showOsdModal ||
           !!pendingContestAction ||
@@ -314,6 +324,7 @@ export function useAppShortcuts({
     displayedProblems,
     hasContestData,
     helpSection,
+    showChangelog,
     hostStatus?.platform,
     interactionLocked,
     isContestDirty,
@@ -321,6 +332,7 @@ export function useAppShortcuts({
     onCloseActionMenu,
     onCloseActiveDetails,
     onCloseActiveLog,
+    onCloseChangelog,
     onCloseHelpSection,
     onCloseLoadModal,
     onCloseOpenToolchains,

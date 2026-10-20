@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { apiFetch } from "../../api";
+import { streamApiEvents } from "../desktop/sse.js";
 import type { ProblemConfig, ProblemResult } from "../../types";
 
 export interface OsdStatusState {
@@ -28,6 +29,30 @@ interface UseOsdSessionOptions {
   onProblemCompleted: (contestant: string, result: ProblemResult) => void;
 }
 
+function isSameOsdStatus(a: OsdStatusState, b: OsdStatusState): boolean {
+  if (
+    a.active !== b.active ||
+    a.paused !== b.paused ||
+    a.osdPath !== b.osdPath ||
+    a.contestantsPath !== b.contestantsPath ||
+    a.testPath !== b.testPath ||
+    a.enableLog !== b.enableLog ||
+    a.queueLength !== b.queueLength ||
+    a.totalProcessed !== b.totalProcessed
+  ) {
+    return false;
+  }
+  if (a.currentJob === b.currentJob) return true;
+  if (!a.currentJob || !b.currentJob) return false;
+  return (
+    a.currentJob.id === b.currentJob.id &&
+    a.currentJob.contestant === b.currentJob.contestant &&
+    a.currentJob.problem === b.currentJob.problem &&
+    a.currentJob.language === b.currentJob.language &&
+    a.currentJob.originalFileName === b.currentJob.originalFileName
+  );
+}
+
 export function useOsdSession({
   contestantsPath,
   testPath,
@@ -47,30 +72,29 @@ export function useOsdSession({
     totalProcessed: 0,
   });
   const [errorMessage, setErrorMessage] = useState<string>("");
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const eventAbortRef = useRef<AbortController | null>(null);
+  const onContestantDiscoveredRef = useRef(onContestantDiscovered);
+  const onProblemCompletedRef = useRef(onProblemCompleted);
+  onContestantDiscoveredRef.current = onContestantDiscovered;
+  onProblemCompletedRef.current = onProblemCompleted;
 
   const connectEvents = useCallback(() => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-    }
-
-    // Connect to SSE stream
-    const es = new EventSource("/api/osd/events");
-    eventSourceRef.current = es;
-
-    es.onmessage = (event) => {
-      if (!event.data) return;
+    eventAbortRef.current?.abort();
+    const controller = new AbortController();
+    eventAbortRef.current = controller;
+    const handleData = (data: string) => {
+      if (!data) return;
       try {
-        const payload = JSON.parse(event.data);
-        if (payload.type === "osd_status") {
-          setStatus(payload.data);
+        const payload = JSON.parse(data);
+        if (payload.type === "osd_status" && payload.data) {
+          setStatus((prev) => (isSameOsdStatus(prev, payload.data) ? prev : payload.data));
         } else if (payload.type === "osd_contestant_added") {
           if (payload.data?.contestant) {
-            onContestantDiscovered(payload.data.contestant);
+            onContestantDiscoveredRef.current(payload.data.contestant);
           }
         } else if (payload.type === "osd_problem_completed") {
           if (payload.data?.contestant && payload.data?.problemResult) {
-            onProblemCompleted(payload.data.contestant, payload.data.problemResult);
+            onProblemCompletedRef.current(payload.data.contestant, payload.data.problemResult);
           }
         } else if (payload.type === "osd_error") {
           setErrorMessage(payload.data?.message || "Lỗi OSD");
@@ -79,19 +103,26 @@ export function useOsdSession({
         // ignore parse error
       }
     };
-
-    es.onerror = () => {
-      // Reconnection is handled automatically by EventSource
+    const run = async () => {
+      while (!controller.signal.aborted) {
+        try {
+          await streamApiEvents("/api/osd/events", handleData, controller.signal);
+        } catch {
+          // A bounded reconnect preserves EventSource's former behavior.
+        }
+        if (!controller.signal.aborted) {
+          await new Promise<void>((resolve) => setTimeout(resolve, 1_000));
+        }
+      }
     };
-  }, [onContestantDiscovered, onProblemCompleted]);
+    void run();
+  }, []);
 
   useEffect(() => {
     connectEvents();
     return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
+      eventAbortRef.current?.abort();
+      eventAbortRef.current = null;
     };
   }, [connectEvents]);
 

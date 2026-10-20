@@ -6,11 +6,12 @@ import {
   getChangelogForLanguage,
 } from "./changelog-data.js";
 
-test("changelog data contains versions from 1.5.5 down to 1.2.5 in descending order", () => {
+test("changelog data contains versions from 1.6.0 down to 1.2.5 in descending order", () => {
   const versionsVi = CHANGELOG_DATA_VI.map((r) => r.version);
   const versionsEn = CHANGELOG_DATA_EN.map((r) => r.version);
 
   const expectedVersions = [
+    "1.6.0",
     "1.5.5",
     "1.5.3",
     "1.5.2",
@@ -65,10 +66,10 @@ test("getChangelogForLanguage returns appropriate language release list", () => 
   const en = getChangelogForLanguage("en");
   assert.equal(
     vi[0].sections[0].title,
-    "Tái cấu trúc Cấu hình bài thi, Phân nhóm Nhanh, Kiểm tra Định dạng Test & Tối ưu Bộ nhớ Compiler",
+    "Hỗ trợ chính thức Linux (Ubuntu 22.04 LTS+), Sandbox Bubblewrap & Nâng cấp Đa Nền Tảng",
   );
   assert.equal(
     en[0].sections[0].title,
-    "Problem Config Tabs, Quick Grouping, Test Well-Formed Validation & Toolchain Storage Deduplication",
+    "Official Linux Desktop Support (Ubuntu 22.04 LTS+), Bubblewrap Sandbox & Cross-Platform Refinements",
   );
 });

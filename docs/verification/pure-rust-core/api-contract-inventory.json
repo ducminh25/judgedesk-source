@@ -2,7 +2,7 @@
   "manifestRoutesCount": 29,
   "nodeRoutesCount": 29,
   "rustRoutesCount": 29,
-  "frontendCallersCount": 33,
+  "frontendCallersCount": 32,
   "nodeRoutes": [
     {
       "method": "DELETE",
@@ -362,12 +362,6 @@
       "rawUrl": "/api/batch-judge/cancel",
       "basePath": "/api/batch-judge/cancel",
       "method": "POST"
-    },
-    {
-      "file": "src/features/osd/useOsdSession.ts",
-      "rawUrl": "/api/osd/events",
-      "basePath": "/api/osd/events",
-      "method": "GET"
     },
     {
       "file": "src/features/osd/useOsdSession.ts",

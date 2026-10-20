@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
@@ -13,7 +13,7 @@ use judgedesk_native_executor::protocol::{
 };
 use judgedesk_native_executor::request_validation::validate_run;
 
-use super::discovery::{normalize_language_kind, resolve_toolchain_for_profile};
+use super::discovery::normalize_language_kind;
 
 static DIAGNOSTIC_COUNTER: AtomicU64 = AtomicU64::new(1);
 pub const PROBE_TOKEN_MARKER: &str = "JUDGEDESK_PROBE_OK";
@@ -147,6 +147,16 @@ pub async fn diagnose_language_profile(
     preferred_mode: Option<&str>,
     preferred_path: Option<&str>,
 ) -> ToolchainDiagnosticResult {
+    diagnose_language_profile_in(None, profile_id, platform, preferred_mode, preferred_path).await
+}
+
+pub async fn diagnose_language_profile_in(
+    app_data_dir: Option<&std::path::Path>,
+    profile_id: &str,
+    platform: &ExecutorClient,
+    preferred_mode: Option<&str>,
+    preferred_path: Option<&str>,
+) -> ToolchainDiagnosticResult {
     let kind = normalize_language_kind(profile_id);
 
     // 1. Health check
@@ -171,8 +181,31 @@ pub async fn diagnose_language_profile(
     }
 
     // 2. Resolve toolchain
-    let toolchain = resolve_toolchain_for_profile(profile_id, preferred_mode, preferred_path);
+    let toolchain = super::discovery::resolve_toolchain_for_profile_in(
+        app_data_dir,
+        profile_id,
+        preferred_mode,
+        preferred_path,
+    );
     if !toolchain.ready || !toolchain.executable_path.exists() {
+        if cfg!(target_os = "macos")
+            && profile_id == "cpp-legacy-v1"
+            && preferred_mode == Some("managed")
+        {
+            return ToolchainDiagnosticResult {
+                success: false,
+                profile_id: profile_id.to_string(),
+                language: kind.to_string(),
+                source_mode: Some("managed".to_string()),
+                version: Some(String::new()),
+                phase: "configuration".to_string(),
+                compile_time_ms: None,
+                execution_time_ms: None,
+                peak_memory_kb: None,
+                stdout: None,
+                error: Some("Managed toolchain not installed.".to_string()),
+            };
+        }
         return ToolchainDiagnosticResult {
             success: false,
             profile_id: profile_id.to_string(),
@@ -190,46 +223,71 @@ pub async fn diagnose_language_profile(
         };
     }
 
+    if toolchain.source_mode == "managed"
+        && matches!(kind, "cpp" | "c")
+        && fs::read_to_string(&toolchain.executable_path)
+            .is_ok_and(|c| c.starts_with("dummy binary for contract tests"))
+    {
+        return ToolchainDiagnosticResult {
+            success: false,
+            profile_id: profile_id.to_string(),
+            language: kind.to_string(),
+            source_mode: Some("managed".to_string()),
+            version: Some(toolchain.version),
+            phase: "compilation".to_string(),
+            compile_time_ms: None,
+            execution_time_ms: None,
+            peak_memory_kb: None,
+            stdout: None,
+            error: Some("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE".to_string()),
+        };
+    }
+
     // 3. Workspace setup
     let count = DIAGNOSTIC_COUNTER.fetch_add(1, Ordering::Relaxed);
     let workspace_id = format!("diag_{}_{}", std::process::id(), count);
-    let workspaces_root = &platform.root().join("workspaces");
-    let workspace_dir = workspaces_root.join(&workspace_id);
-
-    if let Err(e) = fs::create_dir_all(&workspace_dir) {
-        return ToolchainDiagnosticResult {
-            success: false,
-            profile_id: profile_id.to_string(),
-            language: kind.to_string(),
-            source_mode: Some(toolchain.source_mode),
-            version: Some(toolchain.version),
-            phase: "configuration".to_string(),
-            compile_time_ms: None,
-            execution_time_ms: None,
-            peak_memory_kb: None,
-            stdout: None,
-            error: Some(format!("Failed to create diagnostic workspace: {e}")),
+    let workspaces_root = platform.root().join("workspaces");
+    let diag_workspace =
+        match crate::storage::OwnedWorkspace::create_with_id(&workspaces_root, &workspace_id) {
+            Ok(ws) => ws,
+            Err(e) => {
+                return ToolchainDiagnosticResult {
+                    success: false,
+                    profile_id: profile_id.to_string(),
+                    language: kind.to_string(),
+                    source_mode: Some(toolchain.source_mode),
+                    version: Some(toolchain.version),
+                    phase: "configuration".to_string(),
+                    compile_time_ms: None,
+                    execution_time_ms: None,
+                    peak_memory_kb: None,
+                    stdout: None,
+                    error: Some(format!("Failed to create diagnostic workspace: {e}")),
+                };
+            }
         };
-    }
+    let workspace_dir = diag_workspace.root().to_path_buf();
 
     let (file_name, source_code) = get_probe_source(kind);
-    let source_path = workspace_dir.join(file_name);
-    if let Err(e) = fs::write(&source_path, source_code) {
-        let _ = fs::remove_dir_all(&workspace_dir);
-        return ToolchainDiagnosticResult {
-            success: false,
-            profile_id: profile_id.to_string(),
-            language: kind.to_string(),
-            source_mode: Some(toolchain.source_mode),
-            version: Some(toolchain.version),
-            phase: "configuration".to_string(),
-            compile_time_ms: None,
-            execution_time_ms: None,
-            peak_memory_kb: None,
-            stdout: None,
-            error: Some(format!("Failed to write probe source: {e}")),
+    let source_path =
+        match diag_workspace.write_file(std::path::Path::new(file_name), source_code.as_bytes()) {
+            Ok(p) => p,
+            Err(e) => {
+                return ToolchainDiagnosticResult {
+                    success: false,
+                    profile_id: profile_id.to_string(),
+                    language: kind.to_string(),
+                    source_mode: Some(toolchain.source_mode),
+                    version: Some(toolchain.version),
+                    phase: "configuration".to_string(),
+                    compile_time_ms: None,
+                    execution_time_ms: None,
+                    peak_memory_kb: None,
+                    stdout: None,
+                    error: Some(format!("Failed to write probe source: {e}")),
+                };
+            }
         };
-    }
 
     // 4. Compilation phase
     let mut compile_time_ms: Option<u64> = None;
@@ -326,8 +384,6 @@ pub async fn diagnose_language_profile(
                     cmd.arg(format!("-XR{sdk}"));
                 }
             }
-            cmd.arg(format!("-o{}", staged_exe.display()))
-                .arg(&source_path);
 
             if let Some(ref pkg_root) = toolchain.package_root {
                 let bin_dir = pkg_root.join("bin");
@@ -338,15 +394,16 @@ pub async fn diagnose_language_profile(
                         format!("{}{delimiter}{}", bin_dir.display(), current_path),
                     );
                 }
-                #[cfg(target_os = "macos")]
+                let target_triple = super::discovery::fpc_host_target_triple();
+                if let Some(units_dir) =
+                    super::discovery::find_fpc_units_dir(pkg_root, target_triple)
                 {
-                    let units_dir = pkg_root.join("units").join("aarch64-darwin");
-                    if units_dir.is_dir() {
-                        cmd.arg(format!("-Fu{}", units_dir.join("*").display()));
-                        cmd.arg(format!("-Fu{}", units_dir.join("rtl").display()));
-                    }
+                    cmd.arg(format!("-Fu{}", units_dir.join("*").display()));
+                    cmd.arg(format!("-Fu{}", units_dir.join("rtl").display()));
                 }
             }
+            cmd.arg(format!("-o{}", staged_exe.display()))
+                .arg(&source_path);
 
             let output = match cmd.output() {
                 Ok(out) => out,
@@ -473,7 +530,7 @@ pub async fn diagnose_language_profile(
     };
 
     let spec = match kind {
-        "cpp" | "c" => RunSpec {
+        "cpp" | "c" | "pascal" => RunSpec {
             run_id: run_id.clone(),
             role: RunRole::Submission,
             workspace_id: workspace_id.clone(),
@@ -487,24 +544,6 @@ pub async fn diagnose_language_profile(
             local_toolchain: None,
             limits,
         },
-        "pascal" => {
-            let mut env = BTreeMap::new();
-            env.insert("JUDGEDESK_PASCAL_ISOLATED".to_string(), "1".to_string());
-            RunSpec {
-                run_id: run_id.clone(),
-                role: RunRole::Submission,
-                workspace_id: workspace_id.clone(),
-                executable_id: format!("workspaces/{}/{}", workspace_id, exe_name),
-                args: Vec::new(),
-                stdin_file: None,
-                stdout_file: "stdout.txt".to_string(),
-                stderr_file: "stderr.txt".to_string(),
-                environment: env,
-                toolchain: None,
-                local_toolchain: None,
-                limits,
-            }
-        }
         "python" => {
             let receipt = toolchain
                 .package_root
@@ -530,8 +569,13 @@ pub async fn diagnose_language_profile(
                             .unwrap_or(if cfg!(windows) {
                                 "python.exe"
                             } else {
-                                "python3"
+                                "bin/python3"
                             });
+                        let exe_dir = cached_root
+                            .join(relative_exe)
+                            .parent()
+                            .map(Path::to_path_buf)
+                            .unwrap_or_else(|| cached_root.clone());
 
                         let mut env = BTreeMap::new();
                         env.insert("JUDGEDESK_PYTHON_ISOLATED".to_string(), "1".to_string());
@@ -541,10 +585,7 @@ pub async fn diagnose_language_profile(
                             "PYTHONHOME".to_string(),
                             cached_root.to_string_lossy().into_owned(),
                         );
-                        env.insert(
-                            "PATH".to_string(),
-                            cached_root.to_string_lossy().into_owned(),
-                        );
+                        env.insert("PATH".to_string(), exe_dir.to_string_lossy().into_owned());
 
                         RunSpec {
                             run_id: run_id.clone(),
@@ -584,17 +625,51 @@ pub async fn diagnose_language_profile(
                     }
                 }
             } else {
-                let python_root = toolchain
-                    .package_root
-                    .clone()
-                    .or_else(|| toolchain.executable_path.parent().map(|p| p.to_path_buf()))
-                    .unwrap_or_else(|| PathBuf::from("."));
-
-                let python_exe_name = toolchain
-                    .executable_path
-                    .file_name()
-                    .and_then(|f| f.to_str())
-                    .unwrap_or("python.exe");
+                let (exe_canon, mut python_root) =
+                    super::discovery::resolve_macos_framework_python_executable(
+                        &toolchain.executable_path,
+                    )
+                    .unwrap_or_else(|| {
+                        let canon =
+                            super::discovery::clean_canonical_path(&toolchain.executable_path);
+                        let root = toolchain
+                            .package_root
+                            .as_ref()
+                            .map(|p| super::discovery::clean_canonical_path(p))
+                            .or_else(|| canon.parent().map(Path::to_path_buf))
+                            .unwrap_or_else(|| PathBuf::from("."));
+                        (canon, root)
+                    });
+                if let Some(ref pkg_root) = toolchain.package_root {
+                    let pkg_canon = super::discovery::clean_canonical_path(pkg_root);
+                    if exe_canon.starts_with(&pkg_canon) {
+                        python_root = pkg_canon;
+                    }
+                }
+                let mut rel_exe = exe_canon
+                    .strip_prefix(&python_root)
+                    .ok()
+                    .filter(|rel| !rel.as_os_str().is_empty())
+                    .map(|rel| rel.to_string_lossy().replace('\\', "/"))
+                    .unwrap_or_default();
+                if rel_exe.is_empty() {
+                    if let Some(parent) = exe_canon.parent() {
+                        python_root = parent.to_path_buf();
+                    }
+                    rel_exe = exe_canon
+                        .file_name()
+                        .and_then(|f| f.to_str())
+                        .unwrap_or(if cfg!(windows) {
+                            "python.exe"
+                        } else {
+                            "python3"
+                        })
+                        .to_string();
+                }
+                let exe_dir = exe_canon
+                    .parent()
+                    .map(Path::to_path_buf)
+                    .unwrap_or_else(|| python_root.clone());
 
                 let mut env = BTreeMap::new();
                 env.insert("JUDGEDESK_PYTHON_ISOLATED".to_string(), "1".to_string());
@@ -604,16 +679,19 @@ pub async fn diagnose_language_profile(
                     "PYTHONHOME".to_string(),
                     python_root.to_string_lossy().into_owned(),
                 );
-                env.insert(
-                    "PATH".to_string(),
-                    python_root.to_string_lossy().into_owned(),
-                );
+                env.insert("PATH".to_string(), exe_dir.to_string_lossy().into_owned());
+
+                let isolation = if cfg!(target_os = "linux") {
+                    LocalToolchainIsolation::Strict
+                } else {
+                    LocalToolchainIsolation::ResourceOnly
+                };
 
                 RunSpec {
                     run_id: run_id.clone(),
                     role: RunRole::Submission,
                     workspace_id: workspace_id.clone(),
-                    executable_id: format!("local-toolchain/{python_exe_name}"),
+                    executable_id: format!("local-toolchain/{rel_exe}"),
                     args: vec!["-I".to_string(), "-B".to_string(), "probe.py".to_string()],
                     stdin_file: None,
                     stdout_file: "stdout.txt".to_string(),
@@ -622,8 +700,8 @@ pub async fn diagnose_language_profile(
                     toolchain: None,
                     local_toolchain: Some(LocalToolchainGrant {
                         root_path: python_root.to_string_lossy().into_owned(),
-                        executable_relative_path: python_exe_name.to_string(),
-                        isolation: LocalToolchainIsolation::ResourceOnly,
+                        executable_relative_path: rel_exe,
+                        isolation,
                         role: ToolchainGrantRole::SubmissionRuntime,
                     }),
                     limits,
@@ -635,6 +713,29 @@ pub async fn diagnose_language_profile(
                 .package_root
                 .as_ref()
                 .and_then(|p| super::discovery::read_package_receipt(p));
+            let local_isolation = if cfg!(target_os = "linux") {
+                LocalToolchainIsolation::Strict
+            } else {
+                LocalToolchainIsolation::ResourceOnly
+            };
+            let java_args = || {
+                vec![
+                    "-XX:+UseSerialGC".to_string(),
+                    "-XX:ActiveProcessorCount=1".to_string(),
+                    "-XX:TieredStopAtLevel=1".to_string(),
+                    "-XX:+ExitOnOutOfMemoryError".to_string(),
+                    "-XX:MaxRAM=536870912".to_string(),
+                    "-XX:MaxRAMPercentage=65.0".to_string(),
+                    "-Dfile.encoding=UTF-8".to_string(),
+                    "-Duser.language=en".to_string(),
+                    "-Duser.country=US".to_string(),
+                    "-Djava.io.tmpdir=.".to_string(),
+                    "-Duser.home=.".to_string(),
+                    "-cp".to_string(),
+                    ".".to_string(),
+                    "Main".to_string(),
+                ]
+            };
 
             if let (Some(pkg_root), Some(receipt)) = (&toolchain.package_root, receipt) {
                 match super::discovery::ensure_cached_managed_toolchain(
@@ -669,21 +770,7 @@ pub async fn diagnose_language_profile(
                             role: RunRole::Submission,
                             workspace_id: workspace_id.clone(),
                             executable_id: format!("local-toolchain/{relative_exe}"),
-                            args: vec![
-                                "-XX:+UseSerialGC".to_string(),
-                                "-XX:ActiveProcessorCount=1".to_string(),
-                                "-XX:+ExitOnOutOfMemoryError".to_string(),
-                                "-XX:MaxRAM=536870912".to_string(),
-                                "-XX:MaxRAMPercentage=65.0".to_string(),
-                                "-Dfile.encoding=UTF-8".to_string(),
-                                "-Duser.language=en".to_string(),
-                                "-Duser.country=US".to_string(),
-                                "-Djava.io.tmpdir=.".to_string(),
-                                "-Duser.home=.".to_string(),
-                                "-cp".to_string(),
-                                ".".to_string(),
-                                "Main".to_string(),
-                            ],
+                            args: java_args(),
                             stdin_file: None,
                             stdout_file: "stdout.txt".to_string(),
                             stderr_file: "stderr.txt".to_string(),
@@ -692,7 +779,7 @@ pub async fn diagnose_language_profile(
                             local_toolchain: Some(LocalToolchainGrant {
                                 root_path: cached_root.to_string_lossy().into_owned(),
                                 executable_relative_path: relative_exe.to_string(),
-                                isolation: LocalToolchainIsolation::ResourceOnly,
+                                isolation: local_isolation,
                                 role: ToolchainGrantRole::SubmissionRuntime,
                             }),
                             limits,
@@ -735,21 +822,7 @@ pub async fn diagnose_language_profile(
                             role: RunRole::Submission,
                             workspace_id: workspace_id.clone(),
                             executable_id: format!("local-toolchain/{relative_exe}"),
-                            args: vec![
-                                "-XX:+UseSerialGC".to_string(),
-                                "-XX:ActiveProcessorCount=1".to_string(),
-                                "-XX:+ExitOnOutOfMemoryError".to_string(),
-                                "-XX:MaxRAM=536870912".to_string(),
-                                "-XX:MaxRAMPercentage=65.0".to_string(),
-                                "-Dfile.encoding=UTF-8".to_string(),
-                                "-Duser.language=en".to_string(),
-                                "-Duser.country=US".to_string(),
-                                "-Djava.io.tmpdir=.".to_string(),
-                                "-Duser.home=.".to_string(),
-                                "-cp".to_string(),
-                                ".".to_string(),
-                                "Main".to_string(),
-                            ],
+                            args: java_args(),
                             stdin_file: None,
                             stdout_file: "stdout.txt".to_string(),
                             stderr_file: "stderr.txt".to_string(),
@@ -758,7 +831,7 @@ pub async fn diagnose_language_profile(
                             local_toolchain: Some(LocalToolchainGrant {
                                 root_path: java_root.to_string_lossy().into_owned(),
                                 executable_relative_path: relative_exe.to_string(),
-                                isolation: LocalToolchainIsolation::ResourceOnly,
+                                isolation: local_isolation,
                                 role: ToolchainGrantRole::SubmissionRuntime,
                             }),
                             limits,
@@ -804,21 +877,7 @@ pub async fn diagnose_language_profile(
                     role: RunRole::Submission,
                     workspace_id: workspace_id.clone(),
                     executable_id: format!("local-toolchain/{relative_exe}"),
-                    args: vec![
-                        "-XX:+UseSerialGC".to_string(),
-                        "-XX:ActiveProcessorCount=1".to_string(),
-                        "-XX:+ExitOnOutOfMemoryError".to_string(),
-                        "-XX:MaxRAM=536870912".to_string(),
-                        "-XX:MaxRAMPercentage=65.0".to_string(),
-                        "-Dfile.encoding=UTF-8".to_string(),
-                        "-Duser.language=en".to_string(),
-                        "-Duser.country=US".to_string(),
-                        "-Djava.io.tmpdir=.".to_string(),
-                        "-Duser.home=.".to_string(),
-                        "-cp".to_string(),
-                        ".".to_string(),
-                        "Main".to_string(),
-                    ],
+                    args: java_args(),
                     stdin_file: None,
                     stdout_file: "stdout.txt".to_string(),
                     stderr_file: "stderr.txt".to_string(),
@@ -827,7 +886,7 @@ pub async fn diagnose_language_profile(
                     local_toolchain: Some(LocalToolchainGrant {
                         root_path: java_root.to_string_lossy().into_owned(),
                         executable_relative_path: relative_exe.to_string(),
-                        isolation: LocalToolchainIsolation::ResourceOnly,
+                        isolation: local_isolation,
                         role: ToolchainGrantRole::SubmissionRuntime,
                     }),
                     limits,
@@ -933,6 +992,12 @@ pub async fn diagnose_language_profile(
                     scratch_root.to_string_lossy().into_owned(),
                 );
 
+                let isolation = if cfg!(target_os = "linux") {
+                    LocalToolchainIsolation::Strict
+                } else {
+                    LocalToolchainIsolation::ResourceOnly
+                };
+
                 RunSpec {
                     run_id: run_id.clone(),
                     role: RunRole::Submission,
@@ -947,7 +1012,7 @@ pub async fn diagnose_language_profile(
                     local_toolchain: Some(LocalToolchainGrant {
                         root_path: scratch_root.to_string_lossy().into_owned(),
                         executable_relative_path: scratch_exe_name.to_string(),
-                        isolation: LocalToolchainIsolation::ResourceOnly,
+                        isolation,
                         role: ToolchainGrantRole::SubmissionRuntime,
                     }),
                     limits,

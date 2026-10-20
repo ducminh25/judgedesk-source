@@ -27,6 +27,7 @@ import {
   type ContractCaseContext,
 } from "./test-fixtures/api-contracts/contract-cases.js";
 import { executorClient } from "./executor/client.js";
+import { createExecutorWorkspace } from "./executor/workspace.js";
 import {
   SCORE_EXPORT_CONTENT_TYPE,
   MAX_SCORE_EXPORT_PAYLOAD_BYTES,
@@ -58,6 +59,7 @@ import {
 import {
   isSafeTestAppDataDir,
   resolveTestAppDataDir,
+  prepareTestRunnerEnv,
   evaluateChildResult,
 } from "../scripts/run-all-tests.js";
 import { registerToolchainRoutes } from "./routes/toolchain-routes.js";
@@ -131,16 +133,24 @@ describe("WP0.2 API and Stream Contract Verification", () => {
     });
   });
 
-  describe("Executable Golden Fixture Parity (Node Reference Baseline)", () => {
-    it("satisfies 100% golden fixture parity on Node reference baseline (30/30 cases)", {
-      skip: process.platform !== "win32" ? "Golden fixtures in server/test-fixtures/api-contracts are captured for the Windows x64 Node reference baseline" : false,
-    }, async () => {
+  describe("Executable Golden Fixture Parity (Node & Rust Adapters)", () => {
+    it("satisfies 100% golden fixture parity on Node reference baseline (30/30 cases)", async () => {
       const report = await runContractParity("node");
       const mismatches = report.results.filter((r) => !r.passed);
       if (mismatches.length > 0) {
         console.error("MISMATCH DETAILS:", JSON.stringify(mismatches.map(m => ({ id: m.id, reason: m.mismatchReason })), null, 2));
       }
       assert.equal(report.mismatchCount, 0, `Mismatches: ${mismatches.map((m) => m.id).join(", ")}`);
+      assert.equal(report.passedCount, 30);
+    });
+
+    it("satisfies 100% golden fixture parity on Rust backend adapter (30/30 cases)", async () => {
+      const report = await runContractParity("rust");
+      const mismatches = report.results.filter((r) => !r.passed);
+      if (mismatches.length > 0) {
+        console.error("RUST MISMATCH DETAILS:", JSON.stringify(mismatches.map(m => ({ id: m.id, reason: m.mismatchReason })), null, 2));
+      }
+      assert.equal(report.mismatchCount, 0, `Rust mismatches: ${mismatches.map((m) => m.id).join(", ")}`);
       assert.equal(report.passedCount, 30);
     });
   });
@@ -1596,6 +1606,35 @@ server.listen(0, "127.0.0.1", () => {
       assert.ok(resolved.dir.includes("jd_test_server_appdata_"));
       assert.ok(fs.existsSync(resolved.dir));
       fs.rmSync(resolved.dir, { recursive: true, force: true });
+
+      const hostTmpDir = os.tmpdir();
+      const prepared = prepareTestRunnerEnv({
+        TMPDIR: hostTmpDir,
+        TEMP: hostTmpDir,
+        TMP: hostTmpDir,
+      });
+      try {
+        assert.equal(prepared.ownedByRunner, true);
+        assert.ok(prepared.isolatedAppData);
+        const expectedTemp = path.join(prepared.isolatedAppData, "temp");
+        const expectedLocal = path.join(prepared.isolatedAppData, "localappdata");
+        const expectedRoaming = path.join(prepared.isolatedAppData, "roamingappdata");
+        assert.equal(prepared.env.THEMIS_APP_DATA_DIR, prepared.isolatedAppData);
+        assert.equal(prepared.env.LOCALAPPDATA, expectedLocal);
+        assert.equal(prepared.env.APPDATA, expectedRoaming);
+        assert.equal(prepared.env.TMPDIR, expectedTemp);
+        assert.equal(prepared.env.TEMP, expectedTemp);
+        assert.equal(prepared.env.TMP, expectedTemp);
+        assert.notEqual(prepared.env.TMPDIR, hostTmpDir);
+        assert.equal(
+          fs.readFileSync(path.join(expectedTemp, ".judgedesk-test-root"), "utf8"),
+          "judgedesk-test-owned\n",
+        );
+      } finally {
+        if (prepared.isolatedAppData) {
+          fs.rmSync(prepared.isolatedAppData, { recursive: true, force: true });
+        }
+      }
     });
 
     it("proves judge prewarm distinguishes graceful deferral from unexpected failure and propagates failure to lifecycle drain", async () => {
@@ -1698,6 +1737,41 @@ server.listen(0, "127.0.0.1", () => {
         false,
         "Staged production native executor binary must NOT contain JUDGEDESK_EXECUTOR_TEST_ROOT string or override logic",
       );
+    });
+
+    it("proves createExecutorWorkspace generates compact workspace IDs to preserve Windows MAX_PATH headroom inside nested temp roots", async () => {
+      const root = fs.mkdtempSync(path.join(os.tmpdir(), "jd_test_ws_compact_"));
+      fs.mkdirSync(path.join(root, "workspaces"), { recursive: true });
+      const origStart = executorClient.start.bind(executorClient);
+      executorClient.start = async () => ({
+        ready: true,
+        mode: "windows-lpac-job",
+        executorVersion: "1.6.0",
+        executorRoot: root,
+        diagnostics: [],
+        networkBlocked: true,
+        filesystemIsolated: true,
+        processTreeControlled: true,
+        memoryLimitSupported: true,
+      });
+      try {
+        const ws1 = await createExecutorWorkspace();
+        const ws2 = await createExecutorWorkspace();
+        try {
+          assert.notEqual(ws1.id, ws2.id);
+          assert.ok(
+            ws1.id.length <= 16,
+            `Workspace ID "${ws1.id}" (${ws1.id.length} chars) must be <= 16 chars so AppContainer AC\\Temp paths stay below Windows MAX_PATH (260)`,
+          );
+          assert.match(ws1.id, /^[0-9a-f]+$/);
+        } finally {
+          ws1.dispose();
+          ws2.dispose();
+        }
+      } finally {
+        executorClient.start = origStart;
+        fs.rmSync(root, { recursive: true, force: true });
+      }
     });
   });
 });

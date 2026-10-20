@@ -15,6 +15,7 @@ import {
   activeJobs,
   attachExecutorRun,
   detachExecutorRun,
+  JudgeJobCancelledError,
   runReservedExecutor,
   runReservedInteractiveExecutor,
 } from "../jobs.js";
@@ -184,6 +185,9 @@ export async function runTestCase(options: TestCaseRunnerOptions): Promise<TestC
         inputFileName: options.config.inputFile,
         outputFileName: options.config.outputFile,
       });
+      if (options.jobId && activeJobs.get(options.jobId)?.cancel) {
+        return createResult(options, "FAIL", executionTime, peakMemoryKb, 0, "cancelled", stdout, undefined, result);
+      }
       status = checked.status;
       return createResult(
         options,
@@ -201,6 +205,12 @@ export async function runTestCase(options: TestCaseRunnerOptions): Promise<TestC
       fs.rmSync(actualOutputPath, { force: true });
     }
   } catch (error) {
+    if (
+      error instanceof JudgeJobCancelledError
+      || (options.jobId && activeJobs.get(options.jobId)?.cancel)
+    ) {
+      return createResult(options, "FAIL", 0, undefined, 0, "cancelled", "");
+    }
     const message = error instanceof Error ? error.message : String(error);
     return createResult(options, "JE", 0, undefined, 0, message, "");
   } finally {
@@ -222,11 +232,7 @@ async function prepareSubmission(
 }> {
   if (options.program?.kind === "native") {
     const artifact = await importExecutorArtifact(options.program.artifactPath);
-    const environment: Record<string, string> = {};
-    if (options.language === "pascal" || options.program.language === "pascal") {
-      environment.JUDGEDESK_PASCAL_ISOLATED = "1";
-    }
-    return { executableId: artifact.executableId, args: [], environment };
+    return { executableId: artifact.executableId, args: [], environment: {} };
   }
   if (
     options.program?.kind === "script-runtime"
@@ -277,11 +283,7 @@ async function prepareSubmission(
   }
   if (options.language === "cpp" || options.language === "c" || options.language === "pascal") {
     const artifact = await importExecutorArtifact(options.executablePath);
-    const environment: Record<string, string> = {};
-    if (options.language === "pascal") {
-      environment.JUDGEDESK_PASCAL_ISOLATED = "1";
-    }
-    return { executableId: artifact.executableId, args: [], environment };
+    return { executableId: artifact.executableId, args: [], environment: {} };
   }
 
   if (options.language === "python") {
@@ -380,11 +382,13 @@ async function executeInteractiveTestCase(
     );
   }
 
-  const workspace = await createExecutorWorkspace();
-  const interactorWorkspace = await createExecutorWorkspace();
+  let workspace: Awaited<ReturnType<typeof createExecutorWorkspace>> | undefined;
+  let interactorWorkspace: Awaited<ReturnType<typeof createExecutorWorkspace>> | undefined;
   const runId = `interactive_${crypto.randomUUID().replaceAll("-", "_")}`;
 
   try {
+    workspace = await createExecutorWorkspace();
+    interactorWorkspace = await createExecutorWorkspace();
     attachExecutorRun(options.jobId, runId);
     const memoryBytes = resolveSubmissionMemoryLimitBytes(options.config.memoryLimit);
     const launch = await prepareSubmission(workspace, options, memoryBytes);
@@ -448,6 +452,26 @@ async function executeInteractiveTestCase(
     let awardedScoreExact: Rational | undefined;
     const executionTime = result.executionTimeMs;
     const peakMemoryKb = result.peakMemoryBytes ? Math.ceil(result.peakMemoryBytes / 1024) : undefined;
+    if (
+      result.verdict === "CANCELLED"
+      || (
+        result.submissionResult?.reason === "cancelled"
+        && result.interactorResult?.reason === "cancelled"
+      )
+      || (options.jobId && activeJobs.get(options.jobId)?.cancel)
+    ) {
+      return createResult(
+        options,
+        "FAIL",
+        executionTime,
+        peakMemoryKb,
+        0,
+        "cancelled",
+        transcript,
+        undefined,
+        result.submissionResult,
+      );
+    }
     const trimmedStderr = interactorStderr.trim();
     const trimmedStdout = interactorStdout.trim();
     const checkerMessage = trimmedStderr || trimmedStdout || (result.verdict === "AC" ? "ok" : result.message);
@@ -499,9 +523,24 @@ async function executeInteractiveTestCase(
       result.submissionResult,
       awardedScoreExact,
     );
+  } catch (error) {
+    if (
+      error instanceof JudgeJobCancelledError
+      || (options.jobId && activeJobs.get(options.jobId)?.cancel)
+    ) {
+      return createResult(options, "FAIL", 0, undefined, 0, "cancelled", "");
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    return createResult(options, "JE", 0, undefined, 0, message, "");
   } finally {
-    detachExecutorRun(options.jobId, runId);
-    workspace.dispose();
-    interactorWorkspace.dispose();
+    try {
+      detachExecutorRun(options.jobId, runId);
+    } finally {
+      try {
+        workspace?.dispose();
+      } finally {
+        interactorWorkspace?.dispose();
+      }
+    }
   }
 }

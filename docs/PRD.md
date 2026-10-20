@@ -1,11 +1,11 @@
 # Product Requirements Document (PRD) — JudgeDesk
 
 **Project Name**: JudgeDesk (formerly codenamed *ThemisV2*)
-**Released Baseline**: `v1.5.0`
-**Development Target**: `v1.6.0` (Pure Rust Core migration; the eight authoritative version files remain `1.5.0` until the final coordinated release bump)
+**Released Baseline**: `v1.6.0`
+**Development Target**: `v1.6.0` (Pure Rust Core & Multi-Platform Desktop Release)
 **Document Status**: Official / Approved
-**Target Platform**: Windows 10/11 x64, macOS Apple Silicon (ARM64)
-**License**: Proprietary / Private Source (`ducminh25/judgedesk-source`)
+**Target Platform**: Windows 10/11 x64, macOS Apple Silicon (ARM64), Linux x86_64 (`amd64` — Ubuntu 22.04 LTS, 24.04 LTS, 26.04 LTS+ and compatible distributions)
+**Repository**: Public Source (`ducminh25/judgedesk-source`) & Public Releases (`ducminh25/judgedesk`)
 
 ---
 
@@ -20,7 +20,7 @@ JudgeDesk was conceived as the modern, cross-platform successor to legacy gradin
 ### 1.2. Core Value Propositions
 
 1. **100% Offline & Independent**: Runs entirely locally without requiring internet connectivity, cloud servers, or external databases during grading.
-2. **Native OS Sandboxing**: Utilizes modern OS kernel isolation (Windows AppContainer + Job Objects, macOS Run Guardian + Seatbelt Sandbox) to securely execute untrusted student submissions without risking host system corruption or infinite resource consumption.
+2. **Native OS Sandboxing**: Utilizes modern OS kernel isolation (Windows AppContainer + Job Objects, macOS Run Guardian + Seatbelt Sandbox, Linux Bubblewrap + systemd cgroup v2 + seccomp-bpf) to securely execute untrusted student submissions without risking host system corruption or infinite resource consumption.
 3. **Themis Folder-Structure Compatibility**: Full backward compatibility with traditional Themis contest folder layouts, testcase hierarchies, and scoring conventions.
 4. **Modern Competitive Programming Features**: Out-of-the-box support for Subtasks (Polygon Test Groups with cycle-safe dependencies), Custom Checkers (C++ with `testlib.h`, Python, and native Windows `.exe` binaries), Interactive Problems, and flexible point distributions.
 5. **Multi-Language Support (6 Languages)**: Native support for C++, C, Python 3, Free Pascal, Java (OpenJDK 21), and Scratch (`.sb3`, `.sb2`, `.sb`) via headless TurboWarp VM.

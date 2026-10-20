@@ -16,6 +16,7 @@ import {
   LOCAL_CPP_PROBE_SUITE_VERSION,
 } from "./cpp-certification-policy.js";
 import { findLocalToolchainSnapshot } from "./snapshot.js";
+import type { ResolvedToolchain } from "./types.js";
 
 const MiB = 1024 * 1024;
 const REQUIRED_CPP_PROBES = new Set([
@@ -51,6 +52,41 @@ export interface LocalCppCertificateReadinessOptions {
   executorRoot?: string;
   certificates?: readonly ToolchainCertificate[];
   certificateStoreStatus?: "missing" | "ready" | "recovery";
+}
+
+export function localCppCertificateExecutionFields(
+  readiness: Extract<LocalCppCertificateReadiness, { state: "ready" }>,
+): Pick<
+  ResolvedToolchain,
+  | "executablePath"
+  | "version"
+  | "ready"
+  | "provenance"
+  | "certificateId"
+  | "candidateFingerprint"
+  | "certificateIssuedAt"
+  | "certifiedRoles"
+  | "snapshotDigest"
+  | "executionPath"
+  | "executionId"
+  | "executionRoot"
+> {
+  return {
+    executablePath: readiness.canonicalExecutablePath,
+    version: readiness.certificate.toolchain.version,
+    ready: true,
+    provenance: "certified-local",
+    certificateId: readiness.certificate.certificateId,
+    candidateFingerprint: readiness.certificate.candidateFingerprint,
+    certificateIssuedAt: readiness.certificate.issuedAt,
+    certifiedRoles: readiness.certificate.certifiedRoles,
+    snapshotDigest: readiness.certificate.deployment.kind === "local-snapshot"
+      ? readiness.certificate.deployment.snapshotDigest
+      : undefined,
+    executionPath: readiness.snapshotExecutablePath,
+    executionId: readiness.snapshotExecutableId,
+    executionRoot: readiness.snapshotRoot,
+  };
 }
 
 function samePath(left: string, right: string, platform: NodeJS.Platform): boolean {

@@ -257,21 +257,38 @@ fn test_file_network_probe() {
     };
     let read_blocked = std::fs::read(&sentinel).is_err();
     let write_blocked = std::fs::write(&sentinel, b"OVERWRITTEN").is_err();
-    let address = SocketAddr::from(([127, 0, 0, 1], 9));
-    let network_blocked = std::panic::catch_unwind(|| {
-        let network_error = TcpStream::connect_timeout(&address, Duration::from_millis(500)).err();
-        network_error.as_ref().is_some_and(|error| {
-            error.kind() == std::io::ErrorKind::PermissionDenied
-                || matches!(error.raw_os_error(), Some(13 | 10013 | 10107))
-        })
-    })
-    .unwrap_or(true);
+    let port = std::env::args()
+        .nth(3)
+        .and_then(|value| value.parse::<u16>().ok())
+        .unwrap_or(9);
+    let address = SocketAddr::from(([127, 0, 0, 1], port));
+    let network_result = std::panic::catch_unwind(|| {
+        TcpStream::connect_timeout(&address, Duration::from_millis(500))
+    });
+    let (network_connected, network_blocked, network_error_kind, network_raw_error) =
+        match network_result {
+            Ok(Ok(_stream)) => (true, false, None, None),
+            Ok(Err(error)) => {
+                let blocked = error.kind() == std::io::ErrorKind::PermissionDenied
+                    || matches!(error.raw_os_error(), Some(13 | 10013 | 10107));
+                (
+                    false,
+                    blocked,
+                    Some(format!("{:?}", error.kind())),
+                    error.raw_os_error(),
+                )
+            }
+            Err(_) => (false, true, Some("Panic".to_string()), None),
+        };
     println!(
         "{}",
         serde_json::json!({
             "readBlocked": read_blocked,
             "writeBlocked": write_blocked,
             "networkBlocked": network_blocked,
+            "networkConnected": network_connected,
+            "networkErrorKind": network_error_kind,
+            "networkRawError": network_raw_error,
         })
     );
 }

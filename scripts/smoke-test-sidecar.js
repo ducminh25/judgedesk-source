@@ -82,7 +82,7 @@ async function assertPortIsFree(port) {
   );
 }
 
-async function fetchJsonWithinDeadline(url, deadline) {
+async function fetchJsonWithinDeadline(url, deadline, apiToken) {
   const remaining = deadline - Date.now();
   if (remaining <= 0) {
     throw new Error(`HTTP smoke-test deadline expired before requesting ${url}.`);
@@ -93,7 +93,10 @@ async function fetchJsonWithinDeadline(url, deadline) {
     Math.min(remaining, HTTP_REQUEST_TIMEOUT_MS),
   );
   try {
-    const response = await fetch(url, { signal: controller.signal });
+    const response = await fetch(url, {
+      headers: { "X-JudgeDesk-Session": apiToken },
+      signal: controller.signal,
+    });
     const body = await response.json();
     return { response, body };
   } finally {
@@ -131,12 +134,13 @@ function isFullDistribution(resourceDirectory) {
   }
 }
 
-async function verifyReleaseLanguageProfiles(baseUrl, deadline) {
+async function verifyReleaseLanguageProfiles(baseUrl, deadline, apiToken) {
   let lastProfiles = [];
   while (Date.now() < deadline) {
     const { response, body } = await fetchJsonWithinDeadline(
       `${baseUrl}/api/toolchains`,
       deadline,
+      apiToken,
     );
     if (response.ok && Array.isArray(body.profiles)) {
       lastProfiles = body.profiles;
@@ -175,6 +179,7 @@ export async function verifyStartupGateRejectsMissingToken(
     PORT: String(port),
     THEMIS_APP_DATA_DIR: path.join(temporaryRoot, "app-data"),
     THEMIS_RESOURCE_DIR: temporaryRoot,
+    JUDGEDESK_API_TOKEN: crypto.randomBytes(32).toString("hex"),
   };
   delete environment.JUDGEDESK_BOOTSTRAP_TOKEN;
   const stdout = [];
@@ -213,7 +218,7 @@ export async function verifyStartupGateRejectsMissingToken(
   }
 }
 
-async function verifyWorkspaceRoutes(baseUrl, temporaryRoot, deadline) {
+async function verifyWorkspaceRoutes(baseUrl, temporaryRoot, deadline, apiToken) {
   const contestantsDirectory = path.join(temporaryRoot, "Contestants Folder");
   const problemsDirectory = path.join(temporaryRoot, "Tests Folder");
   for (const name of EXPECTED_CONTESTANTS) {
@@ -226,6 +231,7 @@ async function verifyWorkspaceRoutes(baseUrl, temporaryRoot, deadline) {
   const { response: contestantsResponse, body: contestants } = await fetchJsonWithinDeadline(
     `${baseUrl}/api/fetch-contestants?path=${encodeURIComponent(contestantsDirectory)}`,
     deadline,
+    apiToken,
   );
   if (
     !contestantsResponse.ok ||
@@ -239,6 +245,7 @@ async function verifyWorkspaceRoutes(baseUrl, temporaryRoot, deadline) {
   const { response: problemsResponse, body: problems } = await fetchJsonWithinDeadline(
     `${baseUrl}/api/fetch-problems?path=${encodeURIComponent(problemsDirectory)}`,
     deadline,
+    apiToken,
   );
   if (
     !problemsResponse.ok ||
@@ -284,6 +291,7 @@ export async function smokeTestSidecar(
   const stdout = [];
   const stderr = [];
   const startupToken = crypto.randomBytes(32).toString("hex");
+  const apiToken = crypto.randomBytes(32).toString("hex");
   let spawnError;
   const child = spawn(resolvedExecutable, args, {
     env: {
@@ -294,6 +302,7 @@ export async function smokeTestSidecar(
         ? toTauriResourceDirectory(resourceDirectory)
         : temporaryRoot,
       JUDGEDESK_BOOTSTRAP_TOKEN: startupToken,
+      JUDGEDESK_API_TOKEN: apiToken,
     },
     stdio: ["pipe", "pipe", "pipe"],
   });
@@ -324,6 +333,7 @@ export async function smokeTestSidecar(
         const { response, body: status } = await fetchJsonWithinDeadline(
           `${baseUrl}/api/status`,
           deadline,
+          apiToken,
         );
         if (response.ok) {
           const cppDetectionPending = requireCpp && !status.gpp?.installed;
@@ -347,9 +357,9 @@ export async function smokeTestSidecar(
           );
         }
         if (requireReleaseLanguages) {
-          await verifyReleaseLanguageProfiles(baseUrl, deadline);
+          await verifyReleaseLanguageProfiles(baseUrl, deadline, apiToken);
         }
-        await verifyWorkspaceRoutes(baseUrl, temporaryRoot, deadline);
+        await verifyWorkspaceRoutes(baseUrl, temporaryRoot, deadline, apiToken);
         await new Promise((resolve, reject) => {
           child.stdin.end((error) => (error ? reject(error) : resolve()));
         });

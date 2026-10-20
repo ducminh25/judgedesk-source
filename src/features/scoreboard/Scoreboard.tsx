@@ -17,9 +17,13 @@ import {
   type ContestantSortMode,
   indexProblemResults,
   indexScoreboardResults,
-  selectedTotalScore,
+  selectedTotalScoreRational,
 } from "./scoreboard-model";
-import { formatScore } from "../../../shared/rational";
+import {
+  formatRationalDecimal,
+  formatScore,
+  isTerminatingDecimal,
+} from "../../../shared/rational";
 import { hasJudgeError } from "../judging/verdict.js";
 
 export interface ScoreboardActionTarget {
@@ -455,10 +459,12 @@ const ScoreboardRow = memo(function ScoreboardRow({
     () => indexProblemResults(contestantResult),
     [contestantResult],
   );
-  const totalScore = useMemo(
-    () => selectedTotalScore(contestantResult, selectedProblemNames),
-    [contestantResult, selectedProblemNames],
-  );
+  const totalScoreText = useMemo(() => {
+    const totalRat = selectedTotalScoreRational(contestantResult, selectedProblemNames);
+    return isTerminatingDecimal(totalRat.d)
+      ? formatScore(totalRat, 4)
+      : formatRationalDecimal(totalRat, 2);
+  }, [contestantResult, selectedProblemNames]);
   const incompleteTotal = contestantResult?.problems.some(problem =>
     selectedProblemNames.has(problem.problemName.toLowerCase()) && hasJudgeError(problem)) ?? false;
   const contestantTarget = {
@@ -564,7 +570,7 @@ const ScoreboardRow = memo(function ScoreboardRow({
         style={{ height: rowHeight }}
         title={incompleteTotal ? t("judgingDetails.judgeErrorHelp") : undefined}
       >
-        <span className="block whitespace-nowrap font-mono tabular-nums">{incompleteTotal ? "JE" : contestantResult ? totalScore.toFixed(2) : "-"}</span>
+        <span className="block whitespace-nowrap font-mono tabular-nums">{incompleteTotal ? "JE" : contestantResult ? totalScoreText : "-"}</span>
       </td>
     </tr>
   );

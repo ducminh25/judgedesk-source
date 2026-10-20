@@ -11,6 +11,22 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
   {
+    version: "1.6.0",
+    date: "2026-10-20",
+    sections: [
+      {
+        title: "Hỗ trợ chính thức Linux (Ubuntu 22.04 LTS+), Sandbox Bubblewrap & Nâng cấp Đa Nền Tảng",
+        items: [
+          "Chính thức phát hành JudgeDesk cho hệ điều hành Linux x86_64 (Ubuntu 22.04 LTS, 24.04 LTS, 26.04 LTS+, ELF GLIBC <= 2.34) với 3 bộ cài đặt .deb, .rpm và .AppImage độc lập.",
+          "Tự động phát hiện và chứng nhận mọi phiên bản trình biên dịch hệ thống trên Linux (Local auto-detect cho GCC/Clang C/C++, Python 3, Free Pascal fpc, OpenJDK javac/java) cùng bộ chạy Scratch tích hợp sẵn và Precompiled Header (bits/stdc++.h.gch).",
+          "Cô lập thực thi an toàn trên Linux bằng Bubblewrap (bwrap) + systemd User Scope (cgroup v2) + seccomp-bpf và bổ sung runner chấm bài tương tác hai chiều (linux_interactive).",
+          "Hợp nhất nhân điều phối sang kiến trúc Pure Rust (judgedesk-core) và tự động bảo lưu toàn bộ gói toolchain từ bản Full sang thư mục người dùng khi cập nhật lên bản Core.",
+          "Bổ sung hộp thoại xem trước mã nguồn Checker tích hợp (C1-C5, Polygon testlib.h) trực tiếp trong ứng dụng kèm nút sao chép nhanh và mở trình soạn thảo ngoài.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.5.5",
     date: "2026-10-07",
     sections: [
@@ -565,6 +581,22 @@ export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
 ];
 
 export const CHANGELOG_DATA_EN: ChangelogRelease[] = [
+  {
+    version: "1.6.0",
+    date: "2026-10-20",
+    sections: [
+      {
+        title: "Official Linux Desktop Support (Ubuntu 22.04 LTS+), Bubblewrap Sandbox & Cross-Platform Refinements",
+        items: [
+          "Official Linux x86_64 desktop release (Ubuntu 22.04 LTS, 24.04 LTS, 26.04 LTS+, ELF GLIBC <= 2.34) with format-isolated .deb, .rpm, and .AppImage packages.",
+          "Version-agnostic auto-detection and sandbox compatibility verification for Linux system toolchains (GCC/Clang C/C++, Python 3, Free Pascal fpc, OpenJDK javac/java) plus bundled Scratch runtime and Universal Precompiled Header (bits/stdc++.h.gch).",
+          "Linux native sandbox isolation using Bubblewrap (bwrap) + systemd User Scope (cgroup v2) + seccomp-bpf filters and bidirectional Interactive Problem Runner (linux_interactive).",
+          "Unified Pure Rust backend engine (judgedesk-core) and automatic preservation of bundled Full toolchains into user data directory across Core updates.",
+          "In-app Checker Source Preview dialog for all built-in checkers (C1-C5, Polygon testlib.h) with instant one-click copy and external editor launch.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.5.5",
     date: "2026-10-07",

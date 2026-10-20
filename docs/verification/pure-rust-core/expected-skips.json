@@ -191,27 +191,6 @@
       "justification": "macOS Homebrew Python discovery test is intentionally excluded on Windows."
     },
     {
-      "policyId": "api-contracts-node-golden-win32-baseline",
-      "observedIdentity": "Golden fixtures in server/test-fixtures/api-contracts are captured for the Windows x64 Node reference baseline",
-      "sourcePath": "server/api-contracts.test.ts",
-      "sourceFingerprint": "aebbef062ce6d3345a06767acd7bb6d3773c48bcbdb8ff2a21ecca89cc67977b",
-      "runner": "node:test",
-      "suite": "server/api-contracts.test.ts",
-      "targets": [
-        {
-          "os": "darwin",
-          "arch": "arm64",
-          "profile": null,
-          "sourceMode": null
-        }
-      ],
-      "owner": "Antigravity",
-      "prerequisitePredicateId": "is_not_win32",
-      "expiresOn": "2026-12-31T00:00:00Z",
-      "removalPredicateId": "is_win32",
-      "justification": "API contract golden fixtures were captured specifically on the Windows reference baseline."
-    },
-    {
       "policyId": "compiler-watchdog-fake-harness-posix-only",
       "observedIdentity": "compiler watchdog terminates a stuck compiler",
       "sourcePath": "server/judge/compiler.test.ts",
@@ -362,7 +341,7 @@
       "policyId": "toolchains-gate-c-submission-real-toolchains",
       "observedIdentity": "c-submission real toolchains gate",
       "sourcePath": "server/judge/c-submission.gate.test.ts",
-      "sourceFingerprint": "89559c8452e5dc0beb7105e8938e9ba1ba76bf71f0f9ff87bc47685df621d3b7",
+      "sourceFingerprint": "21e3d4abd876fb9b598a0246269a1bbe310094306d0cd747ac97a0e081df27e2",
       "runner": "node:test",
       "suite": "server/judge/c-submission.gate.test.ts",
       "targets": [
@@ -404,7 +383,7 @@
       "policyId": "toolchains-gate-multi-language-real-toolchains",
       "observedIdentity": "multi-language real toolchains gate",
       "sourcePath": "server/judge/multi-language.gate.test.ts",
-      "sourceFingerprint": "a8d865f608ed329d5b7f76f8ab5dc463ef35bc27bd4c2c316bd7915472356c3c",
+      "sourceFingerprint": "f052946a86cd751886eee524b02bc9bf729a190f8eeffd51b637d5d76248e7ea",
       "runner": "node:test",
       "suite": "server/judge/multi-language.gate.test.ts",
       "targets": [
@@ -446,7 +425,7 @@
       "policyId": "security-integration-win32-python-child-sandbox",
       "observedIdentity": "win32 python child sandbox probe",
       "sourcePath": "server/executor-tests/security.integration.test.ts",
-      "sourceFingerprint": "c238d527257c2743d891c08ce56c3b6b24c5d75837b87c7e0bf75ce7c2ed050c",
+      "sourceFingerprint": "d432eace5fcd6259608e65b8e04d30672cb907e0cc2f6eaed2caa91a615b2a11",
       "runner": "node:test",
       "suite": "server/executor-tests/security.integration.test.ts",
       "targets": [
@@ -467,7 +446,7 @@
       "policyId": "security-integration-darwin-python-child-sandbox",
       "observedIdentity": "darwin python child sandbox probe",
       "sourcePath": "server/executor-tests/security.integration.test.ts",
-      "sourceFingerprint": "c238d527257c2743d891c08ce56c3b6b24c5d75837b87c7e0bf75ce7c2ed050c",
+      "sourceFingerprint": "d432eace5fcd6259608e65b8e04d30672cb907e0cc2f6eaed2caa91a615b2a11",
       "runner": "node:test",
       "suite": "server/executor-tests/security.integration.test.ts",
       "targets": [

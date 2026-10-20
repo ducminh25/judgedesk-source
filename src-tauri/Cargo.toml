@@ -1,6 +1,6 @@
 [package]
 name = "themis-v2"
-version = "1.5.5"
+version = "1.6.0"
 description = "ThemisV2 - Local Online Judge"
 authors = ["Mon"]
 edition = "2021"
@@ -33,5 +33,5 @@ tokio = { version = "1", features = ["full"] }
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_JobObjects", "Win32_System_SystemServices", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"] }
 
-[target.'cfg(target_os = "macos")'.dependencies]
+[target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
 libc = "=0.2.186"

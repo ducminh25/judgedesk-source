@@ -16,9 +16,12 @@ import {
 // Explicit opt-in host gate, not part of the deterministic .test.ts suite.
 // Missing executables fail rather than adding another conditional skip.
 test("selected local C/C++/Python pass every real native compatibility phase", async (t) => {
-  assert.equal(process.platform, "win32", "this host gate owns Windows roots; macOS needs its own host fixture");
+  assert.ok(
+    process.platform === "win32" || process.platform === "darwin",
+    "this host gate supports Windows and macOS roots",
+  );
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-local-probe-native-"));
-  const keys = ["LOCALAPPDATA", "APPDATA", "JUDGEDESK_EXECUTOR_PATH"] as const;
+  const keys = ["LOCALAPPDATA", "APPDATA", "TMPDIR", "TMP", "TEMP", "JUDGEDESK_EXECUTOR_PATH"] as const;
   const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
   t.after(async () => {
     let drained = false;
@@ -38,10 +41,21 @@ test("selected local C/C++/Python pass every real native compatibility phase", a
   });
   const sourceExecutor = executorPathCandidates().find((candidate) => fs.existsSync(candidate));
   assert.ok(sourceExecutor, "build the native executor before running this gate");
-  const ownedExecutor = path.join(root, "owned-executor.exe");
+  const ownedExecutor = path.join(
+    root,
+    process.platform === "win32" ? "owned-executor.exe" : "owned-executor",
+  );
   fs.copyFileSync(sourceExecutor, ownedExecutor, fs.constants.COPYFILE_EXCL);
+  if (process.platform !== "win32") {
+    fs.chmodSync(ownedExecutor, 0o755);
+  }
+  const ownedTmpDir = path.join(root, "tmpdir");
+  fs.mkdirSync(ownedTmpDir, { recursive: true, mode: 0o700 });
   process.env.LOCALAPPDATA = path.join(root, "localappdata");
   process.env.APPDATA = path.join(root, "roamingappdata");
+  process.env.TMPDIR = ownedTmpDir;
+  process.env.TMP = ownedTmpDir;
+  process.env.TEMP = ownedTmpDir;
   process.env.JUDGEDESK_EXECUTOR_PATH = ownedExecutor;
   const health = await executorClient.start();
   assert.equal(health.ready, true, health.diagnostics.join("; "));

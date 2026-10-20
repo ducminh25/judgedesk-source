@@ -1,12 +1,46 @@
-use crate::rational::{add_rational, parse_rational_f64, parse_rational_value, Rational};
+use crate::rational::{add_rational, parse_rational_value, Rational};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TestExecutionDiagnostics {
+    pub reason: String,
+    pub exit_code: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub signal_or_status: Option<String>,
+    pub security_setup_time_us: u64,
+    pub wall_time_us: u64,
+    pub result_collection_time_us: u64,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub user_cpu_time_us: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub kernel_cpu_time_us: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub peak_memory_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub configured_memory_limit_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub effective_memory_limit_bytes: Option<u64>,
+    pub stdout_bytes: u64,
+    pub stderr_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub created_files: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub diagnostic: Option<String>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TestCaseRun {
     pub name: String,
     pub status: String,
     pub score: serde_json::Value,
+    #[serde(
+        rename = "scoreExact",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub score_exact: Option<Rational>,
     #[serde(rename = "executionTime", default)]
     pub execution_time: Option<u64>,
     #[serde(rename = "peakMemory", alias = "memoryUsedKb", default)]
@@ -19,6 +53,8 @@ pub struct TestCaseRun {
     pub actual_output_preview: Option<String>,
     #[serde(rename = "errorDetail", default)]
     pub error_detail: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub execution: Option<TestExecutionDiagnostics>,
 }
 
 impl Default for TestCaseRun {
@@ -27,12 +63,14 @@ impl Default for TestCaseRun {
             name: String::new(),
             status: String::new(),
             score: serde_json::json!(0),
+            score_exact: None,
             execution_time: None,
             peak_memory: None,
             checker_message: None,
             expected_output_preview: None,
             actual_output_preview: None,
             error_detail: None,
+            execution: None,
         }
     }
 }
@@ -79,6 +117,18 @@ pub struct ProblemSummary {
     pub score: f64,
     #[serde(rename = "maxScore")]
     pub max_score: f64,
+    #[serde(
+        rename = "scoreExact",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub score_exact: Option<Rational>,
+    #[serde(
+        rename = "maxScoreExact",
+        skip_serializing_if = "Option::is_none",
+        default
+    )]
+    pub max_score_exact: Option<Rational>,
     pub status: String,
 }
 
@@ -88,14 +138,24 @@ pub fn calculate_problem_summary(
     test_directories: &[String],
     config: &ProblemScoringConfig,
 ) -> ProblemSummary {
-    apply_group_scoring(test_cases, config.polygon_config.as_ref());
-
-    let passed = test_cases.iter().filter(|t| t.status == "AC").count();
-    let score_rat = test_cases.iter().fold(Rational::ZERO, |total, test| {
-        add_rational(total, parse_rational_value(&test.score))
-    });
-    let mut score = score_rat.to_f64();
     let status = calculate_problem_status(compile_status, test_cases);
+    if status != "JE" {
+        apply_group_scoring(test_cases, config.polygon_config.as_ref());
+    }
+
+    let has_exact_test_case_score = test_cases.iter().any(|t| t.score_exact.is_some());
+    let passed = test_cases.iter().filter(|t| t.status == "AC").count();
+    let score_rat = if status == "JE" {
+        Rational::ZERO
+    } else {
+        test_cases.iter().fold(Rational::ZERO, |total, test| {
+            let exact = test
+                .score_exact
+                .clone()
+                .unwrap_or_else(|| parse_rational_value(&test.score));
+            add_rational(total, exact)
+        })
+    };
     let polygon_config = config.polygon_config.as_ref();
 
     let has_configured_polygon_points = test_directories.iter().any(|dir| {
@@ -143,14 +203,21 @@ pub fn calculate_problem_summary(
         )
     };
 
-    score = round_display_score(score);
-    let max_score = round_display_score(max_score_rat.to_f64());
+    let score = score_rat.to_f64();
+    let max_score = max_score_rat.to_f64();
+    let (score_exact, max_score_exact) = if has_exact_test_case_score || status == "JE" {
+        (Some(score_rat), Some(max_score_rat))
+    } else {
+        (None, None)
+    };
 
     ProblemSummary {
         total: test_cases.len(),
         passed,
         score,
         max_score,
+        score_exact,
+        max_score_exact,
         status,
     }
 }
@@ -175,7 +242,7 @@ fn compute_default_max_score(
                     total
                 }
             })
-    } else if test_cases_len > 0 {
+    } else if test_cases_len > 0 || !test_directories.is_empty() {
         test_directories
             .iter()
             .fold(Rational::ZERO, |total, test_dir| {
@@ -198,7 +265,7 @@ fn compute_default_max_score(
     }
 }
 
-fn default_or_one(default_score: Option<&serde_json::Value>) -> Rational {
+pub(crate) fn default_or_one(default_score: Option<&serde_json::Value>) -> Rational {
     if let Some(val) = default_score {
         if !val.is_null() && !matches!(val, serde_json::Value::String(s) if s.trim().is_empty()) {
             return parse_rational_value(val);
@@ -264,6 +331,9 @@ fn apply_group_scoring(
             let policy_complete = group_result.config.policy.as_deref() == Some("COMPLETE_GROUP");
             if !deps_passed || (policy_complete && !group_result.all_accepted) {
                 test_cases[test_idx].score = serde_json::json!(0);
+                if test_cases[test_idx].score_exact.is_some() {
+                    test_cases[test_idx].score_exact = Some(Rational::ZERO);
+                }
             }
         }
     }
@@ -272,6 +342,9 @@ fn apply_group_scoring(
 fn calculate_problem_status(compile_status: &str, test_cases: &[TestCaseRun]) -> String {
     if compile_status == "CE" {
         return "CE".to_string();
+    }
+    if compile_status == "JE" || test_cases.iter().any(|t| t.status == "JE") {
+        return "JE".to_string();
     }
     if test_cases.is_empty() {
         return "AC".to_string();
@@ -285,8 +358,4 @@ fn calculate_problem_status(compile_status: &str, test_cases: &[TestCaseRun]) ->
         return "PARTIAL".to_string();
     }
     "AC".to_string()
-}
-
-fn round_display_score(score: f64) -> f64 {
-    parse_rational_f64(score).to_f64()
 }

@@ -1,7 +1,7 @@
 {
   "name": "themis-v2",
   "private": true,
-  "version": "1.5.5",
+  "version": "1.6.0",
   "type": "module",
   "packageManager": "npm@11.17.0",
   "engines": {
@@ -52,7 +52,7 @@
 
     "test:server": "node scripts/check-node.js && npm run build:executor && npm run corpus:check && node scripts/run-all-tests.js",
     "test:stress": "tsx scripts/stress-test.ts",
-    "test:desktop": "npm run build:server && node scripts/prepare-desktop-dev.js && cross-env DISABLE_HMR=true tauri dev --no-watch",
+    "test:desktop": "npm run build:executor && node scripts/prepare-desktop-dev.js && cross-env DISABLE_HMR=true tauri dev --no-watch",
     "release:check-version": "node scripts/check-release-version.js",
     "release:verify-public-assets": "node scripts/check-node.js && node scripts/verify-public-release-assets.js",
     "start": "node dist/server.cjs",

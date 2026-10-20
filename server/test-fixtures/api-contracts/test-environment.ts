@@ -7,6 +7,8 @@ import { executorClient } from "../../executor/client.js";
 import {
   drainToolchainDiscovery,
   resetToolchainDiscoveryRuntimeForTests,
+  setToolchainDiscoveryProbeForTests,
+  setToolchainDiscoveryStandardCandidatesForTests,
 } from "../../toolchains/discovery.js";
 import { clearToolchainDetectionCache } from "../../toolchains/resolver.js";
 
@@ -155,7 +157,7 @@ export function createIsolatedTestEnvironment(
   options?: IsolatedTestEnvironmentOptions,
 ): IsolatedTestEnvironment {
   const removeSync = options?.removeSync || fs.rmSync;
-  const prefix = path.join(os.tmpdir(), "jd_contract_env_");
+  const prefix = path.join(fs.realpathSync(os.tmpdir()), "jd_contract_env_");
   const rootDir = fs.mkdtempSync(prefix);
   const appDataDir = path.join(rootDir, "appdata");
   const tempDir = path.join(rootDir, "temp");
@@ -164,6 +166,7 @@ export function createIsolatedTestEnvironment(
   const envKeys = [
     "THEMIS_APP_DATA_DIR",
     "THEMIS_RESOURCE_DIR",
+    "TMPDIR",
     "TEMP",
     "TMP",
     "JUDGEDESK_TEST_SELECT_FILE",
@@ -202,6 +205,8 @@ export function createIsolatedTestEnvironment(
             process.env[key] = prev;
           }
         }
+        setToolchainDiscoveryProbeForTests(undefined);
+        setToolchainDiscoveryStandardCandidatesForTests(undefined);
         resetToolchainDiscoveryRuntimeForTests();
         clearToolchainDetectionCache();
       } catch (e) {
@@ -247,6 +252,7 @@ export function createIsolatedTestEnvironment(
     // Set isolated environment variables
     process.env.THEMIS_APP_DATA_DIR = appDataDir;
     process.env.THEMIS_RESOURCE_DIR = path.resolve("build", "distribution-resources");
+    process.env.TMPDIR = tempDir;
     process.env.TEMP = tempDir;
     process.env.TMP = tempDir;
     process.env.JUDGEDESK_TEST_SELECT_FILE = mockSelectFile;
@@ -382,6 +388,8 @@ export function createIsolatedTestEnvironment(
     "utf8",
   );
 
+    setToolchainDiscoveryProbeForTests(async () => ({ stdout: "", stderr: "" }));
+    setToolchainDiscoveryStandardCandidatesForTests(async () => []);
     resetToolchainDiscoveryRuntimeForTests();
     clearToolchainDetectionCache();
   } catch (err) {
@@ -429,6 +437,8 @@ export function createIsolatedTestEnvironment(
 
     // Stage 3: Reset runtime caches
     try {
+      setToolchainDiscoveryProbeForTests(undefined);
+      setToolchainDiscoveryStandardCandidatesForTests(undefined);
       if (!discoveryDrainFailed) {
         resetToolchainDiscoveryRuntimeForTests();
       }

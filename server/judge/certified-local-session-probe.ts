@@ -5,7 +5,13 @@ import {
   createExecutorWorkspace,
   importExecutorArtifact,
 } from "../executor/workspace.js";
-import { runReservedExecutor } from "../jobs.js";
+import {
+  activeJobs,
+  attachExecutorRun,
+  detachExecutorRun,
+  JudgeJobCancelledError,
+  runReservedExecutor,
+} from "../jobs.js";
 import type { ResolvedToolchain } from "../toolchains/types.js";
 import { compileSubmission } from "./compiler.js";
 import { buildSubmissionExecutorRunSpec } from "./execution-request.js";
@@ -18,6 +24,9 @@ async function runCertifiedLocalCppSessionProbe(
   tempDirectory: string,
   jobId?: string,
 ): Promise<void> {
+  if (jobId !== undefined && (!activeJobs.get(jobId) || activeJobs.get(jobId)?.cancel === true)) {
+    throw new JudgeJobCancelledError();
+  }
   const token = crypto.randomUUID().replaceAll("-", "_");
   const sourcePath = path.join(tempDirectory, `.judgedesk_cpp_session_probe_${token}.cpp`);
   const contestantName = `session_probe_${token}`;
@@ -39,14 +48,23 @@ async function runCertifiedLocalCppSessionProbe(
       cppToolchain: toolchain as ResolvedToolchain,
     });
     if (compilation.compileStatus !== "OK") {
+      if (
+        (jobId !== undefined && (!activeJobs.get(jobId) || activeJobs.get(jobId)?.cancel === true))
+        || compilation.compileError === "COMPILATION_CANCELLED"
+        || compilation.compileError.includes("JUDGE_CANCELLED")
+      ) {
+        throw new JudgeJobCancelledError();
+      }
       throw new Error(compilation.compileError || "compiler probe failed");
     }
     binaryPath = compilation.executablePath;
     const artifact = await importExecutorArtifact(binaryPath);
     const workspace = await createExecutorWorkspace();
+    const runId = `cpp_session_probe_${token}`;
     try {
+      attachExecutorRun(jobId, runId);
       const spec = buildSubmissionExecutorRunSpec({
-        runId: `cpp_session_probe_${token}`,
+        runId,
         workspaceId: workspace.id,
         executableId: artifact.executableId,
         args: [],
@@ -55,6 +73,12 @@ async function runCertifiedLocalCppSessionProbe(
         memoryBytes: 128 * MiB,
       });
       const result = await runReservedExecutor(jobId, spec);
+      if (
+        result.reason === "cancelled"
+        || (jobId !== undefined && (!activeJobs.get(jobId) || activeJobs.get(jobId)?.cancel === true))
+      ) {
+        throw new JudgeJobCancelledError();
+      }
       const stdoutPath = path.join(workspace.path, spec.stdoutFile);
       const stdout = fs.existsSync(stdoutPath) ? fs.readFileSync(stdoutPath, "utf8") : "";
       if (
@@ -67,6 +91,7 @@ async function runCertifiedLocalCppSessionProbe(
         );
       }
     } finally {
+      detachExecutorRun(jobId, runId);
       workspace.dispose();
     }
   } finally {
@@ -84,6 +109,9 @@ export async function ensureCertifiedLocalCppSessionProbe(
   if (!toolchain.certificateId || !toolchain.snapshotDigest) {
     throw new Error("TOOLCHAIN_PREFLIGHT_FAILED: certified local C++ pin is incomplete.");
   }
+  if (jobId !== undefined && (!activeJobs.get(jobId) || activeJobs.get(jobId)?.cancel === true)) {
+    throw new JudgeJobCancelledError();
+  }
   const key = `${toolchain.certificateId}:${toolchain.snapshotDigest}`;
   let probe = sessionProbePromises.get(key);
   if (!probe) {
@@ -94,6 +122,12 @@ export async function ensureCertifiedLocalCppSessionProbe(
     await probe;
   } catch (error) {
     if (sessionProbePromises.get(key) === probe) sessionProbePromises.delete(key);
+    if (
+      error instanceof JudgeJobCancelledError
+      || (jobId !== undefined && (!activeJobs.get(jobId) || activeJobs.get(jobId)?.cancel === true))
+    ) {
+      throw error instanceof JudgeJobCancelledError ? error : new JudgeJobCancelledError();
+    }
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`TOOLCHAIN_PREFLIGHT_FAILED: certified local C++ session probe failed: ${message}`);
   }
@@ -119,4 +153,3 @@ export function startBackgroundCertifiedLocalProbe(): void {
     }
   })();
 }
-

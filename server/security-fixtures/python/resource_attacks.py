@@ -47,6 +47,21 @@ elif mode == "write":
         raise SystemExit(0)
     except (OSError, PermissionError):
         raise SystemExit(13)
+elif mode == "deny-and-continue":
+    protected_path = pathlib.Path(sys.argv[2])
+    read_blocked = False
+    write_blocked = False
+    try:
+        protected_path.read_bytes()
+        print("SECURITY_ESCAPE read")
+    except (OSError, PermissionError):
+        read_blocked = True
+    try:
+        protected_path.write_text("SECURITY_ESCAPE", encoding="utf-8")
+        print("SECURITY_ESCAPE write")
+    except (OSError, PermissionError):
+        write_blocked = True
+    print("SAFE" if read_blocked and write_blocked else "UNSAFE")
 elif mode == "network":
     try:
         with socket.create_connection(("1.1.1.1", 53), timeout=0.5):

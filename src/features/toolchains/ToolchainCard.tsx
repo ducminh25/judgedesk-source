@@ -80,7 +80,9 @@ export function ToolchainCard({
             <p className="text-[10px] text-text-muted mt-1 font-semibold uppercase tracking-wider">
               {toolchain.platform === "win32"
                 ? t("toolchains.windows")
-                : t("toolchains.macos")}{" "}
+                : toolchain.platform === "linux"
+                  ? t("toolchains.linux")
+                  : t("toolchains.macos")}{" "}
               • {toolchain.arch} • <span className="font-mono tabular-nums">{formatSize(toolchain.sizeBytes)}</span>
             </p>
           </div>

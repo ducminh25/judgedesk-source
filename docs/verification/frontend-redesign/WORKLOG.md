@@ -335,3 +335,49 @@ do not touch actual user compiler preferences or security settings.
   corrected original-path gate0/4 remains a failing product criterion.
 - No new desktop positive-compiler observation; preserve scoped3A UX acceptance
   and recorded accessibility/macOS limits. Full step3 and steps4–6 remain open.
+
+## FR-LOG-0009 — 2026-10-14 — Secure backend startup failure UX
+
+- This is a narrow Step5 transport/startup batch, not a broader redesign. Read
+  the frontend plan, STATUS, WORKLOG and AUDIT before editing. Reused semantic
+  surface/border/text tokens; no gradient, glow, blur, pill or dependency.
+- TDD RED first failed because StartupFailure did not exist. GREEN renders the
+  same actionable VI/EN structure with `role=alert`, visible focus and a disabled
+  busy state while retrying. Raw errors remain in the local console, not the UI.
+- Main bootstrap now creates one React root, renders the app only after strict
+  session IPC succeeds, and renders the failure surface on rejection. Retry calls
+  the same strict initializer; no port/token/backend fallback was introduced.
+- A whole-frontend API caller audit found Toolchain Manager prewarm bypassing the
+  authenticated client. A source regression test failed on that exact caller,
+  then passed after routing it through `apiFetch`. OSD SSE uses authenticated
+  fetch streaming instead of EventSource.
+- Focused backend/frontend/SSE/startup tests 15/15 PASS; build:frontend and
+  check:fast PASS. Native test:desktop/visual inspection has not run for this
+  batch, so light/dark, actual CSP loading and failure-screen screenshots remain
+  VERIFYING rather than PASS. No real contest/toolchain preference was changed.
+- Final sequential check:full PASS: Rust 9/9; server 930 total / 920 pass /
+  0 fail / 10 registered conditional skips; parity 67/67 across Node, Rust,
+  compiled C++ and packaged-Windows; version lockstep 1.5.5. Post-gate executor
+  remains 964096 bytes with the frozen receipt SHA-256, diff whitespace is clean,
+  and no JudgeDesk/server/executor process or `JudgeDesk.Run.*` profile leaked.
+  Native observation is still explicitly NOT_OBSERVED, not inferred from tests.
+
+## Packaged Ubuntu UAT — 2026-10-20
+
+- Tested installed judge-desk 1.6.0 on Ubuntu 24.04.5/WSLg with Computer Use; used
+  private copies of fixtures (8 problems, 12 anonymized contestants), no runtime
+  source/version/dependency/security changes. No commit or publication.
+- Observed theme/locale/size matrix, Help, toolchains, config drafts/rational groups,
+  real judging/details, OSD score updates, archive restore and xlsx sorted output.
+  Retained 174 screenshots plus API/file/process evidence in repository-root
+  artifacts/ubuntu-uat-20261020. An invalid restarted-session capture was excluded.
+- Full requested acceptance NOT ACHIEVED: Scratch unavailable in Full Linux;
+  metadata discrepancies, stale Linux Help, narrow headers and dark WA contrast.
+  Unmeasured timing/PCH-hit/accessibility branches explicitly retained as gaps.
+- check:fast and release:check-version PASS; Windows test:server 953/965 pass,
+  2 fail/10 skipped; check:full Rust 7/9 steps pass, executor/core test steps fail.
+  No waivers or weakened checks introduced. Reports distinguish Windows gates
+  from installed Ubuntu behavior. Main app closed via X; API session terminated
+  by verified PID after WSLg capture failed; final process checks empty.
+- Report: ../../reports/judgedesk-ubuntu-uat-1.6.0-2026-10-20.md. Next action:
+  resolve P1 and repeat the explicitly missing acceptance branches on stable GUI.

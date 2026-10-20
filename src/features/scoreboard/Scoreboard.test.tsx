@@ -44,6 +44,52 @@ describe("Scoreboard rendering stability", () => {
     assert.equal((html.match(/>JE<\/span>/g) || []).length, 3, "both cells and the incomplete total");
   });
 
+  it("renders exact 3-decimal rational scores (3.525, 0.025, 28.025, 15.025) without float toFixed(2) drift", () => {
+    const result: BatchJudgeResult = {
+      success: true,
+      contestants: [
+        {
+          contestantName: "C03",
+          problems: [
+            { problemName: "P1", language: "cpp", compileStatus: "OK", testCases: [], summary: { total: 1, passed: 1, score: 24.5, scoreExact: { n: 49, d: 2 }, maxScore: 25, status: "PARTIAL" } },
+            { problemName: "P4", language: "cpp", compileStatus: "OK", testCases: [], summary: { total: 1, passed: 1, score: 3.525, scoreExact: { n: 141, d: 40 }, maxScore: 10, status: "PARTIAL" } },
+          ],
+        },
+        {
+          contestantName: "C04",
+          problems: [
+            { problemName: "P1", language: "cpp", compileStatus: "OK", testCases: [], summary: { total: 1, passed: 1, score: 15, scoreExact: { n: 15, d: 1 }, maxScore: 15, status: "AC" } },
+            { problemName: "P4", language: "cpp", compileStatus: "OK", testCases: [], summary: { total: 1, passed: 1, score: 0.025, scoreExact: { n: 1, d: 40 }, maxScore: 10, status: "PARTIAL" } },
+          ],
+        },
+      ],
+    };
+    const html = renderToStaticMarkup(
+      <I18nextProvider i18n={testI18n}>
+        <Scoreboard
+          allContestants={["C03", "C04"]}
+          contestants={["C03", "C04"]}
+          contestantSort="default"
+          problems={["P1", "P4"]}
+          result={result}
+          selectedContestants={{ C03: true, C04: true }}
+          selectedProblems={{ P1: true, P4: true }}
+          interactionLocked={false}
+          setContestantSort={dummyFn}
+          setSelectedContestants={dummyFn}
+          setSelectedProblems={dummyFn}
+          onOpenActions={dummyFn}
+          onOpenDetails={dummyFn}
+        />
+      </I18nextProvider>,
+    );
+    assert.match(html, />3\.525<\/span>/);
+    assert.match(html, />0\.025<\/span>/);
+    assert.match(html, />28\.025<\/span>/);
+    assert.match(html, />15\.025<\/span>/);
+    assert.doesNotMatch(html, />28\.02<\/span>|1\/40|141\/40/);
+  });
+
   it("renders empty state when no contestants and no problems are loaded", () => {
     const html = renderToStaticMarkup(
       <I18nextProvider i18n={testI18n}>

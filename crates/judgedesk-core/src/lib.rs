@@ -3,9 +3,11 @@
 pub mod checkers;
 pub mod discovery;
 pub mod engine;
+pub mod osd;
 pub mod rational;
 pub mod scoring;
 pub mod server;
+pub mod storage;
 pub mod toolchains;
 
 pub mod build_metadata;

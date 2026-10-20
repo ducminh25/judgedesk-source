@@ -5,6 +5,25 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-20
+
+### Rust Core, Hỗ Trợ Chính Thức Linux (`Ubuntu 22.04 LTS+`, `.deb` / `.rpm` / `.AppImage`) & Cải Thiện Chấm Bài
+
+- **Hỗ trợ chính thức Linux `x86_64` (`amd64`) đa phiên bản (từ Ubuntu 22.04 LTS trở lên)**:
+  - Phát hành bổ sung đồng thời 3 định dạng bộ cài đặt Linux: `JudgeDesk_1.6.0_amd64.deb` (khuyên dùng cho Ubuntu 22.04 LTS, 24.04 LTS, 26.04 LTS+, Debian 12+, Linux Mint 21+, Pop!_OS), `JudgeDesk-1.6.0-1.x86_64.rpm` (Fedora, RHEL, AlmaLinux, Rocky, openSUSE) và `JudgeDesk_1.6.0_amd64.AppImage` (tệp thực thi portable độc lập).
+  - Toàn bộ binary thực thi được biên dịch đạt chuẩn tương thích ngược **ELF `GLIBC <= 2.34`** và mở khoá khai báo thư viện Debian (`libgtk-3-0t64 | libgtk-3-0`, `libayatana-appindicator3-1 | libappindicator3-1`), cài đặt và chạy tốt trên cả Ubuntu 22.04 LTS (`glibc 2.35`), Ubuntu 24.04 LTS (`glibc 2.39`) và Ubuntu 26.04 LTS+.
+  - Gói `.deb` tự động kéo đầy đủ phụ thuộc (`bubblewrap`, `zenity`, `xdg-utils`, `g++`, `python3`) qua `apt`.
+- **Tự động nhận diện mọi phiên bản Compiler trên Linux (`Local (auto-detect)`)**:
+  - Tự động phát hiện và kiểm chứng mọi phiên bản `g++`/`gcc`/`clang++`, `python3`, `fpc` (`ppcx64`) và `javac`/`java` có trên hệ thống mà không khoá cứng phiên bản (như `g++-13` hay `python3.12`) và không yêu cầu cấu hình đường dẫn thủ công.
+  - Hỗ trợ đầy đủ cả 6 ngôn ngữ (C++, C, Python, Pascal, Java, Scratch), Universal Precompiled Header (`bits/stdc++.h.gch`) và hộp thoại chọn thư mục gốc (`zenity` / `kdialog`) trên Linux.
+- **Linux Native Sandbox (`linux-bwrap-cgroup-seccomp`) & Interactive Runner (`linux_interactive`)**:
+  - Cô lập thực thi bài nộp thí sinh trên Linux bằng **Bubblewrap (`bwrap`) + systemd User Scope (`cgroup v2`) + bộ lọc syscall `seccomp-bpf`**, chặn hoàn toàn kết nối mạng (`--unshare-net`), cách ly hệ thống tệp tạm thời và đo lường chính xác CPU time / Peak Memory (tới 1024 MB).
+  - Bổ sung runner chấm bài tương tác hai chiều trên Linux (`linux_interactive`) với hai đường ống ẩn danh hai chiều giữa bài nộp và Interactor (C++ `testlib.h` / Python), chống deadlock `EOF`/`SIGPIPE`.
+- **Nhân điều phối Pure Rust (`judgedesk-core`), Xem trước Mã nguồn Checker & Bảo lưu Toolchain khi cập nhật**:
+  - Hợp nhất nhân xử lý kỳ thi, lập lịch chấm bài, tính điểm hữu tỉ và quản lý trình biên dịch sang kiến trúc **Pure Rust (`judgedesk-core`)**, tăng tốc độ phản hồi và độ ổn định đa nền tảng.
+  - Bổ sung hộp thoại xem trước mã nguồn Checker tích hợp (`C1–C5`, Polygon `testlib.h`) trực tiếp trong ứng dụng kèm nút sao chép nhanh và mở trình soạn thảo ngoài.
+  - Tự động bảo lưu toàn bộ gói toolchain đi kèm từ bản `Full` sang thư mục dữ liệu người dùng (`appDataDir/toolchains`) trước khi áp dụng bản cập nhật `Core`.
+
 ## [1.5.5] - 2026-10-07
 
 ### Tái cấu trúc Cấu hình bài thi, Phân nhóm Nhanh, Kiểm tra Định dạng Test & Tối ưu Bộ nhớ Compiler

@@ -21,8 +21,33 @@ export function expectedPublicReleaseAssets(tag) {
   ].sort();
 }
 
+export function optionalLinuxReleaseAssets(tag) {
+  const version = tag?.startsWith("v") ? tag.slice(1) : tag;
+  return [
+    {
+      platform: "linux-x86_64-deb-core",
+      platforms: ["linux-x86_64-deb-core", "linux-x86_64-core"],
+      filename: `JudgeDesk_${version}_amd64.deb`,
+      edition: "core",
+    },
+    {
+      platform: "linux-x86_64-rpm-core",
+      platforms: ["linux-x86_64-rpm-core"],
+      filename: `JudgeDesk-${version}-1.x86_64.rpm`,
+      edition: "core",
+    },
+    {
+      platform: "linux-x86_64-appimage-core",
+      platforms: ["linux-x86_64-appimage-core"],
+      filename: `JudgeDesk_${version}_amd64.AppImage`,
+      edition: "core",
+    },
+  ];
+}
+
 export function verifyPublicReleaseAssets({ assetsDirectory, tag }) {
-  const expected = expectedPublicReleaseAssets(tag);
+  const required = expectedPublicReleaseAssets(tag);
+  const optionalLinux = optionalLinuxReleaseAssets(tag);
   const entries = fs.readdirSync(assetsDirectory, { withFileTypes: true });
   const nonFiles = entries.filter((entry) => !entry.isFile()).map((entry) => entry.name);
   if (nonFiles.length > 0) {
@@ -30,7 +55,9 @@ export function verifyPublicReleaseAssets({ assetsDirectory, tag }) {
   }
 
   const actual = entries.map((entry) => entry.name).sort();
-  const missing = expected.filter((name) => !actual.includes(name));
+  const presentOptionalLinux = optionalLinux.filter((item) => actual.includes(item.filename));
+  const expected = [...required, ...presentOptionalLinux.map((item) => item.filename)].sort();
+  const missing = required.filter((name) => !actual.includes(name));
   const unexpected = actual.filter((name) => !expected.includes(name));
   if (missing.length > 0 || unexpected.length > 0) {
     throw new Error([
@@ -83,13 +110,27 @@ export function verifyPublicReleaseAssets({ assetsDirectory, tag }) {
     assetsDirectory,
     tag,
   );
-  const platformNames = Object.keys(manifest.platforms || {}).sort();
-  if (platformNames.join(",") !== [
+  for (const item of presentOptionalLinux) {
+    for (const targetPlatform of item.platforms || [item.platform]) {
+      verifyManifestPlatform(
+        manifest,
+        targetPlatform,
+        item.filename,
+        item.edition,
+        assetsDirectory,
+        tag,
+      );
+    }
+  }
+  const expectedPlatforms = [
     "darwin-aarch64-core",
     "darwin-aarch64-full",
     "windows-x86_64-core",
     "windows-x86_64-full",
-  ].join(",")) {
+    ...presentOptionalLinux.flatMap((item) => item.platforms || [item.platform]),
+  ].sort();
+  const platformNames = Object.keys(manifest.platforms || {}).sort();
+  if (platformNames.join(",") !== expectedPlatforms.join(",")) {
     throw new Error(`latest.json has unexpected platforms: ${platformNames.join(", ")}`);
   }
 

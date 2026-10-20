@@ -439,6 +439,7 @@ export function isHelpShortcut(event: Pick<KeyboardEvent, "key">): boolean {
 export function defaultAppDataPath(platform: string): string {
   if (platform === "win32") return "%LOCALAPPDATA%\\ThemisV2";
   if (platform === "darwin") return "~/Library/Application Support/ThemisV2";
+  if (platform === "linux") return "~/.local/share/ThemisV2";
   return "~/.themisv2-dev";
 }
 
@@ -524,6 +525,7 @@ export default function HelpCenter({
   const [environmentError, setEnvironmentError] = useState("");
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const searchRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -533,6 +535,10 @@ export default function HelpCenter({
     searchRef.current?.focus();
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      const openDialogs = document.querySelectorAll('[aria-modal="true"]');
+      if (openDialogs.length > 0 && openDialogs[openDialogs.length - 1] !== dialogRef.current) {
+        return;
+      }
       event.preventDefault();
       onClose();
     };
@@ -600,6 +606,7 @@ export default function HelpCenter({
       }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="help-center-title"

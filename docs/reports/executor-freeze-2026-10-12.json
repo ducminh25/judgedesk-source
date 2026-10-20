@@ -1,18 +1,24 @@
 {
   "schemaVersion": 1,
-  "date": "2026-10-12",
-  "sourceHead": "938044e104755965e6c932fd12da79c019077d5a",
+  "date": "2026-10-13",
+  "sourceHead": "488703ad00e5b10648defcf644ed3ad4bbdee304",
   "dirtyNativeFiles": [
+    "native-executor/src/macos_launcher.rs",
+    "native-executor/src/macos_process.rs",
+    "native-executor/src/macos_run_controller.rs",
+    "native-executor/src/macos_run_guardian.rs",
+    "native-executor/src/main.rs",
     "native-executor/src/platform/windows.rs",
     "native-executor/src/platform/windows/launch.rs",
-    "native-executor/src/platform/windows/tests/launch_failure.rs"
+    "native-executor/src/platform/windows/tests/launch_failure.rs",
+    "native-executor/src/request_validation.rs"
   ],
   "artifact": {
     "path": "src-tauri/binaries/judgedesk-executor-x86_64-pc-windows-msvc.exe",
-    "sha256": "9e7359984262f224e0864bcde0f66ce9b655f3870e077364c9a733d55129d41a",
-    "sizeBytes": 952320
+    "sha256": "ea7f018676f470173b32ea3c60de1e57a2dc49d846eb48c19864fa63dc4152ba",
+    "sizeBytes": 965120
   },
-  "nativeBuildFingerprint": "010889c83420c499b3480e3956484bc9c6847362834bbe8b8291382a582fa759",
+  "nativeBuildFingerprint": "3f89b072a75691176e245b6120a4faf2a8097c22f532e5e6fb633228053acaaf",
   "recipe": "npm run build:executor",
   "windowsCargoArguments": [
     "rustc",
@@ -47,11 +53,11 @@
     },
     {
       "path": "native-executor/Cargo.lock",
-      "sha256": "0bde92ec0670a7ab854db2b6ce1f87ed85cc99963913214e35d8a7de53b359b8"
+      "sha256": "0245f61738eac334f772b624cb70696a66b90084ad1563ad7e3e3480afcd8635"
     },
     {
       "path": "native-executor/Cargo.toml",
-      "sha256": "4a79dd58e7c31d18bdde5620249b8e4d21add339a3f56a2083f5b8d4769ddd25"
+      "sha256": "04a5023324bc0793085b76e5d001c4b440c83308bd5ff70836259e914ff57f2a"
     },
     {
       "path": "native-executor/build.rs",
@@ -79,19 +85,19 @@
     },
     {
       "path": "native-executor/src/macos_launcher.rs",
-      "sha256": "8c67c59cb650ce8ebca6c44276f648931b718e5bff61dfa4ce2c02678bf2733a"
+      "sha256": "d46d62abd01eb4cd5b0efdb6b89a230e698331f4da7251ca01c87281e8640980"
     },
     {
       "path": "native-executor/src/macos_process.rs",
-      "sha256": "7f3a815ed0d03edf224dfc3203f92e84cde09227b142f3077d93fffc112652eb"
+      "sha256": "007ed1cd3a574fcae4acb0f532d4206a218e2ea8f69e5ded241b64c7c60a5ac4"
     },
     {
       "path": "native-executor/src/macos_run_controller.rs",
-      "sha256": "b55111bcb31158a06e2569db396bf6391c57be4251149ec05cc0f7d4e2c59e65"
+      "sha256": "d6bf19dcc145c15135404df5c7db321654d20db51b9946460d52f87c57bd8a25"
     },
     {
       "path": "native-executor/src/macos_run_guardian.rs",
-      "sha256": "c07fb778e19cf5b0cff54d082ce8c5686565b13134f47b89162e0d4ca469200b"
+      "sha256": "29ac00d71d5045ca2d98f2907b47688e4c9df34f5363ae1f3274eae8ed67967b"
     },
     {
       "path": "native-executor/src/macos_stdio.rs",
@@ -99,11 +105,15 @@
     },
     {
       "path": "native-executor/src/main.rs",
-      "sha256": "4ce4b1be7400f27d052d73912ad29c4daba035b9294b64a1e88a90c7ef27ee57"
+      "sha256": "8132da1f7906370c201dc5ec8511ce37b6be3bb4743aaacb9ce1393e48342da5"
     },
     {
       "path": "native-executor/src/native_build.rs",
       "sha256": "634b2cee40d2d34ba752ae4b7d49373b2492d45d25ca57d76f6b4233e9be387f"
+    },
+    {
+      "path": "native-executor/src/platform/linux.rs",
+      "sha256": "8f7b91bd549f1416b7e03e7aa5caef0a1f63324fccc61706f50a21cd87b90b67"
     },
     {
       "path": "native-executor/src/platform/macos.rs",
@@ -111,19 +121,19 @@
     },
     {
       "path": "native-executor/src/platform/mod.rs",
-      "sha256": "98cacd910b6552aa6f1979f0c3ece2bf95eb6849fd2dadf1024c824248bce1ff"
+      "sha256": "032b6de98a0ae871e823e0cbf66e5480be9cac90b717956f046205c6d7ffcb03"
     },
     {
       "path": "native-executor/src/platform/windows.rs",
-      "sha256": "245ecec71cf68107d50bd3973686c90d238dcdf57fd2f11d1cdb7c0621849c32"
+      "sha256": "bb0655cf8a0bcea7dc6ae2ca393c142ec4e0a034d76944e801052844fbf914d8"
     },
     {
       "path": "native-executor/src/platform/windows/launch.rs",
-      "sha256": "e39c6b33729ba7750f592f3d4ec6c9e71a7d235d954f2cbcbb72c22bab507ae4"
+      "sha256": "353d774a19900ff2d1a0568bf062442acf48301c7c84827de9dfd2d28d364914"
     },
     {
       "path": "native-executor/src/platform/windows/tests/launch_failure.rs",
-      "sha256": "7eb76c0a638e2a196376f126359ae9a8164bdb53e37b895a23785853dc530fbd"
+      "sha256": "6deb55201b16eab8765f568e0241e26eb0b6b820a0901f7a75384858e5e87f12"
     },
     {
       "path": "native-executor/src/protocol.rs",
@@ -131,7 +141,7 @@
     },
     {
       "path": "native-executor/src/request_validation.rs",
-      "sha256": "545319fbe467e0d871d47d08c1e7d91044d3edfae52cedc41ffe7a253e767b8b"
+      "sha256": "f9855152ea6cf7ab574fe3ed1156d53380cf7d801c0aaf5908775940813fde18"
     },
     {
       "path": "native-executor/src/security_probe.rs",
@@ -139,7 +149,7 @@
     },
     {
       "path": "native-executor/src/tree_guard.rs",
-      "sha256": "12549d89b6842bcd5aee12babbe01fc88b95ee18b8e7858cf35ae413d34c89db"
+      "sha256": "c8f54f6eccd4ca4c98d8a6762db00aed65a6d7f28bea2062df3de07942e35318"
     },
     {
       "path": "native-executor/src/workspace.rs",
@@ -147,7 +157,7 @@
     },
     {
       "path": "package.json",
-      "sha256": "63f32e166f870fd08518079f92000942a648d32c81cbaf1982021f482351969a"
+      "sha256": "795e7cfd498de6c8e80b6d92ad5a1817d70b7e8477c6345111e5a41c9dedc62b"
     },
     {
       "path": "rust-toolchain.toml",

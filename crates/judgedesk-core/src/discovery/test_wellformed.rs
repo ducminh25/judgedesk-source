@@ -202,3 +202,15 @@ pub fn validate_configured_test_inputs(
     }
     Ok(())
 }
+
+/// Checks whether an input file is a readable text file (no NUL bytes in first 1024 bytes).
+pub fn is_text_file(input_path: &Path) -> bool {
+    let Ok(mut file) = File::open(input_path) else {
+        return false;
+    };
+    let mut buffer = [0u8; 1024];
+    let Ok(bytes_read) = file.read(&mut buffer) else {
+        return false;
+    };
+    !buffer[..bytes_read].contains(&0)
+}

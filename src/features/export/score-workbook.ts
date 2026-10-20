@@ -4,8 +4,10 @@ import { describeTestResult, hasJudgeError } from "../judging/verdict";
 import {
   addRational,
   createRational,
+  isTerminatingDecimal,
   parseRational,
   rationalToRoundedNumber,
+  type Rational,
 } from "../../../shared/rational";
 
 export interface ScoreWorkbookLabels {
@@ -133,6 +135,16 @@ export function buildDiagnosticJson(
   }, null, 2);
 }
 
+const MAX_EXCEL_CELL_CHARS = 32_000;
+const INVALID_XML_CONTROL_CHARS = /[\x00-\x08\x0B\x0C\x0E-\x1F]/g;
+
+function sanitizeExcelCellValue(value: WorkbookCellValue): WorkbookCellValue {
+  if (typeof value !== "string") return value;
+  const cleaned = value.replace(INVALID_XML_CONTROL_CHARS, "");
+  if (cleaned.length <= MAX_EXCEL_CELL_CHARS) return cleaned;
+  return `${cleaned.slice(0, MAX_EXCEL_CELL_CHARS - 3)}...`;
+}
+
 function addSheet(
   workbook: ExcelJS.Workbook,
   name: string,
@@ -141,14 +153,25 @@ function addSheet(
 ): void {
   const sheet = workbook.addWorksheet(name);
   sheet.columns = headers.map(header => ({ header, key: header, width: 10 }));
-  sheet.addRows(rows);
+  const sanitizedRows = rows.map((row) => {
+    const out: Record<string, WorkbookCellValue> = {};
+    for (const [k, v] of Object.entries(row)) {
+      out[k] = sanitizeExcelCellValue(v);
+    }
+    return out;
+  });
+  sheet.addRows(sanitizedRows);
   for (const column of sheet.columns) {
     let maxLength = 10;
     column.eachCell({ includeEmpty: true }, cell => {
       if (cell.value == null) return;
-      maxLength = Math.max(maxLength, ...String(cell.value).split("\n").map(line => line.length));
+      for (const line of String(cell.value).split("\n")) {
+        if (line.length > maxLength) {
+          maxLength = line.length;
+        }
+      }
     });
-    column.width = maxLength + 3;
+    column.width = Math.min(255, maxLength + 3);
   }
 }
 
@@ -218,11 +241,11 @@ function buildSummaryRows(
         row[problemName] = labels.compilationError;
       } else {
         hasResult = true;
-        row[problemName] = roundScore(problem.summary.score);
+        row[problemName] = roundScore(problem.summary.scoreExact ?? problem.summary.score);
         totalScoreRat = addRational(totalScoreRat, parseRational(problem.summary.scoreExact ?? problem.summary.score));
       }
     }
-    row[labels.total] = incomplete ? labels.judgeError : hasResult ? rationalToRoundedNumber(totalScoreRat, 2) : null;
+    row[labels.total] = incomplete ? labels.judgeError : hasResult ? roundScore(totalScoreRat) : null;
     return row;
   });
 }
@@ -256,7 +279,7 @@ function buildDetailRows(
       [labels.problem]: "",
       [labels.test]: "",
       [labels.score]: problems.some(hasJudgeError) ? labels.judgeError : problems.length > 0
-        ? rationalToRoundedNumber(contestantTotalRat, 2)
+        ? roundScore(contestantTotalRat)
         : null,
       [labels.time]: "",
       [labels.results]: ""
@@ -266,7 +289,7 @@ function buildDetailRows(
         [labels.candidate]: contestant.contestantName,
         [labels.problem]: problem.problemName,
         [labels.test]: "",
-        [labels.score]: hasJudgeError(problem) ? labels.judgeError : problem.summary.score,
+        [labels.score]: hasJudgeError(problem) ? labels.judgeError : roundScore(problem.summary.scoreExact ?? problem.summary.score),
         [labels.time]: "",
         [labels.results]:
           hasJudgeError(problem) ? labels.judgeError : problem.compileStatus === "SKIPPED" && problem.compileError === "not_found"
@@ -282,7 +305,7 @@ function buildDetailRows(
           [labels.candidate]: contestant.contestantName,
           [labels.problem]: problem.problemName,
           [labels.test]: test.name,
-          [labels.score]: test.score,
+          [labels.score]: roundScore(test.scoreExact ?? test.score),
           [labels.time]: `${(test.executionTime / 1000).toFixed(3)} ${labels.seconds}`,
           [labels.results]: describeTestResult(test),
           Verdict: test.status,
@@ -317,7 +340,7 @@ function emptyContestant(contestantName: string): ContestantResult {
   return { contestantName, problems: [] };
 }
 
-function roundScore(score: number): number {
+function roundScore(score: Rational | number | string): number {
   const r = parseRational(score);
-  return rationalToRoundedNumber(r, 2);
+  return rationalToRoundedNumber(r, isTerminatingDecimal(r.d) ? 4 : 2);
 }

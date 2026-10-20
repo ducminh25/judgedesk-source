@@ -1,8 +1,17 @@
 {
+  "startupFailure": {
+    "title": "JudgeDesk không thể khởi động",
+    "reason": "Không thể thiết lập kết nối bảo mật tới dịch vụ chấm bài.",
+    "action": "Hãy thử lại. Nếu lỗi vẫn còn, hãy đóng và mở lại JudgeDesk.",
+    "retry": "Thử lại",
+    "retrying": "Đang thử lại..."
+  },
   "common": {
     "close": "Đóng",
     "cancel": "Hủy",
     "save": "Lưu",
+    "copy": "Sao chép",
+    "copied": "Đã sao chép",
     "noOutput": "[Không có kết quả]"
   },
   "diff": {
@@ -37,6 +46,7 @@
     "openGitHub": "Mở repository GitHub",
     "statusMenu": {
       "title": "Trạng thái hệ thống",
+      "nativeProtection": "Bảo vệ thực thi gốc",
       "incomplete": "Chưa hoàn tất",
       "unavailable": "Không khả dụng",
       "notInstalled": "Chưa cài đặt",
@@ -100,7 +110,7 @@
     "compilingChecker": "Đang biên dịch bộ chấm (Checker)...",
     "compilingInteractor": "Đang biên dịch bộ tương tác (Interactor)...",
     "locating": "Đang tìm bài làm thí sinh...",
-    "judgingTest": "Đang chấm test {{current}} trên tổng {{total}}"
+    "judgingTest": "Đang chấm test {{current}} / {{total}}"
   },
   "scoreboard": {
     "contestants": "Thí sinh",
@@ -268,6 +278,7 @@
       "polygon": "Polygon / Testlib"
     },
     "viewSource": "Xem nguồn",
+    "openExternalEditor": "Mở ngoài",
     "sourceOpenFailed": "Không thể mở nguồn checker",
     "customDescription": "Checker tùy chỉnh {{name}} trong thư mục bài. JudgeDesk chỉ nhận source C++ (.cpp) và Python (.py); file .exe không được hỗ trợ.",
     "entries": {
@@ -582,6 +593,7 @@
     "pythonRuntime": "Môi trường Python",
     "windows": "Windows",
     "macos": "macOS",
+    "linux": "Linux",
     "cppSettings": "Cấu hình trình biên dịch C/C++",
     "pythonSettings": "Cấu hình trình thông dịch Python",
     "status": "Trạng thái",
@@ -637,8 +649,8 @@
       "firstRunHint": "Kiểm tra từng ngôn ngữ được hỗ trợ, chọn đúng một nguồn rồi hoàn tất thiết lập.",
       "managerHint": "Lựa chọn nguồn là cố định; nguồn không khả dụng sẽ không âm thầm fallback.",
       "preferencesRecovery": "Cấu hình toolchain đã lưu bị lỗi hoặc thuộc schema mới hơn. JudgeDesk đã tắt mọi profile và giữ nguyên file để phục hồi.",
-      "localPolicyLegacyDisabled": "Chế độ cũ chỉ giới hạn tài nguyên đã bị vô hiệu hóa. Compiler C/C++ và Python local được tự động kiểm tra trong sandbox nghiêm ngặt; lựa chọn không tương thích sẽ chưa dùng được, không tự đổi sang compiler khác.",
-      "localPolicyRecovery": "Policy thực thi local đã lưu không đọc được hoặc không hợp lệ. Compiler C/C++ và Python local vẫn bắt buộc chạy trong sandbox nghiêm ngặt. File được giữ nguyên để phục hồi.",
+      "localPolicyLegacyDisabled": "Chế độ cũ chỉ giới hạn tài nguyên đã bị vô hiệu hóa. Bộ công cụ bắt buộc đáp ứng cô lập sandbox nghiêm ngặt (gói do JudgeDesk quản lý, bản đóng băng đã chứng nhận hoặc bộ công cụ cục bộ hợp lệ); lựa chọn không tương thích sẽ chưa khả dụng và không tự đổi sang bộ công cụ khác.",
+      "localPolicyRecovery": "Policy thực thi cục bộ đã lưu không đọc được hoặc không hợp lệ. Mọi bộ công cụ vẫn bắt buộc chạy trong sandbox nghiêm ngặt. File được giữ nguyên để phục hồi.",
       "language": "Ngôn ngữ",
       "sourceSelection": "Nguồn bộ công cụ",
       "actions": "Thao tác",
@@ -650,7 +662,7 @@
         "local_auto": "Cục bộ (tự phát hiện)"
       },
       "statuses": {
-        "not_available": "Không tìm thấy",
+        "not_available": "Chưa khả dụng",
         "checker_only": "Chỉ dùng để dịch máy chấm",
         "submission_ready": "Sẵn sàng chấm"
       },

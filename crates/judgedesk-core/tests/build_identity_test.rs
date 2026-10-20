@@ -73,6 +73,9 @@ async fn judge_stream_uses_the_same_application_identity() {
             target_problems: Vec::new(),
             cancel_flag: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             platform: Arc::new(ExecutorClient::unavailable("identity test")),
+            problem_configs: std::collections::HashMap::new(),
+            app_data_dir: None,
+            toolchain_selections: std::collections::HashMap::new(),
         },
         sender,
     )

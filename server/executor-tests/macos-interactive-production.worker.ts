@@ -78,17 +78,36 @@ const outcomeRows: readonly OutcomeRow[] = [
   { name: "checker created-file quota is JE", exit: 0, actor: "peer-hold", checkerActor: "files", exact: "0", status: "JE" },
 ];
 
+for (const listener of process.listeners("SIGTERM")) {
+  process.off("SIGTERM", listener);
+}
+
 test("macOS production interactive worker", { timeout: 840_000 }, async (t) => {
+  for (const listener of process.listeners("SIGTERM")) {
+    process.off("SIGTERM", listener);
+  }
   assert.equal(process.platform, "darwin");
   assert.equal(process.arch, "arm64");
   const completedRows: string[] = [];
+  let stopping: Promise<void> | undefined;
+  let admissionClosed = false;
   const runCase = async (group: CaseGroup, name: string, operation: () => void | Promise<void>) => {
+    if (admissionClosed) return;
     if (selectedCases === undefined || selectedCases === group) await t.test(name, async () => {
-      await operation();
-      completedRows.push(name);
+      if (admissionClosed) return;
+      try {
+        await operation();
+      } catch (error) {
+        if (admissionClosed) return;
+        throw error;
+      }
+      if (!admissionClosed) {
+        completedRows.push(name);
+      }
     });
   };
   const { executorClient } = await import("../executor/client.js");
+  const { cancelAllActiveJudgeJobs, tryRegisterJudgeJob } = await import("../jobs.js");
   // Observe the real framed response without substituting a test result. This
   // distinguishes quota JE from a timeout/crash that would also produce JE.
   const realInteractive = executorClient.runInteractive.bind(executorClient);
@@ -106,19 +125,18 @@ test("macOS production interactive worker", { timeout: 840_000 }, async (t) => {
   const { getRegisteredProfileForKind } = await import("../languages/registry.js");
   const { createCompileConfig } = await import("../../shared/compile-config.js");
   const { parseRational, rationalToNumber } = await import("../../shared/rational.js");
-  let stopping: Promise<void> | undefined;
-  let admissionClosed = false;
   const stop = () => stopping ??= executorClient.shutdown();
   const terminate = () => {
     admissionClosed = true;
+    cancelAllActiveJudgeJobs();
     void stop().catch((error: unknown) => { console.error(error); });
   };
   process.on("SIGTERM", terminate);
   t.signal.addEventListener("abort", terminate, { once: true });
-  t.beforeEach(() => { assert.equal(admissionClosed, false, "owned worker admission closed"); });
   t.after(async () => {
     try {
       await stop();
+      await executorClient.waitForStdioClose();
       await waitForGenerationExclusive(generationPath, 10_000);
     } finally {
       executorClient.runInteractive = realInteractive;
@@ -256,13 +274,13 @@ test("macOS production interactive worker", { timeout: 840_000 }, async (t) => {
     const submissionQuota = row.actor === "output" || row.actor === "write" || row.actor === "files";
     const cppSource = "#include <iostream>\n#include <fstream>\n#include <string>\n#include <chrono>\n#include <thread>\n" +
       "int main(int argc, char** argv) { if (argc != 3) return 3; std::ifstream input(argv[1]); int x, expected; input >> x >> expected; std::cout << x << std::endl; " +
-      (submissionQuota ? `std::cerr << ${JSON.stringify(row.message ?? "")}; char buffer[65536]; while (std::cin.read(buffer, sizeof(buffer)) || std::cin.gcount() > 0) {} ` : "int actual; if (!(std::cin >> actual) || actual != expected) return 1; ") +
+      (submissionQuota ? `std::cerr << ${JSON.stringify(row.message ?? "")} << std::flush; char buffer[65536]; while (std::cin.read(buffer, sizeof(buffer)) || std::cin.gcount() > 0) {} ` : "int actual; if (!(std::cin >> actual) || actual != expected) return 1; ") +
       (row.checkerActor === "output" ? "std::string block(65536, 'x'); for (;;) { std::cerr << block << std::flush; } " : "") +
       (row.checkerActor === "write" ? "std::string block(16 * 1024 * 1024, 'x'); for (int i = 0; i < 3; ++i) { std::ofstream file(\"quota-\" + std::to_string(i)); file << block; } std::this_thread::sleep_for(std::chrono::seconds(30)); " : "") +
       (row.checkerActor === "files" ? "for (int i = 0; i < 100; ++i) { std::ofstream file(\"quota-\" + std::to_string(i)); file << 'x'; } std::this_thread::sleep_for(std::chrono::seconds(30)); " : "") +
       (row.actor === "exit1" ? "std::string rest; while (std::getline(std::cin, rest)) {} " : "") +
       (row.checkerSleep ? "std::this_thread::sleep_for(std::chrono::seconds(30)); " : "") +
-      `std::ofstream transcript(argv[2]); transcript << ${JSON.stringify(row.transcript ?? "")}; std::cerr << ${JSON.stringify(row.message ?? "")}; return ${row.exit}; }\n`;
+      `std::ofstream transcript(argv[2]); transcript << ${JSON.stringify(row.transcript ?? "")}; ${submissionQuota ? "" : `std::cerr << ${JSON.stringify(row.message ?? "")}; `}return ${row.exit}; }\n`;
     const pythonSource = "import sys,time\n" +
       "if len(sys.argv) != 3: sys.exit(3)\nx,expected = map(int,open(sys.argv[1]).read().split())\nprint(x,flush=True)\n" +
       (submissionQuota ? `sys.stderr.write(${JSON.stringify(row.message ?? "")})\nsys.stderr.flush()\nwhile sys.stdin.buffer.read(65536): pass\n` : "actual = int(input())\nif actual != expected: sys.exit(1)\n") +
@@ -270,7 +288,7 @@ test("macOS production interactive worker", { timeout: 840_000 }, async (t) => {
       (row.checkerActor === "write" ? "for i in range(3):\n with open('quota-'+str(i),'w') as f: f.write('x'*(16*1024*1024))\ntime.sleep(30)\n" : "") +
       (row.checkerActor === "files" ? "for i in range(100):\n with open('quota-'+str(i),'w') as f: f.write('x')\ntime.sleep(30)\n" : "") +
       (row.actor === "exit1" ? "sys.stdin.read()\n" : "") + (row.checkerSleep ? "time.sleep(30)\n" : "") +
-      `open(sys.argv[2],'w').write(${JSON.stringify(row.transcript ?? "")})\nsys.stderr.write(${JSON.stringify(row.message ?? "")})\nsys.exit(${row.exit})\n`;
+      `open(sys.argv[2],'w').write(${JSON.stringify(row.transcript ?? "")})\n${submissionQuota ? "" : `sys.stderr.write(${JSON.stringify(row.message ?? "")})\n`}sys.exit(${row.exit})\n`;
     fs.writeFileSync(path.join(directory, name), role === "cpp" ? cppSource : pythonSource);
     return resolveInteractor({ interactorName: name, problemName: "PAIR", problemDirectory: directory,
       tempDirectory: directory, cppToolchain: cpp, pythonToolchain: toolchain });
@@ -290,14 +308,30 @@ test("macOS production interactive worker", { timeout: 840_000 }, async (t) => {
       compile: createCompileConfig(), polygonConfig: { enableGroups: false, tests: {}, groups: {} } };
     const firstLine = boundary();
     lastNativeResult = undefined;
+    assert.equal(admissionClosed, false, "owned worker admission closed");
+    const job = tryRegisterJudgeJob(undefined);
+    assert.equal(job.accepted, true, "expected judge job registration to succeed");
     const pending = runTestCase({ contestant: "student", problemName: "PAIR", testName: "1", language,
       submissionPath: source, executablePath: compiled.executablePath, inputPath: input,
       expectedOutputPath: path.join(directory, "absent-answer.txt"), expectedOutputPreview: "",
       testRoot: directory, contestantsRoot: directory, tempDirectory: directory, pythonCommand: "",
-      timeLimitMs: row.actor === "sleep" || row.actor === "memory" ? 500 : 5_000, score: rationalToNumber(maximum), scoreExact: maximum,
-      config, checker: undefined, interactor, program: compiled.program });
+      // Separate memory actor from sleep actor so cold Mach-O sandbox-exec/dyld initialization
+      // (~500ms) cannot race a 500ms wall-time watchdog before main() begins allocation.
+      timeLimitMs: row.actor === "sleep" ? 500 : 5_000, score: rationalToNumber(maximum), scoreExact: maximum,
+      config, checker: undefined, interactor, program: compiled.program, jobId: job.jobId });
+    let result: Awaited<typeof pending>;
+    try {
+      result = await pending;
+    } finally {
+      job.finish();
+    }
+    if (admissionClosed) {
+      await stop();
+      await assertDrained(firstLine, false);
+      return result;
+    }
     if (refuseStrict) {
-      const refusal = await pending;
+      const refusal = result;
       assert.equal(refusal.status, "JE", JSON.stringify(refusal));
       assert.match(refusal.errorDetail ?? "", /interactive participants require strict isolation/);
       assert.deepEqual(refusal.scoreExact, parseRational("0"));
@@ -305,7 +339,6 @@ test("macOS production interactive worker", { timeout: 840_000 }, async (t) => {
       await assertDrained(firstLine, false);
       return;
     }
-    const result = await pending;
     const nativeResult = lastNativeResult;
     assert.ok(nativeResult, "expected the actual production framed interactive response");
     if (row.checkerActor) {
@@ -343,13 +376,12 @@ test("macOS production interactive worker", { timeout: 840_000 }, async (t) => {
   try {
     for (const language of languages) {
       for (const role of ["cpp", "python"] as const) {
-        const strictRefusal = language === "pascal" || language === "java" || language === "scratch";
-        await runCase("baseline", `${language} release submission / ${role} interactor${strictRefusal ? " strict refusal" : " AC"}`, async () => {
+        await runCase("baseline", `${language} release submission / ${role} interactor AC`, async () => {
           const toolchain = managed.get(language);
           assert.ok(toolchain);
           if (language !== "cpp" && language !== "c") assertManaged(toolchain);
           if (role === "python") assertManaged(python);
-          await execute(language, role, toolchain, python, { name: "AC", exit: 0, exact: "1", status: "AC" }, strictRefusal);
+          await execute(language, role, toolchain, python, { name: "AC", exit: 0, exact: "1", status: "AC" });
         });
       }
     }
@@ -418,23 +450,38 @@ test("macOS production interactive worker", { timeout: 840_000 }, async (t) => {
       assert.match(resolved.error ?? "", /INTERACTOR_TOOLCHAIN_UNAVAILABLE/);
       assert.deepEqual(liveTrace().slice(firstLine).filter((event) => event.event === "target_started" || event.event === "interactive_spool_created"), []);
     });
-    await runCase("refusals", "uncertified selected local Python remains ResourceOnly and pair refuses", async () => {
+    await runCase("refusals", "uncertified selected local Python remains not ready and refuses before launch", async () => {
       const selected = process.env.JUDGEDESK_INTERACTIVE_PRODUCTION_LOCAL_PYTHON;
       assert.ok(selected);
       const directory = nextDirectory();
       const unprobedPath = path.join(directory, "unprobed-python");
       fs.copyFileSync(fs.realpathSync(selected), unprobedPath, fs.constants.COPYFILE_EXCL);
       fs.chmodSync(unprobedPath, 0o500);
+      fs.writeFileSync(path.join(directory, "Main.py"), "print(42)\n");
       fs.writeFileSync(path.join(directory, "interactor.py"), "print('harmless')\n");
       const firstLine = boundary();
       const unprobed = verifyLocalToolchainCandidate("python", unprobedPath);
-      assert.equal(unprobed.localToolchain?.isolation, "resource-only", JSON.stringify(unprobed));
+      assert.equal(unprobed.ready, false, JSON.stringify(unprobed));
+      assert.equal(unprobed.localToolchain, undefined, JSON.stringify(unprobed));
       assert.notEqual(unprobed.localProbe?.status, "compatible", JSON.stringify(unprobed));
+      const probe = await scheduleLocalCompatibilityProbe("python", unprobedPath);
+      assert.equal(probe.status, "incompatible", JSON.stringify(probe));
+      const afterProbe = verifyLocalToolchainCandidate("python", unprobedPath);
+      assert.equal(afterProbe.ready, false, JSON.stringify(afterProbe));
+      assert.equal(afterProbe.localToolchain, undefined, JSON.stringify(afterProbe));
+      const compiled = await compileSubmission({ language: "python", contestantName: "student", problemName: "PAIR",
+        submissionPath: path.join(directory, "Main.py"), tempDirectory: directory, compile: createCompileConfig(),
+        toolchains: { python: afterProbe }, pythonToolchain: afterProbe });
+      assert.equal(compiled.compileStatus, "JE", JSON.stringify(compiled));
+      assert.equal(compiled.failureKind, "infrastructure", JSON.stringify(compiled));
+      const resolved = await resolveInteractor({ interactorName: "interactor.py", problemName: "PAIR",
+        problemDirectory: directory, tempDirectory: directory, pythonToolchain: afterProbe });
+      assert.equal(resolved.path, null, JSON.stringify(resolved));
+      assert.match(resolved.error ?? "", /INTERACTOR_TOOLCHAIN_UNAVAILABLE/);
       const strictPython = await local("python", selected);
-      await execute("python", "python", unprobed, python,
-        { name: "refusal", exit: 0, exact: "0", status: "JE" }, true);
       assert.equal(strictPython.localToolchain?.isolation, "strict");
       assert.deepEqual(liveTrace().slice(firstLine).filter((event) => event.event === "interactive_spool_created"), []);
+      await assertDrained(firstLine, false);
     });
     await runCase("refusals", "invalid Python interactor syntax refuses before pair launch", async () => {
       assertManaged(python);
@@ -467,13 +514,34 @@ test("macOS production interactive worker", { timeout: 840_000 }, async (t) => {
   } finally {
     try {
       await stop();
+      const stdioClose = await executorClient.waitForStdioClose();
+      assert.equal(stdioClose, true, "expected native executor stdio close and finalizers");
       await assertDrained(0, false);
       await waitForProcessGone(executorIdentity.pid, 5_000);
       await waitForGenerationExclusive(generationPath, 10_000);
-      assert.deepEqual(fs.readdirSync(path.join(health.executorRoot, "profiles")), []);
-      fs.writeFileSync(path.join(runRoot, "completed-rows.json"), JSON.stringify({
-        selectedCases: selectedCases ?? null, rows: completedRows, cleanupProved: true,
-      }), { flag: "wx", mode: 0o600 });
+      const remainingProfiles = fs.readdirSync(path.join(health.executorRoot, "profiles"));
+      assert.deepEqual(remainingProfiles, []);
+      const workspacesDir = path.join(health.executorRoot, "workspaces");
+      const remainingWorkspaces = fs.existsSync(workspacesDir) ? fs.readdirSync(workspacesDir) : [];
+      assert.deepEqual(remainingWorkspaces, []);
+      const receiptPath = path.join(runRoot, "completed-rows.json");
+      const receiptTempPath = `${receiptPath}.tmp-${process.pid}`;
+      fs.writeFileSync(receiptTempPath, JSON.stringify({
+        selectedCases: selectedCases ?? null,
+        rows: completedRows,
+        aborted: admissionClosed,
+        cleanupProved: true,
+        barriers: {
+          nativeDrain: true,
+          callerSettlement: true,
+          stdioClose,
+          finalizers: true,
+          workspaceInventory: remainingWorkspaces,
+          profiles: remainingProfiles,
+          leaseRelease: true,
+        },
+      }, null, 2) + "\n", { flag: "wx", mode: 0o600 });
+      fs.renameSync(receiptTempPath, receiptPath);
     } catch (error) {
       t.diagnostic(`failure evidence retained: ${runRoot}\n${fs.readFileSync(eventLog, "utf8")}`);
       throw error;

@@ -298,10 +298,11 @@ function Get-RuntimeInventory {
         }
     )
     $serverIds = @($servers | Select-Object -ExpandProperty ProcessId)
+    $allowedExecutorParents = @($primaryProcessId) + @($serverIds)
     $executors = @(
         $snapshot | Where-Object {
             $_.ProcessId -in $descendantIds -and
-            $_.ParentProcessId -in $serverIds -and
+            $_.ParentProcessId -in $allowedExecutorParents -and
             $_.Name -like "judgedesk-executor*.exe"
         }
     )
@@ -319,6 +320,31 @@ function Get-RuntimeInventory {
         Executors = $executors
         Guis = $guis
     }
+}
+
+$rustCoreEnv = if ($null -ne $env:JUDGEDESK_PURE_RUST_CORE) {
+    $env:JUDGEDESK_PURE_RUST_CORE.Trim().ToLowerInvariant()
+} else {
+    ""
+}
+$isEmbeddedRustMode = $rustCoreEnv -notin @("0", "false")
+
+function Test-RuntimeReadyInventory {
+    param([object]$Inventory)
+    if ($isEmbeddedRustMode) {
+        return (
+            $Inventory.Guis.Count -eq 1 -and
+            $Inventory.Helpers.Count -eq 1 -and
+            $Inventory.Servers.Count -eq 0 -and
+            $Inventory.Executors.Count -eq 1
+        )
+    }
+    return (
+        $Inventory.Guis.Count -eq 1 -and
+        $Inventory.Helpers.Count -eq 1 -and
+        $Inventory.Servers.Count -eq 1 -and
+        $Inventory.Executors.Count -le 1
+    )
 }
 
 function Register-OwnedInventory {
@@ -363,9 +389,8 @@ function Wait-RuntimeReady {
     param([System.Diagnostics.Process]$Primary)
     $primaryIdentity = $Primary.JudgeDeskIdentity
     $deadline = [DateTime]::UtcNow.AddSeconds($StartupTimeoutSeconds)
-    # The native executor is lazy. It may start during background toolchain
-    # readiness or with the first judge workload, so both 0 and 1 are valid at
-    # idle; more than one is never valid.
+    # In embedded Rust mode, judgedesk-executor is spawned at startup under the
+    # primary process. In Node sidecar rollback mode, the native executor is lazy.
     do {
         if (-not (Test-StartedProcessAlive -Process $Primary)) {
             throw "JudgeDesk primary $($primaryIdentity.ProcessId) exited before runtime readiness."
@@ -374,17 +399,12 @@ function Wait-RuntimeReady {
         Register-OwnedInventory `
             -PrimaryProcessId $primaryIdentity.ProcessId `
             -Inventory $inventory
-        if (
-            $inventory.Guis.Count -eq 1 -and
-            $inventory.Helpers.Count -eq 1 -and
-            $inventory.Servers.Count -eq 1 -and
-            $inventory.Executors.Count -le 1
-        ) {
+        if (Test-RuntimeReadyInventory -Inventory $inventory) {
             return $inventory
         }
         Start-Sleep -Milliseconds 100
     } while ([DateTime]::UtcNow -lt $deadline)
-    throw "JudgeDesk idle runtime did not reach 1 GUI + 1 supervisor + 1 backend + at most 1 executor."
+    throw "JudgeDesk idle runtime did not reach the expected process topology for backend mode."
 }
 
 function Wait-OwnedProcessesExit {
@@ -469,9 +489,14 @@ try {
     $gatePhase = "initial runtime startup"
     $primary = Start-OwnedPrimary
     $inventory = Wait-RuntimeReady -Primary $primary
+    $result.BackendMode = if ($isEmbeddedRustMode) { "embedded-rust" } else { "node-sidecar" }
     $result.InitialPrimaryPid = $primary.Id
     $result.InitialHelperPid = $inventory.Helpers[0].ProcessId
-    $result.InitialBackendPid = $inventory.Servers[0].ProcessId
+    $result.InitialBackendPid = if ($inventory.Servers.Count -gt 0) {
+        $inventory.Servers[0].ProcessId
+    } else {
+        $primary.Id
+    }
     $result.ExecutorStartedAtIdle = $inventory.Executors.Count -gt 0
     if ($inventory.Executors.Count -eq 1) {
         $result.InitialExecutorPid = $inventory.Executors[0].ProcessId
@@ -488,10 +513,14 @@ try {
         (Get-Process -Id $inventory.Helpers[0].ProcessId).WorkingSet64 / 1MB,
         1
     )
-    $result.BackendWorkingSetMiB = [Math]::Round(
-        (Get-Process -Id $inventory.Servers[0].ProcessId).WorkingSet64 / 1MB,
-        1
-    )
+    $result.BackendWorkingSetMiB = if ($inventory.Servers.Count -gt 0) {
+        [Math]::Round(
+            (Get-Process -Id $inventory.Servers[0].ProcessId).WorkingSet64 / 1MB,
+            1
+        )
+    } else {
+        0.0
+    }
     $gatePhase = "secondary activation and focus"
     $primary.Refresh()
     $windowHandle = $primary.MainWindowHandle
@@ -551,12 +580,7 @@ try {
         $launchDurations += $timer.ElapsedMilliseconds
     }
     $inventory = Get-RuntimeInventory -PrimaryIdentity $primary.JudgeDeskIdentity
-    if (
-        $inventory.Guis.Count -ne 1 -or
-        $inventory.Helpers.Count -ne 1 -or
-        $inventory.Servers.Count -ne 1 -or
-        $inventory.Executors.Count -gt 1
-    ) {
+    if (-not (Test-RuntimeReadyInventory -Inventory $inventory)) {
         throw "Sequential launches changed the stable runtime inventory."
     }
     $result.SequentialLaunches = $SequentialLaunches
@@ -572,12 +596,13 @@ try {
             -ExpectedCount 1 `
             -Label "old supervisor"
     )
+    $oldJudgeTreeProcesses = @(
+        @($inventory.Servers) + @($inventory.Executors)
+    )
     $oldJudgeTreeIdentities = @(
         Get-RequiredOwnedIdentities `
-            -Processes @(
-                @($inventory.Servers) + @($inventory.Executors)
-            ) `
-            -ExpectedCount (1 + $inventory.Executors.Count) `
+            -Processes $oldJudgeTreeProcesses `
+            -ExpectedCount $oldJudgeTreeProcesses.Count `
             -Label "old judge tree"
     )
     Stop-OwnedProcess -Identity $primary.JudgeDeskIdentity
@@ -598,18 +623,16 @@ try {
             $oldJudgeTreeIdentities |
                 Where-Object { Test-OwnedProcessAlive -Identity $_ }
         )
+        $replacementJudgeTreeCount =
+            $replacementInventory.Servers.Count + $replacementInventory.Executors.Count
         if (
-            $replacementInventory.Servers.Count -gt 0 -and
+            $replacementJudgeTreeCount -gt 0 -and
             $oldJudgeTreeAlive.Count -gt 0
         ) {
             $overlapDetected = $true
             break
         }
-        $replacementReady =
-            $replacementInventory.Guis.Count -eq 1 -and
-            $replacementInventory.Helpers.Count -eq 1 -and
-            $replacementInventory.Servers.Count -eq 1 -and
-            $replacementInventory.Executors.Count -le 1
+        $replacementReady = Test-RuntimeReadyInventory -Inventory $replacementInventory
         if (-not $replacementReady) {
             Start-Sleep -Milliseconds 25
         }
@@ -633,13 +656,14 @@ try {
             -ExpectedCount 1 `
             -Label "replacement supervisor"
     )[0]
+    $replacementBackendProcesses = @(
+        @($replacementInventory.Servers) +
+            @($replacementInventory.Executors)
+    )
     $replacementBackendIdentities = @(
         Get-RequiredOwnedIdentities `
-            -Processes @(
-                @($replacementInventory.Servers) +
-                    @($replacementInventory.Executors)
-            ) `
-            -ExpectedCount (1 + $replacementInventory.Executors.Count) `
+            -Processes $replacementBackendProcesses `
+            -ExpectedCount $replacementBackendProcesses.Count `
             -Label "replacement judge tree"
     )
     Stop-OwnedProcess -Identity $replacementHelperIdentity
@@ -654,14 +678,15 @@ try {
     $gatePhase = "normal shutdown drain"
     $finalPrimary = Start-OwnedPrimary
     $finalInventory = Wait-RuntimeReady -Primary $finalPrimary
+    $finalProtectedProcesses = @(
+        @($finalInventory.Helpers) +
+            @($finalInventory.Servers) +
+            @($finalInventory.Executors)
+    )
     $finalProtectedIdentities = @(
         Get-RequiredOwnedIdentities `
-            -Processes @(
-                @($finalInventory.Helpers) +
-                    @($finalInventory.Servers) +
-                    @($finalInventory.Executors)
-            ) `
-            -ExpectedCount (2 + $finalInventory.Executors.Count) `
+            -Processes $finalProtectedProcesses `
+            -ExpectedCount $finalProtectedProcesses.Count `
             -Label "final protected runtime"
     )
     $finalTrackedIdentities = @(

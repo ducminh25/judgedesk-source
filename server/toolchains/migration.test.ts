@@ -240,6 +240,64 @@ test("migrateLegacyBundledToolchains deduplicates multiple copies and frees disk
   }
 });
 
+test("migrateLegacyBundledToolchains preserves active executor cache directory with matching import-complete marker", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "toolchain-migration-active-cache-"));
+  const downloadedRoot = path.join(root, "downloaded-toolchains");
+  const executorCacheRoot = path.join(root, "executor-toolchains");
+  fs.mkdirSync(downloadedRoot, { recursive: true });
+  fs.mkdirSync(executorCacheRoot, { recursive: true });
+
+  try {
+    const packageId = "gcc-windows-x64";
+    const version = "14.2.0";
+    const archiveSha256 = "0da7f5ce533705777ab711871777e09fb8232987c2144547054c726dd00e1a36";
+    const canonicalDir = path.join(downloadedRoot, packageId);
+    const activeCacheDir = path.join(executorCacheRoot, `${packageId}_${version}`);
+    const receiptJson = JSON.stringify({
+      schemaVersion: 1,
+      packageId,
+      version,
+      archiveSha256,
+      entrypointComponentId: "gcc.cxx",
+      components: [
+        {
+          id: "gcc.cxx",
+          kind: "executable",
+          relativePath: "bin/g++.exe",
+          roles: ["compiler"],
+        },
+      ],
+    });
+
+    fs.mkdirSync(path.join(canonicalDir, "bin"), { recursive: true });
+    fs.writeFileSync(path.join(canonicalDir, "bin", "g++.exe"), "g++-canonical");
+    fs.writeFileSync(path.join(canonicalDir, TOOLCHAIN_PACKAGE_RECEIPT), receiptJson);
+
+    fs.mkdirSync(path.join(activeCacheDir, "bin"), { recursive: true });
+    fs.writeFileSync(path.join(activeCacheDir, "bin", "g++.exe"), "g++-cached");
+    fs.writeFileSync(path.join(activeCacheDir, TOOLCHAIN_PACKAGE_RECEIPT), receiptJson);
+    fs.writeFileSync(
+      path.join(activeCacheDir, ".judgedesk-import-complete"),
+      `4-receipt-digest\n${packageId}\n${version}\n${archiveSha256}\n`,
+      "utf8",
+    );
+
+    const result = migrateLegacyBundledToolchains({
+      builtInRoot: path.join(root, "non-existent-builtin"),
+      downloadedRoot,
+      executorCacheRoot,
+    });
+
+    assert.equal(result.errors.length, 0);
+    assert.equal(result.freedBytes, 0);
+    assert.ok(fs.existsSync(canonicalDir));
+    assert.ok(fs.existsSync(activeCacheDir));
+    assert.ok(fs.existsSync(path.join(activeCacheDir, ".judgedesk-import-complete")));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("migrateLegacyBundledToolchains ignores external directories lacking receipt", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "toolchain-migration-external-"));
   const downloadedRoot = path.join(root, "downloaded-toolchains");

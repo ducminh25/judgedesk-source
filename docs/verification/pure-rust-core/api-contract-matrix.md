@@ -11,7 +11,7 @@
 ## 1. Inventory Summary
 
 - **Contracted Routes in Manifest:** 29
-- **Frontend API Callers Discovered:** 33
+- **Frontend API Callers Discovered:** 32
 - **Node Backend Routes Discovered:** 29
 - **Rust Backend Routes Discovered:** 29
 

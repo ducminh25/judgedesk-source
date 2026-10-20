@@ -302,4 +302,11 @@ describe("toolbar score sort button", () => {
 
     assert.doesNotMatch(source, /<ScoreSortButton[\s\S]*?<button\s+type="button"\s+onClick=\{onDeleteSelected\}/);
   });
+
+  it("closes open toolbar menus when global function shortcuts such as F6 are pressed", () => {
+    const source = readFileSync(new URL("./AppToolbar.tsx", import.meta.url), "utf8");
+
+    assert.match(source, /\^F\(\[1-9\]\|1\[0-2\]\)\$/);
+    assert.match(source, /data-toolchain-menu-trigger="true"/);
+  });
 });

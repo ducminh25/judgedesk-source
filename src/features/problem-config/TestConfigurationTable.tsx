@@ -7,6 +7,7 @@ import { formatScore } from "../../../shared/rational";
 
 interface Props {
   config: PolygonConfig;
+  defaultTimeLimit?: number;
   tests: TestDetail[];
   selectedTests: ReadonlySet<string>;
   showContent: boolean;
@@ -17,8 +18,16 @@ interface Props {
   onOpenEdit: (popover: TestEditPopover, input: string, batchTotal?: string) => void;
 }
 
+function resolveDefaultTimeLimitSeconds(rawTimeLimit: number | undefined): number {
+  if (rawTimeLimit === undefined || !Number.isFinite(rawTimeLimit) || rawTimeLimit <= 0) {
+    return 1.0;
+  }
+  return rawTimeLimit <= 60 ? rawTimeLimit : rawTimeLimit / 1000;
+}
+
 export function TestConfigurationTable(props: Props) {
   const { t } = useTranslation();
+  const defaultTimeLimit = resolveDefaultTimeLimitSeconds(props.defaultTimeLimit);
   const openBatch = (event: MouseEvent<HTMLButtonElement>, type: TestEditType, input: string) => {
     event.stopPropagation();
     const rect = event.currentTarget.getBoundingClientRect();
@@ -37,7 +46,7 @@ export function TestConfigurationTable(props: Props) {
           <span className="text-indigo-700 dark:text-indigo-300 font-bold text-[10px] uppercase tracking-wider">{props.selectedTests.size} {t("problemConfig.testConfig.selected")}</span>
           <div className="flex gap-2">
             <BatchButton label={t("problemConfig.testConfig.points")} onClick={event => openBatch(event, "batchPoints", "")} />
-            <BatchButton label={t("problemConfig.testConfig.timeLimit")} onClick={event => openBatch(event, "batchTime", "1.0")} />
+            <BatchButton label={t("problemConfig.testConfig.timeLimit")} onClick={event => openBatch(event, "batchTime", defaultTimeLimit.toString())} />
             {props.config.enableGroups && <BatchButton label={t("problemConfig.testConfig.group")} onClick={event => openBatch(event, "batchGroup", "")} />}
           </div>
         </div>
@@ -66,7 +75,7 @@ export function TestConfigurationTable(props: Props) {
               <tr><td colSpan={props.showContent && props.config.enableGroups ? 9 : props.showContent || props.config.enableGroups ? 8 : 7} className="p-8 text-center text-text-muted animate-pulse">{t("problemConfig.testConfig.loading")}</td></tr>
             ) : props.tests.map((test, index) => {
               const testConfig = props.config.tests[test.name] || { points: 1 };
-              const timeLimit = testConfig.timeLimit !== undefined ? testConfig.timeLimit : 1.0;
+              const timeLimit = testConfig.timeLimit !== undefined ? testConfig.timeLimit : defaultTimeLimit;
               return (
                 <tr key={test.name} className={`border-b border-surface-border hover:bg-surface-hover transition ${props.selectedTests.has(test.name) ? "bg-indigo-50 dark:bg-indigo-950/10" : ""}`}>
                   <td className="p-3 text-center">
@@ -84,7 +93,7 @@ export function TestConfigurationTable(props: Props) {
                   <td className="p-3 text-center">
                     <div className="flex items-center justify-center gap-2 whitespace-nowrap">
                       <EditButton label={t("problemConfig.testConfig.points")} onClick={event => openTest(event, "points", test.name, (testConfig.points ?? 1).toString())} />
-                      <EditButton label={t("problemConfig.testConfig.timeLimit")} onClick={event => openTest(event, "time", test.name, testConfig.timeLimit?.toString() ?? "1.0")} />
+                      <EditButton label={t("problemConfig.testConfig.timeLimit")} onClick={event => openTest(event, "time", test.name, (testConfig.timeLimit ?? defaultTimeLimit).toString())} />
                       {props.config.enableGroups && <EditButton label={t("problemConfig.testConfig.group")} onClick={event => openTest(event, "group", test.name, testConfig.group || "")} />}
                     </div>
                   </td>

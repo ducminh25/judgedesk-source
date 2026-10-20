@@ -54,7 +54,7 @@
       "scratch-turbowarp-v1": []
     },
     "refreshing": false,
-    "registryRevision": 6,
+    "registryRevision": 7,
     "schemaVersion": 2,
     "status": "failed"
   },
@@ -95,7 +95,7 @@
       "certification": {
         "canCertify": false,
         "required": false,
-        "supported": false
+        "supported": true
       },
       "detected": true,
       "displayNameKey": "languages.cpp",
@@ -105,7 +105,7 @@
       "id": "cpp-legacy-v1",
       "kind": "cpp",
       "localPolicy": {
-        "executionMode": "quick_verified_direct",
+        "executionMode": "freeze_required",
         "supportedVersions": [
           "4.8.0–<18.0.0",
           "majors: 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17"
@@ -176,7 +176,7 @@
       "id": "c-gcc14",
       "kind": "c",
       "localPolicy": {
-        "executionMode": "quick_verified_direct",
+        "executionMode": "managed_only",
         "supportedVersions": [
           "4.8.0–<18.0.0",
           "majors: 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17"
@@ -208,10 +208,12 @@
       },
       "sources": {
         "local_auto": {
-          "available": true
+          "available": false,
+          "reasonCode": "LOCAL_NOT_SANDBOX_COMPATIBLE"
         },
         "local_path": {
-          "available": true
+          "available": false,
+          "reasonCode": "LOCAL_NOT_SANDBOX_COMPATIBLE"
         },
         "managed": {
           "available": true
@@ -247,7 +249,7 @@
       "id": "python-cpython312",
       "kind": "python",
       "localPolicy": {
-        "executionMode": "quick_verified_direct",
+        "executionMode": "managed_only",
         "supportedVersions": [
           "3.6.0–<3.14.0",
           "majors: 3"
@@ -279,10 +281,12 @@
       },
       "sources": {
         "local_auto": {
-          "available": true
+          "available": false,
+          "reasonCode": "LOCAL_NOT_SANDBOX_COMPATIBLE"
         },
         "local_path": {
-          "available": true
+          "available": false,
+          "reasonCode": "LOCAL_NOT_SANDBOX_COMPATIBLE"
         },
         "managed": {
           "available": true
@@ -521,6 +525,6 @@
       "version": 1
     }
   ],
-  "registryRevision": 6,
+  "registryRevision": 7,
   "toolchains": []
 }

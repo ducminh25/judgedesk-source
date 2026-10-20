@@ -7,6 +7,7 @@ import {
   buildLocalPythonEnvironment,
   clearLocalCompatibilityProbeCache,
   deriveLocalToolchain,
+  inferLocalToolchainRoot,
   isAcceptedLocalAbsolutePath,
   resolveCachedLocalExecution,
   scheduleLocalCompatibilityProbe,
@@ -160,6 +161,14 @@ test("local path and Python environment contracts remain bounded", () => {
   assert.equal(
     isAcceptedLocalAbsolutePath(String.raw`\\?\C:\tools\python.exe`, "win32"),
     false,
+  );
+  assert.equal(
+    inferLocalToolchainRoot(
+      "python",
+      "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14/Resources/Python.app/Contents/MacOS/Python",
+      "darwin",
+    ),
+    "/opt/homebrew/Cellar/python@3.14/3.14.5/Frameworks/Python.framework/Versions/3.14",
   );
   const derived = deriveLocalToolchain("python", process.execPath, "strict");
   assert.deepEqual(buildLocalPythonEnvironment(derived), {

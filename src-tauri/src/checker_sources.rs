@@ -135,9 +135,21 @@ fn write_checker_preview(checker_id: &str) -> Result<PathBuf, String> {
 #[tauri::command]
 pub fn open_checker_source(app: tauri::AppHandle, checker_id: String) -> Result<(), String> {
     let source_path = write_checker_preview(&checker_id)?;
-    app.opener()
-        .open_path(source_path.to_string_lossy().into_owned(), None::<&str>)
-        .map_err(|error| error.to_string())
+    let path_str = source_path.to_string_lossy().into_owned();
+    if let Err(opener_err) = app.opener().open_path(&path_str, None::<&str>) {
+        #[cfg(target_os = "linux")]
+        {
+            if std::process::Command::new("xdg-open")
+                .arg(&source_path)
+                .spawn()
+                .is_ok()
+            {
+                return Ok(());
+            }
+        }
+        return Err(opener_err.to_string());
+    }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -67,11 +67,37 @@ export async function prepareServerShutdown(
     await dependencies.shutdownExecutor();
     return { ok: true };
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const subMessages =
+      error instanceof AggregateError
+        ? error.errors.map((e: unknown) => (e instanceof Error ? e.message : String(e)))
+        : [message];
+    const onlySessionDrainTimeout =
+      subMessages.length > 0
+      && subMessages.every((msg) => msg.includes("active judging session(s)"));
+    const activeCount = dependencies.activeJudgeSessionCount();
+    if (activeCount > 0 && onlySessionDrainTimeout) {
+      return {
+        ok: false,
+        code: "JUDGE_DRAIN_TIMEOUT",
+        message:
+          `Timed out waiting for ${activeCount} active judging session(s) to stop.`,
+      };
+    }
     return {
       ok: false,
       code: "SERVER_SHUTDOWN_FAILED",
-      message: error instanceof Error ? error.message : String(error),
+      message,
     };
+  }
+}
+
+export async function drainServerForProcessExit(
+  dependencies: ServerShutdownDependencies = defaultShutdownDependencies(),
+): Promise<void> {
+  const result = await prepareServerShutdown(dependencies);
+  if (result.ok === false) {
+    throw new Error(`${result.code}: ${result.message}`);
   }
 }
 
@@ -88,10 +114,16 @@ export function registerSystemRoutes(
   });
 
   app.get("/api/distribution", (_req, res) => {
+    const rawBundleType = process.env.JUDGEDESK_BUNDLE_TYPE?.trim().toLowerCase();
+    const bundleType =
+      rawBundleType === "deb" || rawBundleType === "rpm" || rawBundleType === "appimage"
+        ? rawBundleType
+        : undefined;
     res.json({
       distribution: getJudgeDeskDistribution(),
       platform: process.platform,
       arch: process.arch,
+      ...(bundleType ? { bundleType } : {}),
     });
   });
 

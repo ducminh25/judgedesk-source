@@ -8,6 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  getLocalExecutionModeForHost,
   getRegisteredProfileForKind,
   LANGUAGE_REGISTRY_REVISION,
   listRegisteredLanguageProfiles,
@@ -131,8 +132,38 @@ interface ParsedVersion {
 
 const runtimeStates = new Map<string, RuntimeDiscoveryState>();
 const activeDiscoveryChildren = new Set<ChildProcess>();
+const discoveryVersionProbeCache = new Map<string, ParsedVersion>();
 let testProbe: ToolchainVersionProbe | undefined;
 let testStandardCandidates: StandardCandidateProvider | undefined;
+
+function discoveryVersionFingerprintKey(
+  kind: ToolchainKind,
+  canonicalPath: string,
+  size: number,
+  mtimeMs: number,
+): string {
+  const normalizedPath = os.platform() === "win32"
+    ? canonicalPath.toLowerCase()
+    : canonicalPath;
+  return `${kind}\0${normalizedPath}\0${size}\0${mtimeMs}`;
+}
+
+export function getCachedDiscoveryVersion(
+  kind: ToolchainKind,
+  canonicalPath: string,
+  size: number,
+  mtimeMs: number,
+): string | null {
+  if (testProbe) return null;
+  const cached = discoveryVersionProbeCache.get(
+    discoveryVersionFingerprintKey(kind, canonicalPath, size, mtimeMs),
+  );
+  return cached?.version ?? null;
+}
+
+export function clearDiscoveryVersionProbeCache(): void {
+  discoveryVersionProbeCache.clear();
+}
 
 function emptyProfiles(): Record<string, DiscoveredToolchainCandidate[]> {
   return Object.fromEntries(
@@ -662,26 +693,47 @@ async function probeCandidate(
   }
   const timeoutMs = Math.max(1, Math.min(COMMAND_TIMEOUT_MS, remaining));
   try {
-    const probe = testProbe || runVersionCommand;
-    const output = await withTimeout(
-      probe({
-        kind,
-        executablePath: canonicalPath,
-        args: versionArgsForKind(kind),
-        timeoutMs,
-      }),
-      timeoutMs,
-      "probe_timeout",
-    );
-    const parsed = parseVersionOutput(kind, `${output.stdout}\n${output.stderr}`);
+    let cacheKey: string | undefined;
+    let parsed: ParsedVersion | null | undefined;
+    if (!testProbe) {
+      try {
+        const stat = await fs.promises.stat(canonicalPath);
+        cacheKey = discoveryVersionFingerprintKey(
+          kind,
+          canonicalPath,
+          stat.size,
+          stat.mtimeMs,
+        );
+        parsed = discoveryVersionProbeCache.get(cacheKey);
+      } catch {
+        // Proceed to live probe if stat fails.
+      }
+    }
     if (!parsed) {
-      return {
-        ...base,
-        family: null,
-        version: null,
-        target: null,
-        error: "version_unrecognized",
-      };
+      const probe = testProbe || runVersionCommand;
+      const output = await withTimeout(
+        probe({
+          kind,
+          executablePath: canonicalPath,
+          args: versionArgsForKind(kind),
+          timeoutMs,
+        }),
+        timeoutMs,
+        "probe_timeout",
+      );
+      parsed = parseVersionOutput(kind, `${output.stdout}\n${output.stderr}`);
+      if (!parsed) {
+        return {
+          ...base,
+          family: null,
+          version: null,
+          target: null,
+          error: "version_unrecognized",
+        };
+      }
+      if (cacheKey) {
+        discoveryVersionProbeCache.set(cacheKey, parsed);
+      }
     }
     const successful: DiscoveredToolchainCandidate = {
       ...base,
@@ -713,6 +765,14 @@ function scheduleCompatibilityProbe(
   if (testProbe || (kind !== "cpp" && kind !== "c" && kind !== "python")) {
     return;
   }
+  const platform = os.platform();
+  const architecture = os.arch();
+  if (
+    (platform !== "win32" && platform !== "darwin")
+    || (architecture !== "x64" && architecture !== "arm64")
+  ) return;
+  const hostMode = getLocalExecutionModeForHost(kind, platform, architecture);
+  if (hostMode !== "quick_verified_direct") return;
   const controller = new AbortController();
   const probePromise = import("./local-execution.js")
     .then(({ scheduleLocalCompatibilityProbe }) =>
@@ -1567,6 +1627,7 @@ export function resetToolchainDiscoveryRuntimeForTests(): void {
   if (activeDiscoveryChildren.size === 0) {
     runtimeStates.clear();
   }
+  discoveryVersionProbeCache.clear();
   activeCompatibilityProbes.clear();
   settledCompatibilityErrors.length = 0;
 }
@@ -1575,6 +1636,7 @@ export function forceClearToolchainDiscoveryRuntimeForTests(): void {
   cancelToolchainDiscovery();
   activeDiscoveryChildren.clear();
   runtimeStates.clear();
+  discoveryVersionProbeCache.clear();
   activeCompatibilityProbes.clear();
   settledCompatibilityErrors.length = 0;
 }

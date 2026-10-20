@@ -248,7 +248,7 @@ export function useToolchains() {
   const initialRetryRef = useRef<number | null>(null);
   const fetchGenerationRef = useRef(0);
 
-  const fetchState = useCallback(async () => {
+  const fetchState = useCallback(async (options?: { suppressError?: boolean }) => {
     const generation = ++fetchGenerationRef.current;
     try {
       const response = await apiFetch("/api/toolchains");
@@ -259,7 +259,9 @@ export function useToolchains() {
       return data;
     } catch (caught: unknown) {
       if (!pollingMountedRef.current || generation !== fetchGenerationRef.current) return null;
-      setError(caught instanceof Error ? caught.message : "Failed to load toolchains state.");
+      if (!options?.suppressError) {
+        setError(caught instanceof Error ? caught.message : "Failed to load toolchains state.");
+      }
       return null;
     }
   }, []);
@@ -267,7 +269,7 @@ export function useToolchains() {
   const startPolling = useCallback(() => {
     if (!pollingMountedRef.current || pollingRef.current !== null) return;
     const poll = async () => {
-      const data = await fetchState();
+      const data = await fetchState({ suppressError: true });
       if (!pollingMountedRef.current) {
         pollingRef.current = null;
         return;
@@ -290,7 +292,7 @@ export function useToolchains() {
     let disposed = false;
     pollingMountedRef.current = true;
     const loadInitialState = async (retriesRemaining: number) => {
-      const data = await fetchState();
+      const data = await fetchState({ suppressError: retriesRemaining > 0 });
       if (disposed) return;
       if (data) {
         if (hasRunningOperation(data)) startPolling();

@@ -161,10 +161,13 @@ describe("OSD accepted-job lifecycle", () => {
       const response = f.service.start(f.config);
       assert.equal(response.success, false);
       assert.match(response.message ?? "", /hàng đợi|chấm/i);
-    } finally {
       f.service.stop();
       sharedJudgeSessionGate.release();
       await until(() => f.service.getStatus().totalProcessed === 1);
+    } finally {
+      f.service.stop();
+      sharedJudgeSessionGate.release();
+      await until(() => !f.service.getStatus().currentJob && f.service.getStatus().queueLength === 0);
       fs.rmSync(f.root, { recursive: true, force: true });
     }
   });

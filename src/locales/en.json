@@ -1,8 +1,17 @@
 {
+  "startupFailure": {
+    "title": "JudgeDesk could not start",
+    "reason": "The secure connection to the grading service could not be established.",
+    "action": "Try again. If the problem persists, close and reopen JudgeDesk.",
+    "retry": "Try again",
+    "retrying": "Trying again..."
+  },
   "common": {
     "close": "Close",
     "cancel": "Cancel",
     "save": "Save",
+    "copy": "Copy",
+    "copied": "Copied",
     "noOutput": "[No output]"
   },
   "diff": {
@@ -37,6 +46,7 @@
     "openGitHub": "Open GitHub repository",
     "statusMenu": {
       "title": "System Status",
+      "nativeProtection": "Native protection",
       "incomplete": "Incomplete",
       "unavailable": "Unavailable",
       "notInstalled": "Not installed",
@@ -269,6 +279,7 @@
       "polygon": "Polygon / Testlib"
     },
     "viewSource": "View source",
+    "openExternalEditor": "Open externally",
     "sourceOpenFailed": "Could not open checker source",
     "customDescription": "Custom checker {{name}} from the problem directory. JudgeDesk accepts C++ (.cpp) and Python (.py) sources; .exe files are not supported.",
     "entries": {
@@ -583,6 +594,7 @@
     "pythonRuntime": "Python Runtime",
     "windows": "Windows",
     "macos": "macOS",
+    "linux": "Linux",
     "cppSettings": "C/C++ Compiler Settings",
     "pythonSettings": "Python Interpreter Settings",
     "status": "Status",
@@ -638,8 +650,8 @@
       "firstRunHint": "Review each supported language, choose one source, then finish setup.",
       "managerHint": "Source choices are fixed: an unavailable source never falls back silently.",
       "preferencesRecovery": "The saved toolchain settings are invalid or from a newer schema. JudgeDesk has disabled every profile and preserved the file for recovery.",
-      "localPolicyLegacyDisabled": "Legacy resource-only execution is disabled. Local C/C++ and Python toolchains are checked automatically in the strict sandbox; incompatible selections remain unavailable, without a compiler fallback.",
-      "localPolicyRecovery": "The saved local execution policy could not be read or is invalid. Strict sandbox isolation remains required for local C/C++ and Python toolchains. The file has been preserved for recovery.",
+      "localPolicyLegacyDisabled": "Legacy resource-only execution is disabled. Toolchains must satisfy strict sandbox isolation (managed package, certified contest freeze, or platform-approved local toolchain); incompatible selections remain unavailable, without a compiler fallback.",
+      "localPolicyRecovery": "The saved local execution policy could not be read or is invalid. Strict sandbox isolation remains required for all toolchains. The file has been preserved for recovery.",
       "language": "Language",
       "sourceSelection": "Compiler/runtime source",
       "actions": "Actions",

@@ -30,6 +30,7 @@ export class OsdWatcher {
   private generation = 0;
   private fsWatcher: fs.FSWatcher | null = null;
   private pollTimer: NodeJS.Timeout | null = null;
+  private startupTimer: NodeJS.Timeout | null = null;
   private processingFiles = new Map<string, Promise<void>>();
 
   constructor(options: OsdWatcherOptions) {
@@ -52,13 +53,23 @@ export class OsdWatcher {
     ++this.generation;
     try {
       this.fsWatcher = fs.watch(this.osdPath, (_event, fileName) => {
-        if (this.active && fileName) void this.handleCandidate(fileName.toString());
+        if (!this.active) return;
+        if (fileName) void this.handleCandidate(fileName.toString());
+        else void this.scanDirectory();
       });
       this.fsWatcher.on("error", error => this.options.onError?.(error));
     } catch (error) {
       this.options.onError?.(`FSWatcher warning: ${String(error)}. Relying on polling fallback.`);
     }
     this.pollTimer = setInterval(() => { void this.scanDirectory(); }, this.options.pollIntervalMs ?? 2000);
+    let startupScansRemaining = 20;
+    this.startupTimer = setInterval(() => {
+      if (!this.active || --startupScansRemaining <= 0) {
+        if (this.startupTimer) clearInterval(this.startupTimer);
+        this.startupTimer = null;
+      }
+      if (this.active && this.processingFiles.size === 0) void this.scanDirectory();
+    }, 25);
     void this.scanDirectory();
   }
 
@@ -69,6 +80,8 @@ export class OsdWatcher {
     this.fsWatcher = null;
     if (this.pollTimer) clearInterval(this.pollTimer);
     this.pollTimer = null;
+    if (this.startupTimer) clearInterval(this.startupTimer);
+    this.startupTimer = null;
   }
 
   public async scanDirectory(): Promise<void> {

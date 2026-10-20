@@ -10,18 +10,26 @@ import {
 } from "./manifest.js";
 import { inspectInstalledToolchainPackage } from "./package-store.js";
 import { sandbox } from "../sandbox.js";
-import { getRegisteredProfileForKind } from "../languages/registry.js";
+import {
+  getLocalExecutionModeForHost,
+  getRegisteredProfileForKind,
+} from "../languages/registry.js";
 import {
   isToolchainVersionAllowed,
   type ToolchainVersionHost,
 } from "../languages/version-policy.js";
 import { getStoredProfilePreference } from "./preferences-v2.js";
 import {
+  clearDiscoveryVersionProbeCache,
+  getCachedDiscoveryVersion,
   getDiscoveredCandidates,
   getToolchainDiscoverySnapshot,
   parseVersionOutput,
 } from "./discovery.js";
-import { resolveLocalCppCertificateReadiness } from "./certificate-readiness.js";
+import {
+  localCppCertificateExecutionFields,
+  resolveLocalCppCertificateReadiness,
+} from "./certificate-readiness.js";
 import {
   getHostProductVersion,
   isMinimumOsSupported,
@@ -44,6 +52,10 @@ const detectionCache = new Map<
 const executableSupportCache = new Map<
   string,
   { value: boolean; expiresAt: number }
+>();
+const executableVersionCache = new Map<
+  string,
+  { value: string; expiresAt: number }
 >();
 
 function currentVersionPolicyHost(): ToolchainVersionHost | null {
@@ -97,6 +109,37 @@ export function getExecutableVersion(
 ): string {
   try {
     if (!fs.existsSync(executablePath)) return "unknown";
+    let cacheKey: string | undefined;
+    try {
+      const canonical = fs.realpathSync(executablePath);
+      const stat = fs.statSync(canonical);
+      const discoveredVersion = getCachedDiscoveryVersion(
+        kind,
+        canonical,
+        stat.size,
+        stat.mtimeMs,
+      );
+      if (discoveredVersion) return discoveredVersion;
+      const normalized = os.platform() === "win32"
+        ? canonical.toLowerCase()
+        : canonical;
+      cacheKey = `${kind}\0${normalized}\0${stat.size}\0${stat.mtimeMs}`;
+      const cached = executableVersionCache.get(cacheKey);
+      if (cached && cached.expiresAt > Date.now()) {
+        return cached.value;
+      }
+    } catch {
+      // Proceed to spawnSync probe if stat/realpath fails.
+    }
+    const cacheAndReturn = (version: string): string => {
+      if (cacheKey && version !== "unknown") {
+        executableVersionCache.set(cacheKey, {
+          value: version,
+          expiresAt: Date.now() + DETECTION_CACHE_TTL_MS,
+        });
+      }
+      return version;
+    };
     const proc = spawnSync(
       executablePath,
       executableVersionArguments(kind),
@@ -109,7 +152,7 @@ export function getExecutableVersion(
     );
     let combinedOutput = `${proc.stdout || ""}\n${proc.stderr || ""}`;
     let parsed = parseVersionOutput(kind, combinedOutput);
-    if (parsed?.version) return parsed.version;
+    if (parsed?.version) return cacheAndReturn(parsed.version);
 
     if (kind === "java") {
       const legacyProc = spawnSync(
@@ -124,7 +167,7 @@ export function getExecutableVersion(
       );
       const legacyOutput = `${legacyProc.stdout || ""}\n${legacyProc.stderr || ""}`;
       parsed = parseVersionOutput(kind, legacyOutput);
-      if (parsed?.version) return parsed.version;
+      if (parsed?.version) return cacheAndReturn(parsed.version);
       combinedOutput += `\n${legacyOutput}`;
     } else if (kind === "cpp" || kind === "c") {
       const vProc = spawnSync(
@@ -139,19 +182,19 @@ export function getExecutableVersion(
       );
       const vOutput = `${vProc.stdout || ""}\n${vProc.stderr || ""}`;
       parsed = parseVersionOutput(kind, vOutput);
-      if (parsed?.version) return parsed.version;
+      if (parsed?.version) return cacheAndReturn(parsed.version);
       combinedOutput += `\n${vOutput}`;
     }
 
     if (kind === "python") {
       const match = combinedOutput.match(/Python\s+([0-9.]+)/i);
-      return match ? match[1] : "unknown";
+      return cacheAndReturn(match ? match[1] : "unknown");
     }
     const match = combinedOutput.match(/(gcc|g\+\+|clang|version)\s+([0-9.]+)/i);
-    if (match) return match[2];
+    if (match) return cacheAndReturn(match[2]);
 
     const genericMatch = combinedOutput.match(/([0-9]+\.[0-9]+(?:\.[0-9]+)?)/);
-    return genericMatch ? genericMatch[1] : "unknown";
+    return cacheAndReturn(genericMatch ? genericMatch[1] : "unknown");
   } catch (error) {
     return "unknown";
   }
@@ -288,10 +331,16 @@ export function compareVersions(left: string, right: string): number {
   return 0;
 }
 
-export function clearToolchainDetectionCache(): void {
+export function clearToolchainDetectionCache(options?: {
+  preserveLocalProbeCache?: boolean;
+}): void {
   detectionCache.clear();
   executableSupportCache.clear();
-  clearLocalCompatibilityProbeCache();
+  if (!options?.preserveLocalProbeCache) {
+    executableVersionCache.clear();
+    clearDiscoveryVersionProbeCache();
+    clearLocalCompatibilityProbeCache();
+  }
 }
 
 export function resolveManagedToolchain(kind: ToolchainKind): ResolvedToolchain {
@@ -1048,7 +1097,12 @@ function resolveSelectedLocalExecutable(
       ...(candidateId ? { candidateId } : {}),
     };
   }
-  if (kind === "cpp" && os.platform() === "win32") {
+  const localExecutionMode = getLocalExecutionModeForHost(
+    kind,
+    versionPolicyHost.platform,
+    versionPolicyHost.arch,
+  );
+  if (localExecutionMode === "freeze_required" && kind === "cpp") {
     const certificate = resolveLocalCppCertificateReadiness(canonicalExecutablePath);
     if (certificate.state === "ready") {
       if (
@@ -1074,23 +1128,39 @@ function resolveSelectedLocalExecutable(
       return {
         kind,
         source,
-        executablePath: certificate.canonicalExecutablePath,
-        version: certificate.certificate.toolchain.version,
-        ready: true,
-        provenance: "certified-local",
-        certificateId: certificate.certificate.certificateId,
-        candidateFingerprint: certificate.certificate.candidateFingerprint,
-        certificateIssuedAt: certificate.certificate.issuedAt,
-        certifiedRoles: certificate.certificate.certifiedRoles,
-        snapshotDigest: certificate.certificate.deployment.kind === "local-snapshot"
-          ? certificate.certificate.deployment.snapshotDigest
-          : undefined,
-        executionPath: certificate.snapshotExecutablePath,
-        executionId: certificate.snapshotExecutableId,
-        executionRoot: certificate.snapshotRoot,
+        ...localCppCertificateExecutionFields(certificate),
         ...(candidateId ? { candidateId } : {}),
       };
     }
+    return {
+      ...unavailableToolchain(
+        kind,
+        source,
+        certificate.diagnostic,
+        certificate.code,
+      ),
+      executablePath: canonicalExecutablePath,
+      version,
+      provenance: "unverified-local",
+      ...(certificate.certificateId
+        ? { certificateId: certificate.certificateId }
+        : {}),
+      ...(candidateId ? { candidateId } : {}),
+    };
+  }
+  if (localExecutionMode === "managed_only" || !localExecutionMode) {
+    return {
+      ...unavailableToolchain(
+        kind,
+        source,
+        "Use the managed package; this local installation has no approved secure-runner deployment.",
+        "LOCAL_NOT_SANDBOX_COMPATIBLE",
+      ),
+      executablePath: canonicalExecutablePath,
+      version,
+      provenance: "unverified-local",
+      ...(candidateId ? { candidateId } : {}),
+    };
   }
   if (kind !== "cpp" && kind !== "c" && kind !== "python") {
     return {

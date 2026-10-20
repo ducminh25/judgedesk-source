@@ -128,8 +128,14 @@ export class ServerLifecycle {
     if (this.drainPromise) {
       return this.drainPromise;
     }
-    this.drainPromise = this.executeDrain(timeoutMs);
-    return this.drainPromise;
+    const promise = this.executeDrain(timeoutMs).catch((error) => {
+      if (this.drainPromise === promise && this.activeJudgeSessionCount > 0) {
+        this.drainPromise = null;
+      }
+      throw error;
+    });
+    this.drainPromise = promise;
+    return promise;
   }
 
   private async executeDrain(timeoutMs: number): Promise<void> {
@@ -187,14 +193,15 @@ export class ServerLifecycle {
 
     // Phase 3: Judge sessions bounded by remaining budget
     const sessionBudget = remainingBudget();
-    if (sessionBudget <= 0 && this.activeJudgeSessionCount > 0) {
+    let sessionsDrained = this.activeJudgeSessionCount === 0;
+    if (!sessionsDrained && sessionBudget <= 0) {
       errors.push(
         new Error(
           `Drain budget exhausted with ${this.activeJudgeSessionCount} active judging session(s) remaining`,
         ),
       );
-    } else {
-      const sessionsDrained = await this.waitForJudgeSessionsToFinish(sessionBudget);
+    } else if (!sessionsDrained) {
+      sessionsDrained = await this.waitForJudgeSessionsToFinish(sessionBudget);
       if (!sessionsDrained) {
         errors.push(
           new Error(
@@ -204,11 +211,9 @@ export class ServerLifecycle {
       }
     }
 
-    // Phase 4: Executor shutdown bounded by remaining budget
-    const execBudget = remainingBudget();
-    if (execBudget <= 0) {
-      errors.push(new Error("Drain budget exhausted before executor client shutdown"));
-    } else {
+    // Phase 4: Executor shutdown only after all judge sessions have drained
+    if (sessionsDrained && this.activeJudgeSessionCount === 0) {
+      const execBudget = Math.max(remainingBudget(), Math.min(timeoutMs, 2_000));
       let timer: NodeJS.Timeout | null = null;
       const timeoutPromise = new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
@@ -252,5 +257,3 @@ export class ServerLifecycle {
 }
 
 export const serverLifecycle = new ServerLifecycle();
-
-

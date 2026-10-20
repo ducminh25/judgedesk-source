@@ -105,13 +105,28 @@ test("judging details show useful WA context but hide internal execution diagnos
       errorDetail: "INTERNAL_WA_ERROR_DETAIL",
       expectedOutputPreview: "42",
       actualOutputPreview: "41",
+    }, {
+      name: "test03",
+      status: "RE",
+      executionTime: 10,
+      peakMemory: 1024,
+      score: 0,
+      errorDetail: "0x0000002A. Exit code 42. Diagnostic before exit 42",
+    }, {
+      name: "test04",
+      status: "AC",
+      executionTime: 5,
+      peakMemory: 1024,
+      score: 0.025,
+      scoreExact: { n: 1, d: 40 },
     }],
     summary: {
-      total: 2,
-      passed: 0,
+      total: 4,
+      passed: 1,
       maxScore: 2,
-      score: 0,
-      status: "MLE",
+      score: 0.025,
+      scoreExact: { n: 1, d: 40 },
+      status: "PARTIAL",
     },
   } satisfies ProblemResult;
 
@@ -136,6 +151,8 @@ test("judging details show useful WA context but hide internal execution diagnos
   assert.match(markup, />42</);
   assert.match(markup, /Contestant output/);
   assert.match(markup, />41</);
+  assert.match(markup, /Exit code 42\. Diagnostic before exit 42/);
+  assert.match(markup, /Score: 0\.025\/2/);
   assert.match(markup, /MLE/);
   assert.doesNotMatch(
     markup,

@@ -1,8 +1,8 @@
 use judgedesk_native_executor::protocol::{
-    read_frame, ExecutorHealth, ExecutorRequest, ExecutorResponse, RunResult, RunSpec,
-    EXECUTOR_VERSION, MAX_FRAME_BYTES,
+    read_frame, ExecutorHealth, ExecutorRequest, ExecutorResponse, InteractiveRunResult,
+    InteractiveRunSpec, RunResult, RunSpec, EXECUTOR_VERSION, MAX_FRAME_BYTES,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::{DirBuilder, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -161,6 +161,19 @@ impl ResponseSender {
     }
 }
 
+struct ActiveRunRegistration {
+    run_id: String,
+    active_run_ids: Arc<Mutex<HashSet<String>>>,
+}
+
+impl Drop for ActiveRunRegistration {
+    fn drop(&mut self) {
+        if let Ok(mut guard) = self.active_run_ids.lock() {
+            guard.remove(&self.run_id);
+        }
+    }
+}
+
 pub struct ExecutorClient {
     request_tx: std::sync::mpsc::SyncSender<(ExecutorRequest, ResponseSender)>,
     cached_health: ExecutorHealth,
@@ -168,6 +181,7 @@ pub struct ExecutorClient {
     child_stdin: Arc<Mutex<Option<std::process::ChildStdin>>>,
     guard_dir: Option<PathBuf>,
     admission_closed: Arc<AtomicBool>,
+    active_run_ids: Arc<Mutex<HashSet<String>>>,
 }
 
 impl std::fmt::Debug for ExecutorClient {
@@ -203,11 +217,44 @@ impl ExecutorClient {
             child_stdin: Arc::new(Mutex::new(None)),
             guard_dir: None,
             admission_closed: Arc::new(AtomicBool::new(true)),
+            active_run_ids: Arc::new(Mutex::new(HashSet::new())),
+        }
+    }
+
+    #[cfg(feature = "test-server")]
+    pub fn mock_contract_ready(executor_root: PathBuf) -> Self {
+        let (request_tx, _) = std::sync::mpsc::sync_channel(1);
+        Self {
+            request_tx,
+            cached_health: ExecutorHealth {
+                ready: true,
+                mode: "windows-lpac-job".into(),
+                executor_version: "1.5.0".into(),
+                executor_root: executor_root.to_string_lossy().into_owned(),
+                diagnostics: Vec::new(),
+                network_blocked: true,
+                filesystem_isolated: true,
+                process_tree_controlled: true,
+                memory_limit_supported: true,
+                startup_timings: None,
+            },
+            child: Arc::new(Mutex::new(None)),
+            child_stdin: Arc::new(Mutex::new(None)),
+            guard_dir: None,
+            admission_closed: Arc::new(AtomicBool::new(true)),
+            active_run_ids: Arc::new(Mutex::new(HashSet::new())),
         }
     }
 
     pub fn is_admission_closed(&self) -> bool {
         self.admission_closed.load(Ordering::SeqCst)
+    }
+
+    pub fn process_id(&self) -> Option<u32> {
+        self.child
+            .lock()
+            .ok()
+            .and_then(|guard| guard.as_ref().map(std::process::Child::id))
     }
 
     pub fn spawn_sync(exe_path: &Path) -> std::io::Result<Self> {
@@ -555,6 +602,7 @@ impl ExecutorClient {
             child_stdin: stdin_shared,
             guard_dir: guard.owned_dir,
             admission_closed,
+            active_run_ids: Arc::new(Mutex::new(HashSet::new())),
         })
     }
 
@@ -577,6 +625,41 @@ impl ExecutorClient {
         PathBuf::from(&self.cached_health.executor_root)
     }
 
+    pub fn has_active_runs(&self) -> bool {
+        self.active_run_ids
+            .lock()
+            .map(|guard| !guard.is_empty())
+            .unwrap_or(false)
+    }
+
+    pub fn active_run_ids(&self) -> Vec<String> {
+        self.active_run_ids
+            .lock()
+            .map(|guard| guard.iter().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    pub fn cancel_all_active_runs(&self) -> usize {
+        let ids = self.active_run_ids();
+        let mut cancelled_count = 0usize;
+        for run_id in ids {
+            if matches!(self.cancel_sync(&run_id), Ok(true)) {
+                cancelled_count += 1;
+            }
+        }
+        cancelled_count
+    }
+
+    fn register_active_run(&self, run_id: &str) -> ActiveRunRegistration {
+        if let Ok(mut guard) = self.active_run_ids.lock() {
+            guard.insert(run_id.to_string());
+        }
+        ActiveRunRegistration {
+            run_id: run_id.to_string(),
+            active_run_ids: Arc::clone(&self.active_run_ids),
+        }
+    }
+
     pub async fn run_async(&self, spec: Box<RunSpec>) -> std::io::Result<RunResult> {
         if self.admission_closed.load(Ordering::SeqCst) {
             let reason = if !self.cached_health.ready {
@@ -589,6 +672,7 @@ impl ExecutorClient {
             };
             return Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, reason));
         }
+        let _reg = self.register_active_run(&spec.run_id);
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
         let req = ExecutorRequest::Run {
             id: Uuid::new_v4().to_string(),
@@ -623,6 +707,7 @@ impl ExecutorClient {
             };
             return Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, reason));
         }
+        let _reg = self.register_active_run(&spec.run_id);
         let (reply_tx, reply_rx) = std::sync::mpsc::sync_channel(1);
         let req = ExecutorRequest::Run {
             id: Uuid::new_v4().to_string(),
@@ -637,6 +722,82 @@ impl ExecutorClient {
             Ok(_) => Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
                 "invalid run response",
+            )),
+            Err(_) => Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "executor closed",
+            )),
+        }
+    }
+
+    pub async fn run_interactive_async(
+        &self,
+        spec: Box<InteractiveRunSpec>,
+    ) -> std::io::Result<InteractiveRunResult> {
+        if self.admission_closed.load(Ordering::SeqCst) {
+            let reason = if !self.cached_health.ready {
+                format!(
+                    "SECURE_RUNNER_UNAVAILABLE: {}",
+                    self.cached_health.diagnostics.join("; ")
+                )
+            } else {
+                "EXECUTOR_TERMINAL_PROTOCOL_ERROR: admission closed".into()
+            };
+            return Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, reason));
+        }
+        let _reg = self.register_active_run(&spec.run_id);
+        let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+        let req = ExecutorRequest::InteractiveRun {
+            id: Uuid::new_v4().to_string(),
+            spec,
+        };
+        self.request_tx
+            .send((req, ResponseSender::Async(reply_tx)))
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::BrokenPipe, "executor closed"))?;
+        match reply_rx.await {
+            Ok(ExecutorResponse::InteractiveRunResult { result, .. }) => Ok(*result),
+            Ok(ExecutorResponse::Error { message, .. }) => Err(std::io::Error::other(message)),
+            Ok(_) => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "invalid interactive run response",
+            )),
+            Err(_) => Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "executor closed",
+            )),
+        }
+    }
+
+    pub fn run_interactive_sync(
+        &self,
+        spec: Box<InteractiveRunSpec>,
+    ) -> std::io::Result<InteractiveRunResult> {
+        if self.admission_closed.load(Ordering::SeqCst) {
+            let reason = if !self.cached_health.ready {
+                format!(
+                    "SECURE_RUNNER_UNAVAILABLE: {}",
+                    self.cached_health.diagnostics.join("; ")
+                )
+            } else {
+                "EXECUTOR_TERMINAL_PROTOCOL_ERROR: admission closed".into()
+            };
+            return Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, reason));
+        }
+        let _reg = self.register_active_run(&spec.run_id);
+        let (reply_tx, reply_rx) = std::sync::mpsc::sync_channel(1);
+        let req = ExecutorRequest::InteractiveRun {
+            id: Uuid::new_v4().to_string(),
+            spec,
+        };
+        self.request_tx
+            .send((req, ResponseSender::Sync(reply_tx)))
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::BrokenPipe, "executor closed"))?;
+        match reply_rx.recv() {
+            Ok(ExecutorResponse::InteractiveRunResult { result, .. }) => Ok(*result),
+            Ok(ExecutorResponse::Error { message, .. }) => Err(std::io::Error::other(message)),
+            Ok(_) => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "invalid interactive run response",
             )),
             Err(_) => Err(std::io::Error::new(
                 std::io::ErrorKind::BrokenPipe,

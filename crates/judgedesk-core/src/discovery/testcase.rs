@@ -263,6 +263,331 @@ pub fn list_test_directories<P: AsRef<Path>>(
         .collect()
 }
 
+pub const MIN_PROBLEM_MEMORY_LIMIT_MB: u64 = 8;
+pub const MAX_PROBLEM_MEMORY_LIMIT_MB: u64 = 1024;
+pub const DEFAULT_PROBLEM_MEMORY_LIMIT_MB: u64 = 256;
+pub const DEFAULT_PROBLEM_TIME_LIMIT_MS: u64 = 1000;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NormalizedProblemConfig {
+    pub test_well_formed: bool,
+    pub use_std_io: bool,
+    pub use_std_in: bool,
+    pub use_std_out: bool,
+    pub input_file: String,
+    pub output_file: String,
+    pub time_limit_ms: u64,
+    pub memory_limit_mb: u64,
+    pub checker_type: String,
+    pub is_interactive: bool,
+    pub interactor: String,
+    #[serde(default)]
+    pub compile: super::compile_config::ProblemCompileConfig,
+    pub scoring_config: crate::scoring::ProblemScoringConfig,
+    #[serde(default)]
+    pub test_time_limits_ms: HashMap<String, u64>,
+}
+
+impl NormalizedProblemConfig {
+    pub fn input_file_for_execution(&self) -> &str {
+        if self.use_std_in {
+            ""
+        } else {
+            &self.input_file
+        }
+    }
+
+    pub fn output_file_for_execution(&self) -> &str {
+        if self.use_std_out {
+            ""
+        } else {
+            &self.output_file
+        }
+    }
+
+    pub fn test_time_limit_ms(&self, test_name: &str) -> u64 {
+        self.test_time_limits_ms
+            .get(test_name)
+            .copied()
+            .unwrap_or(self.time_limit_ms)
+    }
+}
+
+pub fn normalize_problem_memory_limit(value: Option<&serde_json::Value>, fallback: u64) -> u64 {
+    let Some(val) = value else {
+        return fallback;
+    };
+    let parsed_f64 = match val {
+        serde_json::Value::Number(n) => n.as_f64(),
+        serde_json::Value::String(s) => s.trim().parse::<f64>().ok(),
+        _ => None,
+    };
+    let Some(num) = parsed_f64 else {
+        return fallback;
+    };
+    if !num.is_finite() || num <= 0.0 {
+        return fallback;
+    }
+    let rounded = num.round() as u64;
+    rounded.clamp(MIN_PROBLEM_MEMORY_LIMIT_MB, MAX_PROBLEM_MEMORY_LIMIT_MB)
+}
+
+fn normalize_problem_time_limit_ms(value: Option<&serde_json::Value>, fallback_ms: u64) -> u64 {
+    let Some(val) = value else {
+        return fallback_ms;
+    };
+    let parsed_f64 = match val {
+        serde_json::Value::Number(n) => n.as_f64(),
+        serde_json::Value::String(s) => s.trim().parse::<f64>().ok(),
+        _ => None,
+    };
+    let Some(num) = parsed_f64 else {
+        return fallback_ms;
+    };
+    if !num.is_finite() || num <= 0.0 {
+        return fallback_ms;
+    }
+    let ms = if num <= 60.0 {
+        (num * 1000.0).round() as u64
+    } else {
+        num.round() as u64
+    };
+    ms.clamp(1, 300_000)
+}
+
+fn extract_polygon_config(val: &serde_json::Value) -> Option<crate::scoring::PolygonScoringConfig> {
+    if let Some(poly_val) = val.get("polygonConfig") {
+        if let Ok(parsed) =
+            serde_json::from_value::<crate::scoring::PolygonScoringConfig>(poly_val.clone())
+        {
+            return Some(parsed);
+        }
+    }
+    if val.get("enableGroups").is_some()
+        || val.get("tests").is_some()
+        || val.get("groups").is_some()
+    {
+        if let Ok(parsed) =
+            serde_json::from_value::<crate::scoring::PolygonScoringConfig>(val.clone())
+        {
+            return Some(parsed);
+        }
+    }
+    None
+}
+
+pub fn normalize_problem_config(
+    problem_name: &str,
+    request_config: Option<&serde_json::Value>,
+    stored_config: Option<&serde_json::Value>,
+) -> NormalizedProblemConfig {
+    let get_field = |keys: &[&str]| -> Option<&serde_json::Value> {
+        for &k in keys {
+            if let Some(v) = stored_config.and_then(|s| s.get(k)) {
+                if !v.is_null() {
+                    return Some(v);
+                }
+            }
+        }
+        for &k in keys {
+            if let Some(v) = request_config.and_then(|r| r.get(k)) {
+                if !v.is_null() {
+                    return Some(v);
+                }
+            }
+        }
+        None
+    };
+
+    let get_non_empty_str = |keys: &[&str]| -> Option<String> {
+        for &k in keys {
+            if let Some(s) = stored_config
+                .and_then(|v| v.get(k))
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                return Some(s.to_string());
+            }
+        }
+        for &k in keys {
+            if let Some(s) = request_config
+                .and_then(|v| v.get(k))
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                return Some(s.to_string());
+            }
+        }
+        None
+    };
+
+    let is_interactive = get_field(&["isInteractive", "is_interactive"])
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let interactor =
+        get_non_empty_str(&["interactor"]).unwrap_or_else(|| "interactor.cpp".to_string());
+
+    let test_well_formed = get_field(&["testWellFormed", "test_well_formed"])
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let stored_std_io = stored_config
+        .and_then(|s| s.get("useStdIO"))
+        .and_then(|v| v.as_bool());
+    let req_std_io = request_config
+        .and_then(|r| r.get("useStdIO"))
+        .and_then(|v| v.as_bool());
+
+    let use_std_io = if is_interactive {
+        true
+    } else {
+        stored_std_io.or(req_std_io).unwrap_or(false)
+    };
+
+    let use_std_in = if is_interactive {
+        true
+    } else {
+        stored_config
+            .and_then(|s| s.get("useStdIn"))
+            .and_then(|v| v.as_bool())
+            .or(stored_std_io)
+            .or_else(|| {
+                request_config
+                    .and_then(|r| r.get("useStdIn"))
+                    .and_then(|v| v.as_bool())
+            })
+            .or(req_std_io)
+            .unwrap_or(false)
+    };
+
+    let use_std_out = if is_interactive {
+        true
+    } else {
+        stored_config
+            .and_then(|s| s.get("useStdOut"))
+            .and_then(|v| v.as_bool())
+            .or(stored_std_io)
+            .or_else(|| {
+                request_config
+                    .and_then(|r| r.get("useStdOut"))
+                    .and_then(|v| v.as_bool())
+            })
+            .or(req_std_io)
+            .unwrap_or(false)
+    };
+
+    let input_file = get_non_empty_str(&["inputFile", "input_file"])
+        .unwrap_or_else(|| format!("{problem_name}.inp"));
+    let output_file = get_non_empty_str(&["outputFile", "output_file"])
+        .unwrap_or_else(|| format!("{problem_name}.out"));
+
+    let memory_limit_mb = normalize_problem_memory_limit(
+        get_field(&["memoryLimit", "memory_limit"]),
+        DEFAULT_PROBLEM_MEMORY_LIMIT_MB,
+    );
+
+    let time_limit_ms = normalize_problem_time_limit_ms(
+        get_field(&["timeLimit", "time_limit"]),
+        DEFAULT_PROBLEM_TIME_LIMIT_MS,
+    );
+
+    let checker_type = get_non_empty_str(&["checkerType", "checker_type", "checker"])
+        .unwrap_or_else(|| "C1".to_string());
+
+    let polygon_config = stored_config
+        .and_then(extract_polygon_config)
+        .or_else(|| request_config.and_then(extract_polygon_config));
+
+    let total_score = get_field(&["totalScore", "total_score"]).cloned();
+    let default_score = get_field(&["defaultScore", "default_score"])
+        .cloned()
+        .or_else(|| Some(serde_json::json!(1)));
+
+    let mut merged_test_scores = HashMap::new();
+    for src in [request_config, stored_config].into_iter().flatten() {
+        if let Some(obj) = src
+            .get("testScores")
+            .or_else(|| src.get("test_scores"))
+            .and_then(|v| v.as_object())
+        {
+            for (k, v) in obj {
+                if !v.is_null() && v.as_str() != Some("") {
+                    merged_test_scores.insert(k.clone(), v.clone());
+                }
+            }
+        }
+    }
+
+    let mut test_time_limits_ms = HashMap::new();
+    for src in [request_config, stored_config].into_iter().flatten() {
+        let poly_root = src.get("polygonConfig").unwrap_or(src);
+        if let Some(tests_obj) = poly_root.get("tests").and_then(|v| v.as_object()) {
+            for (k, tc_val) in tests_obj {
+                let raw_tl = tc_val.get("timeLimit").or_else(|| tc_val.get("time_limit"));
+                if let Some(tl_val) = raw_tl {
+                    let parsed_ms = normalize_problem_time_limit_ms(Some(tl_val), 0);
+                    if parsed_ms > 0 {
+                        test_time_limits_ms.insert(k.clone(), parsed_ms);
+                    }
+                }
+            }
+        }
+    }
+
+    let scoring_config = crate::scoring::ProblemScoringConfig {
+        polygon_config,
+        total_score,
+        default_score,
+        test_scores: if merged_test_scores.is_empty() {
+            None
+        } else {
+            Some(merged_test_scores)
+        },
+    };
+
+    let compile_val = get_field(&["compile"]);
+    let compile = super::compile_config::normalize_compile_config(compile_val).unwrap_or_default();
+
+    NormalizedProblemConfig {
+        test_well_formed,
+        use_std_io,
+        use_std_in,
+        use_std_out,
+        input_file,
+        output_file,
+        time_limit_ms,
+        memory_limit_mb,
+        checker_type,
+        is_interactive,
+        interactor,
+        compile,
+        scoring_config,
+        test_time_limits_ms,
+    }
+}
+
+pub fn try_normalize_problem_config(
+    problem_name: &str,
+    request_config: Option<&serde_json::Value>,
+    stored_config: Option<&serde_json::Value>,
+) -> Result<NormalizedProblemConfig, String> {
+    let compile_val = stored_config
+        .and_then(|s| s.get("compile"))
+        .filter(|v| !v.is_null())
+        .or_else(|| {
+            request_config
+                .and_then(|r| r.get("compile"))
+                .filter(|v| !v.is_null())
+        });
+    let compile = super::compile_config::normalize_compile_config(compile_val)?;
+    let mut cfg = normalize_problem_config(problem_name, request_config, stored_config);
+    cfg.compile = compile;
+    Ok(cfg)
+}
+
 pub fn read_stored_problem_config(problem_directory: &Path) -> Option<serde_json::Value> {
     let cfg_path = problem_directory.join("Config.cfg");
     let json_path = problem_directory.join("config.json");

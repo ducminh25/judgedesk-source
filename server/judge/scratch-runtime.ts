@@ -12,10 +12,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
-import type {
-  ExecutorLocalToolchainIdentity,
-  ExecutorToolchainIdentity,
-} from "../executor/protocol.js";
+import type { ExecutorToolchainIdentity } from "../executor/protocol.js";
+import { prepareManagedToolchainComponent } from "../executor/workspace.js";
 import type { ExecutorWorkspace } from "../executor/workspace.js";
 import type { ResolvedToolchain } from "../toolchains/types.js";
 
@@ -23,8 +21,7 @@ export interface IsolatedScratchLaunch {
   executableId: string;
   args: string[];
   environment: Record<string, string>;
-  toolchain?: ExecutorToolchainIdentity;
-  localToolchain?: ExecutorLocalToolchainIdentity;
+  toolchain: ExecutorToolchainIdentity;
 }
 
 const MAX_PROJECT_JSON_BYTES = 16 * 1024 * 1024;
@@ -142,15 +139,33 @@ export async function prepareIsolatedScratchScript(
   if (
     pinnedToolchain.kind !== "scratch"
     || !pinnedToolchain.ready
+    || pinnedToolchain.source !== "managed"
   ) {
     throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
   }
-  const executablePath = path.resolve(pinnedToolchain.executablePath);
-  const rootPath = path.resolve(
-    pinnedToolchain.packageRoot || path.dirname(executablePath),
+  stageValidatedScratchProject(workspace, sourcePath, stagedName);
+  const runtime = await prepareManagedToolchainComponent(
+    "scratch",
+    pinnedToolchain,
+    pinnedToolchain.packageComponentId,
+    "submission-runtime",
   );
-  const relativePath = path.relative(rootPath, executablePath).replaceAll("\\", "/");
+  if (!runtime.toolchain) {
+    throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
+  }
+  return buildIsolatedScratchLaunch(stagedName, {
+    executableId: runtime.executableId,
+    executablePath: runtime.executablePath,
+    root: runtime.root,
+    toolchain: runtime.toolchain,
+  });
+}
 
+export function stageValidatedScratchProject(
+  workspace: ExecutorWorkspace,
+  sourcePath: string,
+  stagedName: string,
+): string {
   // Always stage the declared source file directly into the workspace to preserve byte identity
   const stagedPath = workspace.stage(sourcePath, stagedName);
 
@@ -198,20 +213,28 @@ export async function prepareIsolatedScratchScript(
     }
   }
 
+  return stagedPath;
+}
+
+export function buildIsolatedScratchLaunch(
+  stagedName: string,
+  runtime: {
+    executableId: string;
+    executablePath: string;
+    root: string;
+    toolchain: ExecutorToolchainIdentity;
+  },
+): IsolatedScratchLaunch {
   return {
-    executableId: `local-toolchain/${relativePath}`,
+    executableId: runtime.executableId,
     args: [
       stagedName,
     ],
     environment: {
       JUDGEDESK_SCRATCH_ISOLATED: "1",
       TURBO_MODE: "1",
-      PATH: rootPath,
+      PATH: path.dirname(runtime.executablePath),
     },
-    localToolchain: {
-      rootPath,
-      executableRelativePath: relativePath,
-      isolation: "resource-only",
-    },
+    toolchain: runtime.toolchain,
   };
 }

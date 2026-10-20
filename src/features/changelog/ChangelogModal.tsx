@@ -29,7 +29,9 @@ export default function ChangelogModal({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation();
         onClose();
       }
     };
@@ -52,7 +54,7 @@ export default function ChangelogModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+    <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/70 p-4">
       <div
         className="flex flex-col w-full max-w-2xl max-h-[85vh] rounded-lg border border-surface-border bg-surface shadow-lg overflow-hidden"
         role="dialog"

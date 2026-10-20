@@ -202,4 +202,30 @@ describe("osd-watcher", () => {
       fs.rmSync(rootTemp, { recursive: true, force: true });
     }
   });
+
+  it("ingests submissions written immediately after start even when FSWatcher misses the startup write", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk_osd_startup_"));
+    const inbox = path.join(root, "osd");
+    const contestants = path.join(root, "contestants");
+    const jobs: OsdJob[] = [];
+    const watcher = new OsdWatcher({
+      osdPath: inbox,
+      contestantsPath: contestants,
+      getValidProblems: () => ["SUM"],
+      onSubmissionIngested: job => jobs.push(job),
+      debounceMs: 5,
+      pollIntervalMs: 60_000,
+    });
+    try {
+      watcher.start();
+      (watcher as unknown as { fsWatcher: fs.FSWatcher | null }).fsWatcher?.close();
+      fs.writeFileSync(path.join(inbox, "0[HS01][SUM]cpp"), "// startup race");
+      await waitForJobs(jobs, 1);
+      assert.equal(jobs[0].contestant, "HS01");
+      assert.equal(jobs[0].problem, "SUM");
+    } finally {
+      watcher.stop();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

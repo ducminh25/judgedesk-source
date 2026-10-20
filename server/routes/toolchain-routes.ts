@@ -59,7 +59,10 @@ import {
   loadLocalExecutionPolicy,
   saveLocalExecutionPolicy,
 } from "../toolchains/execution-policy.js";
-import { startBackgroundJudgePrewarm } from "../judge/background-prewarm.js";
+import {
+  invalidateJudgePrewarm,
+  startBackgroundJudgePrewarm,
+} from "../judge/background-prewarm.js";
 
 const SOURCE_MODES = new Set<ToolchainSourceMode>([
   "none",
@@ -90,44 +93,9 @@ function assertToolchainMutationAllowed(): void {
   }
 }
 
-let manifestState: {
-  status: "not_started" | "loading" | "ready" | "failed";
-  entries: readonly ToolchainDescriptor[];
-  error?: string;
-} = { status: "not_started", entries: [] };
-let manifestPromise: Promise<readonly ToolchainDescriptor[]> | undefined;
-
-function requestManifest(forceRefresh = false): Promise<readonly ToolchainDescriptor[]> {
-  if (manifestPromise) return manifestPromise;
-  if (!forceRefresh && manifestState.status === "ready") {
-    return Promise.resolve(manifestState.entries);
-  }
-  manifestState = { status: "loading", entries: manifestState.entries };
-  manifestPromise = loadOfficialManifest({ forceRefresh })
-    .then((entries) => {
-      manifestState = { status: "ready", entries };
-      return entries;
-    })
-    .catch((error: Error) => {
-      manifestState = {
-        status: "failed",
-        entries: manifestState.entries,
-        error: error.message,
-      };
-      throw error;
-    })
-    .finally(() => {
-      manifestPromise = undefined;
-    });
-  return manifestPromise;
-}
-
-function startManifestLoad(): void {
-  if (manifestState.status !== "not_started") return;
-  void requestManifest().catch(() => {
-    // The state response carries the bounded catalog failure to the UI.
-  });
-}
+export type ToolchainManifestLoaderFn = (
+  forceRefresh?: boolean,
+) => Promise<readonly ToolchainDescriptor[]>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -184,7 +152,47 @@ export function registerToolchainRoutes(
   installer: ToolchainInstallerFn = installToolchain,
   onBackgroundOperation?: (op: Promise<unknown>) => void,
   lifecycle: ServerLifecycle = serverLifecycle,
+  manifestLoader: ToolchainManifestLoaderFn = (forceRefresh) =>
+    loadOfficialManifest({ forceRefresh }),
 ): void {
+  let manifestState: {
+    status: "not_started" | "loading" | "ready" | "failed";
+    entries: readonly ToolchainDescriptor[];
+    error?: string;
+  } = { status: "not_started", entries: [] };
+  let manifestPromise: Promise<readonly ToolchainDescriptor[]> | undefined;
+
+  function requestManifest(forceRefresh = false): Promise<readonly ToolchainDescriptor[]> {
+    if (manifestPromise) return manifestPromise;
+    if (!forceRefresh && manifestState.status === "ready") {
+      return Promise.resolve(manifestState.entries);
+    }
+    manifestState = { status: "loading", entries: manifestState.entries };
+    manifestPromise = manifestLoader(forceRefresh)
+      .then((entries) => {
+        manifestState = { status: "ready", entries };
+        return entries;
+      })
+      .catch((error: Error) => {
+        manifestState = {
+          status: "failed",
+          entries: manifestState.entries,
+          error: error.message,
+        };
+        throw error;
+      })
+      .finally(() => {
+        manifestPromise = undefined;
+      });
+    return manifestPromise;
+  }
+
+  function startManifestLoad(): void {
+    if (manifestState.status !== "not_started") return;
+    void requestManifest().catch(() => {
+      // The state response carries the bounded catalog failure to the UI.
+    });
+  }
   app.post("/api/toolchains/rescan", (_req, res) => {
     if (toolchainMutationsBlocked()) {
       return res.status(409).json({
@@ -338,10 +346,11 @@ export function registerToolchainRoutes(
     }
   });
 
-  app.post("/api/toolchains/prewarm", (_req, res) => {
+  app.post("/api/toolchains/prewarm", (req, res) => {
     try {
       lifecycle.assertAdmissible();
-      const prewarmOp = startBackgroundJudgePrewarm(true);
+      const force = isRecord(req.body) && req.body.force === true;
+      const prewarmOp = startBackgroundJudgePrewarm(force);
       lifecycle.trackBackgroundOperation(prewarmOp);
       if (onBackgroundOperation) {
         onBackgroundOperation(prewarmOp);
@@ -428,6 +437,7 @@ export function registerToolchainRoutes(
       }
       const result = await certifyOp;
       clearToolchainDetectionCache();
+      invalidateJudgePrewarm();
       return res.json({ success: true, result });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -494,8 +504,11 @@ export function registerToolchainRoutes(
       });
     }
     if (
-      catalogEntry.platform !== os.platform()
-      || catalogEntry.arch !== normalizeHostArchitecture(os.arch())
+      (os.platform() === "win32" || os.platform() === "darwin")
+      && (
+        catalogEntry.platform !== os.platform()
+        || catalogEntry.arch !== normalizeHostArchitecture(os.arch())
+      )
     ) {
       return res.status(400).json({
         success: false,
@@ -564,6 +577,7 @@ export function registerToolchainRoutes(
       });
       if (toolchainMutationsBlocked()) {
         clearToolchainDetectionCache();
+        invalidateJudgePrewarm();
         console.warn(
           `[Toolchains API] ${id} installed but was not applied because judging started.`,
         );
@@ -575,6 +589,7 @@ export function registerToolchainRoutes(
         expectedRevision,
       );
       clearToolchainDetectionCache();
+      invalidateJudgePrewarm();
       if (!applied) {
         console.warn(
           `[Toolchains API] ${id} installed but was not applied because the preference changed.`,
@@ -646,6 +661,7 @@ export function registerToolchainRoutes(
       }
       await uninstallOp;
       clearToolchainDetectionCache();
+      invalidateJudgePrewarm();
       return res.json({
         success: true,
         message: `Toolchain '${id}' uninstalled successfully.`,
@@ -710,7 +726,7 @@ export function registerToolchainRoutes(
       });
     }
     if (hasLocalPath) {
-      clearToolchainDetectionCache();
+      clearToolchainDetectionCache({ preserveLocalProbeCache: true });
       const verification = verifyLocalToolchainCandidate(
         entry.toolchainKind,
         String(req.body.localPath),
@@ -738,7 +754,8 @@ export function registerToolchainRoutes(
         : current.localPath;
       const preference = localPath ? { mode, localPath } : { mode };
       const updated = updateProfileToolchainPreference(profileId, preference);
-      if (!hasLocalPath) clearToolchainDetectionCache();
+      if (!hasLocalPath) clearToolchainDetectionCache({ preserveLocalProbeCache: true });
+      invalidateJudgePrewarm();
       const rescanOp = requestToolchainRescan();
       lifecycle.trackBackgroundOperation(rescanOp);
       if (onBackgroundOperation) {
@@ -830,7 +847,8 @@ export function registerToolchainRoutes(
         profileId,
         localPath ? { mode, localPath } : { mode },
       );
-      clearToolchainDetectionCache();
+      clearToolchainDetectionCache({ preserveLocalProbeCache: true });
+      invalidateJudgePrewarm();
       return res.json({
         success: true,
         message: "Preferences updated.",

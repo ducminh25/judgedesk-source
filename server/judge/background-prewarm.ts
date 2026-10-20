@@ -52,11 +52,14 @@ function isPrewarmToolchainEligible(
   return true;
 }
 
+import { serverLifecycle } from "../platform/server-lifecycle.js";
+
 export type PrewarmOutcome =
   | { status: "completed" }
   | { status: "deferred"; reason: string };
 
 export interface PrewarmDependencies {
+  isClosing?: () => boolean;
   waitForToolchainDiscovery?: typeof waitForToolchainDiscovery;
   resolveNativeProtectedToolchain?: typeof resolveNativeProtectedToolchain;
   ensureUniversalCppPch?: typeof ensureUniversalCppPch;
@@ -75,6 +78,10 @@ export async function executeJudgePrewarm(
   kinds: readonly NativeCompilerKind[] = ["cpp"],
 ): Promise<PrewarmOutcome> {
   if (kinds.length === 0) return { status: "completed" };
+  const isClosing = dependencies?.isClosing ?? (() => serverLifecycle.isClosing);
+  if (isClosing()) {
+    return { status: "deferred", reason: "SERVER_CLOSING" };
+  }
   const waitDiscovery = dependencies?.waitForToolchainDiscovery ?? waitForToolchainDiscovery;
   const resolveToolchain = dependencies?.resolveNativeProtectedToolchain ?? resolveNativeProtectedToolchain;
   const ensurePch = dependencies?.ensureUniversalCppPch ?? ensureUniversalCppPch;
@@ -86,6 +93,9 @@ export async function executeJudgePrewarm(
 
   // 1. Wait for passive toolchain discovery to finish
   const discoverySnapshot = await measure("prewarm-discovery", waitDiscovery);
+  if (isClosing()) {
+    return { status: "deferred", reason: "SERVER_CLOSING" };
+  }
   if (!discoverySnapshot || discoverySnapshot.status === "failed") {
     console.warn("[Judge Pre-warm] Discovery not ready, deferring pre-warm.");
     return { status: "deferred", reason: "DISCOVERY_NOT_READY" };
@@ -93,6 +103,9 @@ export async function executeJudgePrewarm(
 
   // 2. Ensure native executor client is ready
   const health = await measure("prewarm-executor-start", () => executorClient.start());
+  if (isClosing()) {
+    return { status: "deferred", reason: "SERVER_CLOSING" };
+  }
   if (!health.ready) {
     console.warn("[Judge Pre-warm] Executor not ready, deferring pre-warm.");
     return { status: "deferred", reason: "EXECUTOR_NOT_READY" };
@@ -109,9 +122,16 @@ export async function executeJudgePrewarm(
   const cEligible = c && isPrewarmToolchainEligible("c", c);
 
   if (cpp && cppEligible) {
+    if (isClosing()) {
+      return { status: "deferred", reason: "SERVER_CLOSING" };
+    }
     // Universal Step: Ensure bits/stdc++.h PCH is generated and cached for C++.
     if (process.platform !== "darwin") {
       await measure("prewarm-pch", () => ensurePch(cpp));
+    }
+
+    if (isClosing()) {
+      return { status: "deferred", reason: "SERVER_CLOSING" };
     }
 
     // Managed GCC package preparation also authenticates and imports the shared C entrypoint.
@@ -122,6 +142,10 @@ export async function executeJudgePrewarm(
         cpp.packageComponentId,
         "compiler",
       ));
+    }
+
+    if (isClosing()) {
+      return { status: "deferred", reason: "SERVER_CLOSING" };
     }
 
     if (cpp.provenance === "certified-local" && cpp.certificateId && cpp.snapshotDigest) {
@@ -139,8 +163,14 @@ export async function executeJudgePrewarm(
   }
 
   if (c && cEligible) {
+    if (isClosing()) {
+      return { status: "deferred", reason: "SERVER_CLOSING" };
+    }
     if (c.source === "managed") {
       await measure("prewarm-c-prepare", () => prepare("c", c, c.packageComponentId, "compiler"));
+    }
+    if (isClosing()) {
+      return { status: "deferred", reason: "SERVER_CLOSING" };
     }
     if (requiresManagedCCompilerWarmup(process.platform, "c", c)) {
       try {
@@ -206,6 +236,10 @@ export async function ensureJudgePrewarmReady(
   ) {
     await ensureCertifiedLocalCppSessionProbe(cppToolchain, tempDirectory, jobId);
   }
+}
+
+export function invalidateJudgePrewarm(): void {
+  prewarmPromises.clear();
 }
 
 export function resetJudgePrewarmStateForTests(): void {

@@ -7,6 +7,7 @@ import {
 } from "./jobs.js";
 import { ServerLifecycle } from "./platform/server-lifecycle.js";
 import {
+  drainServerForProcessExit,
   prepareServerShutdown,
   registerSystemRoutes,
   type ServerShutdownDependencies,
@@ -355,6 +356,82 @@ test("successful shutdown returns 200 and schedules exit only after executor shu
     "schedule-exit",
   ]);
 });
+
+test("process-level shutdown uses the same cancel-then-drain protocol as the HTTP route", async () => {
+  const calls: string[] = [];
+  const dependencies: ServerShutdownDependencies = {
+    beginDrain: () => {
+      calls.push("begin-drain");
+    },
+    cancelActiveJudgeJobs: () => {
+      calls.push("cancel-all");
+      return 1;
+    },
+    waitForJudgeSessionsToFinish: async () => {
+      throw new Error("composed lifecycle drain must own the wait");
+    },
+    activeJudgeSessionCount: () => 1,
+    shutdownExecutor: async () => {
+      throw new Error("composed lifecycle drain must own executor shutdown");
+    },
+    drainLifecycle: async (timeoutMs) => {
+      calls.push(`drain:${timeoutMs}`);
+    },
+    scheduleProcessExit: () => {
+      throw new Error("process-level drain must not schedule its own exit");
+    },
+    drainTimeoutMs: 321,
+  };
+
+  await drainServerForProcessExit(dependencies);
+
+  assert.deepEqual(calls, ["begin-drain", "cancel-all", "drain:321"]);
+});
+
+test("process-level shutdown rejects instead of hiding a failed drain", async () => {
+  const dependencies: ServerShutdownDependencies = {
+    beginDrain: () => {},
+    cancelActiveJudgeJobs: () => 1,
+    waitForJudgeSessionsToFinish: async () => false,
+    activeJudgeSessionCount: () => 1,
+    shutdownExecutor: async () => {},
+    drainLifecycle: async () => {
+      throw new Error("run container did not drain");
+    },
+    scheduleProcessExit: () => {},
+    drainTimeoutMs: 10,
+  };
+
+  await assert.rejects(
+    drainServerForProcessExit(dependencies),
+    /SERVER_SHUTDOWN_FAILED: run container did not drain/,
+  );
+});
+
+test("shutdown with drainLifecycle classifies active session drain failure as JUDGE_DRAIN_TIMEOUT", async () => {
+  const dependencies: ServerShutdownDependencies = {
+    beginDrain: () => {},
+    cancelActiveJudgeJobs: () => 1,
+    waitForJudgeSessionsToFinish: async () => false,
+    activeJudgeSessionCount: () => 1,
+    shutdownExecutor: async () => {},
+    drainLifecycle: async () => {
+      throw new AggregateError(
+        [new Error("Timed out waiting for 1 active judging session(s) to finish")],
+        "ServerLifecycle.drain() failed with 1 background/shutdown error(s):\n  Timed out waiting for 1 active judging session(s) to finish",
+      );
+    },
+    scheduleProcessExit: () => {},
+    drainTimeoutMs: 10,
+  };
+
+  assert.deepEqual(await prepareServerShutdown(dependencies), {
+    ok: false,
+    code: "JUDGE_DRAIN_TIMEOUT",
+    message: "Timed out waiting for 1 active judging session(s) to stop.",
+  });
+});
+
 
 interface TestResponse {
   statusCode: number;

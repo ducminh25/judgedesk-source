@@ -25,6 +25,7 @@ interface ExecutorClientInternals {
   cachedHealth: ExecutorHealth;
   lifecycleState: ExecutorLifecycleState;
   startPromise: Promise<ExecutorHealth> | null;
+  pending: Map<string, unknown>;
   request(request: ExecutorRequest, timeoutMs?: number): Promise<ExecutorResponse>;
   startWithTransientRetry(): Promise<ExecutorHealth>;
   stopChildForStartupRetry(): Promise<void>;
@@ -465,6 +466,42 @@ test("an IPC stdin write failure terminalizes every pending request through EOF"
   assert.match(internals.cachedHealth.diagnostics.join("; "), /simulated stdin write failure/);
 });
 
+test("an IPC request timeout immediately terminalizes its generation and every pending request", async () => {
+  const client = new ExecutorClient({ platform: "win32", environment: {} });
+  const child = fakeChild({ exitOnKill: false });
+  const internals = client as unknown as ExecutorClientInternals;
+  internals.child = child;
+  internals.cachedHealth = readyHealth();
+  internals.lifecycleState = "running";
+  internals.startPromise = Promise.resolve(internals.cachedHealth);
+
+  const timedOut = internals.request({ type: "health", id: "timed-out-request" }, 5);
+  const siblingOutcome = internals
+    .request({ type: "health", id: "same-generation-sibling" }, 1_000)
+    .then(
+      () => new Error("sibling request unexpectedly resolved"),
+      (error: unknown) => error,
+    );
+
+  await assert.rejects(timedOut, /timed-out-request timed out/);
+
+  assert.equal(internals.lifecycleState, "terminal");
+  assert.equal(internals.cachedHealth.ready, false);
+  assert.equal(child.stdinEndCalls, 1);
+  assert.equal(internals.pending.size, 0);
+  const siblingError = await siblingOutcome;
+  assert.ok(siblingError instanceof Error);
+  assert.match(siblingError.message, /timed-out-request timed out/);
+
+  internals.executorErrored(child, new Error("late child error"));
+  assert.equal(child.stdinEndCalls, 1, "terminalization must be idempotent");
+  assert.match(internals.cachedHealth.diagnostics.join("; "), /timed-out-request timed out/);
+  assert.doesNotMatch(internals.cachedHealth.diagnostics.join("; "), /late child error/);
+
+  const health = await client.start();
+  assert.equal(health.ready, false, "a timed-out generation must never admit a replacement in-process");
+});
+
 test("a mismatched IPC response type terminalizes the live generation", async () => {
   const client = new ExecutorClient({ platform: "darwin", environment: {} });
   const child = fakeChild({ exitOnKill: false });
@@ -604,6 +641,8 @@ test("a child error retains the guard until close proves executor exit", () => {
   internals.executorExited(child, new Error("simulated close"));
   assert.equal(internals.child, null);
   assert.equal(cleanupCalls, 1);
+  assert.match(internals.cachedHealth.diagnostics.join("; "), /simulated child error/);
+  assert.doesNotMatch(internals.cachedHealth.diagnostics.join("; "), /simulated close/);
 });
 
 test("shutdown waits for the acknowledged executor to exit before completing", async () => {
@@ -674,6 +713,44 @@ test("shutdown retains the standalone guard until close follows exit", async () 
   assert.equal(cleanupCalls, 1);
 });
 
+test("waitForStdioClose waits for close and standalone guard cleanup after exit", async () => {
+  const client = new ExecutorClient({
+    platform: "darwin",
+    environment: {},
+    shutdownExitTimeoutMs: 200,
+  });
+  const internals = client as unknown as ExecutorClientInternals;
+  const child = fakeChild();
+  internals.child = child;
+  internals.guardedDrainChild = child;
+  internals.cachedHealth = readyHealth();
+  internals.lifecycleState = "running";
+  internals.startPromise = Promise.resolve(internals.cachedHealth);
+  const cleanup = internals as unknown as { ownedTreeGuardCleanup: (() => void) | null };
+  let cleanupCalls = 0;
+  cleanup.ownedTreeGuardCleanup = () => {
+    cleanupCalls += 1;
+  };
+  child.once("close", () => {
+    internals.executorExited(child, new Error("simulated close after exit"));
+  });
+  internals.request = async (request) => {
+    setTimeout(() => {
+      child.emitProcessExit(0, null);
+      setTimeout(() => child.emitClose(0, null), 20);
+    }, 10);
+    return { type: "shutdown_result", id: request.id };
+  };
+
+  await client.shutdown();
+  assert.equal(cleanupCalls, 0);
+  const closed = await client.waitForStdioClose();
+  assert.equal(closed, true);
+  assert.equal(internals.child, null);
+  assert.equal(internals.guardedDrainChild, null);
+  assert.equal(cleanupCalls, 1);
+});
+
 test("unguarded executor crashes retain the existing restart behavior", async () => {
   const client = new ExecutorClient({ platform: "win32", environment: {} });
   const child = fakeChild();
@@ -726,6 +803,77 @@ test("an unguarded crash during startup cannot recache the failed startup promis
   assert.equal(restartedHealth.ready, true);
   assert.equal(restartAttempts, 1);
 });
+
+test("startup retry succeeds on attempt 2 even if attempt 1 shutdown request times out on Windows", async () => {
+  const client = new ExecutorClient({
+    platform: "win32",
+    environment: {},
+    shutdownRequestTimeoutMs: 15,
+    shutdownExitTimeoutMs: 100,
+  });
+  const internals = client as unknown as ExecutorClientInternals & {
+    startInternal(): Promise<ExecutorHealth>;
+  };
+  const firstChild = fakeChild();
+  let attempt = 0;
+  internals.startInternal = async () => {
+    attempt += 1;
+    if (attempt === 1) {
+      internals.child = firstChild;
+      firstChild.once("close", () => {
+        internals.executorExited(firstChild, new Error("startup retry close"));
+      });
+      return {
+        ...readyHealth(),
+        ready: false,
+        diagnostics: [
+          "SECURE_RUNNER_SELF_TEST_FAILED: security probe returned invalid JSON: EOF while parsing a value at line 1 column 0",
+        ],
+      };
+    }
+    return readyHealth();
+  };
+
+  const health = await client.start();
+  assert.equal(health.ready, true);
+  assert.equal(attempt, 2);
+});
+
+test("shutdown after terminalizeLiveChild preserves the first terminal diagnostic without writing to ended stdin", async () => {
+  const client = new ExecutorClient({
+    platform: "win32",
+    environment: {},
+    shutdownExitTimeoutMs: 50,
+  });
+  const child = fakeChild();
+  const internals = client as unknown as ExecutorClientInternals;
+  internals.child = child;
+  internals.cachedHealth = readyHealth();
+  internals.lifecycleState = "running";
+  internals.startPromise = Promise.resolve(internals.cachedHealth);
+
+  await assert.rejects(
+    internals.request({ type: "health", id: "req-timeout-before-shutdown" }, 10),
+    /Executor request req-timeout-before-shutdown timed out\./,
+  );
+  assert.equal(child.stdinEndCalls, 1);
+
+  let writeAfterEnd = false;
+  child.stdin.write = (() => {
+    writeAfterEnd = true;
+    throw new Error("must not write to ended stdin during shutdown");
+  }) as typeof child.stdin.write;
+  setTimeout(() => child.emitExit(0, null), 10);
+
+  await client.shutdown();
+  assert.equal(writeAfterEnd, false);
+  assert.equal(child.stdinEndCalls, 1);
+  assert.match(
+    client.health.diagnostics.join("; "),
+    /Executor request req-timeout-before-shutdown timed out\./,
+  );
+});
+
 
 function readyHealth(): ExecutorHealth {
   return {

@@ -107,7 +107,7 @@
       "summary": "Tự động phát hiện bài nộp qua thư mục chia sẻ mạng nội bộ, chấm liên tục và sinh file log",
       "intro": "Tính năng Chấm trực tuyến (Online Submission Directory - OSD) cho phép giáo viên thiết lập một thư mục nộp bài chung trên mạng nội bộ LAN. Thí sinh hoặc phần mềm nộp bài (như Themis Client) thả file bài làm vào thư mục này để JudgeDesk tự động phát hiện, di chuyển, phân loại và chấm bài theo thời gian thực.",
       "items": {
-        "sharing": "Chia sẻ thư mục mạng LAN: Tạo một thư mục (ví dụ D:/Submit) và bật chia sẻ mạng (Windows File Sharing hoặc macOS File Sharing) với quyền Đọc/Ghi (Read/Write) cho mọi người (Everyone).",
+        "sharing": "Chia sẻ thư mục mạng LAN: Tạo một thư mục (ví dụ D:/Submit) và bật chia sẻ mạng (Windows File Sharing, macOS File Sharing hoặc Samba trên Linux) với quyền Đọc/Ghi (Read/Write) cho mọi người (Everyone).",
         "naming": "Quy ước đặt tên file chuẩn Themis: *[MãThíSinh][TênBài].EXT (Ví dụ: [HS01][SUM].cpp, 001[Mon][BAI1].pas, 2026[LeA][PROB1].py).",
         "ingestion": "Thu nạp & Lưu vết tự động: Khi bài nộp hợp lệ được thả vào, JudgeDesk tự động chuyển file vào thư mục bài làm của thí sinh và lưu trữ bài nộp cũ vào thư mục $History/ để tránh xung đột đa file.",
         "queue": "Hàng đợi chấm (FIFO Queue): Các bài nộp được xếp vào hàng đợi và lần lượt chấm an toàn trong Sandbox với đầy đủ đo lường CPU và Bộ nhớ chính xác.",
@@ -183,7 +183,7 @@
         },
         "ctrlI": {
           "term": "Ctrl + I (⌘I)",
-          "description": "Đảo trạng thái chọn/bỏ chọn của thí sinh tại vị trí con trỏ."
+          "description": "Đảo trạng thái chọn/bỏ chọn của thí sinh đang được chọn tại vị trí con trỏ (hoặc thí sinh đầu tiên nếu chưa chọn ô)."
         },
         "ctrlShiftA": {
           "term": "Ctrl + Shift + A (⇧⌘A)",
@@ -195,11 +195,11 @@
         },
         "ctrlShiftI": {
           "term": "Ctrl + Shift + I (⇧⌘I)",
-          "description": "Đảo trạng thái chọn/bỏ chọn của bài thi tại vị trí con trỏ."
+          "description": "Đảo trạng thái chọn/bỏ chọn của bài thi đang được chọn tại vị trí con trỏ (hoặc bài đầu tiên nếu chưa chọn ô)."
         },
         "esc": {
           "term": "Esc (Escape)",
-          "description": "Đóng ngay lập tức bất kỳ cửa sổ nổi, hộp thoại hoặc menu nào đang mở (Chi tiết bài chấm, Cấu hình bài, Nạp thư mục, Toolchains, Nhật ký chấm...)."
+          "description": "Đóng ngay lập tức cửa sổ nổi, hộp thoại hoặc menu đang mở trên cùng (Chi tiết bài chấm, Cấu hình bài, Nạp thư mục, Toolchains, Nhật ký thay đổi...)."
         },
         "arrows": {
           "term": "Phím mũi tên (↑ ↓ ← →)",
@@ -218,16 +218,16 @@
     "toolchains": {
       "title": "Trình biên dịch & Môi trường thực thi",
       "summary": "Bản Core vs Full, trạng thái trình biên dịch, tự động nhận diện và xử lý sự cố",
-      "intro": "JudgeDesk quản lý các trình biên dịch và runtime một cách độc lập, bảo vệ phiên chạy bằng Native Sandbox trên cả Windows và macOS.",
+      "intro": "JudgeDesk quản lý các trình biên dịch và runtime một cách độc lập, bảo vệ phiên chạy bằng Native Sandbox trên cả Windows (AppContainer + Job Object), macOS (Seatbelt) và Linux (Bubblewrap bwrap + cgroup v2 + seccomp-bpf).",
       "editionsTitle": "Bản phân phối Core và Full",
       "editions": {
         "full": {
-          "term": "JudgeDesk Full (Khuyên dùng)",
-          "description": "Tích hợp sẵn đầy đủ các bộ dịch chuẩn (GCC 14 C/C++, Python 3.12, Free Pascal, OpenJDK...). Cài đặt xong là sử dụng được ngay mọi ngôn ngữ mà không cần cài thêm công cụ ngoài. Trên macOS, C/C++ sẽ sử dụng Apple Clang từ Xcode Command Line Tools."
+          "term": "JudgeDesk Full (Khuyên dùng trên Windows/macOS)",
+          "description": "Tích hợp sẵn đầy đủ các bộ dịch chuẩn (GCC 14 C/C++, Python 3.12, Free Pascal, OpenJDK, Scratch...). Cài đặt xong là sử dụng được ngay mọi ngôn ngữ mà không cần cài thêm công cụ ngoài. Trên macOS, C/C++ sẽ sử dụng Apple Clang từ Xcode Command Line Tools."
         },
         "core": {
-          "term": "JudgeDesk Core (Bản rút gọn)",
-          "description": "Bản siêu nhẹ không đóng gói sẵn compiler. Ứng dụng tự động quét và nhận diện các bộ dịch có sẵn trên máy tính (như MSYS2 UCRT64, MinGW64, CodeBlocks MinGW, Themis GCC, Python chuẩn...). Bạn cũng có thể tự cấu hình đường dẫn compiler theo ý muốn."
+          "term": "JudgeDesk Core (Bản rút gọn & Linux)",
+          "description": "Bản siêu nhẹ tự động quét và nhận diện các bộ dịch có sẵn trên máy tính (như MSYS2 UCRT64, MinGW64, Themis GCC, Python trên Windows/macOS; hoặc GCC/Clang g++/gcc, Python 3, Free Pascal fpc, OpenJDK javac/java cài qua apt/dnf trên Linux kèm bộ chạy Scratch tích hợp sẵn). Bạn cũng có thể tự cấu hình đường dẫn compiler theo ý muốn."
         }
       },
       "statusesTitle": "Ý nghĩa các trạng thái trình biên dịch",
@@ -263,9 +263,9 @@
       "localCompatibilityWarning": "Chỉ bật công tắc này khi bạn chấp nhận source thí sinh có thể đọc/ghi file mà tài khoản giáo viên truy cập được và có thể dùng network. Gói managed của bản Full vẫn là lựa chọn an toàn hơn.",
       "troubleshootingTitle": "Khi một ngôn ngữ chưa sẵn sàng",
       "troubleshooting": {
-        "rescan": "Mở «Quản lý trình biên dịch» và bấm nút Quét lại sau khi cài đặt hoặc thay đổi biến môi trường PATH.",
-        "path": "Chọn nguồn «Đường dẫn cục bộ (Custom)» và duyệt trực tiếp tới file thực thi (ví dụ: C:\\msys64\\ucrt64\\bin\\g++.exe hoặc C:\\Python312\\python.exe).",
-        "version": "Kiểm tra phiên bản compiler bằng lệnh `g++ --version` hoặc `python --version` trong Terminal / Command Prompt.",
+        "rescan": "Mở «Quản lý trình biên dịch» (F6) và bấm nút Quét lại sau khi cài đặt compiler (ví dụ trên Ubuntu: `sudo apt install g++ python3 fp-compiler default-jdk`) hoặc thay đổi PATH.",
+        "path": "Chọn nguồn «Cục bộ (đường dẫn)» và duyệt trực tiếp tới file thực thi (ví dụ: C:\\msys64\\ucrt64\\bin\\g++.exe hoặc /usr/bin/g++).",
+        "version": "Kiểm tra phiên bản compiler bằng lệnh `g++ --version`, `python3 --version`, `fpc -iV` hoặc `javac --version` trong Terminal / Command Prompt.",
         "managed": "Ở bản Full, ưu tiên gói đi kèm JudgeDesk. Riêng C/C++ trên macOS, hãy cài Xcode Command Line Tools nếu Apple Clang chưa được phát hiện. Ở bản Core, áp dụng gói managed nếu bản local không tương thích Native protection.",
         "restart": "Nếu bạn vừa cài đặt compiler mới và thay đổi biến môi trường hệ thống, hãy khởi động lại JudgeDesk để nhận diện PATH mới."
       },
@@ -296,18 +296,18 @@
         }
       },
       "configExample": "Ví dụ lưu trong Config.cfg",
-      "platformNote": "Config.cfg chỉ lưu tham số độc lập nền tảng. JudgeDesk tự ghép output bắt buộc, static/stack trên Windows hoặc compatibility trên macOS theo compiler đang dùng; flag riêng Windows không được đưa cho Apple Clang.",
+      "platformNote": "Config.cfg chỉ lưu tham số độc lập nền tảng. JudgeDesk tự ghép output bắt buộc, static/stack trên Windows hoặc compatibility trên macOS/Linux theo compiler đang dùng; flag riêng Windows không được đưa cho Apple Clang hoặc Linux GCC.",
       "invalidationWarning": "Đổi profile hoặc tham số thực tế sẽ tạo chương trình biên dịch khác. Khi lưu, JudgeDesk yêu cầu xác nhận và xóa điểm/log cũ của bài trước lần chấm tiếp theo.",
       "restore": "Muốn trở về hành vi quen thuộc, chọn Tương thích Themis cho bài rồi lưu. Việc cập nhật JudgeDesk không âm thầm đổi profile đã ghi trong Config.cfg."
     },
     "portable": {
       "title": "Khả năng portable",
       "summary": "Bản hiện tại hỗ trợ gì và phần nào còn để sau",
-      "notShipped": "JudgeDesk không phát hành hoặc hỗ trợ gói ứng dụng portable. Artefact được hỗ trợ vẫn là bộ cài Windows và disk image macOS.",
-      "compatibility": "Kiến trúc ứng dụng được giữ tương thích với khả năng bung ra chạy trong tương lai, nhưng chữ ký, updater, vị trí dữ liệu có quyền ghi, WebView/runtime và clean-machine test phải được giải quyết trước khi phát hành.",
+      "notShipped": "JudgeDesk phát hành bộ cài Windows (.msi), disk image macOS (.dmg) và các gói Linux (.deb, .rpm, .AppImage).",
+      "compatibility": "Kiến trúc ứng dụng được giữ tương thích với khả năng bung ra chạy, đồng thời bảo toàn định dạng gói cài đặt khi cập nhật tự động (ví dụ: .deb cập nhật qua .deb, .rpm qua .rpm, .AppImage qua .AppImage).",
       "items": {
-        "installer": "Dùng bộ cài hoặc disk image chính thức và đối chiếu checksum đã công bố.",
-        "contestArchive": "Định dạng kỳ thi .judgedesk có thể chuyển giữa bản JudgeDesk Windows và macOS được hỗ trợ; điều đó không biến app thành portable.",
+        "installer": "Dùng bộ cài chính thức (.msi, .dmg, .deb, .rpm, .AppImage) và đối chiếu checksum SHA-256 đã công bố.",
+        "contestArchive": "Định dạng kỳ thi .judgedesk có thể chuyển giữa các bản JudgeDesk trên Windows, macOS và Linux.",
         "futureWindows": "Phương án Windows tương lai sẽ dùng ZIP đã kiểm chứng, không dùng file tự bung kiểu cũ.",
         "futureMac": "Phương án macOS tương lai phải giữ nguyên app bundle đã ký, quyền thực thi và hành vi Gatekeeper."
       },
@@ -316,7 +316,7 @@
     "about": {
       "title": "Thông tin JudgeDesk",
       "summary": "Phiên bản, bản phân phối, build, đường dẫn và chẩn đoán",
-      "intro": "JudgeDesk là phần mềm desktop chấm thi đấu lập trình cục bộ bằng tiếng Việt cho Windows và macOS Apple Silicon. Việc chuẩn bị kỳ thi, chấm, xem chi tiết, lưu và xuất báo cáo nằm trong một quy trình desktop.",
+      "intro": "JudgeDesk là phần mềm desktop chấm thi đấu lập trình cục bộ bằng tiếng Việt cho Windows, macOS Apple Silicon và Linux (Ubuntu 22.04 LTS+). Việc chuẩn bị kỳ thi, chấm, xem chi tiết, lưu và xuất báo cáo nằm trong một quy trình desktop.",
       "themisCredit": "Quy trình offline ưu tiên giáo viên và cách hướng dẫn theo ngữ cảnh của JudgeDesk được lấy cảm hứng từ Themis. Nội dung Help này được viết mới cho JudgeDesk, không sao chép văn bản, ảnh chụp hay tài sản của Themis.",
       "scratchRunCredit": "Tính năng chấm Scratch được tích hợp và vận hành dựa trên công cụ mã nguồn mở scratch-run do VNOI (VNOI-Admin / Lê Bảo Hiệp) phát triển trên nền tảng TurboWarp scratch-vm. JudgeDesk xin trân trọng ghi nhận và cảm ơn đội ngũ VNOI vì những đóng góp giá trị cho cộng đồng Tin học Việt Nam.",
       "disclaimer": "JudgeDesk là sản phẩm độc lập: không phải Themis, không liên kết với tác giả Themis và không tuyên bố được Bộ Giáo dục và Đào tạo bảo trợ hoặc đặt hàng."
