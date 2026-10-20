@@ -765,10 +765,24 @@ pub fn resolve_macos_framework_python_executable(candidate: &Path) -> Option<(Pa
     None
 }
 
+fn configure_background_command(cmd: &mut std::process::Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = cmd;
+    }
+}
+
 fn run_command_bounded(
     mut cmd: std::process::Command,
     timeout: Duration,
 ) -> Result<std::process::Output, String> {
+    configure_background_command(&mut cmd);
     cmd.stdin(std::process::Stdio::null());
     cmd.stdout(std::process::Stdio::piped());
     cmd.stderr(std::process::Stdio::piped());
@@ -1061,7 +1075,9 @@ pub fn verify_binary_certificate_thumbprint(
     #[cfg(windows)]
     {
         if normalized_expected.len() == 40 {
-            if let Ok(output) = std::process::Command::new("powershell")
+            let mut ps_cmd = std::process::Command::new("powershell");
+            configure_background_command(&mut ps_cmd);
+            if let Ok(output) = ps_cmd
                 .args([
                     "-NoProfile",
                     "-NonInteractive",
@@ -1264,7 +1280,9 @@ pub fn find_system_executable(kind: &str) -> Option<PathBuf> {
         }
         #[cfg(windows)]
         {
-            if let Ok(output) = std::process::Command::new("where.exe")
+            let mut where_cmd = std::process::Command::new("where.exe");
+            configure_background_command(&mut where_cmd);
+            if let Ok(output) = where_cmd
                 .arg(candidate)
                 .output()
             {

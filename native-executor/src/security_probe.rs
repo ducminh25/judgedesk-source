@@ -51,7 +51,14 @@ pub fn security_probe_child() {
     let _ = io::stdout().flush();
     #[cfg(not(target_os = "macos"))]
     {
-        let process_blocked = Command::new(process_command)
+        let mut cmd = Command::new(process_command);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+        let process_blocked = cmd
             .args(process_args)
             .status()
             .is_err();

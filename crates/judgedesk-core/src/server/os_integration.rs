@@ -56,7 +56,10 @@ impl NativeDirectoryPicker {
 
         #[cfg(windows)]
         {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
             let mut cmd = Command::new("powershell");
+            cmd.creation_flags(CREATE_NO_WINDOW);
             cmd.args([
                 "-NoLogo",
                 "-NoProfile",

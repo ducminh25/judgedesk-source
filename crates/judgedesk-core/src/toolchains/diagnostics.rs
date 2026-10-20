@@ -298,6 +298,12 @@ pub async fn diagnose_language_profile_in(
         "cpp" | "c" => {
             let start = Instant::now();
             let mut cmd = std::process::Command::new(&toolchain.executable_path);
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+                cmd.creation_flags(CREATE_NO_WINDOW);
+            }
             cmd.arg("-O2");
             if kind == "cpp" {
                 cmd.arg("-std=c++14");
@@ -374,6 +380,12 @@ pub async fn diagnose_language_profile_in(
         "pascal" => {
             let start = Instant::now();
             let mut cmd = std::process::Command::new(&toolchain.executable_path);
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+                cmd.creation_flags(CREATE_NO_WINDOW);
+            }
             cmd.arg("-O2").arg("-XS").arg("-Sg");
             if cfg!(windows) {
                 cmd.arg("-WR").arg("-Xs").arg("-Cs66060288");
@@ -449,6 +461,12 @@ pub async fn diagnose_language_profile_in(
         "java" => {
             let start = Instant::now();
             let mut cmd = std::process::Command::new(&toolchain.executable_path);
+            #[cfg(windows)]
+            {
+                use std::os::windows::process::CommandExt;
+                const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+                cmd.creation_flags(CREATE_NO_WINDOW);
+            }
             cmd.arg("-d").arg(&workspace_dir).arg(&source_path);
 
             let output = match cmd.output() {
