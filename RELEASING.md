@@ -98,8 +98,9 @@ real-time Defender protection enabled. Do not add exclusions or weaken security
 limits to make a release pass. Record any Defender detection with exact filename,
 SHA-256 and detection name and block publication until it has been resolved.
 
-The GitHub Actions `Verify Release Source` workflow repeats source checks when a
-`v*` tag is pushed. It deliberately does not build or publish installers; the
+The GitHub Actions `Verify Release Source` workflow is manual-only
+(`workflow_dispatch`) so commits and tag pushes never consume GitHub Actions
+quota automatically. It deliberately does not build or publish installers; the
 platform-specific process below owns final artifacts.
 
 ## Verify or publish managed toolchains v2

@@ -1,9 +1,6 @@
 name: Verify Release Source
 
 on:
-  push:
-    tags:
-      - "v*"
   workflow_dispatch:
 
 permissions:

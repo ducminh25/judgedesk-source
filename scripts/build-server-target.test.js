@@ -315,7 +315,8 @@ test("GitHub release workflow verifies tagged source without building platform a
   );
 
   assert.match(workflow, /name: Verify Release Source/);
-  assert.match(workflow, /tags:\s+\- "v\*"/);
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.doesNotMatch(workflow, /^\s*push:/m);
   assert.match(workflow, /npm run release:check-version/);
   assert.match(workflow, /npm run test:server/);
   assert.match(workflow, /cargo fmt --check --manifest-path native-executor\/Cargo\.toml/);
