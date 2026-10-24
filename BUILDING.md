@@ -134,13 +134,14 @@ Developer ID/notarization pipeline. Keep the source/native checks before the
 Tauri build so a compiler, executor, TypeScript, version, or fixture failure
 does not consume a packaging attempt.
 
-### Linux x86_64 packages (`.deb`, `.rpm`, `.AppImage`)
+### Linux x86_64 packages (`.deb`, `.rpm`, `.AppImage` — Core & Full)
 
-Build all three Linux release installers on **Ubuntu 22.04 LTS (`x86_64`,
+Build the Linux Core and Full release installers on **Ubuntu 22.04 LTS (`x86_64`,
 GLIBC 2.35)**. Newer distros are runtime test targets, not release build hosts:
 
 ```bash
-bash scripts/build-linux-release.sh
+JUDGEDESK_LINUX_EDITION=core bash scripts/build-linux-release.sh
+JUDGEDESK_LINUX_EDITION=full bash scripts/build-linux-release.sh
 ```
 
 Run `npm ci` in a Linux checkout or frozen source snapshot. The frontend is
@@ -150,7 +151,12 @@ script rejects mismatched versions and non-22.04 build hosts. Final payload
 verification also requires Python 3, `binutils`, `rpm`/`rpm2archive`, and
 `squashfs-tools` on the build host.
 Scratch is re-staged from its pinned archive on every build and its executable
-bytes/bootstrap are verified in all three final installer formats.
+bytes/bootstrap are verified in all three final installer formats. For the `full`
+edition, the 5 offline Linux toolchain directories (`gcc-linux-x64`,
+`python-linux-x64`, `fpc-linux-x64`, `temurin21-linux-x64`, `scratch-linux-x64`)
+under `build/distribution-resources/toolchains/` are validated against their
+per-file `SHA-256` content indices (`scripts/validate-linux-full-resources.ts`)
+and ELF baseline (`scripts/verify-linux-elf-baseline.py`) before bundling.
 
 The script:
 1. builds the frontend (`npm run build:frontend`);
@@ -160,17 +166,21 @@ The script:
    ELF binaries remain compatible with **Ubuntu 22.04 LTS (`glibc 2.35`)** and
    newer;
 3. packages `.deb`, `.rpm`, and `.AppImage` bundles using
-   `src-tauri/tauri.linux.local.conf.json` (with cross-Ubuntu dependencies
-   `libgtk-3-0t64 | libgtk-3-0`, `libayatana-appindicator3-1 | libappindicator3-1`,
-   `bubblewrap`, `zenity`, `g++`, `python3`);
+   `src-tauri/tauri.linux.local.conf.json` (`core`) or
+   `src-tauri/tauri.linux.full.local.conf.json` /
+   `src-tauri/tauri.linux.full.appimage.local.conf.json` (`full`), with
+   cross-Ubuntu dependencies (`libgtk-3-0t64 | libgtk-3-0`,
+   `libayatana-appindicator3-1 | libappindicator3-1`, `bubblewrap`, `zenity`,
+   `g++`, `python3`);
 4. extracts every final DEB/RPM/AppImage and scans **every regular ELF**, plus
    the outer AppImage runtime, using `readelf` version needs. The gate rejects
    requirements newer than `GLIBC_2.35`, unsupported `GLIBC_*` ABI tags, malformed
    ELF files and empty payloads. Per-file hashes and requirements are written to
    the bundle directory's `elf-baseline/` reports;
-5. stages `JudgeDesk_<version>_amd64.deb`, `JudgeDesk-<version>-1.x86_64.rpm`,
-   `JudgeDesk_<version>_amd64.AppImage`, and `SHA256SUMS-linux` under
-   `release-assets-linux/`.
+5. stages `JudgeDesk_<version>_amd64.deb` / `JudgeDesk_<version>_full_amd64.deb`,
+   `JudgeDesk-<version>-1.x86_64.rpm` / `JudgeDesk-<version>-full-1.x86_64.rpm`,
+   `JudgeDesk_<version>_amd64.AppImage` / `JudgeDesk_<version>_full_amd64.AppImage`,
+   and `SHA256SUMS-linux` under `release-assets-linux/`.
 
 Checking only the three application executables does not establish the baseline
 of bundled libraries. Build on the supported release host and run the

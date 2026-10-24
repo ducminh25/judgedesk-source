@@ -119,6 +119,7 @@ judgedesk/
 │   ├── components/               # Shared UI components (Toolbar, Dialogs, Modals, DiffViewer)
 │   ├── contexts/                 # React Contexts (ThemeContext, etc.)
 │   ├── features/                 # Feature-driven modular architecture
+│   │   ├── announcements/        # Signed Admin Announcements & Notification Center UI
 │   │   ├── contest/              # .judgedesk contest file handling, dirty state, archive models
 │   │   ├── desktop/              # Browser lifecycle & Tauri desktop shell bridge
 │   │   ├── export/               # Excel score workbook generation (exceljs)
@@ -133,6 +134,8 @@ judgedesk/
 │   ├── locales/                  # Internationalization JSON dictionaries (en.json, vi.json)
 │   ├── App.tsx                   # Main root application view
 │   └── index.css                 # Core CSS design tokens & Tailwind v4
+│
+├── crates/judgedesk-core/        # Pure Rust Core Backend (Axum HTTP/SSE, judging engine, discovery, PCH)
 │
 ├── server/                       # Backend Node.js Engine
 │   ├── executor/                 # IPC Client communicating with Native Executor via Stdin/Stdout
@@ -164,7 +167,8 @@ judgedesk/
 │       ├── main.rs               # Binary entrypoint, frame protocol reader/writer, dispatcher
 │       ├── platform/
 │       │   ├── windows.rs        # AppContainer, Job Objects, Resource Limits (Windows)
-│       │   └── macos.rs          # Run Guardian, Seatbelt Sandbox, Process Groups (macOS)
+│       │   ├── macos.rs          # Run Guardian, Seatbelt Sandbox, Process Groups (macOS)
+│       │   └── linux.rs          # Bubblewrap, systemd cgroup v2, seccomp-bpf (Linux)
 │       ├── macos_run_guardian.rs # Process supervision and group teardown guardian on macOS
 │       ├── macos_launcher.rs     # Isolated process launcher helper on macOS
 │       ├── request_validation.rs # Strict input parameter and path validation
@@ -175,7 +179,8 @@ judgedesk/
 │   ├── src/
 │   │   ├── main.rs               # Desktop binary entry point
 │   │   ├── lib.rs                # Tauri App setup and command handlers
-│   │   ├── backend.rs            # Spawn and monitor Node.js SEA sidecar process
+│   │   ├── announcements/        # Native Ed25519 announcement feed verification, media decoding & cache
+│   │   ├── backend.rs            # Spawn and monitor embedded Rust core or Node.js SEA sidecar
 │   │   ├── startup_guard.rs      # Single-instance lock and primary window focus coordinator
 │   │   ├── process_supervisor.rs # Process tree supervisor on Windows
 │   │   ├── process_supervisor_macos.rs # Process tree supervisor on macOS
@@ -240,26 +245,27 @@ npm run test:desktop
 
 ## 5. Judging Engine & Toolchains Subsystem (Toolchains v2)
 
-### 5.1. Supported Languages & Toolchains (v1.5.x Scope)
+### 5.1. Supported Languages & Toolchains (v1.6.1 Scope)
 
-| Language | Extensions | Windows x64 | macOS Apple Silicon (ARM64) |
-| :--- | :--- | :--- | :--- |
-| **C++** | `.cpp` | GCC 14.2.0 (Managed / Local) | Apple Clang (Xcode Command Line Tools) |
-| **C** | `.c` | GCC 14.2.0 (Managed / Local) | Apple Clang (Xcode Command Line Tools) |
-| **Python** | `.py` | CPython 3.12.13 (Managed) | CPython 3.12.13 (Managed) |
-| **Pascal / FPC** | `.pas`, `.pp` | Free Pascal 3.2.2 (Managed) | Free Pascal 3.2.2 (Managed) |
-| **Java** | `.java` | Eclipse Temurin OpenJDK 21.0.12+8 (Managed) | Eclipse Temurin OpenJDK 21.0.12+8 (Managed) |
-| **Scratch** | `.sb3`, `.sb2`, `.sb` | TurboWarp VM / scratch-run 0.1.7 (Managed) | TurboWarp VM / scratch-run 0.1.7 (Managed) |
+| Language | Extensions | Windows x64 | macOS Apple Silicon (ARM64) | Linux x86_64 (`amd64` — Ubuntu 22.04 LTS+) |
+| :--- | :--- | :--- | :--- | :--- |
+| **C++** | `.cpp` | GCC 14.2.0 (Managed / Local) | Apple Clang (Xcode Command Line Tools) | xPack GCC 14.2.0-2 (Managed in Full) / Host `g++` or `clang++` |
+| **C** | `.c` | GCC 14.2.0 (Managed / Local) | Apple Clang (Xcode Command Line Tools) | xPack GCC 14.2.0-2 (Managed in Full) / Host `gcc` or `clang` |
+| **Python** | `.py` | CPython 3.12.13 (Managed / Local) | CPython 3.12.13 (Managed / Local) | CPython 3.12.13 (Managed in Full) / Host `python3` |
+| **Pascal / FPC** | `.pas`, `.pp` | Free Pascal 3.2.2 (Managed / Local) | Free Pascal 3.2.2 (Managed / Local) | Free Pascal 3.2.2 (Managed in Full) / Host `fpc` (`ppcx64`) |
+| **Java** | `.java` | Eclipse Temurin OpenJDK 21.0.12+8 (Managed / Local) | Eclipse Temurin OpenJDK 21.0.12+8 (Managed / Local) | Eclipse Temurin OpenJDK 21.0.12+8 (Managed in Full) / Host `javac` & `java` |
+| **Scratch** | `.sb3`, `.sb2`, `.sb` | TurboWarp VM / scratch-run 0.1.7 (Managed) | TurboWarp VM / scratch-run 0.1.7 (Managed) | TurboWarp VM / scratch-run 0.1.7 (Bundled in both Full & Core) |
 
 > [!NOTE]
 > Future languages (Go, Rust, JavaScript/Node.js, C#/.NET) have registered declarative schemas in `server/languages/registry.ts`, but are marked `experimental` and disabled in official production releases.
 
 ### 5.2. Distribution Editions: Core vs Full
 1. **Full Edition**: Pre-bundles all managed compilers and runtimes directly inside the installer.
-   - Windows Full: Includes GCC (C/C++), CPython, FPC, Temurin Java, Scratch VM, and the offline WebView2 Runtime.
-   - macOS Full: Includes CPython, FPC, Temurin Java, Scratch VM; C/C++ uses the host Apple Clang.
+   - Windows Full (`.msi`): Includes GCC (C/C++), CPython, FPC, Temurin Java, Scratch VM, and the offline WebView2 Runtime.
+   - macOS Full (`.dmg`): Includes CPython, FPC, Temurin Java, Scratch VM; C/C++ uses the host Apple Clang.
+   - Linux Full (`.deb`, `.rpm`, `.AppImage`): Includes all 6 offline languages (`gcc-linux-x64` xPack GCC 14.2.0-2 with binutils/sysroot, `python-linux-x64` CPython 3.12.13, `fpc-linux-x64` Free Pascal 3.2.2, `temurin21-linux-x64` OpenJDK 21, `scratch-linux-x64` 0.1.7), verified via per-file `SHA-256` content indices and automatically imported into the local cache on first launch without network access.
    - Ideal for: Offline contest labs, classroom computers without internet access.
-2. **Core Edition**: Lightweight distribution containing only the core judging application. Users can download signed toolchains on demand or configure pre-existing local compilers.
+2. **Core Edition**: Lightweight distribution containing the core judging application and built-in Scratch Headless VM. Users can download signed toolchains on demand (Windows/macOS) or automatically detect pre-existing local compilers (`Local (auto-detect)` across Windows, macOS, and Linux).
 
 ### 5.3. Four Toolchain Configuration Modes
 Users configure the toolchain source independently for each language:
@@ -329,7 +335,15 @@ JudgeDesk enforces strict defense-in-depth isolation against hostile contestant 
 3. **Generation Barrier & Tree Guard (`tree_guard.rs`)**:
    - Ensures all processes from the preceding generation have exited before admitting subsequent runs.
 
-### 6.3. Cancellation Drain Protocol
+### 6.3. Linux Sandbox Architecture
+1. **Bubblewrap (`bwrap`) + Namespace Isolation**:
+   - Unshares network (`--unshare-net`), PID, IPC, and mount namespaces without requiring `root` privileges.
+   - Mounts system libraries (`/usr`, `/lib`, `/lib64`) read-only and restricts writes to the ephemeral sandbox workspace.
+   - Maps short sandbox bind mounts (`/jd-tools`, `/jd-work`) so compilers with tight path-length limits (such as Free Pascal) operate reliably on deep host directory paths, and sets `LANG=C.UTF-8` for Java runtime consistency.
+2. **systemd User Scope (`cgroup v2`) & `seccomp-bpf`**:
+   - Enforces peak memory limits (`MemoryMax` up to 1024 MB, `MemorySwapMax=0`), process count ceilings (`TasksMax`), accurate CPU time accounting (`cpu.stat`), and dangerous syscall filtering (`seccomp-bpf`).
+
+### 6.4. Cancellation Drain Protocol
 When a user clicks "Cancel Judging":
 1. Backend sends a `cancel` request with `runId` to the Native Executor.
 2. The Executor initiates process termination and enters a **Drain Loop** (timeout: 20 seconds).
@@ -414,28 +428,30 @@ The stress test suite validates:
 
 ## 8. Build, Packaging & Release Pipeline
 
-### 8.1. 8 Public Release Assets Allowlist
-Every official release `<version>` uploaded to the public GitHub repository (`ducminh25/judgedesk`) must contain **exactly these 8 assets**:
+### 8.1. Public Release Assets Allowlist
+Every official release `<version>` uploaded to the public GitHub repository (`ducminh25/judgedesk`) contains the 8 baseline Windows/macOS assets plus the 6 Linux Core/Full packages (14 files total):
 
 ```text
-1. JudgeDesk_<version>_core_x64_en-US.msi      # Windows Core MSI Installer
-2. JudgeDesk_<version>_full_x64_en-US.msi      # Windows Full MSI Installer
-3. JudgeDesk_<version>_core_aarch64.dmg        # macOS Core Disk Image
-4. JudgeDesk_<version>_full_aarch64.dmg        # macOS Full Disk Image
-5. JudgeDesk_<version>_core_aarch64.app.tar.gz # macOS Core Auto-Updater Payload
-6. JudgeDesk_<version>_full_aarch64.app.tar.gz # macOS Full Auto-Updater Payload
-7. SHA256SUMS                                  # SHA-256 Checksums covering the 7 assets above
-8. latest.json                                 # 4-Target Tauri Updater Manifest
+1.  JudgeDesk_<version>_core_x64_en-US.msi      # Windows Core MSI Installer
+2.  JudgeDesk_<version>_full_x64_en-US.msi      # Windows Full MSI Installer
+3.  JudgeDesk_<version>_core_aarch64.dmg        # macOS Core Disk Image
+4.  JudgeDesk_<version>_full_aarch64.dmg        # macOS Full Disk Image
+5.  JudgeDesk_<version>_core_aarch64.app.tar.gz # macOS Core Auto-Updater Payload
+6.  JudgeDesk_<version>_full_aarch64.app.tar.gz # macOS Full Auto-Updater Payload
+7.  JudgeDesk_<version>_amd64.deb               # Linux Core Debian/Ubuntu Package
+8.  JudgeDesk_<version>_full_amd64.deb          # Linux Full Debian/Ubuntu Package (All 6 languages offline)
+9.  JudgeDesk-<version>-1.x86_64.rpm            # Linux Core Fedora/RHEL/openSUSE Package
+10. JudgeDesk-<version>-full-1.x86_64.rpm       # Linux Full Fedora/RHEL/openSUSE Package (All 6 languages offline)
+11. JudgeDesk_<version>_amd64.AppImage          # Linux Core Portable AppImage
+12. JudgeDesk_<version>_full_amd64.AppImage     # Linux Full Portable AppImage (All 6 languages offline)
+13. SHA256SUMS                                  # SHA-256 Checksums covering all public assets other than itself
+14. latest.json                                 # Multi-Target Tauri Updater Manifest
 ```
 
-### 8.2. 4-Target Updater Manifest (`latest.json`)
-The `latest.json` file must contain exactly 4 signed platform targets:
-- `windows-x86_64-core`
-- `windows-x86_64-full`
-- `darwin-aarch64-core`
-- `darwin-aarch64-full`
+### 8.2. Updater Manifest (`latest.json`) & Signed Admin Announcements
+The `latest.json` file contains the 4 signed Windows/macOS platform targets (`windows-x86_64-core`, `windows-x86_64-full`, `darwin-aarch64-core`, `darwin-aarch64-full`) and the format-isolated Linux Core/Full targets (`linux-x86_64-deb-core`/`full`, `linux-x86_64-rpm-core`/`full`, `linux-x86_64-appimage-core`/`full`). Each target embeds the download URL, Ed25519 updater signature (`signature`), download size (`downloadSizeBytes`), and extracted install size (`installedSizeBytes`).
 
-Each target embeds the download URL, Ed25519 updater signature (`signature`), download size (`downloadSizeBytes`), and extracted install size (`installedSizeBytes`).
+Separately from the Tauri updater, the **Signed Admin Announcements (`announcements-v1`)** subsystem publishes an Ed25519-signed static feed (`https://ducminh25.github.io/judgedesk/announcements/v1/feed.json`) via GitHub Pages on `ducminh25/judgedesk`, verified by the public key in `shared/announcements-trust.json` (see [`docs/admin-announcements-publishing.md`](docs/admin-announcements-publishing.md)).
 
 ### 8.3. Step-by-Step Release Procedure
 

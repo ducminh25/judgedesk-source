@@ -26,18 +26,18 @@ distributions with `GLIBC >= 2.34`).
 | --- | --- | --- |
 | Windows x64 | Small MSI; WebView2 bootstrap and managed toolchains may be downloaded | Offline WebView2 installer plus all approved managed C/C++, Python, Pascal, Java and Scratch packages |
 | macOS Apple Silicon | App/DMG with Apple Clang support; managed Python, Pascal, Java and Scratch may be downloaded | App/DMG with all approved managed Python, Pascal, Java and Scratch packages; C/C++ uses verified Apple Clang |
-| Linux x86_64 (`amd64`) | `.deb` (Ubuntu 22.04+ / Debian / Mint; auto-pulls `bubblewrap`, `zenity`, `g++`, `python3`), `.rpm` (Fedora / RHEL / openSUSE), and portable `.AppImage` | Uses host package manager (`apt`/`dnf`) with automatic cross-version compiler discovery (`Local (auto-detect)`) plus built-in Scratch VM |
+| Linux x86_64 (`amd64`) | `.deb` (Ubuntu 22.04+ / Debian / Mint; auto-pulls `bubblewrap`, `zenity`, `g++`, `python3`), `.rpm` (Fedora / RHEL / openSUSE), and portable `.AppImage` with automatic cross-version host compiler discovery (`Local (auto-detect)`) plus built-in Scratch VM | `.deb`, `.rpm`, and `.AppImage` pre-bundling all 6 offline languages (`gcc-linux-x64` xPack GCC 14.2.0-2, `python-linux-x64` CPython 3.12.13, `fpc-linux-x64` Free Pascal 3.2.2, `temurin21-linux-x64` OpenJDK 21, `scratch-linux-x64` 0.1.7) verified via SHA-256 content index and imported offline on first launch |
 
 Core and Full use the same application identity and cannot be installed side by
 side. Installing one variant upgrades/replaces the other while preserving JudgeDesk
 data. From v1.5.0+, the in-app updater streamlines upgrades by downloading the
 lightweight Core payload in the background, preserving all existing configurations
 and toolchain files in AppData/Resources. On Linux, the updater is format-isolated
-by installed bundle type (`linux-x86_64-deb-core`, `linux-x86_64-rpm-core`,
-`linux-x86_64-appimage-core`) so `.deb`, `.rpm`, and `.AppImage` installations
+by installed bundle type (`linux-x86_64-deb-core`/`full`, `linux-x86_64-rpm-core`/`full`,
+`linux-x86_64-appimage-core`/`full`) so `.deb`, `.rpm`, and `.AppImage` installations
 always download their matching package format.
 
-For version `<version>`, the public release assets (11 files total) are:
+For version `<version>`, the public release assets (up to 14 files total when both Core and Full Linux bundles are staged) are:
 
 - Windows & macOS baseline (8 required files):
   - `JudgeDesk_<version>_core_x64_en-US.msi`
@@ -47,16 +47,18 @@ For version `<version>`, the public release assets (11 files total) are:
   - `JudgeDesk_<version>_core_aarch64.app.tar.gz`
   - `JudgeDesk_<version>_full_aarch64.app.tar.gz`
   - `SHA256SUMS` and `latest.json`
-- Linux x86_64 (`amd64`) packages (3 files built via `bash scripts/build-linux-release.sh`):
-  - `JudgeDesk_<version>_amd64.deb`
-  - `JudgeDesk-<version>-1.x86_64.rpm`
-  - `JudgeDesk_<version>_amd64.AppImage`
+- Linux x86_64 (`amd64`) Core & Full packages (6 files built via `JUDGEDESK_LINUX_EDITION=core` and `JUDGEDESK_LINUX_EDITION=full` with `bash scripts/build-linux-release.sh`):
+  - `JudgeDesk_<version>_amd64.deb` and `JudgeDesk_<version>_full_amd64.deb`
+  - `JudgeDesk-<version>-1.x86_64.rpm` and `JudgeDesk-<version>-full-1.x86_64.rpm`
+  - `JudgeDesk_<version>_amd64.AppImage` and `JudgeDesk_<version>_full_amd64.AppImage`
 
 `latest.json` contains the four signed Windows/macOS targets
 (`windows-x86_64-core`, `windows-x86_64-full`, `darwin-aarch64-core`, and
 `darwin-aarch64-full`), plus the format-isolated Linux targets
-(`linux-x86_64-deb-core`, `linux-x86_64-core`, `linux-x86_64-rpm-core`, and
-`linux-x86_64-appimage-core`) when signed Linux bundles are staged. Each entry
+(`linux-x86_64-deb-core`, `linux-x86_64-core`, `linux-x86_64-rpm-core`,
+`linux-x86_64-appimage-core`, `linux-x86_64-deb-full`, `linux-x86_64-full`,
+`linux-x86_64-rpm-full`, and `linux-x86_64-appimage-full`) when signed Linux
+bundles are staged. Each entry
 includes strict JudgeDesk metadata for edition, download bytes and installed
 bytes. Missing, mismatched, stale or cross-architecture metadata blocks
 publication.
@@ -146,43 +148,51 @@ but is not a Windows Authenticode publisher signature. Never describe an unsigne
 MSI as code-signed. If no stable Authenticode certificate is configured, retain
 that limitation in release notes and obtain explicit publication approval.
 
-## Linux x86_64 (`.deb`, `.rpm`, `.AppImage`)
+## Linux x86_64 Core and Full (`.deb`, `.rpm`, `.AppImage`)
 
-Build and verify the three Linux packages on an `x86_64` Ubuntu host (or WSL2
-`JudgeDesk-Ubuntu-24.04`) from the clean tagged commit:
+Build and verify the Linux Core and Full packages on an `x86_64` Ubuntu 22.04 LTS
+build host (`GLIBC 2.35` baseline) from the clean tagged commit:
 
 ```bash
-bash scripts/build-linux-release.sh
-sudo apt install ./release-assets-linux/JudgeDesk_<version>_amd64.deb
+JUDGEDESK_LINUX_EDITION=core bash scripts/build-linux-release.sh
+JUDGEDESK_LINUX_EDITION=full bash scripts/build-linux-release.sh
+sudo apt install ./release-assets-linux/JudgeDesk_<version>_full_amd64.deb
 bash scripts/verify-linux-deb.sh
 ```
 
 The build script enforces:
-1. ELF symbol compatibility (`GLIBC <= 2.34` via `readelf -V`) across `themis-v2`,
-   `server`, and `judgedesk-executor` so packages install and run cleanly on
-   **Ubuntu 22.04 LTS (`glibc 2.35`)**, **Ubuntu 24.04 LTS (`glibc 2.39`)**, and
-   **Ubuntu 26.04 LTS+**;
+1. ELF symbol compatibility (`GLIBC <= 2.35` baseline via `readelf -V` and
+   `scripts/verify-linux-elf-baseline.py`) across every bundled ELF executable
+   and library (including `themis-v2`, `server`, `judgedesk-executor`, and for
+   `full` all bundled toolchains under `build/distribution-resources/toolchains`)
+   so packages install and run cleanly on **Ubuntu 22.04 LTS (`glibc 2.35`)**,
+   **Ubuntu 24.04 LTS (`glibc 2.39`)**, and **Ubuntu 26.04 LTS+**;
 2. cross-Ubuntu Debian dependency declarations (`libgtk-3-0t64 | libgtk-3-0`,
    `libayatana-appindicator3-1 | libappindicator3-1`, `bubblewrap`, `zenity`,
    `g++`, `python3`);
-3. real installed `.deb` smoke verification (`verify-linux-deb.sh`) proving
-   `/api/distribution` (`bundleType: "deb"`), C++ and Python `AC` grading inside
+3. for `JUDGEDESK_LINUX_EDITION=full`, validation of the 5 offline Linux
+   toolchain bundles (`gcc-linux-x64`, `python-linux-x64`, `fpc-linux-x64`,
+   `temurin21-linux-x64`, `scratch-linux-x64`) and per-file `SHA-256` content
+   indices via `scripts/validate-linux-full-resources.ts`;
+4. real installed `.deb` smoke verification (`verify-linux-deb.sh`) proving
+   `/api/distribution` (`bundleType: "deb"`), all 6 languages `AC` grading inside
    the Bubblewrap + cgroup v2 + seccomp-bpf sandbox, strict `.metadata.json`
-   generation for `.deb`, `.rpm`, and `.AppImage`, and `SHA256SUMS-linux`
-   generation under `release-assets-linux`.
+   generation for `.deb`, `.rpm`, and `.AppImage` (Core and Full), and
+   `SHA256SUMS-linux` generation under `release-assets-linux`.
 
 ## CodeMagic signing for local Windows and Linux builds
 
 Create a temporary public prerelease/tag `v<version>-staging` on
 `ducminh25/judgedesk` and upload:
 - both Windows MSIs and their `.metadata.json` files from `release-assets-windows/`,
-- the three Linux bundles (`.deb`, `.rpm`, `.AppImage`) and their `.metadata.json`
-  files from `release-assets-linux/`.
+- the six Linux Core and Full bundles (`.deb`, `.rpm`, `.AppImage`) and their
+  `.metadata.json` files from `release-assets-linux/`.
 
 Run CodeMagic workflow `windows-updater-signing` against the exact source commit.
 Pass the locally recorded lowercase SHA-256 hashes as build variables:
 - `WINDOWS_CORE_MSI_SHA256` and `WINDOWS_FULL_MSI_SHA256`,
-- `LINUX_DEB_SHA256`, `LINUX_RPM_SHA256`, and `LINUX_APPIMAGE_SHA256`.
+- `LINUX_DEB_SHA256`, `LINUX_RPM_SHA256`, `LINUX_APPIMAGE_SHA256`,
+- `LINUX_FULL_DEB_SHA256`, `LINUX_FULL_RPM_SHA256`, and `LINUX_FULL_APPIMAGE_SHA256`.
 
 CodeMagic downloads and verifies every file's SHA-256 before invoking the
 established Tauri updater key (`npx tauri signer sign`); a missing or mismatched
@@ -225,10 +235,10 @@ notarization unless `JUDGEDESK_REQUIRE_NOTARIZATION=1` passes in the actual buil
    tag `v<version>` and push the tag so `HEAD` is clean (`sourceState: "clean"`).
 3. From that exact clean `v<version>` commit:
    - Build Windows Core/Full locally (`npm run build:windows:release:local`).
-   - Build Linux `.deb`, `.rpm`, `.AppImage` locally in WSL2 (`bash scripts/build-linux-release.sh`).
+   - Build Linux Core and Full `.deb`, `.rpm`, `.AppImage` locally on Ubuntu 22.04 LTS (`JUDGEDESK_LINUX_EDITION=core bash scripts/build-linux-release.sh` and `JUDGEDESK_LINUX_EDITION=full bash scripts/build-linux-release.sh`).
    - Trigger CodeMagic `macos-arm64-release` on commit `v<version>`.
 4. Publish temporary prerelease `v<version>-staging` on `ducminh25/judgedesk` with
-   the local Windows MSIs + `.metadata.json` and Linux bundles + `.metadata.json`,
+   the local Windows MSIs + `.metadata.json` and Linux Core/Full bundles + `.metadata.json`,
    then run CodeMagic `windows-updater-signing` on commit `v<version>` with the
    recorded SHA-256 variables.
 5. Wait until both CodeMagic workflows (`macos-arm64-release` and
@@ -236,11 +246,11 @@ notarization unless `JUDGEDESK_REQUIRE_NOTARIZATION=1` passes in the actual buil
    clean local `release-staging/` directory.
 6. Run `scripts/generate-updater-manifest.js` (`PUBLIC_RELEASE_REPOSITORY=ducminh25/judgedesk GITHUB_REF_NAME=v<version> node scripts/generate-updater-manifest.js release-staging`);
    it validates staging metadata and embeds every `.sig` plus measured size
-   metadata (Windows, macOS, and Linux) in `release-staging/latest.json`.
+   metadata (Windows, macOS, and Linux Core/Full) in `release-staging/latest.json`.
 7. Run `node scripts/assemble-public-release.mjs` to create a clean
-   `public-release-assets/` directory containing the 11 public files (6 Windows/macOS
-   installers/updater archives + 3 Linux packages + `latest.json` + combined
-   `SHA256SUMS` over the other 10 public assets; no standalone `.sig` or
+   `public-release-assets/` directory containing the public files (6 Windows/macOS
+   installers/updater archives + up to 6 Linux Core/Full packages + `latest.json` + combined
+   `SHA256SUMS` over all other public assets; no standalone `.sig` or
    `.metadata.json` files).
 8. Run
    `npm run release:verify-public-assets -- public-release-assets v<version>`.
@@ -250,6 +260,8 @@ notarization unless `JUDGEDESK_REQUIRE_NOTARIZATION=1` passes in the actual buil
    and checksums, and publish the release.
 10. Delete the temporary `v<version>-staging` prerelease and tag on
     `ducminh25/judgedesk`, and clean up local temporary staging directories.
+
+*(For publishing signed Admin Announcements to `ducminh25/judgedesk` via GitHub Pages, see [`docs/admin-announcements-publishing.md`](docs/admin-announcements-publishing.md)).*
 
 v1.3.4 is a deliberate manual cutover to the four-target manifest. Versions
 before v1.3.4 do not understand the edition targets and must be upgraded with a

@@ -58,6 +58,7 @@ The top toolbar serves as the mission control for contest grading:
 2. **Contest Context & File State**: Displays active archive filename with dirty indicator `*` when uncommitted score changes exist.
 3. **Utility & Branding Controls**:
    * **Brand Logo Action**: Clickable logo button initiating a manual check or reflecting check state, rendered cleanly without intrusive browser title attributes.
+   * **Notification Center Bell (`src/features/announcements/NotificationCenter.tsx`)**: Toolbar bell icon with unread count badge (`1`–`99+`), opening an anchored `NotificationPopover` to browse, filter, mark read/delete, or open full bilingual announcements in `NotificationArticleModal`.
    * **In-App Update Action Chip**: Dynamic high-visibility pill indicator immediately to the left of Help. Automatically indicates update availability, shows real-time download progress bar for fast Core updates (~20 MB), and transitions into a 1-click *[Restart Now]* button.
    * **Donation / Coffee Action**: Friendly coffee cup button with explicit Vietnamese tooltip (`Ủng hộ tác giả một ly cà phê`); presents a confirmation modal before launching external QR donation link.
    * **Scoreboard Sort Toggle Button**: 3-state sort button (Điểm cao $\rightarrow$ thấp, Điểm thấp $\rightarrow$ cao, Mặc định) with instant hover hints and automatic tie-breaking.
@@ -123,6 +124,11 @@ All errors in the application follow the 3-Part Error UX standard:
 * **Core Update Priority**: Highlights **Core (Fast Update ~20 MB)** with the green `Recommended` badge.
 * **Zero Fear Messaging**: Clear reassurance that all existing compilers, custom paths, and configurations are safely preserved during the fast 3-second update.
 * **Progressive Feedback**: Real-time percentage progress bar during download followed by an instant *[Restart Now]* prompt.
+
+### 4.7. Signed Admin Notification Center (`src/features/announcements/`)
+* **Toolbar Bell & Unread Badge (`NotificationCenter.tsx`)**: Displays unread count using `tabular-nums`, keyboard accessible (`aria-expanded`, `Escape` dismissal), and never interrupts active judging with intrusive auto-popups.
+* **Anchored Notification Popover (`NotificationPopover.tsx`)**: Lists verified announcements with thumbnail/icon, title, summary, publication date, unread dot indicator, manual refresh action, and per-item delete action.
+* **Editorial Article Modal (`NotificationArticleModal.tsx`)**: Renders sanitized structured HTML (`h2`–`h4`, paragraphs, lists, code blocks, figures/captions, verified local media blobs, and allowlisted external links opened via native shell command) in Vietnamese or English.
 
 ---
 

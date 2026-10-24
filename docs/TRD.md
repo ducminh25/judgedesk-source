@@ -1,8 +1,8 @@
 # Technical Requirements Document (TRD) — JudgeDesk
 
 **Project Name**: JudgeDesk  
-**Application Source Baseline**: `v1.6.0` (eight-file application lockstep plus `crates/judgedesk-core/Cargo.toml` at `1.6.0`)
-**Development Target**: `v1.6.0`
+**Application Source Baseline**: `v1.6.1` (eight-file application lockstep plus `crates/judgedesk-core/Cargo.toml` at `1.6.1`)
+**Development Target**: `v1.6.1`
 **Document Status**: Official / Approved  
 **Classification**: Internal / Technical Specification  
 
@@ -81,6 +81,7 @@ graph TD
   * **Process Tree Supervisor**: Tracks spawned sidecar binaries (`server-<target>` and `judgedesk-native-executor`) and guarantees zero orphan processes on application exit or crash.
   * **Update Handoff**: Coordinates staging, validation, and in-place application restarts during 1-click update installation.
   * **Archive Engine**: Validates and extracts `.judgedesk` ZIP archives securely into temporary isolated directories.
+  * **Signed Admin Announcements Service (`src-tauri/src/announcements/`)**: Fetches, verifies (`Ed25519` signature + anti-rollback `sequence` high-water mark), sanitizes, decodes media (`SHA-256` + dimension/memory bounds), and caches official announcements locally under `appDataDir/announcements/`.
 
 ### 2.3. Tier 3: Backend Sidecar (Node.js SEA)
 * **Technology Stack**: Node.js 24.19.0 compiled into Single Executable Applications (SEA) via `esbuild` and `postject`.
@@ -197,9 +198,9 @@ Every release version bump must match across:
 * **Mechanism**: Migrates legacy toolchain copies from historical application directories to user storage `%LOCALAPPDATA%\ThemisV2\toolchains\<packageId>` and preserves receipts.
 * **Core Certified Recognition**: Packages with valid receipts in AppData are automatically resolved as `source: "managed"`, `provenance: "managed-package"`, and `isCertified: true`, allowing instant execution in the Native Sandbox without security warnings.
 
-### 7.3. Dual Distribution Model
-1. **In-App Updater**: Defaults to lightweight Core update packages (~20 MB), downloading and updating in 3–5 seconds. Regardless of original edition, updating applies the Core payload while retaining existing compilers and configurations.
-2. **GitHub Releases**: Publishes both Full all-in-one installers (~813 MB) for offline USB setup and Core installers (~20 MB).
+### 7.3. Dual Distribution Model (Windows, macOS & Linux)
+1. **In-App Updater**: Downloads lightweight Core update packages (~20 MB) on Windows/macOS and format-isolated bundle updates (`deb`, `rpm`, `appimage`) on Linux, preserving existing compilers and configurations.
+2. **GitHub Releases**: Publishes both **Full** all-in-one offline installers (Windows `.msi`, macOS `.dmg`, and Linux `.deb` / `.rpm` / `.AppImage` pre-bundling `gcc-linux-x64`, `python-linux-x64`, `fpc-linux-x64`, `temurin21-linux-x64`, and `scratch-linux-x64` with per-file `SHA-256` content indices) and **Core** installers.
 
 ### 7.4. Universal Precompiled Header Subsystem (`server/judge/universal-pch.ts`)
 * **Objective**: Eliminate repetitive compilation overhead of `<bits/stdc++.h>` (which contains over 50,000 lines of standard C++ templates).

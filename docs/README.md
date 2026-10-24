@@ -1,7 +1,7 @@
 # JudgeDesk Documentation Index
 
 Chào mừng bạn đến với kho tài liệu chuẩn của dự án **JudgeDesk** (`ducminh25/judgedesk-source`).  
-`v1.6.0` là application source baseline hiện tại (8 file phiên bản đồng bộ ở `1.6.0` cùng `crates/judgedesk-core/Cargo.toml` ở `1.6.0`), hỗ trợ đầy đủ **Windows 10/11 x64**, **macOS Apple Silicon (ARM64)** và **Linux x86_64 (`amd64` — Ubuntu 22.04 LTS, 24.04 LTS, 26.04 LTS+ qua `.deb`, `.rpm`, `.AppImage`)**. Sáu tài liệu cốt lõi bên dưới mô tả baseline sản phẩm và đã được cập nhật đồng bộ:
+`v1.6.1` là application source baseline hiện tại (8 file phiên bản đồng bộ ở `1.6.1` cùng `crates/judgedesk-core/Cargo.toml` ở `1.6.1`), hỗ trợ đầy đủ **Windows 10/11 x64**, **macOS Apple Silicon (ARM64)** và **Linux x86_64 (`amd64` — Ubuntu 22.04 LTS, 24.04 LTS, 26.04 LTS+ với cả bản `Full` & `Core` qua `.deb`, `.rpm`, `.AppImage`)** cùng **Trung tâm Thông báo Admin có chữ ký số (`Notification Center`)**. Sáu tài liệu cốt lõi bên dưới mô tả baseline sản phẩm và đã được cập nhật đồng bộ:
 
 ---
 
@@ -9,16 +9,18 @@ Chào mừng bạn đến với kho tài liệu chuẩn của dự án **JudgeDe
 
 | # | Tài Liệu | Tệp | Mô Tả Tóm Tắt |
 | :-: | :--- | :--- | :--- |
-| **1** | **PRD (Product Requirements Document)** | [`PRD.md`](./PRD.md) | Tầm nhìn sản phẩm, đối tượng người dùng (GV Tin học, HSG, Tin học trẻ), 6 ngôn ngữ hỗ trợ (C++, C, Python, Pascal, Java, Scratch), chấm offline, subtasks, bài thi tương tác (Interactive), chấm điểm phân số (Rational scoring), trần bộ nhớ 1024 MB, custom checkers đa định dạng, OSD `F8`, container `.judgedesk`, In-App Fast Updates, và các chỉ số chất lượng. |
-| **2** | **TRD (Technical Requirements Document)** | [`TRD.md`](./TRD.md) | Kiến trúc 4 tầng (React 19 UI, Tauri v2 shell, Node.js SEA sidecar, Rust Native Executor), Scratch Headless VM, Universal PCH (`universal-pch.ts`), runner bài tương tác 2 chiều, giao thức IPC 16-byte LE binary, mô hình sandbox đa nền tảng, cơ chế Zero-Copy & Deduplication toolchains. |
-| **3** | **UI/UX Design Document** | [`UI_UX_DESIGN.md`](./UI_UX_DESIGN.md) | Hệ thống Design System (Tailwind CSS v4 tokens, Light/Dark theme), thanh Toolbar, Scoreboard matrix với nút sắp xếp 3 trạng thái, chip cập nhật 1-click & nút ủng hộ, thông báo lỗi nổi AppErrorToast 3 thành phần (What, Why, Action), modal cấu hình subtasks/presets, và bản đồ phím tắt `F1`-`F12`. |
+| **1** | **PRD (Product Requirements Document)** | [`PRD.md`](./PRD.md) | Tầm nhìn sản phẩm, đối tượng người dùng (GV Tin học, HSG, Tin học trẻ), 6 ngôn ngữ hỗ trợ (C++, C, Python, Pascal, Java, Scratch), chấm offline, subtasks, bài thi tương tác (Interactive), chấm điểm phân số (Rational scoring), trần bộ nhớ 1024 MB, custom checkers đa định dạng, OSD `F8`, container `.judgedesk`, Trung tâm Thông báo Admin (`FR-16`), bản cài Full/Core đa nền tảng, In-App Fast Updates, và các chỉ số chất lượng. |
+| **2** | **TRD (Technical Requirements Document)** | [`TRD.md`](./TRD.md) | Kiến trúc 4 tầng (React 19 UI, Tauri v2 shell, Pure Rust Core / Node.js SEA sidecar, Rust Native Executor), Scratch Headless VM, Universal PCH (`universal-pch.ts`), runner bài tương tác 2 chiều, giao thức IPC 16-byte LE binary, mô hình sandbox đa nền tảng, hệ thống xác thực thông báo Ed25519 (`src-tauri/src/announcements/`), cơ chế Zero-Copy & nhập gói Linux Full offline. |
+| **3** | **UI/UX Design Document** | [`UI_UX_DESIGN.md`](./UI_UX_DESIGN.md) | Hệ thống Design System (Tailwind CSS v4 tokens, Light/Dark theme), thanh Toolbar, Scoreboard matrix với nút sắp xếp 3 trạng thái, Trung tâm Thông báo Admin (chuông, popover & hộp thoại bài báo editorial), chip cập nhật 1-click & nút ủng hộ, thông báo lỗi nổi AppErrorToast 3 thành phần (What, Why, Action), modal cấu hình subtasks/presets, và bản đồ phím tắt `F1`-`F12`. |
 | **4** | **App Flow & Sequence Diagrams** | [`APP_FLOW.md`](./APP_FLOW.md) | Sơ đồ tuần tự (Mermaid Sequence Diagrams): Khởi động & Handshake, Tự động làm ấm Sandbox, Nạp Workspace, Pipeline chấm bài đa ngôn ngữ, Luồng bài tương tác 2 chiều, Universal PCH, OSD, Container `.judgedesk`, Xuất Excel `F12` theo thứ tự hiển thị, và Luồng Fast Update. |
 | **5** | **Backend Schema & API Specification** | [`BACKEND_SCHEMA.md`](./BACKEND_SCHEMA.md) | Đặc tả toàn bộ REST Endpoints, NDJSON & SSE Event Streams, Language Profile Contracts (kèm `scratch-turbowarp-v1`), cấu trúc JSON `Config.cfg` (`polygonConfig`, `compile: { schemaVersion: 1, profile, flags }`, interactive & 1024MB memory), schema `manifest.json`, schema receipt `.judgedesk-package.json`, và mã lỗi chuẩn. |
-| **6** | **Master Implementation Plan** | [`IMPLEMENTATION_PLAN.md`](./IMPLEMENTATION_PLAN.md) | Tổng kết chi tiết 12 cột mốc triển khai (`v1.0.0` $\rightarrow$ `v1.5.5`), hiện trạng kiểm thử toàn diện và các tiêu chuẩn kỹ thuật phát hành. |
+| **6** | **Master Implementation Plan** | [`IMPLEMENTATION_PLAN.md`](./IMPLEMENTATION_PLAN.md) | Tổng kết chi tiết 14 cột mốc triển khai (`v1.0.0` $\rightarrow$ `v1.6.1`), hiện trạng kiểm thử toàn diện và các tiêu chuẩn kỹ thuật phát hành. |
 
 ---
 
 ## 🛠️ Tài Liệu Kỹ Thuật Bổ Trợ Khác
+* [`admin-announcements-publishing.md`](./admin-announcements-publishing.md): Hướng dẫn soạn thảo, kiểm duyệt, ký số Ed25519 và xuất bản thông báo Admin qua GitHub Pages.
+* [`PUBLIC_RELEASE_README.md`](./PUBLIC_RELEASE_README.md): Bản README chuẩn dành cho kho phân phối công khai `ducminh25/judgedesk`.
 * [`pure-rust-core-start-here.md`](./pure-rust-core-start-here.md): Điểm bắt đầu ngắn gọn cho người dùng, Antigravity và Codex; quy tắc conversation, ownership và verification.
 * [`verification/pure-rust-core/STATUS.md`](./verification/pure-rust-core/STATUS.md): Nguồn sự thật hiện tại về package nào READY/đang làm/đang review/DONE/có thể skip.
 * [`verification/pure-rust-core/WORKLOG.md`](./verification/pure-rust-core/WORKLOG.md): Nhật ký append-only về claim, handoff, test evidence, blocker và quyết định review.

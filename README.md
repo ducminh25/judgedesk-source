@@ -1,6 +1,6 @@
 # JudgeDesk
 
-JudgeDesk là ứng dụng desktop chấm bài lập trình cục bộ phục vụ các kỳ thi và lớp học, chạy gốc (native) trên **Windows 10/11 x64**, **macOS Apple Silicon (ARM64, macOS 11+)** và **Linux x86_64 (`amd64` — Ubuntu 22.04 LTS, 24.04 LTS, 26.04 LTS+ và các distro tương thích)**. Ứng dụng hoạt động 100% offline khi chấm thi, hỗ trợ bảng điểm trực tiếp, cấu hình nhóm test (Subtasks), chấm bài tương tác (Interactive), giao diện sáng/tối cùng hai ngôn ngữ giao diện tiếng Việt và tiếng Anh.
+JudgeDesk là ứng dụng desktop chấm bài lập trình cục bộ phục vụ các kỳ thi và lớp học, chạy gốc (native) trên **Windows 10/11 x64**, **macOS Apple Silicon (ARM64, macOS 11+)** và **Linux x86_64 (`amd64` — Ubuntu 22.04 LTS, 24.04 LTS, 26.04 LTS+ và các distro tương thích)**. Ứng dụng hoạt động 100% offline khi chấm thi, hỗ trợ bảng điểm trực tiếp, cấu hình nhóm test (Subtasks), chấm bài tương tác (Interactive), trung tâm thông báo chính thức có chữ ký số (Notification Center), giao diện sáng/tối cùng hai ngôn ngữ giao diện tiếng Việt và tiếng Anh.
 
 Hệ thống chấm hỗ trợ 6 ngôn ngữ: **C++, C, Python, Pascal, Java và Scratch (`.sb3`, `.sb2`, `.sb`)** thông qua trình thực thi an toàn (native sandbox runner) của từng hệ điều hành, không tự động chuyển đổi sang compiler khác khi gặp lỗi cấu hình.
 
@@ -39,27 +39,31 @@ Hệ thống chấm hỗ trợ 6 ngôn ngữ: **C++, C, Python, Pascal, Java và
 
 ## Điểm Nổi Bật (Tính Đến Phiên Bản v1.6.1)
 
-1. **Hỗ Trợ Chính Thức Linux Đa Phiên Bản (`Ubuntu 22.04 LTS+`, `.deb` / `.rpm` / `.AppImage`) & Pure Rust Core**:
+1. **Hỗ Trợ Chính Thức Linux Đa Phiên Bản (`Ubuntu 22.04 LTS+`, Đủ Bản `Full` & `Core` cho `.deb` / `.rpm` / `.AppImage`) & Pure Rust Core**:
+   - Phát hành đầy đủ cả **Bản Full** (đóng gói sẵn toàn bộ 6 ngôn ngữ offline gồm xPack GCC 14.2.0-2 kèm binutils/sysroot, CPython 3.12.13, Free Pascal 3.2.2, Eclipse Temurin JDK 21.0.12+8 và `scratch-run` 0.1.7, tự động xác minh chỉ mục `SHA-256` từng tệp và nhập vào cache ngay lần chạy đầu tiên mà không cần mạng) và **Bản Core** (nhẹ gọn, tự động nhận diện mọi phiên bản compiler trên hệ thống kèm Scratch tích hợp sẵn) cho cả 3 định dạng `.deb`, `.rpm` và `.AppImage`.
    - Tích hợp backend `judgedesk-core` (Rust Axum) hiệu năng cao song hành cùng kiến trúc sidecar và `judgedesk-native-executor`.
-   - Cô lập thực thi bài nộp trên Linux bằng **Bubblewrap (`bwrap`) + systemd User Scope (`cgroup v2`) + bộ lọc syscall `seccomp-bpf`**, chặn hoàn toàn mạng và cô lập hệ thống tệp mà không yêu cầu quyền `root` khi chấm bài.
+   - Cô lập thực thi bài nộp trên Linux bằng **Bubblewrap (`bwrap`) + systemd User Scope (`cgroup v2`) + bộ lọc syscall `seccomp-bpf`**, chặn hoàn toàn mạng, ánh xạ đường dẫn ngắn (`/jd-tools`, `/jd-work`) giúp Free Pascal biên dịch ổn định với đường dẫn dài và cô lập hệ thống tệp mà không yêu cầu quyền `root` khi chấm bài.
    - Binary Linux được liên kết tương thích chuẩn ELF `GLIBC <= 2.34`, chạy mượt từ **Ubuntu 22.04 LTS**, **Ubuntu 24.04 LTS** đến **Ubuntu 26.04 LTS+** và các distro hiện đại mà không bị khoá cứng phiên bản thư viện hay phiên bản GCC/Python.
-2. **In-App Updater Cách Ly Đúng Định Dạng Gói Cài Đặt (Format-Isolated Updater)**:
+2. **Trung Tâm Thông Báo Admin Có Chữ Ký Số (`Signed Admin Announcements & Notification Center`)**:
+   - Tích hợp biểu tượng chuông thông báo trên thanh công cụ với badge số tin chưa đọc, bảng tin neo trực tiếp (`Popover`) và hộp thoại đọc bài báo dạng editorial (hỗ trợ Tiếng Việt & Tiếng Anh).
+   - Nhận bản tin, hướng dẫn và thông báo quan trọng qua kênh phân phối tĩnh được ký số bằng khoá **Ed25519** độc lập (`announcements-v1`), bảo vệ chống tấn công hạ cấp (`sequence` high-water mark), lọc mã HTML an toàn, kiểm tra `SHA-256` và giải mã ảnh trực tiếp trong nhân Rust (`src-tauri`), lưu trữ bộ nhớ đệm đọc offline mà không ảnh hưởng tới quá trình chấm thi.
+3. **In-App Updater Cách Ly Đúng Định Dạng Gói Cài Đặt (Format-Isolated Updater)**:
    - Trên Windows và macOS, trình cập nhật tải gói Core nhẹ (~20MB) để cập nhật nhanh trong nền và giữ nguyên toàn bộ dữ liệu + toolchains.
-   - Trên Linux, trình cập nhật tự động nhận diện định dạng cài đặt gốc (`deb`, `rpm`, hoặc `appimage`) qua manifest mục tiêu riêng (`linux-x86_64-deb-core`, `linux-x86_64-rpm-core`, `linux-x86_64-appimage-core`), đảm bảo người dùng cài `.rpm` hoặc `.AppImage` luôn tải đúng định dạng tương ứng khi cập nhật, tuyệt đối không tải nhầm `.deb`.
-3. **Universal Precompiled Header C++ (`bits/stdc++.h.gch`)**: Tự động sinh và cache PCH cho mọi compiler C++ (Managed GCC, MinGW-w64, MSYS2 UCRT64, Apple Clang, Linux GCC/Clang) dựa trên canonical path, mtime, size và hash nhận diện, tăng tốc biên dịch lên tới ~16.5 lần.
-4. **Chấm Bài Thi Tương Tác Đa Nền Tảng (Interactive Problems & Interactor)**: Hỗ trợ chấm bài tương tác hai chiều trên cả Windows (`windows_job`), macOS (`macos_seatbelt`) và Linux (`linux_interactive`) với hai đường ống ẩn danh hai chiều (bidirectional anonymous pipes), chống deadlock `EOF`/`SIGPIPE` và hỗ trợ interactor viết bằng C++ (`testlib.h`) hoặc Python.
-5. **Chấm Điểm Phân Số Chính Xác Tuyệt Đối (Rational Scoring Engine)**: Tính toán điểm qua phân số tối giản (GCD) triệt tiêu hoàn toàn sai số trôi số thực IEEE 754 trên bảng điểm và xuất Excel.
-6. **Nâng Giới Hạn Bộ Nhớ Lên 1024 MB**: Hỗ trợ Memory Limit từ 8 MB đến 1024 MB (1 GB) trên cả Windows, macOS và Linux, mặc định 256 MB chuẩn Olympic / HSG / ICPC.
-7. **Chấm Thi Scratch Hoàn Thiện Tuyệt Đối**: Runner `scratch-run` (VNOI / TurboWarp VM) tích hợp sẵn, nạp test qua `ask and wait` và xuất kết quả qua `say`/`think`, cô lập an toàn trong OS Sandbox.
-8. **Làm Ấm Sandbox Ngầm (Background Judge Pre-warm)**: Khởi động nền làm nóng môi trường thực thi và compiler ngay khi mở ứng dụng, loại bỏ độ trễ chấm lần đầu.
-9. **Tự Động Nhận Diện & Di Trú Chính Sách Thực Thi (Toolchain Auto-Discovery & Policy Migration)**: Tự động phát hiện mọi phiên bản `g++`/`gcc`/`clang++`, `python3`, `fpc`, `javac` hợp lệ trên máy và chuyển đổi các cấu hình cũ sang chuẩn bảo mật mà không làm gián đoạn người dùng.
+   - Trên Linux, trình cập nhật tự động nhận diện định dạng cài đặt gốc (`deb`, `rpm`, hoặc `appimage`) qua manifest mục tiêu riêng (`linux-x86_64-deb-core`/`full`, `linux-x86_64-rpm-core`/`full`, `linux-x86_64-appimage-core`/`full`), đảm bảo người dùng cài `.rpm` hoặc `.AppImage` luôn tải đúng định dạng tương ứng khi cập nhật, tuyệt đối không tải nhầm `.deb`.
+4. **Universal Precompiled Header C++ (`bits/stdc++.h.gch`)**: Tự động sinh và cache PCH cho mọi compiler C++ (Managed GCC, MinGW-w64, MSYS2 UCRT64, Apple Clang, Linux GCC/Clang) dựa trên canonical path, mtime, size và hash nhận diện, tăng tốc biên dịch lên tới ~16.5 lần.
+5. **Chấm Bài Thi Tương Tác Đa Nền Tảng (Interactive Problems & Interactor)**: Hỗ trợ chấm bài tương tác hai chiều trên cả Windows (`windows_job`), macOS (`macos_seatbelt`) và Linux (`linux_interactive`) với hai đường ống ẩn danh hai chiều (bidirectional anonymous pipes), chống deadlock `EOF`/`SIGPIPE` và hỗ trợ interactor viết bằng C++ (`testlib.h`) hoặc Python.
+6. **Chấm Điểm Phân Số Chính Xác Tuyệt Đối (Rational Scoring Engine)**: Tính toán điểm qua phân số tối giản (GCD) triệt tiêu hoàn toàn sai số trôi số thực IEEE 754 trên bảng điểm và xuất Excel.
+7. **Nâng Giới Hạn Bộ Nhớ Lên 1024 MB**: Hỗ trợ Memory Limit từ 8 MB đến 1024 MB (1 GB) trên cả Windows, macOS và Linux, mặc định 256 MB chuẩn Olympic / HSG / ICPC.
+8. **Chấm Thi Scratch Hoàn Thiện Tuyệt Đối**: Runner `scratch-run` (VNOI / TurboWarp VM) tích hợp sẵn, nạp test qua `ask and wait` và xuất kết quả qua `say`/`think`, cô lập an toàn trong OS Sandbox.
+9. **Làm Ấm Sandbox Ngầm (Background Judge Pre-warm)**: Khởi động nền làm nóng môi trường thực thi và compiler ngay khi mở ứng dụng, loại bỏ độ trễ chấm lần đầu.
+10. **Tự Động Nhận Diện & Di Trú Chính Sách Thực Thi (Toolchain Auto-Discovery & Policy Migration)**: Tự động phát hiện mọi phiên bản `g++`/`gcc`/`clang++`, `python3`, `fpc`, `javac` hợp lệ trên máy và chuyển đổi các cấu hình cũ sang chuẩn bảo mật mà không làm gián đoạn người dùng.
 
 ## Bản phân phối Core và Full
 
-JudgeDesk cung cấp các gói cài đặt phù hợp với từng nền tảng:
+JudgeDesk cung cấp đầy đủ hai phiên bản **Full** và **Core** trên cả 3 hệ điều hành:
 
-- **Bản Full (Windows `.msi` & macOS `.dmg`)**: Tích hợp sẵn trình biên dịch và runtime do ứng dụng quản lý (GCC, CPython, Free Pascal, Eclipse Temurin OpenJDK, Scratch Headless VM). Trên Windows, gói cài đặt chứa cả WebView2 runtime offline. Trên macOS, bản Full đi kèm Python, FPC, Java và Scratch runtime, riêng C/C++ sử dụng Apple Clang từ Xcode Command Line Tools. Đây là bản phù hợp cho phòng thi, máy giáo viên và môi trường không có kết nối mạng.
-- **Bản Core (Windows `.msi`, macOS `.dmg` & Linux `.deb` / `.rpm` / `.AppImage`)**: Chỉ gồm phần mềm chấm thi và Scratch Headless VM tích hợp sẵn. Trên Linux (`.deb`), trình quản lý gói `apt` tự động cài đặt `g++`, `python3`, `bubblewrap`, `zenity` cùng lúc với ứng dụng, và JudgeDesk tự động nhận diện ngay các trình biên dịch hệ thống ở chế độ `Local (auto-detect)` mà không cần cấu hình đường dẫn thủ công. Người dùng trên Windows/macOS cũng có thể tải thêm các gói compiler đã ký từ giao diện `F6` hoặc chọn compiler có sẵn trên máy.
+- **Bản Full (Windows `.msi`, macOS `.dmg` & Linux `.deb` / `.rpm` / `.AppImage`)**: Tích hợp sẵn trình biên dịch và runtime do ứng dụng quản lý (GCC 14.2, CPython 3.12, Free Pascal 3.2.2, Eclipse Temurin OpenJDK 21, Scratch Headless VM 0.1.7). Trên Windows, gói cài đặt chứa cả WebView2 runtime offline. Trên macOS, bản Full đi kèm Python, FPC, Java và Scratch runtime, riêng C/C++ sử dụng Apple Clang từ Xcode Command Line Tools. Trên Linux (`_full_amd64.deb`, `-full-1.x86_64.rpm`, `_full_amd64.AppImage`), toàn bộ 6 ngôn ngữ được đóng gói sẵn kèm chỉ mục xác thực `SHA-256` từng tệp và tự động kích hoạt ngay lần khởi chạy đầu tiên mà không cần mạng. Đây là bản khuyên dùng cho phòng thi, máy giáo viên và môi trường offline hoàn toàn.
+- **Bản Core (Windows `.msi`, macOS `.dmg` & Linux `.deb` / `.rpm` / `.AppImage`)**: Chỉ gồm phần mềm chấm thi và Scratch Headless VM tích hợp sẵn. Trên Linux (`.deb` Core), trình quản lý gói `apt` tự động cài đặt `g++`, `python3`, `bubblewrap`, `zenity` cùng lúc với ứng dụng, và JudgeDesk tự động nhận diện ngay các trình biên dịch hệ thống ở chế độ `Local (auto-detect)` mà không cần cấu hình đường dẫn thủ công. Người dùng trên Windows/macOS cũng có thể tải thêm các gói compiler đã ký từ giao diện `F6` hoặc chọn compiler có sẵn trên máy.
 
 Mọi bản cài đặt trên cùng hệ điều hành dùng chung định danh ứng dụng (`com.themisv2.judge`) và vị trí lưu trữ dữ liệu (`%LOCALAPPDATA%\ThemisV2` trên Windows, `~/Library/Application Support/ThemisV2` trên macOS, `~/.local/share/ThemisV2` trên Linux).
 
@@ -72,8 +76,9 @@ Tài liệu dự án được tổ chức chi tiết và chuẩn hóa cho lập 
 - **[docs/TRD.md](docs/TRD.md)**: Đặc tả yêu cầu kỹ thuật (Technical Requirements Document) — Kiến trúc 4 tầng, giao thức IPC 16-byte LE, mô hình sandbox đa nền tảng, Universal PCH, giới hạn tài nguyên.
 - **[docs/APP_FLOW.md](docs/APP_FLOW.md)**: Sơ đồ tuần tự trực quan (Mermaid Sequence Diagrams) — Khởi động, Handshake, Chấm batch, Bài tương tác, Pre-warm, OSD watcher, Lưu/Mở `.judgedesk`, Xuất Excel `F12`, Fast Update.
 - **[docs/BACKEND_SCHEMA.md](docs/BACKEND_SCHEMA.md)**: Đặc tả toàn bộ REST API Endpoints, SSE Streams, Language Profile Contracts, cấu trúc JSON `Config.cfg`, schema `.judgedesk`.
-- **[docs/UI_UX_DESIGN.md](docs/UI_UX_DESIGN.md)**: Hệ thống thiết kế Design System (Tailwind CSS v4 tokens, Theme Sáng/Tối, Bảng điểm ma trận, Thông báo lỗi nổi 3 thành phần, Bản đồ phím tắt `F1`-`F12`).
-- **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)**: Kế hoạch triển khai tổng thể & Lịch sử các cột mốc phát triển (`v1.0.0` đến `v1.6.0`), hiện trạng kiểm thử toàn diện.
+- **[docs/UI_UX_DESIGN.md](docs/UI_UX_DESIGN.md)**: Hệ thống thiết kế Design System (Tailwind CSS v4 tokens, Theme Sáng/Tối, Bảng điểm ma trận, Trung tâm Thông báo Admin, Thông báo lỗi nổi 3 thành phần, Bản đồ phím tắt `F1`-`F12`).
+- **[docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)**: Kế hoạch triển khai tổng thể & Lịch sử các cột mốc phát triển (`v1.0.0` đến `v1.6.1`), hiện trạng kiểm thử toàn diện.
+- **[docs/admin-announcements-publishing.md](docs/admin-announcements-publishing.md)**: Quy trình soạn thảo, kiểm duyệt, ký số Ed25519 và xuất bản thông báo Admin qua GitHub Pages.
 - **[docs/CONTEST-FORMAT.md](docs/CONTEST-FORMAT.md)**: Đặc tả định dạng container file `.judgedesk` (ZIP layout).
 - **[docs/scratch-integration.md](docs/scratch-integration.md)**: Hướng dẫn nộp bài & đặc tả kỹ thuật chấm bài Scratch (.sb3, .sb2, .sb).
 - **[INSTALL.md](INSTALL.md)**: Hướng dẫn cài đặt và xác minh tệp cài đặt cho Windows, macOS và Linux (`.deb`, `.rpm`, `.AppImage`).
@@ -117,10 +122,11 @@ npm run test:stress
 npm run build:windows:release:local
 ```
 
-Đóng gói bộ cài Linux `x86_64` (`.deb`, `.rpm`, `.AppImage` kèm kiểm tra `GLIBC <= 2.34` trong `release-assets-linux/`):
+Đóng gói bộ cài Linux `x86_64` Core và Full (`.deb`, `.rpm`, `.AppImage` kèm kiểm tra `GLIBC <= 2.34` trong `release-assets-linux/`):
 
 ```bash
-bash scripts/build-linux-release.sh
+JUDGEDESK_LINUX_EDITION=core bash scripts/build-linux-release.sh
+JUDGEDESK_LINUX_EDITION=full bash scripts/build-linux-release.sh
 bash scripts/verify-linux-deb.sh
 ```
 
@@ -128,11 +134,11 @@ Gói phát hành macOS chính thức được tạo qua pipeline CodeMagic `maco
 
 ## Cấu trúc mã nguồn
 
-- `shared/`: Định nghĩa kiểu dữ liệu và cấu hình giao tiếp frontend/backend.
-- `src/`: Giao diện React 19, các tính năng quản lý bài thi, bảng điểm, toolbar, updater, và Help Center.
-- `crates/judgedesk-core/`: Backend Rust native (`Axum` HTTP/SSE, engine chấm bài, toolchain discovery, Universal PCH, OSD watcher, contest archive).
+- `shared/`: Định nghĩa kiểu dữ liệu, cấu hình giao tiếp frontend/backend, chính sách HTML/trust cho thông báo (`announcements-*`) và chỉ mục nội dung toolchain.
+- `src/`: Giao diện React 19, các tính năng quản lý bài thi, bảng điểm, toolbar, trung tâm thông báo (`features/announcements/`), updater, và Help Center.
+- `crates/judgedesk-core/`: Backend Rust native (`Axum` HTTP/SSE, engine chấm bài, toolchain discovery & bundled full import, Universal PCH, OSD watcher, contest archive).
 - `server/judge/`: Quản lý compiler, Universal PCH (`universal-pch.ts`), background pre-warm, bài tương tác (`interactor-runner.ts`), bộ phát hiện bài làm, cơ chế chấm, checker và tính điểm số hữu tỉ (Rational scoring).
 - `server/toolchains/`: Quản lý tải xuống, lưu trữ, di trú chính sách thực thi (`migration.ts`), và xác thực chữ ký SHA-256/Ed25519 cho toolchains.
 - `server/platform/`: Tương tác API hệ điều hành (Windows AppContainer / macOS Sandbox / Linux process supervision, Parent Watchdog).
 - `native-executor/`: Module Rust thực thi mã nguồn thí sinh trong môi trường cách ly an toàn (Windows AppContainer & Job Objects / macOS Run Guardian & Seatbelt / Linux Bubblewrap + cgroup v2 + seccomp-bpf).
-- `src-tauri/`: Cấu hình cửa sổ desktop Tauri v2, single-instance guard, process supervisor và tiến trình backend sidecar.
+- `src-tauri/`: Cấu hình cửa sổ desktop Tauri v2, single-instance guard, process supervisor, dịch vụ xác thực & lưu đệm thông báo Admin (`src/announcements/`), và tiến trình backend sidecar.

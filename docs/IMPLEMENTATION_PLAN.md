@@ -1,8 +1,8 @@
 # Master Implementation Plan — JudgeDesk
 
 **Project Name**: JudgeDesk  
-**Application Source Baseline**: `v1.5.5` (8-file application lockstep; `crates/judgedesk-core/Cargo.toml` at `1.5.1`; historical v1.5 baseline `v1.5.0`)
-**Development Target**: `v1.6.0` — see [`pure-rust-core-detailed-implementation-plan.md`](./pure-rust-core-detailed-implementation-plan.md); keep all eight application version files at `1.5.5` until the final coordinated `WP10.3` release bump.
+**Application Source Baseline**: `v1.6.1` (8-file application lockstep plus `crates/judgedesk-core/Cargo.toml` at `1.6.1`)
+**Development Target**: `v1.6.1`
 **Document Status**: Official / Approved  
 **Classification**: Implementation History & Engineering Standards  
 
@@ -10,7 +10,7 @@
 
 ## 1. Executive Implementation History
 
-JudgeDesk đã trải qua 12 giai đoạn triển khai cốt lõi để hoàn thiện từ một nguyên mẫu ứng dụng chấm bài cơ bản thành hệ thống chấm bài thi lập trình thi đấu ngoại tuyến đa nền tảng hoàn chỉnh:
+JudgeDesk đã trải qua 14 giai đoạn triển khai cốt lõi để hoàn thiện từ một nguyên mẫu ứng dụng chấm bài cơ bản thành hệ thống chấm bài thi lập trình thi đấu ngoại tuyến đa nền tảng hoàn chỉnh:
 
 ```mermaid
 timeline
@@ -27,6 +27,8 @@ timeline
     v1.4.46 : Bài Tương Tác & Chấm Điểm Phân Số : Dual-Job Runner cho Bài Interactive : Rational Scoring Engine triệt tiêu sai số float : Precompiled Header C++14
     v1.5.0 : Universal PCH C++, Di Trú Chính Sách & Brand Refresh : Universal PCH cho mọi compiler C++ : Tự động di trú Execution Policy : In-App Core Updater & Nút Ủng hộ : Bộ nhận diện thương hiệu mới
     v1.5.1 - v1.5.5 : Chuẩn Hóa Giao Diện Native, Compile Profiles, OSD Themis Web & Nền Tảng Rust Core : Cấu hình Compile Profile C/C++ (Themis, IOI/ICPC 2025, World Finals, Custom) : Tương thích OSD Themis Web & Lịch sử nộp bài : Selective Prewarm : Hardening X-JudgeDesk-Session & Nền tảng Pure-Rust Core Bước 1-5
+    v1.6.0 : Hoàn Tất Pure Rust Core & Hỗ Trợ Chính Thức Linux : Nhân điều phối Pure Rust (judgedesk-core) : Hỗ trợ Linux x86_64 (.deb, .rpm, .AppImage, GLIBC <= 2.34) : Linux Bubblewrap + cgroup v2 + seccomp-bpf Sandbox & Interactive Runner : Format-Isolated Updater
+    v1.6.1 : Trung Tâm Thông Báo Admin & Bản Cài Linux Full : Trung tâm Thông báo có chữ ký số Ed25519 (Notification Center) : Bản cài Linux Full (.deb, .rpm, .AppImage) đóng gói sẵn đủ 6 ngôn ngữ offline : Tương thích tên tệp không phân biệt hoa/thường & lọc tệp rác hệ điều hành
 ```
 
 ---
@@ -100,19 +102,30 @@ timeline
 * [x] **Cấu hình Compile Profile C/C++ theo từng bài toán (`ProblemConfigModal` — tab `compile`)**: Hỗ trợ 4 chế độ (`themis`, `modern_ioi_icpc_2025`, `icpc_world_finals`, `custom`) kèm bộ lọc `assertSafeCompileFlag` và tích hợp vào định danh cache Universal PCH.
 * [x] **Tương thích hoàn toàn OSD Themis Web (`docs/osd-themis-compatibility.md`)**: Nhận diện tên file không dấu chấm (`0[HS01][SUM]cpp`), atomic claim `.judgedesk-osd-*`, kiểm tra ổn định file theo `fd`/`inode`/`mtime`/SHA-256, lưu trữ `$History`, và xuất log CRLF chuẩn Themis (`logs/<raw-filename>.log`).
 * [x] **Selective Background Prewarm (`nativeCompilerKindsToPrewarm`)**: Chỉ prewarm compiler cho các ngôn ngữ thực tế có bài nộp trong phiên chấm.
-* [x] **Khóa biên bảo mật Desktop API (`X-JudgeDesk-Session`) & Nền tảng Pure-Rust Core (`crates/judgedesk-core` Bước 1–5)**: Ràng buộc token theo phiên khởi chạy, kiểm tra `Host`/`Origin`, cô lập `OwnedWorkspace`, chuyển compiler/custom checker/interactor trong `judgedesk-core` qua `ExecutorClient` và nâng cấp `Rational` sang `BigUint` (xem chi tiết tiến độ và các khoảng trống còn lại tại [`pure-rust-core-next-steps-audit.md`](./pure-rust-core-next-steps-audit.md)).
+* [x] **Khóa biên bảo mật Desktop API (`X-JudgeDesk-Session`) & Nền tảng Pure-Rust Core (`crates/judgedesk-core` Bước 1–5)**: Ràng buộc token theo phiên khởi chạy, kiểm tra `Host`/`Origin`, cô lập `OwnedWorkspace`, chuyển compiler/custom checker/interactor trong `judgedesk-core` qua `ExecutorClient` và nâng cấp `Rational` sang `BigUint`.
+
+### Cột Mốc 13: Hoàn Tất Pure Rust Core & Hỗ Trợ Chính Thức Linux (v1.6.0)
+* [x] **Nhân điều phối Pure Rust (`judgedesk-core`)**: Hợp nhất nhân xử lý kỳ thi, lập lịch chấm bài, tính điểm hữu tỉ, Universal PCH và quản lý trình biên dịch sang kiến trúc Pure Rust mặc định.
+* [x] **Hỗ trợ chính thức Linux `x86_64` (`amd64`, Ubuntu 22.04 LTS+)**: Phát hành đồng thời 3 định dạng bộ cài `.deb`, `.rpm`, `.AppImage` đạt chuẩn tương thích ngược ELF `GLIBC <= 2.34`.
+* [x] **Linux Native Sandbox (`linux-bwrap-cgroup-seccomp`) & Interactive Runner (`linux_interactive`)**: Cô lập thực thi bài nộp bằng Bubblewrap + systemd User Scope (`cgroup v2`) + `seccomp-bpf` và chấm bài tương tác hai chiều trên Linux.
+* [x] **Format-Isolated In-App Updater**: Cách ly kênh cập nhật theo đúng định dạng gói đã cài đặt (`deb`, `rpm`, `appimage`).
+
+### Cột Mốc 14: Trung Tâm Thông Báo Admin Có Chữ Ký Số & Bản Cài Linux Full (v1.6.1)
+* [x] **Trung tâm Thông báo Admin có chữ ký số (`Signed Admin Announcements & Notification Center`)**: Biểu tượng chuông thông báo trên thanh công cụ với badge số tin chưa đọc, bảng tin neo trực tiếp (`NotificationPopover`) và hộp thoại đọc bài báo dạng editorial song ngữ (Tiếng Việt & Tiếng Anh), xác thực chữ ký Ed25519 độc lập (`announcements-v1`), chống hạ cấp `sequence` và lưu đệm offline an toàn.
+* [x] **Bản cài đặt Đầy đủ (`Full Edition`) cho Linux (`x86_64`)**: Đóng gói sẵn toàn bộ 6 ngôn ngữ lập trình offline (`gcc-linux-x64` xPack GCC 14.2.0-2, `python-linux-x64` CPython 3.12.13, `fpc-linux-x64` Free Pascal 3.2.2, `temurin21-linux-x64` OpenJDK 21, `scratch-linux-x64` 0.1.7) trong cả 3 định dạng `_full_amd64.deb`, `-full-1.x86_64.rpm`, `_full_amd64.AppImage`, kèm xác minh chỉ mục `SHA-256` từng tệp và ánh xạ đường dẫn ngắn (`/jd-tools`, `/jd-work`) trong sandbox.
+* [x] **Tương thích Đa nền tảng**: Tự động nhận diện tên tệp không phân biệt hoa/thường trên Linux/macOS, lọc bỏ tệp rác hệ điều hành (`__MACOSX`, `.DS_Store`, `._*`) và chuẩn hoá nhập điểm thập phân dấu phẩy.
 
 ---
 
 ## 3. Hiện Trạng Kiểm Thử & Đo Lường Chất Lượng
 
-| Tiêu Chí Đo Lường | Mục Tiêu | Hiện Trạng Thực Tế (`v1.5.0`–`v1.5.5`) |
+| Tiêu Chí Đo Lường | Mục Tiêu | Hiện Trạng Thực Tế (`v1.6.1`) |
 | :--- | :--- | :--- |
-| **Hệ thống Unit & Integration Tests (Node/Server)** | Toàn bộ pass 100% | **>700 tests (0 Failed; xem chi tiết trong `STATUS.md` / `WORKLOG.md`)** |
-| **Hệ thống Kiểm thử `crates/judgedesk-core` (Working Tree)** | Toàn bộ pass 100% | **132/132 tests trên Windows x64, 133/133 tests trên macOS ARM64** |
+| **Hệ thống Unit & Integration Tests (Node/Server)** | Toàn bộ pass 100% | **>700 tests (0 Failed)** |
+| **Hệ thống Kiểm thử `crates/judgedesk-core` & `src-tauri`** | Toàn bộ pass 100% | **Pass 100% trên Windows x64, macOS ARM64 & Linux x86_64** |
 | **Kiểm tra TypeScript & Quality Gate (`check:fast`)** | 0 lỗi biên dịch / 0 vi phạm | **Clean (`tsc --noEmit` & `check-quality-gate.js`: Code 0)** |
 | **Tốc độ biên dịch C++ với PCH** | < 300 ms | **~230 ms (tăng tốc gấp ~16.5x so với không có PCH)** |
-| **Độ tương thích nền tảng** | Windows x64 & macOS ARM64 | **Đạt chuẩn trên cả Windows 10/11 và macOS Apple Silicon** |
+| **Độ tương thích nền tảng** | Windows x64, macOS ARM64 & Linux x86_64 | **Đạt chuẩn trên cả Windows 10/11, macOS Apple Silicon & Linux (Ubuntu 22.04 LTS+)** |
 
 ---
 

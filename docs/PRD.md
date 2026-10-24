@@ -1,8 +1,8 @@
 # Product Requirements Document (PRD) — JudgeDesk
 
 **Project Name**: JudgeDesk (formerly codenamed *ThemisV2*)
-**Released Baseline**: `v1.6.0`
-**Development Target**: `v1.6.0` (Pure Rust Core & Multi-Platform Desktop Release)
+**Released Baseline**: `v1.6.1`
+**Development Target**: `v1.6.1` (Pure Rust Core, Signed Admin Announcements & Multi-Platform Core/Full Desktop Release)
 **Document Status**: Official / Approved
 **Target Platform**: Windows 10/11 x64, macOS Apple Silicon (ARM64), Linux x86_64 (`amd64` — Ubuntu 22.04 LTS, 24.04 LTS, 26.04 LTS+ and compatible distributions)
 **Repository**: Public Source (`ducminh25/judgedesk-source`) & Public Releases (`ducminh25/judgedesk`)
@@ -136,7 +136,7 @@ JudgeDesk was conceived as the modern, cross-platform successor to legacy gradin
 * **FR-11.1**: Streamlined in-app update flow downloading lightweight Core updates (~20 MB) in 1-click without re-downloading unchanged toolchains.
 * **FR-11.2**: Zero-Copy & Automatic Deduplication: Built-in toolchains in Full edition are executed in read-only mode, while redundant copies in user AppData are cleaned up to save ~800 MB disk space.
 * **FR-11.3**: Automatic 100% Certified / Ready recognition: managed toolchains with official receipts are certified by default in Core edition without security warnings or extra user prompts.
-* **FR-11.4**: Dual GitHub Release packaging: continue publishing full all-in-one installers (Full MSI ~813 MB / Full DMG ~347 MB) for fresh offline computer lab setup alongside lightweight Core installers (~20 MB).
+* **FR-11.4**: Dual GitHub Release packaging across Windows, macOS, and Linux: publish both full all-in-one offline installers (Windows Full `.msi`, macOS Full `.dmg`, and Linux Full `.deb` / `.rpm` / `.AppImage` pre-bundling all 6 languages) for offline computer lab setup alongside lightweight Core installers.
 
 ### FR-12: Interactive Problem Evaluation & Interactors
 
@@ -162,6 +162,12 @@ JudgeDesk was conceived as the modern, cross-platform successor to legacy gradin
 
 * **FR-15.1**: Automatic migration of legacy toolchain configuration snapshots to the secure certified execution model upon startup (`migrateLegacyExecutionPolicy`).
 * **FR-15.2**: Streamlined Toolchain Manager (`F6`) eliminating redundant manual menus and experimental toggles.
+
+### FR-16: Signed Admin Announcements & Notification Center
+
+* **FR-16.1**: Toolbar notification bell icon displaying unread announcement badge counts, anchored notification list popover, and editorial-grade article reader modal supporting both Vietnamese and English.
+* **FR-16.2**: Cryptographic verification of static announcement feeds (`feed.json` via GitHub Pages) using a dedicated Ed25519 trust root (`announcements-v1`), monotonic sequence anti-rollback watermarks, strict HTML allowlist sanitization, and SHA-256 verified native media decoding.
+* **FR-16.3**: Offline-resilient local caching in the user application data directory so previously fetched announcements remain readable offline without interrupting judging sessions.
 
 ---
 
