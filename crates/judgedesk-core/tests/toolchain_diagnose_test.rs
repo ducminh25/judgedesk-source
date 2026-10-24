@@ -385,3 +385,221 @@ async fn test_genuine_toolchain_diagnostics_orchestrator_continues_after_profile
         }
     }
 }
+
+#[cfg(windows)]
+#[tokio::test]
+async fn test_windows_verbatim_resource_dir_and_executable_paths_diagnose_cpp_and_c() {
+    let environment = common::OwnedTestEnvironment::new();
+    common::ensure_test_environment();
+    let state = environment.with_isolated_roots(AppState::default);
+
+    let base_cpp =
+        judgedesk_core::toolchains::discovery::resolve_toolchain_for_profile("cpp", None, None);
+    assert!(
+        base_cpp.ready && base_cpp.executable_path.is_file(),
+        "expected ready C++ toolchain on Windows test host"
+    );
+    let base_c =
+        judgedesk_core::toolchains::discovery::resolve_toolchain_for_profile("c", None, None);
+    assert!(
+        base_c.ready && base_c.executable_path.is_file(),
+        "expected ready C toolchain on Windows test host"
+    );
+
+    // 1. Verify bundled_resource_toolchains_dirs_for strips `\\?\` when Tauri provides a verbatim THEMIS_RESOURCE_DIR
+    let canonical_root =
+        std::fs::canonicalize(environment.root()).expect("canonicalize isolated test root");
+    assert!(
+        canonical_root.to_string_lossy().starts_with(r"\\?\"),
+        "std::fs::canonicalize on Windows must produce a verbatim path: {}",
+        canonical_root.display()
+    );
+    let prev_res = std::env::var_os("THEMIS_RESOURCE_DIR");
+    std::env::set_var("THEMIS_RESOURCE_DIR", &canonical_root);
+    let bundled_dirs = judgedesk_core::toolchains::discovery::bundled_resource_toolchains_dirs_for(
+        &environment.root().join("app-data").join("toolchains"),
+    );
+    match prev_res {
+        Some(v) => std::env::set_var("THEMIS_RESOURCE_DIR", v),
+        None => std::env::remove_var("THEMIS_RESOURCE_DIR"),
+    }
+    assert!(
+        !bundled_dirs.is_empty()
+            && bundled_dirs
+                .iter()
+                .all(|d| !d.to_string_lossy().starts_with(r"\\?\")),
+        "bundled_resource_toolchains_dirs_for must strip \\\\?\\ prefix: {bundled_dirs:?}"
+    );
+
+    // 2. Simulate a fresh Windows Full install where app_data_dir/toolchains is empty
+    // and managed toolchains are resolved from a verbatim `\\?\` THEMIS_RESOURCE_DIR.
+    if let Some(ref pkg_root) = base_cpp.package_root {
+        if let Some(resource_base) = pkg_root.parent().and_then(|p| p.parent()) {
+            let verbatim_resource_base = std::fs::canonicalize(resource_base)
+                .expect("canonicalize resource base to verbatim path");
+            assert!(
+                verbatim_resource_base
+                    .to_string_lossy()
+                    .starts_with(r"\\?\"),
+                "expected verbatim resource base: {}",
+                verbatim_resource_base.display()
+            );
+            let fresh_app_data =
+                std::env::temp_dir().join(format!("jd_fresh_win_appdata_{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&fresh_app_data);
+            std::fs::create_dir_all(fresh_app_data.join("toolchains"))
+                .expect("create empty fresh app_data toolchains dir");
+
+            let prev_res = std::env::var_os("THEMIS_RESOURCE_DIR");
+            std::env::set_var("THEMIS_RESOURCE_DIR", &verbatim_resource_base);
+
+            let resolved_managed_cpp =
+                judgedesk_core::toolchains::discovery::find_managed_toolchain_in(
+                    &fresh_app_data.join("toolchains"),
+                    "cpp",
+                )
+                .expect("resolve managed cpp from verbatim THEMIS_RESOURCE_DIR");
+            assert_eq!(resolved_managed_cpp.source_mode, "managed");
+            assert!(
+                !resolved_managed_cpp
+                    .executable_path
+                    .to_string_lossy()
+                    .starts_with(r"\\?\"),
+                "managed executable_path must not start with \\\\?\\: {}",
+                resolved_managed_cpp.executable_path.display()
+            );
+            assert!(
+                resolved_managed_cpp
+                    .package_root
+                    .as_ref()
+                    .is_some_and(|p| !p.to_string_lossy().starts_with(r"\\?\")),
+                "managed package_root must not start with \\\\?\\: {:?}",
+                resolved_managed_cpp.package_root
+            );
+
+            let prev_path = std::env::var_os("PATH");
+            if let Some(ref raw_path) = prev_path {
+                let filtered: Vec<_> = std::env::split_paths(raw_path)
+                    .filter(|p| {
+                        let lower = p.to_string_lossy().to_ascii_lowercase();
+                        !lower.contains("mingw")
+                            && !lower.contains("gcc")
+                            && !lower.contains("msys")
+                            && !lower.contains("ucrt")
+                            && !lower.contains("clang")
+                            && !lower.contains("llvm")
+                    })
+                    .collect();
+                if let Ok(joined) = std::env::join_paths(filtered) {
+                    std::env::set_var("PATH", joined);
+                }
+            }
+
+            let managed_cpp_diag =
+                judgedesk_core::toolchains::diagnostics::diagnose_language_profile_in(
+                    Some(&fresh_app_data),
+                    "cpp",
+                    &state.platform,
+                    Some("managed"),
+                    None,
+                )
+                .await;
+            let managed_c_diag =
+                judgedesk_core::toolchains::diagnostics::diagnose_language_profile_in(
+                    Some(&fresh_app_data),
+                    "c",
+                    &state.platform,
+                    Some("managed"),
+                    None,
+                )
+                .await;
+
+            match prev_path {
+                Some(v) => std::env::set_var("PATH", v),
+                None => std::env::remove_var("PATH"),
+            }
+            match prev_res {
+                Some(v) => std::env::set_var("THEMIS_RESOURCE_DIR", v),
+                None => std::env::remove_var("THEMIS_RESOURCE_DIR"),
+            }
+            let _ = std::fs::remove_dir_all(&fresh_app_data);
+
+            assert!(
+                managed_cpp_diag.success,
+                "managed C++ diagnostic from verbatim THEMIS_RESOURCE_DIR failed: {managed_cpp_diag:?}"
+            );
+            assert!(
+                managed_c_diag.success,
+                "managed C diagnostic from verbatim THEMIS_RESOURCE_DIR failed: {managed_c_diag:?}"
+            );
+        }
+    }
+
+    // 3. Verify C++ and C diagnostics succeed even if local_path carries `\\?\`
+    // and system PATH has no external MinGW/GCC directories (preventing cc1plus/cc1 fallback).
+    let prev_path = std::env::var_os("PATH");
+    if let Some(ref raw_path) = prev_path {
+        let filtered: Vec<_> = std::env::split_paths(raw_path)
+            .filter(|p| {
+                let lower = p.to_string_lossy().to_ascii_lowercase();
+                !lower.contains("mingw")
+                    && !lower.contains("gcc")
+                    && !lower.contains("msys")
+                    && !lower.contains("ucrt")
+                    && !lower.contains("clang")
+                    && !lower.contains("llvm")
+            })
+            .collect();
+        if let Ok(joined) = std::env::join_paths(filtered) {
+            std::env::set_var("PATH", joined);
+        }
+    }
+
+    let verbatim_cpp_exe = std::fs::canonicalize(&base_cpp.executable_path)
+        .expect("canonicalize cpp executable to verbatim path");
+    assert!(verbatim_cpp_exe.to_string_lossy().starts_with(r"\\?\"));
+
+    let verbatim_c_exe = std::fs::canonicalize(&base_c.executable_path)
+        .expect("canonicalize c executable to verbatim path");
+    assert!(verbatim_c_exe.to_string_lossy().starts_with(r"\\?\"));
+
+    let cpp_diag = judgedesk_core::toolchains::diagnostics::diagnose_language_profile_in(
+        Some(environment.root()),
+        "cpp",
+        &state.platform,
+        Some("local_path"),
+        Some(&verbatim_cpp_exe.to_string_lossy()),
+    )
+    .await;
+
+    let c_diag = judgedesk_core::toolchains::diagnostics::diagnose_language_profile_in(
+        Some(environment.root()),
+        "c",
+        &state.platform,
+        Some("local_path"),
+        Some(&verbatim_c_exe.to_string_lossy()),
+    )
+    .await;
+
+    match prev_path {
+        Some(v) => std::env::set_var("PATH", v),
+        None => std::env::remove_var("PATH"),
+    }
+
+    assert!(
+        cpp_diag.success,
+        "C++ diagnostic with verbatim \\\\?\\ path failed: {cpp_diag:?}"
+    );
+    assert_eq!(cpp_diag.phase, "execution");
+    assert!(
+        c_diag.success,
+        "C diagnostic with verbatim \\\\?\\ path failed: {c_diag:?}"
+    );
+    assert_eq!(c_diag.phase, "execution");
+
+    state
+        .platform
+        .shutdown()
+        .await
+        .expect("drain diagnostic executor");
+}

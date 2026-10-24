@@ -107,12 +107,12 @@ fn wp10_2_default_backend_is_rust_with_explicit_node_rollback_and_no_fallback() 
 fn wp10_3_eight_file_and_core_crate_version_lockstep_is_1_6_0() {
     assert_eq!(
         env!("CARGO_PKG_VERSION"),
-        "1.6.0",
-        "WP10.3: crates/judgedesk-core version must be 1.6.0"
+        "1.6.1",
+        "WP10.3: crates/judgedesk-core version must be 1.6.1"
     );
     assert_eq!(
-        EXECUTOR_VERSION, "1.6.0",
-        "WP10.3: judgedesk-native-executor EXECUTOR_VERSION must be 1.6.0"
+        EXECUTOR_VERSION, "1.6.1",
+        "WP10.3: judgedesk-native-executor EXECUTOR_VERSION must be 1.6.1"
     );
 
     let root = repo_root();
@@ -120,41 +120,41 @@ fn wp10_3_eight_file_and_core_crate_version_lockstep_is_1_6_0() {
         &fs::read_to_string(root.join("package.json")).expect("read package.json"),
     )
     .expect("parse package.json");
-    assert_eq!(pkg_json["version"], "1.6.0");
+    assert_eq!(pkg_json["version"], "1.6.1");
 
     let tauri_conf: serde_json::Value = serde_json::from_str(
         &fs::read_to_string(root.join("src-tauri/tauri.conf.json")).expect("read tauri.conf.json"),
     )
     .expect("parse tauri.conf.json");
-    assert_eq!(tauri_conf["version"], "1.6.0");
+    assert_eq!(tauri_conf["version"], "1.6.1");
 
     let version_ts = fs::read_to_string(root.join("src/version.ts")).expect("read src/version.ts");
     assert!(
-        version_ts.contains("export const APP_VERSION = \"1.6.0\";"),
-        "src/version.ts must export APP_VERSION = 1.6.0"
+        version_ts.contains("export const APP_VERSION = \"1.6.1\";"),
+        "src/version.ts must export APP_VERSION = 1.6.1"
     );
 
     let check_ok = Command::new("node")
+        .current_dir(&root)
+        .env("GITHUB_REF_NAME", "v1.6.1")
+        .args(["scripts/check-release-version.js"])
+        .output()
+        .expect("run check-release-version.js v1.6.1");
+    assert!(
+        check_ok.status.success(),
+        "check-release-version.js v1.6.1 failed: {}",
+        String::from_utf8_lossy(&check_ok.stderr)
+    );
+
+    let check_stale_tag = Command::new("node")
         .current_dir(&root)
         .env("GITHUB_REF_NAME", "v1.6.0")
         .args(["scripts/check-release-version.js"])
         .output()
         .expect("run check-release-version.js v1.6.0");
     assert!(
-        check_ok.status.success(),
-        "check-release-version.js v1.6.0 failed: {}",
-        String::from_utf8_lossy(&check_ok.stderr)
-    );
-
-    let check_stale_tag = Command::new("node")
-        .current_dir(&root)
-        .env("GITHUB_REF_NAME", "v1.5.5")
-        .args(["scripts/check-release-version.js"])
-        .output()
-        .expect("run check-release-version.js v1.5.5");
-    assert!(
         !check_stale_tag.status.success(),
-        "check-release-version.js must reject stale v1.5.5 git tag after v1.6.0 bump"
+        "check-release-version.js must reject stale v1.6.0 git tag after v1.6.1 bump"
     );
 }
 

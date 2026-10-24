@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { PolygonConfig } from "../../types";
 import { addRational, createRational, divideRational, formatRational, multiplyRational, parseRational } from "../../../shared/rational";
-import { parseNonNegativePointInput, type TestDetail } from "./editor-state";
+import { normalizePointInputText, parseNonNegativePointInput, type TestDetail } from "./editor-state";
 import { formatTestSelection, parseTestSelection } from "./test-selection";
 
 interface Props {
@@ -51,22 +51,24 @@ export function GroupEditDialog({ groupName, config, tests, onApply, onCancel, o
   };
 
   const updateTotal = (value: string) => {
-    setTotal(value);
+    const normalized = normalizePointInputText(value);
+    setTotal(normalized);
     setEditedScore("total");
     setError("");
     try {
       const count = parseTestSelection(selection, tests.length).length;
-      setEach(count ? formatRational(divideRational(parseNonNegativePointInput(value), createRational(count))) : "");
+      setEach(count ? formatRational(divideRational(parseNonNegativePointInput(normalized), createRational(count))) : "");
     } catch { setEach(""); }
   };
 
   const updateEach = (value: string) => {
-    setEach(value);
+    const normalized = normalizePointInputText(value);
+    setEach(normalized);
     setEditedScore("each");
     setError("");
     try {
       const count = parseTestSelection(selection, tests.length).length;
-      setTotal(formatRational(multiplyRational(parseNonNegativePointInput(value), createRational(count))));
+      setTotal(formatRational(multiplyRational(parseNonNegativePointInput(normalized), createRational(count))));
     } catch { setTotal(""); }
   };
 

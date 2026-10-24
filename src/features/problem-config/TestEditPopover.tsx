@@ -1,9 +1,12 @@
-import { type FormEvent } from "react";
+import { type FormEvent, useState } from "react";
 import { Clock, Coins, FolderTree, X } from "lucide-react";
-import { TestEditPopover as PopoverState } from "./editor-state";
+import {
+  normalizePointInputText,
+  parseNonNegativePointInput,
+  TestEditPopover as PopoverState,
+} from "./editor-state";
 import { useTranslation } from "react-i18next";
 import {
-  parseRational,
   formatRational,
   divideRational,
   multiplyRational,
@@ -24,15 +27,30 @@ interface Props {
 export function TestEditPopover(props: Props) {
   const { popover } = props;
   const { t } = useTranslation();
-
-  const handleSubmit = (event?: FormEvent) => {
-    if (event) event.preventDefault();
-    props.onSave();
-  };
+  const [error, setError] = useState("");
 
   const isPointsType = popover.type === "points" || popover.type === "batchPoints";
   const isTimeType = popover.type === "time" || popover.type === "batchTime";
   const isGroupType = popover.type === "group" || popover.type === "batchGroup";
+
+  const handleSubmit = (event?: FormEvent) => {
+    if (event) event.preventDefault();
+    if (isPointsType) {
+      try {
+        if (props.input.trim() !== "") {
+          parseNonNegativePointInput(props.input);
+        }
+        if (popover.type === "batchPoints" && props.batchPointsTotal.trim() !== "") {
+          parseNonNegativePointInput(props.batchPointsTotal);
+        }
+      } catch {
+        setError(t("problemConfig.testEdit.invalidPoint", "Hãy nhập số điểm không âm hoặc phân số hợp lệ (vd: 0.5, 1/3, 2)."));
+        return;
+      }
+    }
+    setError("");
+    props.onSave();
+  };
 
   const getHeaderInfo = () => {
     if (popover.type === "batchPoints") {
@@ -129,7 +147,10 @@ export function TestEditPopover(props: Props) {
             <TextEditor
               label={t("problemConfig.testConfig.points")}
               value={props.input}
-              onChange={props.onInputChange}
+              onChange={(value) => {
+                setError("");
+                props.onInputChange(normalizePointInputText(value));
+              }}
               hint={t("problemConfig.testEdit.pointHint", "Nhập số hoặc phân số (vd: 1/3, 0.5, 2)")}
               onEnter={handleSubmit}
             />
@@ -193,13 +214,18 @@ export function TestEditPopover(props: Props) {
                   placeholder="vd: 2 hoặc 100/3"
                   value={props.batchPointsTotal}
                   onChange={(event) => {
-                    const text = event.target.value;
+                    const text = normalizePointInputText(event.target.value);
+                    setError("");
                     props.onBatchPointsTotalChange(text);
                     const val = text.trim();
                     if (val && props.selectedCount > 0) {
-                      const totalRat = parseRational(val);
-                      const eachRat = divideRational(totalRat, createRational(props.selectedCount));
-                      props.onInputChange(formatRational(eachRat));
+                      try {
+                        const totalRat = parseNonNegativePointInput(val);
+                        const eachRat = divideRational(totalRat, createRational(props.selectedCount));
+                        props.onInputChange(formatRational(eachRat));
+                      } catch {
+                        // Keep draft while user is typing.
+                      }
                     }
                   }}
                   onKeyDown={(event) => {
@@ -220,13 +246,18 @@ export function TestEditPopover(props: Props) {
                   placeholder="vd: 1/3 hoặc 0.5"
                   value={props.input}
                   onChange={(event) => {
-                    const text = event.target.value;
+                    const text = normalizePointInputText(event.target.value);
+                    setError("");
                     props.onInputChange(text);
                     const val = text.trim();
                     if (val && props.selectedCount > 0) {
-                      const eachRat = parseRational(val);
-                      const totalRat = multiplyRational(eachRat, createRational(props.selectedCount));
-                      props.onBatchPointsTotalChange(formatRational(totalRat));
+                      try {
+                        const eachRat = parseNonNegativePointInput(val);
+                        const totalRat = multiplyRational(eachRat, createRational(props.selectedCount));
+                        props.onBatchPointsTotalChange(formatRational(totalRat));
+                      } catch {
+                        // Keep draft while user is typing.
+                      }
                     }
                   }}
                   onKeyDown={(event) => {
@@ -238,6 +269,12 @@ export function TestEditPopover(props: Props) {
                 />
               </div>
             </div>
+          )}
+
+          {error && (
+            <p role="alert" className="text-xs text-rose-700 dark:text-rose-300">
+              {error}
+            </p>
           )}
 
           {/* Footer Actions */}

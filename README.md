@@ -8,15 +8,15 @@ Hệ thống chấm hỗ trợ 6 ngôn ngữ: **C++, C, Python, Pascal, Java và
 - **Mã nguồn & Kỹ thuật:** [`ducminh25/judgedesk-source`](https://github.com/ducminh25/judgedesk-source) — Chứa toàn bộ mã nguồn ứng dụng, Pure Rust Core (`judgedesk-core`), runner sandbox an toàn (`native-executor`), kiến trúc và pipeline CI/CD. Nơi dành cho lập trình viên và người muốn nghiên cứu, đóng góp hoặc tự build từ mã nguồn.
 - **Phân phối chính thức & Hỗ trợ:** [`ducminh25/judgedesk`](https://github.com/ducminh25/judgedesk) — Chứa các bộ cài đặt phát hành chính thức (`.msi`, `.dmg`, `.deb`, `.rpm`, `.AppImage`), mã băm `SHA256SUMS`, kênh phân phối managed toolchains và tài liệu hỗ trợ người dùng cuối.
 
-## Nền Tảng Hỗ Trợ & Các Loại Tệp Cài Đặt (v1.6.0)
+## Nền Tảng Hỗ Trợ & Các Loại Tệp Cài Đặt (v1.6.1)
 
-| Hệ điều hành | Phiên bản hỗ trợ | Định dạng & Tên tệp cài đặt (`v1.6.0`) | Bản phân phối & Đặc điểm |
+| Hệ điều hành | Phiên bản hỗ trợ | Định dạng & Tên tệp cài đặt (`v1.6.1`) | Bản phân phối & Đặc điểm |
 | :--- | :--- | :--- | :--- |
-| **Windows x64** | Windows 10, Windows 11 (64-bit) | `JudgeDesk_1.6.0_full_x64_en-US.msi`<br/>`JudgeDesk_1.6.0_core_x64_en-US.msi` | **Full**: Tích hợp sẵn GCC 14, Python 3.12, Free Pascal, OpenJDK 21, Scratch VM & WebView2 offline.<br/>**Core**: Bản rút gọn, tự nhận diện compiler trên máy hoặc tải gói ký số từ trong app. |
-| **macOS Apple Silicon** | macOS 11 Big Sur trở lên (`arm64` — M1/M2/M3/M4) | `JudgeDesk_1.6.0_full_aarch64.dmg`<br/>`JudgeDesk_1.6.0_core_aarch64.dmg`<br/>*(kèm `.app.tar.gz` cho in-app updater)* | **Full**: Đóng gói sẵn Python 3.12, Free Pascal, OpenJDK 21, Scratch VM; C/C++ dùng Apple Clang (`xcode-select --install`).<br/>**Core**: Bản rút gọn dùng compiler hệ thống hoặc tải gói managed. |
-| **Linux x86_64 (`amd64`) — Ubuntu / Debian / Mint** | **Ubuntu 22.04 LTS, 24.04 LTS, 26.04 LTS+**<br/>Debian 12+, Linux Mint 21+, Pop!_OS 22.04+, Zorin OS 17+ *(GLIBC $\ge$ 2.34)* | `JudgeDesk_1.6.0_amd64.deb` *(Khuyên dùng)* | Cài đặt qua `sudo apt install ./JudgeDesk_1.6.0_amd64.deb`. Tự động kéo các gói phụ thuộc (`bubblewrap`, `zenity`, `g++`, `python3`, GTK3/WebKit2GTK) với khai báo tương thích đa phiên bản (`t64` và pre-`t64`) và tự động nhận diện mọi phiên bản compiler trên hệ thống. |
-| **Linux x86_64 (`amd64`) — Fedora / RHEL / openSUSE** | Fedora 38+, RHEL / AlmaLinux / Rocky 9+, openSUSE Leap / Tumbleweed *(GLIBC $\ge$ 2.34)* | `JudgeDesk-1.6.0-1.x86_64.rpm` | Cài đặt qua `sudo dnf install ./JudgeDesk-1.6.0-1.x86_64.rpm` (hoặc `zypper` / `rpm`). Tự động nhận diện `g++`/`clang++`, `python3`, `fpc`, `javac` trên máy. |
-| **Linux x86_64 (`amd64`) — Đa bản phân phối (Portable)** | Hầu hết các bản phân phối Linux 64-bit (`x86_64`, *GLIBC $\ge$ 2.34*, có `libfuse2` + `bubblewrap`) | `JudgeDesk_1.6.0_amd64.AppImage` | Tệp thực thi độc lập (`chmod +x ./JudgeDesk_1.6.0_amd64.AppImage && ./JudgeDesk_1.6.0_amd64.AppImage`), không cần quyền root để cài đặt ứng dụng. |
+| **Windows x64** | Windows 10, Windows 11 (64-bit) | `JudgeDesk_1.6.1_full_x64_en-US.msi`<br/>`JudgeDesk_1.6.1_core_x64_en-US.msi` | **Full**: Tích hợp sẵn GCC 14, Python 3.12, Free Pascal, OpenJDK 21, Scratch VM & WebView2 offline.<br/>**Core**: Bản rút gọn, tự nhận diện compiler trên máy hoặc tải gói ký số từ trong app. |
+| **macOS Apple Silicon** | macOS 11 Big Sur trở lên (`arm64` — M1/M2/M3/M4) | `JudgeDesk_1.6.1_full_aarch64.dmg`<br/>`JudgeDesk_1.6.1_core_aarch64.dmg`<br/>*(kèm `.app.tar.gz` cho in-app updater)* | **Full**: Đóng gói sẵn Python 3.12, Free Pascal, OpenJDK 21, Scratch VM; C/C++ dùng Apple Clang (`xcode-select --install`).<br/>**Core**: Bản rút gọn dùng compiler hệ thống hoặc tải gói managed. |
+| **Linux x86_64 (`amd64`) — Ubuntu / Debian / Mint** | **Ubuntu 22.04 LTS, 24.04 LTS, 26.04 LTS+**<br/>Debian 12+, Linux Mint 21+, Pop!_OS 22.04+, Zorin OS 17+ *(GLIBC $\ge$ 2.34)* | `JudgeDesk_1.6.1_full_amd64.deb`<br/>`JudgeDesk_1.6.1_amd64.deb` *(Core)* | **Full**: Đóng gói sẵn toàn bộ 6 ngôn ngữ offline (GCC 14.2, Python 3.12, Free Pascal 3.2.2, Temurin JDK 21, Scratch 0.1.7).<br/>**Core**: Tự động nhận diện mọi phiên bản compiler trên hệ thống kèm Scratch tích hợp sẵn. |
+| **Linux x86_64 (`amd64`) — Fedora / RHEL / openSUSE** | Fedora 38+, RHEL / AlmaLinux / Rocky 9+, openSUSE Leap / Tumbleweed *(GLIBC $\ge$ 2.34)* | `JudgeDesk-1.6.1-full-1.x86_64.rpm`<br/>`JudgeDesk-1.6.1-1.x86_64.rpm` *(Core)* | **Full**: Đóng gói sẵn toàn bộ 6 ngôn ngữ offline.<br/>**Core**: Tự động nhận diện `g++`/`clang++`, `python3`, `fpc`, `javac` trên máy kèm Scratch tích hợp sẵn. |
+| **Linux x86_64 (`amd64`) — Đa bản phân phối (Portable)** | Hầu hết các bản phân phối Linux 64-bit (`x86_64`, *GLIBC $\ge$ 2.34*, có `libfuse2` + `bubblewrap`) | `JudgeDesk_1.6.1_full_amd64.AppImage`<br/>`JudgeDesk_1.6.1_amd64.AppImage` *(Core)* | Tệp thực thi độc lập (`chmod +x ./JudgeDesk_1.6.1_*.AppImage && ./JudgeDesk_1.6.1_*.AppImage`), hỗ trợ cả bản **Full** (đủ 6 ngôn ngữ offline) và **Core**. |
 
 ### Cài Đặt Nhanh Trên Từng Hệ Điều Hành
 
@@ -25,20 +25,19 @@ Hệ thống chấm hỗ trợ 6 ngôn ngữ: **C++, C, Python, Pascal, Java và
 - **Linux (Ubuntu 22.04 LTS / 24.04 LTS / 26.04 LTS+ / Debian / Mint)**:
   ```bash
   sudo apt update
-  sudo apt install ./JudgeDesk_1.6.0_amd64.deb
+  sudo apt install ./JudgeDesk_1.6.1_full_amd64.deb   # hoặc JudgeDesk_1.6.1_amd64.deb (bản Core)
   ```
-  *(Khuyến nghị cài thêm `sudo apt install fpc default-jdk` nếu chấm bài Pascal hoặc Java).*
 - **Linux (Fedora / RHEL / openSUSE)**:
   ```bash
-  sudo dnf install ./JudgeDesk-1.6.0-1.x86_64.rpm
+  sudo dnf install ./JudgeDesk-1.6.1-full-1.x86_64.rpm   # hoặc JudgeDesk-1.6.1-1.x86_64.rpm (bản Core)
   ```
 - **Linux (AppImage)**:
   ```bash
-  chmod +x ./JudgeDesk_1.6.0_amd64.AppImage
-  ./JudgeDesk_1.6.0_amd64.AppImage
+  chmod +x ./JudgeDesk_1.6.1_full_amd64.AppImage
+  ./JudgeDesk_1.6.1_full_amd64.AppImage
   ```
 
-## Điểm Nổi Bật (Tính Đến Phiên Bản v1.6.0)
+## Điểm Nổi Bật (Tính Đến Phiên Bản v1.6.1)
 
 1. **Hỗ Trợ Chính Thức Linux Đa Phiên Bản (`Ubuntu 22.04 LTS+`, `.deb` / `.rpm` / `.AppImage`) & Pure Rust Core**:
    - Tích hợp backend `judgedesk-core` (Rust Axum) hiệu năng cao song hành cùng kiến trúc sidecar và `judgedesk-native-executor`.

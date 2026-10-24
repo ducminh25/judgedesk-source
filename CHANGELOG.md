@@ -5,6 +5,22 @@ Versioning; các bản `1.x` giữ tương thích updater và dữ liệu ứng 
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-10-24
+
+### Trung Tâm Thông Báo, Bản Linux Full & Tương Thích Đa Nền Tảng
+
+- **Trung tâm Thông báo Admin có chữ ký số (`Signed Admin Announcements & Notification Center`)**:
+  - Bổ sung biểu tượng chuông thông báo trên thanh công cụ với badge số tin chưa đọc, bảng tin neo trực tiếp và hộp thoại đọc bài báo dạng editorial (hỗ trợ Tiếng Việt & Tiếng Anh).
+- **Phát hành Bản Đầy Đủ (`Full Edition`) cho Linux (`x86_64`) & Cải tiến Đóng gói Đa bản phân phối**:
+  - Đóng gói sẵn toàn bộ 6 ngôn ngữ lập trình trong bộ cài Linux `Full` (`.deb`, `.rpm`, `.AppImage`) gồm: xPack GCC 14.2.0-2 (C/C++ kèm binutils & sysroot), CPython 3.12.13, Free Pascal 3.2.2, Eclipse Temurin JDK 21.0.12+8 và `scratch-run` 0.1.7, kèm xác minh chỉ mục `SHA-256` từng tệp và tự động nhập vào cache khi khởi chạy lần đầu mà không cần mạng.
+  - Hỗ trợ ánh xạ đường dẫn ngắn trong sandbox (`/jd-tools`, `/jd-work`) giúp Free Pascal biên dịch ổn định với đường dẫn thư mục dài trên Linux và thiết lập mặc định `LANG=C.UTF-8` cho Java runtime.
+  - Nâng cấp Tauri CLI/bundler 2.12.0 khắc phục lỗi trắng cửa sổ `EGL_BAD_PARAMETER` trên AppImage với Mesa mới, bảo vệ payload nhúng của `scratch-run` khỏi bị hỏng bởi `patchelf`, và khôi phục môi trường thư viện gốc của máy chủ (`LD_LIBRARY_PATH`, `LD_PRELOAD`) khi mở ứng dụng ngoài (LibreOffice, trình duyệt, hộp thoại chọn thư mục) từ AppImage.
+- **Tương thích Đa nền tảng & Độ tin cậy khi Chấm bài, Cấu hình**:
+  - **Tương thích tên tệp không phân biệt hoa/thường trên Linux/macOS**: Tự động nhận diện các biến thể chữ hoa/thường của tệp dữ liệu vào/ra (`BAI1.INP` / `bai1.inp` / `Bai1.Inp`), tệp cấu hình (`Config.cfg` / `config.cfg` / `config.json`) và mã nguồn trình chấm/trình tương tác (`checker`, `interactor`).
+  - **Bỏ qua tệp rác hệ điều hành khi quét đề thi & bài nộp**: Tự động lọc bỏ các tệp và thư mục metadata của macOS (`__MACOSX`, `.DS_Store`, `._*`) khi nạp danh sách thí sinh, bài tập, testcase và trình chấm, tránh nhận nhầm tệp nhị phân AppleDouble làm dữ liệu đầu vào.
+  - **Chuẩn hoá nhập điểm thập phân dấu phẩy & kiểm tra điểm hợp lệ**: Tự động chuyển dấu phẩy thập phân (ví dụ: `2,5`, `0,5`, `2,5/5`) thành dấu chấm chuẩn trong công cụ tính điểm hữu tỉ và hộp thoại Cài đặt bài thi, đồng thời kiểm tra nghiêm ngặt giá trị điểm hợp lệ trước khi lưu `Config.cfg`.
+  - **Cải thiện lưu `Config.cfg`, xuất bảng điểm Excel và chuẩn hoá đường dẫn Windows**: Ghi `Config.cfg` nguyên tử qua đường dẫn đã phân giải symlink (hỗ trợ các bản phân phối Linux dùng `/var/home`), tách biệt kết quả lưu tệp Excel với trạng thái mở ứng dụng xem bảng tính (kèm nút sao chép đường dẫn khi máy thiếu ứng dụng đọc `.xlsx`), và loại bỏ tiền tố đường dẫn mở rộng `\\?\` trên Windows khi chẩn đoán trình biên dịch.
+
 ## [1.6.0] - 2026-10-20
 
 ### Rust Core, Hỗ Trợ Chính Thức Linux (`Ubuntu 22.04 LTS+`, `.deb` / `.rpm` / `.AppImage`) & Cải Thiện Chấm Bài

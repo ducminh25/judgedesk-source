@@ -123,10 +123,34 @@ pub fn ensure_no_reparse_or_symlink_chain(
                 continue;
             }
         }
-        #[cfg(target_os = "macos")]
+        #[cfg(unix)]
         if stop_at_ancestor.is_none()
             && accumulated != path
-            && matches!(accumulated.to_str(), Some("/var" | "/tmp" | "/etc"))
+            && matches!(
+                accumulated.to_str(),
+                Some(
+                    "/var"
+                        | "/tmp"
+                        | "/etc"
+                        | "/home"
+                        | "/opt"
+                        | "/mnt"
+                        | "/srv"
+                        | "/run"
+                        | "/media"
+                        | "/usr"
+                        | "/bin"
+                        | "/sbin"
+                        | "/lib"
+                        | "/lib64"
+                        | "/var/tmp"
+                        | "/var/run"
+                        | "/var/home"
+                        | "/var/opt"
+                        | "/var/mnt"
+                        | "/var/srv"
+                )
+            )
         {
             continue;
         }

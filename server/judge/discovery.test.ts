@@ -433,3 +433,37 @@ test("root samples cannot alias a real same-name Themis or interactive problem",
     assert.deepEqual(createProblemDirectoryResolver(container)(name), { name, path: problem });
   }
 });
+
+
+test("discovery ignores macOS archive metadata files and directories", (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-macos-metadata-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  const testsRoot = path.join(root, "Tests");
+  const contestantsRoot = path.join(root, "Contestants");
+  fs.mkdirSync(path.join(testsRoot, "__MACOSX"), { recursive: true });
+  fs.mkdirSync(path.join(contestantsRoot, "__MACOSX"), { recursive: true });
+
+  const problemDir = path.join(testsRoot, "CAU1");
+  const test01 = path.join(problemDir, "Test01");
+  fs.mkdirSync(test01, { recursive: true });
+  fs.writeFileSync(path.join(test01, "._CAU1.INP"), "\x00\x05\x16\x07macos-resource-fork");
+  fs.writeFileSync(path.join(test01, "._CAU1.OUT"), "\x00\x05\x16\x07macos-resource-fork");
+  fs.writeFileSync(path.join(test01, "CAU1.INP"), "10\n");
+  fs.writeFileSync(path.join(test01, "CAU1.OUT"), "20\n");
+  fs.writeFileSync(path.join(problemDir, "._checker.cpp"), "macos-fork");
+  fs.writeFileSync(path.join(problemDir, "checker.cpp"), "int main(){}");
+
+  const aliceDir = path.join(contestantsRoot, "Alice");
+  fs.mkdirSync(aliceDir, { recursive: true });
+  fs.writeFileSync(path.join(aliceDir, "._CAU1.cpp"), "macos-fork");
+  fs.writeFileSync(path.join(aliceDir, "CAU1.cpp"), "int main(){}");
+
+  assert.deepEqual(listContestants(contestantsRoot), ["Alice"]);
+  assert.equal(findSubmission(aliceDir, "cau1")?.fileName, "CAU1.cpp");
+  assert.deepEqual(discoverCustomCheckers(problemDir, "linux"), ["checker.cpp"]);
+  const resolvedTest = resolveTestCaseFiles(problemDir, "Test01");
+  assert.ok(resolvedTest);
+  assert.equal(resolvedTest.inputFileName, "CAU1.INP");
+  assert.equal(resolvedTest.outputPath, path.join(test01, "CAU1.OUT"));
+});

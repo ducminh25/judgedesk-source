@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::Path;
 
 use axum::extract::Query;
@@ -9,15 +9,14 @@ use axum::Json;
 use serde_json::json;
 
 use crate::discovery::testcase::{
-    ensure_or_reconcile_stored_problem_config, is_flat_test_directory, read_stored_problem_config,
-    resolve_problem_directory_path,
+    ensure_or_reconcile_stored_problem_config, is_flat_test_directory, is_ignored_os_metadata_name,
+    read_stored_problem_config, resolve_problem_directory_path, write_problem_config_atomic,
 };
 use crate::discovery::{
     discover_custom_checkers, discover_interactors, discover_test_cases, list_contestants,
     list_test_directories, natural_cmp,
 };
 use crate::server::dto::{FetchTestsQuery, PathQuery, SavePolygonConfigPayload};
-use crate::storage::ensure_safe_contained_path;
 
 fn validate_directory_query_path(raw_path: &str, p: &Path) -> Option<Response> {
     if raw_path.trim().is_empty() {
@@ -96,6 +95,9 @@ pub async fn handle_fetch_problems(Query(q): Query<PathQuery>) -> Response {
             let entry_path = entry.path();
             if entry_path.is_dir() {
                 let name = entry.file_name().to_string_lossy().to_string();
+                if is_ignored_os_metadata_name(&name) {
+                    continue;
+                }
                 dirs.push(name.clone());
                 let c_list = discover_custom_checkers(&entry_path, platform_str);
                 custom_checkers.insert(name.clone(), c_list);
@@ -277,42 +279,9 @@ fn save_polygon_config(body: SavePolygonConfigPayload) -> (StatusCode, serde_jso
             obj.insert("compile".to_string(), compile_json);
         }
     }
-    let config_path = match ensure_safe_contained_path(&p, Path::new("Config.cfg")) {
-        Ok(path) => path,
-        Err(_) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                json!({ "success": false, "code": "CONFIG_WRITE_ERROR", "message": "Failed to write Config.cfg" }),
-            )
-        }
-    };
-    let tmp_name = format!("Config.cfg.{}.tmp", uuid::Uuid::new_v4());
-    let tmp_path = match ensure_safe_contained_path(&p, Path::new(&tmp_name)) {
-        Ok(path) => path,
-        Err(_) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                json!({ "success": false, "code": "CONFIG_WRITE_ERROR", "message": "Failed to write Config.cfg" }),
-            )
-        }
-    };
-    let write_result = (|| -> Result<(), Box<dyn std::error::Error>> {
-        let content = serde_json::to_vec_pretty(&persisted_config)?;
-        let mut file = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&tmp_path)?;
-        file.write_all(&content)?;
-        file.sync_all()?;
-        drop(file);
-        std::fs::rename(&tmp_path, &config_path)?;
-        Ok(())
-    })();
-
-    if write_result.is_ok() {
+    if write_problem_config_atomic(&p, "Config.cfg", &persisted_config).is_ok() {
         return (StatusCode::OK, json!({ "success": true }));
     }
-    let _ = std::fs::remove_file(&tmp_path);
     (
         StatusCode::INTERNAL_SERVER_ERROR,
         json!({ "success": false, "code": "CONFIG_WRITE_ERROR", "message": "Failed to write Config.cfg" }),

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { optionalLinuxReleaseAssets } from "./verify-public-release-assets.js";
 
 const staging = path.resolve("release-staging");
 const publicDir = path.resolve("public-release-assets");
@@ -13,11 +14,9 @@ fs.mkdirSync(publicDir, { recursive: true });
 const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
 const version = pkg.version;
 
-const optionalLinuxFiles = [
-  `JudgeDesk_${version}_amd64.deb`,
-  `JudgeDesk-${version}-1.x86_64.rpm`,
-  `JudgeDesk_${version}_amd64.AppImage`,
-].filter((file) => fs.existsSync(path.join(staging, file)));
+const optionalLinuxFiles = optionalLinuxReleaseAssets(`v${version}`)
+  .map((item) => item.filename)
+  .filter((file) => fs.existsSync(path.join(staging, file)));
 
 const publicFiles = [
   `JudgeDesk_${version}_core_aarch64.app.tar.gz`,

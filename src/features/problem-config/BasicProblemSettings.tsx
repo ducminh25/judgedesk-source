@@ -10,6 +10,7 @@ import {
   isBuiltInCheckerId,
 } from "../../../shared/checker-catalog";
 import { BUILTIN_CHECKER_SOURCES } from "./checker-sources-data";
+import { normalizePointInputText } from "./editor-state";
 
 interface Props {
   problemName: string;
@@ -200,8 +201,8 @@ export function BasicProblemSettings(props: Props) {
             placeholder={t("problemConfig.totalScorePlaceholder", "Tùy chọn (vd: 100/3, 10)")}
             value={config.totalScore !== null && config.totalScore !== undefined ? String(config.totalScore) : ""}
             onChange={event => {
-              const val = event.target.value;
-              const normalized = val.trim() ? val.trim() : null;
+              const val = normalizePointInputText(event.target.value);
+              const normalized = val.trim() ? val : null;
               if (props.setTotalScore) {
                 props.setTotalScore(normalized);
               } else {
@@ -209,6 +210,19 @@ export function BasicProblemSettings(props: Props) {
                   ...previous,
                   totalScore: normalized,
                 }));
+              }
+            }}
+            onBlur={() => {
+              if (config.totalScore !== null && config.totalScore !== undefined) {
+                const trimmed = normalizePointInputText(String(config.totalScore)).trim();
+                const next = trimmed ? trimmed : null;
+                if (next !== config.totalScore) {
+                  if (props.setTotalScore) {
+                    props.setTotalScore(next);
+                  } else {
+                    setConfig(previous => ({ ...previous, totalScore: next }));
+                  }
+                }
               }
             }}
             className="flex-1 min-w-0 bg-input-bg border border-surface-border-strong rounded px-2.5 py-1.5 text-text-primary text-xs focus:border-indigo-500 transition outline-none font-mono"

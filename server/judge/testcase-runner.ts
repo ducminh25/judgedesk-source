@@ -88,7 +88,12 @@ export async function runTestCase(options: TestCaseRunnerOptions): Promise<TestC
       workspace.stage(options.inputPath, "stdin.txt");
       stdinFile = "stdin.txt";
     } else {
-      workspace.stage(options.inputPath, inputFilename);
+      stageInputFileWithCaseAliases(
+        workspace,
+        options.inputPath,
+        inputFilename,
+        options.config.useStdOut ? undefined : options.config.outputFile,
+      );
     }
 
     const result = await runReservedExecutor(options.jobId, buildSubmissionExecutorRunSpec({
@@ -108,7 +113,8 @@ export async function runTestCase(options: TestCaseRunnerOptions): Promise<TestC
     let actualOutputBuffer = stdoutBuffer;
     if (!options.config.useStdOut) {
       const outputFilename = safeWorkspacePath(options.config.outputFile);
-      actualOutputBuffer = readBounded(path.join(workspace.path, outputFilename), MAX_OUTPUT_SIZE);
+      const resolvedOutputPath = resolveCaseInsensitiveWorkspaceFile(workspace.path, outputFilename);
+      actualOutputBuffer = resolvedOutputPath ? readBounded(resolvedOutputPath, MAX_OUTPUT_SIZE) : Buffer.alloc(0);
     }
     const stdout = actualOutputBuffer.toString("utf8");
     const executionTime = executorDisplayTimeMs(result, options.timeLimitMs);
@@ -360,6 +366,83 @@ function safeWorkspacePath(value: string): string {
     throw new Error("Problem file name is not a safe relative workspace path.");
   }
   return value;
+}
+
+function capitalizeAsciiWord(value: string): string {
+  if (!value) return value;
+  return value[0].toUpperCase() + value.slice(1).toLowerCase();
+}
+
+function capitalizeAsciiExtension(ext: string): string {
+  if (!ext.startsWith(".") || ext.length < 2) return ext;
+  return "." + ext[1].toUpperCase() + ext.slice(2).toLowerCase();
+}
+
+function stageInputFileWithCaseAliases(
+  workspace: Awaited<ReturnType<typeof createExecutorWorkspace>>,
+  inputPath: string,
+  inputFilename: string,
+  outputFilename?: string,
+): void {
+  workspace.stage(inputPath, inputFilename);
+  const parsed = path.parse(inputFilename);
+  const stems = new Set([
+    parsed.name,
+    parsed.name.toLowerCase(),
+    parsed.name.toUpperCase(),
+    capitalizeAsciiWord(parsed.name),
+  ]);
+  const exts = new Set([
+    parsed.ext,
+    parsed.ext.toLowerCase(),
+    parsed.ext.toUpperCase(),
+    capitalizeAsciiExtension(parsed.ext),
+  ]);
+  const outputLower = outputFilename?.toLowerCase();
+  for (const stem of stems) {
+    for (const ext of exts) {
+      const candidateBase = `${stem}${ext}`;
+      const candidateRel = parsed.dir ? path.join(parsed.dir, candidateBase) : candidateBase;
+      if (candidateRel === inputFilename) continue;
+      if (outputLower && candidateRel.toLowerCase() === outputLower) continue;
+      const destPath = path.join(workspace.path, candidateRel);
+      if (!fs.existsSync(destPath)) {
+        workspace.stage(inputPath, candidateRel);
+      }
+    }
+  }
+}
+
+function resolveCaseInsensitiveWorkspaceFile(workspaceRoot: string, relativeFileName: string): string | null {
+  const exactPath = path.join(workspaceRoot, relativeFileName);
+  try {
+    if (fs.existsSync(exactPath) && fs.lstatSync(exactPath).isFile()) {
+      return exactPath;
+    }
+  } catch {
+    // Fall through to case-insensitive scan.
+  }
+  const parentDir = path.dirname(exactPath);
+  const targetBase = path.basename(exactPath).toLowerCase();
+  try {
+    const candidates = fs.readdirSync(parentDir, { withFileTypes: true })
+      .filter(entry => entry.name.toLowerCase() === targetBase)
+      .map(entry => entry.name)
+      .sort();
+    for (const name of candidates) {
+      const fullPath = path.join(parentDir, name);
+      try {
+        if (fs.lstatSync(fullPath).isFile()) {
+          return fullPath;
+        }
+      } catch {
+        continue;
+      }
+    }
+  } catch {
+    return null;
+  }
+  return null;
 }
 
 function preview(output: string): string {

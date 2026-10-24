@@ -17,9 +17,38 @@ import {
 
 const CONFIG_FILE_NAME = "Config.cfg";
 
+function resolveExistingProblemConfigPath(problemDirectory: string): string | null {
+  const resolvedDir = path.resolve(problemDirectory);
+  for (const exact of [CONFIG_FILE_NAME, "config.json"]) {
+    const candidate = path.join(resolvedDir, exact);
+    try {
+      if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+        return candidate;
+      }
+    } catch {
+      // Ignore inaccessible candidate and continue scanning.
+    }
+  }
+  try {
+    const entries = fs.readdirSync(resolvedDir, { withFileTypes: true })
+      .filter(entry => entry.isFile())
+      .map(entry => entry.name)
+      .sort();
+    for (const target of ["config.cfg", "config.json"]) {
+      const match = entries.find(name => name.toLowerCase() === target);
+      if (match) {
+        return path.join(resolvedDir, match);
+      }
+    }
+  } catch {
+    // Directory might not exist yet.
+  }
+  return null;
+}
+
 export function readStoredProblemConfig(problemDirectory: string): ProblemConfigInput | null {
-  const configPath = getProblemConfigPath(problemDirectory);
-  if (!fs.existsSync(configPath)) return null;
+  const configPath = resolveExistingProblemConfigPath(problemDirectory);
+  if (!configPath) return null;
 
   const parsed: unknown = JSON.parse(fs.readFileSync(configPath, "utf8"));
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -33,6 +62,7 @@ export function writeStoredProblemConfig(problemDirectory: string, config: Probl
     ...config,
     compile: normalizeCompileConfig(config.compile),
   };
+  const existingPath = resolveExistingProblemConfigPath(problemDirectory);
   const destination = getProblemConfigPath(problemDirectory);
   const temporary = `${destination}.${randomBytes(8).toString("hex")}.tmp`;
   try {
@@ -44,6 +74,13 @@ export function writeStoredProblemConfig(problemDirectory: string, config: Probl
       fs.closeSync(handle);
     }
     fs.renameSync(temporary, destination);
+    if (
+      existingPath
+      && path.basename(existingPath).toLowerCase() === CONFIG_FILE_NAME.toLowerCase()
+      && path.basename(existingPath) !== CONFIG_FILE_NAME
+    ) {
+      try { fs.unlinkSync(existingPath); } catch { /* Best-effort cleanup of duplicate case variant. */ }
+    }
   } catch (error) {
     try { fs.unlinkSync(temporary); } catch { /* A rename already removed the temporary path. */ }
     throw error;

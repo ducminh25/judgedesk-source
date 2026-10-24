@@ -60,9 +60,10 @@ describe("ChangelogModal", () => {
     assert.match(html, /Có gì mới trong JudgeDesk/);
     assert.match(
       html,
-      /Hỗ trợ chính thức Linux \(Ubuntu 22\.04 LTS\+\), Sandbox Bubblewrap &amp; Nâng cấp Đa Nền Tảng/,
+      /Trung Tâm Thông Báo, Bản Linux Full/,
     );
-    assert.match(html, /JudgeDesk v1\.6\.0/);
+    assert.match(html, /JudgeDesk v1\.6\.1/);
+    assert.match(html, /v1\.6\.0/);
     assert.match(html, /v1\.5\.5/);
     assert.match(html, /v1\.2\.5/);
     assert.match(html, /Đã hiểu/);
@@ -91,7 +92,7 @@ describe("ChangelogModal", () => {
     assert.match(html, /What&#x27;s New in JudgeDesk/);
     assert.match(
       html,
-      /Official Linux Desktop Support \(Ubuntu 22\.04 LTS\+\), Bubblewrap Sandbox &amp; Cross-Platform Refinements/,
+      /Notification Center &amp; Linux Full Edition/,
     );
     assert.match(html, /Got it/);
   });

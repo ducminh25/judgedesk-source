@@ -544,7 +544,7 @@ pub async fn run_judge_session(
                     discovered_interactors.first().cloned()
                 };
                 if let Some(ref name) = inter_name {
-                    let inter_src = problem_dir.path.join(name);
+                    let inter_src = resolve_case_insensitive_file_in_dir(&problem_dir.path, name);
                     if inter_src.is_file() {
                         let inter_res = if let Some((_, cached)) =
                             compiled_helper_cache.get(&inter_src)
@@ -609,8 +609,9 @@ pub async fn run_judge_session(
                                 .is_some_and(|s| !s.trim().is_empty())
                         })
                     });
-            let has_stored_cfg_file = problem_dir.path.join("Config.cfg").is_file()
-                || problem_dir.path.join("config.json").is_file();
+            let has_stored_cfg_file =
+                crate::discovery::testcase::resolve_existing_problem_config_path(&problem_dir.path)
+                    .is_some();
             let checker_type = if is_interactive || has_configured_checker || has_stored_cfg_file {
                 checker_type
             } else {
@@ -631,7 +632,7 @@ pub async fn run_judge_session(
             let compiled_checker_path: Option<PathBuf> = if let Some(ref chk_name) =
                 custom_checker_name
             {
-                let chk_src = problem_dir.path.join(chk_name);
+                let chk_src = resolve_case_insensitive_file_in_dir(&problem_dir.path, chk_name);
                 if chk_src.is_file() {
                     let chk_res = if let Some((_, cached)) = compiled_helper_cache.get(&chk_src) {
                         cached.clone()
@@ -883,4 +884,32 @@ fn test_case_score(
 
 fn chrono_like_now() -> String {
     chrono::Utc::now().to_rfc3339()
+}
+
+fn resolve_case_insensitive_file_in_dir(dir: &std::path::Path, file_name: &str) -> PathBuf {
+    let exact = dir.join(file_name);
+    if exact.is_file() {
+        return exact;
+    }
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        let mut names: Vec<String> = entries
+            .flatten()
+            .filter_map(|entry| {
+                let p = entry.path();
+                if std::fs::metadata(&p).map(|m| m.is_file()).unwrap_or(false) {
+                    Some(entry.file_name().to_string_lossy().to_string())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        names.sort();
+        if let Some(found) = names
+            .into_iter()
+            .find(|n| n.eq_ignore_ascii_case(file_name))
+        {
+            return dir.join(found);
+        }
+    }
+    exact
 }

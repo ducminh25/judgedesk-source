@@ -234,6 +234,17 @@ pub(crate) fn diagnose_resolved_language_profile(
         };
     }
 
+    let mut toolchain = toolchain;
+    toolchain.executable_path = super::discovery::clean_canonical_path(&toolchain.executable_path);
+    toolchain.runtime_executable_path = toolchain
+        .runtime_executable_path
+        .as_ref()
+        .map(|p| super::discovery::clean_canonical_path(p));
+    toolchain.package_root = toolchain
+        .package_root
+        .as_ref()
+        .map(|p| super::discovery::clean_canonical_path(p));
+
     if toolchain.source_mode == "managed"
         && matches!(kind, "cpp" | "c")
         && fs::read_to_string(&toolchain.executable_path)
@@ -383,15 +394,24 @@ pub(crate) fn diagnose_resolved_language_profile(
             }
             cmd.arg("-o").arg(&staged_exe).arg(&source_path);
 
+            let mut path_entries = Vec::new();
+            if let Some(exe_dir) = toolchain.executable_path.parent() {
+                path_entries.push(exe_dir.to_string_lossy().into_owned());
+            }
             if let Some(ref pkg_root) = toolchain.package_root {
-                let bin_dir = pkg_root.join("bin");
-                if let Ok(current_path) = std::env::var("PATH") {
-                    let delimiter = if cfg!(windows) { ";" } else { ":" };
-                    cmd.env(
-                        "PATH",
-                        format!("{}{delimiter}{}", bin_dir.display(), current_path),
-                    );
+                let bin_dir = pkg_root.join("bin").to_string_lossy().into_owned();
+                if !path_entries.contains(&bin_dir) {
+                    path_entries.push(bin_dir);
                 }
+            }
+            if !path_entries.is_empty() {
+                let delimiter = if cfg!(windows) { ";" } else { ":" };
+                if let Ok(current_path) = std::env::var("PATH") {
+                    if !current_path.is_empty() {
+                        path_entries.push(current_path);
+                    }
+                }
+                cmd.env("PATH", path_entries.join(delimiter));
             }
 
             let output = match cmd.output() {

@@ -80,6 +80,16 @@ test("decimal strings are parsed exactly before arithmetic", () => {
   assert.deepEqual(parseRational(".5e-2"), { n: 1, d: 200 });
 });
 
+test("parseRational normalizes decimal commas in numbers and fractions", () => {
+  assert.deepEqual(parseRational("2,5"), { n: 5, d: 2 });
+  assert.deepEqual(parseRational(" 2,5 "), { n: 5, d: 2 });
+  assert.deepEqual(parseRational("2,5/5"), { n: 1, d: 2 });
+  assert.deepEqual(parseRational(",5"), { n: 1, d: 2 });
+  assert.deepEqual(parseRational("-,5"), { n: -1, d: 2 });
+  assert.deepEqual(parseRational("1,"), { n: 1, d: 1 });
+  assert.deepEqual(parseRational("1,25e-2"), { n: 1, d: 80 });
+});
+
 test("formatting and config serialization keep large terminating fractions exact", () => {
   const value = parseRational("9007199254740993/2");
   assert.equal(formatRational(value), "4503599627370496.5");

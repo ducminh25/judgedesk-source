@@ -117,13 +117,13 @@ pub fn normalize_language_kind(profile_id: &str) -> &'static str {
 }
 
 pub fn get_app_data_dir() -> PathBuf {
-    app_data_dir_from_env(|name| std::env::var(name).ok())
+    normalize_windows_verbatim_path(&app_data_dir_from_env(|name| std::env::var(name).ok()))
 }
 
 pub(crate) fn app_data_dir_from_env(mut get: impl FnMut(&str) -> Option<String>) -> PathBuf {
     if let Some(dir) = get("THEMIS_APP_DATA_DIR") {
         if !dir.trim().is_empty() {
-            return PathBuf::from(dir);
+            return normalize_windows_verbatim_path(Path::new(dir.trim()));
         }
     }
 
@@ -343,12 +343,14 @@ pub fn bundled_resource_toolchains_dirs_for(toolchains_dir: &Path) -> Vec<PathBu
     if let Ok(res_dir) = std::env::var("THEMIS_RESOURCE_DIR") {
         let trimmed = res_dir.trim();
         if !trimmed.is_empty() {
-            let res_path = PathBuf::from(trimmed);
+            let res_path = normalize_windows_verbatim_path(Path::new(trimmed));
             let allow_res = if isolated_test {
                 toolchains_dir
                     .ancestors()
                     .find(|a| a.join(".judgedesk-test-root").is_file())
-                    .is_some_and(|test_root| res_path.starts_with(test_root))
+                    .is_some_and(|test_root| {
+                        res_path.starts_with(normalize_windows_verbatim_path(test_root))
+                    })
             } else {
                 true
             };
@@ -730,7 +732,7 @@ fn corrupt_managed_toolchain(package_root: &Path, kind: &str, detail: &str) -> R
 
 fn find_managed_toolchain_direct(toolchains_dir: &Path, kind: &str) -> Option<ResolvedToolchain> {
     let package_name = managed_package_name_for(kind);
-    let package_root = toolchains_dir.join(package_name);
+    let package_root = normalize_windows_verbatim_path(&toolchains_dir.join(package_name));
 
     let corrupt = |detail: &str| Some(corrupt_managed_toolchain(&package_root, kind, detail));
     let metadata = if cfg!(target_os = "linux") {
@@ -975,16 +977,43 @@ pub fn find_managed_toolchain(kind: &str) -> Option<ResolvedToolchain> {
     None
 }
 
-pub fn clean_canonical_path(path: &Path) -> PathBuf {
-    let canon = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+pub fn normalize_windows_verbatim_str(value: &str) -> Option<String> {
+    let rest = value.strip_prefix(r"\\?\")?;
+    if let Some(unc) = rest
+        .strip_prefix("UNC\\")
+        .or_else(|| rest.strip_prefix("unc\\"))
+    {
+        if !unc.is_empty() && !unc.starts_with('\\') {
+            return Some(format!(r"\\{unc}"));
+        }
+        return None;
+    }
+    let bytes = rest.as_bytes();
+    if bytes.len() >= 2
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes.len() == 2 || bytes[2] == b'\\' || bytes[2] == b'/')
+    {
+        return Some(rest.to_string());
+    }
+    None
+}
+
+pub fn normalize_windows_verbatim_path(path: &Path) -> PathBuf {
     #[cfg(windows)]
     {
-        let s = canon.to_string_lossy();
-        if let Some(stripped) = s.strip_prefix(r"\\?\") {
-            return PathBuf::from(stripped);
+        let s = path.to_string_lossy();
+        if let Some(normalized) = normalize_windows_verbatim_str(&s) {
+            return PathBuf::from(normalized);
         }
     }
-    canon
+    path.to_path_buf()
+}
+
+pub fn clean_canonical_path(path: &Path) -> PathBuf {
+    let normalized = normalize_windows_verbatim_path(path);
+    let canon = fs::canonicalize(&normalized).unwrap_or(normalized);
+    normalize_windows_verbatim_path(&canon)
 }
 
 /// Resolves macOS Framework Python launcher stubs (`.../Versions/3.x/bin/python3`)
@@ -2897,6 +2926,30 @@ mod tests {
             None => std::env::remove_var("THEMIS_RESOURCE_DIR"),
         }
         let _ = fs::remove_dir_all(&temp_root);
+    }
+
+    #[test]
+    fn normalize_windows_verbatim_str_strips_drive_and_unc_prefixes_only() {
+        use super::normalize_windows_verbatim_str;
+
+        assert_eq!(
+            normalize_windows_verbatim_str(
+                r"\\?\C:\Program Files\JudgeDesk\toolchains\gcc-windows-x64\bin\g++.exe"
+            ),
+            Some(r"C:\Program Files\JudgeDesk\toolchains\gcc-windows-x64\bin\g++.exe".to_string())
+        );
+        assert_eq!(
+            normalize_windows_verbatim_str(r"\\?\UNC\server\share\JudgeDesk\toolchains"),
+            Some(r"\\server\share\JudgeDesk\toolchains".to_string())
+        );
+        assert_eq!(
+            normalize_windows_verbatim_str(r"\\?\GLOBALROOT\Device\HarddiskVolume1\toolchains"),
+            None
+        );
+        assert_eq!(
+            normalize_windows_verbatim_str(r"C:\Program Files\JudgeDesk\toolchains"),
+            None
+        );
     }
 }
 

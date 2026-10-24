@@ -777,6 +777,13 @@ pub fn parse_rational<T: AsRef<str>>(input: T) -> Rational {
     if raw.is_empty() {
         return Rational::ZERO;
     }
+    if raw.contains(',') {
+        let normalized = raw.replace(',', ".");
+        return parse_rational(&normalized);
+    }
+    if raw.bytes().filter(|&b| b == b'/').count() > 1 {
+        return Rational::ZERO;
+    }
 
     if let Some((num_str, den_str)) = raw.split_once('/') {
         let num = parse_rational(num_str);

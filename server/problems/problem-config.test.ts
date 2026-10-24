@@ -27,6 +27,11 @@ test("problem config retains supported decimal score spellings", () => {
   assert.equal(config.defaultScore, "0.5");
   assert.equal(config.totalScore, 1);
   assert.equal(config.testScores["01"], "0.5");
+
+  const commaConfig = normalizeProblemConfig("SUM", { defaultScore: "0,5", totalScore: "2,5", testScores: { "01": "1,25" } });
+  assert.equal(commaConfig.defaultScore, "0.5");
+  assert.equal(commaConfig.totalScore, "2.5");
+  assert.equal(commaConfig.testScores["01"], "1.25");
 });
 
 test("problem config defaults use the problem name and safe grading defaults", () => {
@@ -256,4 +261,17 @@ test("reconcileStoredProblemConfig resets legacy 1pt sum totalScore and redistri
     Test02: { points: "10/3" },
     Test03: { points: "10/3" },
   });
+});
+
+test("readStoredProblemConfig and writeStoredProblemConfig handle lowercase config.cfg case-insensitively", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-case-config-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+
+  fs.writeFileSync(path.join(directory, "config.cfg"), JSON.stringify({ totalScore: "2,5", memoryLimit: 512 }));
+  const loaded = readStoredProblemConfig(directory);
+  assert.ok(loaded);
+  assert.equal(loaded.totalScore, "2,5");
+  const resolved = resolveProblemConfig("CAU1", directory);
+  assert.equal(resolved.totalScore, "2.5");
+  assert.equal(resolved.memoryLimit, 512);
 });

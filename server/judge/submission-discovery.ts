@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import type { SubmissionLanguage } from "../types.js";
+import { isIgnoredOsMetadataName } from "../file-utils.js";
 import { getRegisteredProfileForExtension } from "../languages/registry.js";
 
 export interface Submission {
@@ -14,7 +15,7 @@ export type SubmissionResolver = (targetProblem: string) => Submission | null;
 
 export function listContestants(contestantsDirectory: string, targets?: unknown): string[] {
   const contestants = fs.readdirSync(contestantsDirectory)
-    .filter(name => fs.statSync(path.join(contestantsDirectory, name)).isDirectory());
+    .filter(name => !isIgnoredOsMetadataName(name) && fs.statSync(path.join(contestantsDirectory, name)).isDirectory());
   if (!Array.isArray(targets)) return contestants;
   const available = new Set(contestants);
   const seen = new Set<string>();
@@ -33,6 +34,7 @@ export function createSubmissionResolver(contestantDirectory: string): Submissio
   const candidatesByProblem = new Map<string, Submission[]>();
   for (const entry of fs.readdirSync(contestantDirectory, { withFileTypes: true })) {
     const name = entry.name;
+    if (isIgnoredOsMetadataName(name)) continue;
     const filePath = path.join(contestantDirectory, name);
     const extension = path.extname(name);
     const baseName = name.slice(0, name.length - extension.length);

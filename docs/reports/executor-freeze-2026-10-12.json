@@ -11,10 +11,10 @@
   ],
   "artifact": {
     "path": "src-tauri/binaries/judgedesk-executor-x86_64-pc-windows-msvc.exe",
-    "sha256": "3285e1912c64d08a9929fbe655390317362397d6edb4d9e4e236bb5b8114af37",
+    "sha256": "8048ca26d42bb98cf20e8b378010b62ca424986b2d0b92172c0216ae033fae69",
     "sizeBytes": 965120
   },
-  "nativeBuildFingerprint": "bfa6bf30f70ca988e25780f3204ec5fae9c79c5eeca3dc9a0add5c409db087a4",
+  "nativeBuildFingerprint": "4e3547b578d7a9cd40f126870deaa358afefff50a1b12e7fe5aae0595e418229",
   "recipe": "npm run build:executor",
   "windowsCargoArguments": [
     "rustc",
@@ -49,11 +49,11 @@
     },
     {
       "path": "native-executor/Cargo.lock",
-      "sha256": "0245f61738eac334f772b624cb70696a66b90084ad1563ad7e3e3480afcd8635"
+      "sha256": "d9e205f10e5ff51f539715a78750e0f9c7d366807c0a5241c9f901279089fe86"
     },
     {
       "path": "native-executor/Cargo.toml",
-      "sha256": "04a5023324bc0793085b76e5d001c4b440c83308bd5ff70836259e914ff57f2a"
+      "sha256": "589657f57a1ca733e83c40e5cf58c4a3b9c75fab62f6cf575669e9c2144e9106"
     },
     {
       "path": "native-executor/build.rs",
@@ -153,7 +153,7 @@
     },
     {
       "path": "package.json",
-      "sha256": "0f8a87ec6e322b2ea7da9151422c7760bef6f7dcf39e6b0021394f1cf3f2614e"
+      "sha256": "65ac4348c04115483133971da5df52fe96b80161f7703d4c6abdcea7d195fba2"
     },
     {
       "path": "rust-toolchain.toml",

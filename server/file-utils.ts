@@ -33,3 +33,9 @@ export function readTextPreview(filePath: string, maxCharacters = 500): string {
 export function naturalSort(a: string, b: string): number {
   return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
 }
+
+
+export function isIgnoredOsMetadataName(name: string): boolean {
+  const lower = name.toLowerCase();
+  return name.startsWith("._") || lower === ".ds_store" || name === "__MACOSX";
+}

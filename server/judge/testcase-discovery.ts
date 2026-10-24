@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { naturalSort } from "../file-utils.js";
+import { isIgnoredOsMetadataName, naturalSort } from "../file-utils.js";
 import { resolveProblemConfig } from "../problems/problem-config-repository.js";
 
 export interface ProblemDirectory {
@@ -21,7 +21,7 @@ const OUTPUT_EXTENSIONS = new Set([".out", ".ans"]);
 
 export function createProblemDirectoryResolver(testDirectory: string): (problemName: string) => ProblemDirectory | null {
   const entries = fs.readdirSync(testDirectory, { withFileTypes: true })
-    .filter(entry => entry.isDirectory()).map(entry => entry.name);
+    .filter(entry => entry.isDirectory() && !isIgnoredOsMetadataName(entry.name)).map(entry => entry.name);
   const directProblem = isFlatTestDirectory(testDirectory);
   return problemName => {
     if (directProblem && path.basename(testDirectory).toLowerCase() === problemName.toLowerCase()) {
@@ -44,6 +44,7 @@ function resolveDirectoryTestCaseFiles(
   testName: string,
   isInteractive = false,
 ): TestCaseFiles | null {
+  if (isIgnoredOsMetadataName(testName)) return null;
   const directory = path.join(problemDirectory, testName);
   let files: fs.Dirent[];
   try {
@@ -53,7 +54,10 @@ function resolveDirectoryTestCaseFiles(
   } catch {
     return null;
   }
-  const regularFiles = files.filter(entry => entry.isFile()).map(entry => entry.name);
+  const regularFiles = files
+    .filter(entry => entry.isFile() && !isIgnoredOsMetadataName(entry.name))
+    .map(entry => entry.name)
+    .sort();
   const inputFileName = regularFiles.find(name => {
     const extension = path.extname(name).toLowerCase();
     return INPUT_EXTENSIONS.has(extension);
@@ -78,7 +82,10 @@ function discoverFlatTestCases(
   entries: fs.Dirent[],
   isInteractive = false,
 ): TestCaseFiles[] {
-  const regularFiles = entries.filter(entry => entry.isFile()).map(entry => entry.name).sort();
+  const regularFiles = entries
+    .filter(entry => entry.isFile() && !isIgnoredOsMetadataName(entry.name))
+    .map(entry => entry.name)
+    .sort();
   const inputMap = new Map<string, string>();
   const outputMap = new Map<string, string>();
 
@@ -197,6 +204,7 @@ export function discoverCustomCheckers(
   try {
     const isWindows = platform === "win32";
     const files = fs.readdirSync(problemPath).filter((file) => {
+      if (isIgnoredOsMetadataName(file)) return false;
       const lower = file.toLowerCase();
       const isCandidate = lower.endsWith(".cpp")
         || lower.endsWith(".py")
@@ -227,6 +235,7 @@ export function discoverInteractors(
   try {
     const isWindows = platform === "win32";
     const files = fs.readdirSync(problemPath).filter((file) => {
+      if (isIgnoredOsMetadataName(file)) return false;
       const lower = file.toLowerCase();
       const isCandidate = lower.startsWith("interactor") && (
         lower.endsWith(".cpp")

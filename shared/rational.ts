@@ -116,7 +116,7 @@ export function parseRational(input: unknown): Rational {
     return floatToRational(input);
   }
   if (typeof input === "string") {
-    const trimmed = input.trim();
+    const trimmed = input.trim().replace(/,/g, ".");
     if (!trimmed) return { n: 0, d: 1 };
     if (trimmed.length > MAX_RATIONAL_TEXT_LENGTH) {
       throw new RangeError("Rational text too long");

@@ -2004,7 +2004,7 @@ dependencies = [
 
 [[package]]
 name = "judgedesk-core"
-version = "1.6.0"
+version = "1.6.1"
 dependencies = [
  "axum",
  "chrono",
@@ -2021,7 +2021,7 @@ dependencies = [
 
 [[package]]
 name = "judgedesk-native-executor"
-version = "1.6.0"
+version = "1.6.1"
 dependencies = [
  "libc",
  "serde",
@@ -4164,7 +4164,7 @@ dependencies = [
 
 [[package]]
 name = "themis-v2"
-version = "1.6.0"
+version = "1.6.1"
 dependencies = [
  "base64 0.22.1",
  "chrono",

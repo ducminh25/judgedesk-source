@@ -121,7 +121,8 @@ export function normalizeVolatile(value: unknown, options: NormalizerOptions = {
           val === "1.5.1" ||
           val === "1.5.2" ||
           val === "1.5.5" ||
-          val === "1.6.0")
+          val === "1.6.0" ||
+          val === "1.6.1")
       ) {
         result[key] = "1.5.0";
       } else if (
@@ -139,7 +140,8 @@ export function normalizeVolatile(value: unknown, options: NormalizerOptions = {
             buildRec.appVersion === "1.5.1" ||
             buildRec.appVersion === "1.5.2" ||
             buildRec.appVersion === "1.5.5" ||
-            buildRec.appVersion === "1.6.0"
+            buildRec.appVersion === "1.6.0" ||
+            buildRec.appVersion === "1.6.1"
               ? "1.5.0"
               : normalizeVolatile(buildRec.appVersion, options),
           buildNumber: "local",

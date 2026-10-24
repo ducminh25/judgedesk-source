@@ -18,6 +18,8 @@ import {
   createsGroupCycle,
   distributeTotalScore,
   editGroupTests,
+  normalizePointInputText,
+  parsePositivePointInput,
   setGroupDependency,
   TestDetail,
   TestEditPopover
@@ -60,7 +62,8 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
   const [useStdOut, setUseStdOut] = useState(initialConfig.useStdOut ?? initialConfig.useStdIO ?? false);
   const [inputFile, setInputFile] = useState(initialConfig.inputFile || `${problemName}.inp`);
   const [outputFile, setOutputFile] = useState(initialConfig.outputFile || `${problemName}.out`);
-  const problemDirPath = `${testPath}/${problemName}`;
+  const normalizedTestPath = testPath.replace(/[\\/]+$/, "");
+  const problemDirPath = normalizedTestPath ? `${normalizedTestPath}/${problemName}` : problemName;
 
   useEffect(() => {
     const load = async () => {
@@ -108,10 +111,14 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
         let resolvedTotalScore: string | null = null;
         if (loadedTotalScore !== null && loadedTotalScore !== undefined && String(loadedTotalScore).trim() !== "") {
           const loadedTotalRat = parseRational(loadedTotalScore);
-          resolvedTotalScore = formatRational(loadedTotalRat);
-          if (details.length > 0 && BigInt(loadedTotalRat.n) > 0n && (currentSum.n !== loadedTotalRat.n || currentSum.d !== loadedTotalRat.d)) {
-            const distributed = distributeTotalScore(loaded, loadedTotalScore, details.map(d => d.name));
-            Object.assign(loaded.tests, distributed.tests);
+          if (BigInt(loadedTotalRat.n) > 0n) {
+            resolvedTotalScore = formatRational(loadedTotalRat);
+            if (details.length > 0 && (currentSum.n !== loadedTotalRat.n || currentSum.d !== loadedTotalRat.d)) {
+              const distributed = distributeTotalScore(loaded, resolvedTotalScore, details.map(d => d.name));
+              Object.assign(loaded.tests, distributed.tests);
+            }
+          } else if (BigInt(currentSum.n) > 0n) {
+            resolvedTotalScore = formatRational(currentSum);
           }
         }
         setPolygonConfig(loaded);
@@ -208,9 +215,17 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
   };
 
   const setTotalScore = (val: string | null) => {
-    setConfig(previous => ({ ...previous, totalScore: val }));
-    if (val !== null && val.trim() !== "" && testDetails.length > 0) {
-      setPolygonConfig(previous => distributeTotalScore(previous, val, testDetails.map(t => t.name)));
+    const normalized = val !== null ? normalizePointInputText(val) : null;
+    const nextVal = normalized !== null && normalized.trim() !== "" ? normalized : null;
+    setConfig(previous => ({ ...previous, totalScore: nextVal }));
+    setSaveError("");
+    if (nextVal !== null && testDetails.length > 0) {
+      try {
+        const parsed = parsePositivePointInput(nextVal);
+        setPolygonConfig(previous => distributeTotalScore(previous, formatRational(parsed), testDetails.map(t => t.name)));
+      } catch {
+        // Keep draft while user is typing; strict validation runs on save.
+      }
     }
   };
 
@@ -262,17 +277,35 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
           }
         }
       }
-      const finalTotalScore = config.totalScore !== null && config.totalScore !== undefined && String(config.totalScore).trim() !== ""
-        ? config.totalScore
-        : null;
+      let finalTotalScore: string | null = null;
+      let effectivePolygonConfig = polygonConfig;
+      if (config.totalScore !== null && config.totalScore !== undefined && String(config.totalScore).trim() !== "") {
+        try {
+          const parsedTotal = parsePositivePointInput(String(config.totalScore));
+          finalTotalScore = formatRational(parsedTotal);
+          if (testDetails.length > 0) {
+            const currentSum = testDetails.reduce(
+              (acc, test) => addRational(acc, parseRational(polygonConfig.tests[test.name]?.points ?? 1)),
+              createRational(0)
+            );
+            if (currentSum.n !== parsedTotal.n || currentSum.d !== parsedTotal.d) {
+              effectivePolygonConfig = distributeTotalScore(polygonConfig, finalTotalScore, testDetails.map(t => t.name));
+              setPolygonConfig(effectivePolygonConfig);
+            }
+          }
+        } catch {
+          setSaveError(t("problemConfig.invalidTotalScore", "Tổng điểm không hợp lệ. Hãy nhập số dương hoặc phân số (vd: 2.5, 10, 100/3)."));
+          return;
+        }
+      }
       const testScores: Record<string, number | string> = {};
-      for (const [name, testCfg] of Object.entries(polygonConfig.tests) as [string, PolygonTestConfig][]) {
+      for (const [name, testCfg] of Object.entries(effectivePolygonConfig.tests) as [string, PolygonTestConfig][]) {
         if (testCfg.points !== undefined) {
           testScores[name] = testCfg.points;
         }
       }
       const configToSave = {
-        ...polygonConfig,
+        ...effectivePolygonConfig,
         ...(config.timeLimit !== undefined ? { timeLimit: config.timeLimit } : {}),
         testWellFormed: config.testWellFormed ?? false,
         checkerType: config.checkerType || "C1",

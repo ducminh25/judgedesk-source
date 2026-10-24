@@ -1,3 +1,4 @@
+use super::testcase::is_ignored_os_metadata_name;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -39,9 +40,12 @@ pub fn list_contestants<P: AsRef<Path>>(
     let mut discovered = Vec::new();
 
     for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if is_ignored_os_metadata_name(&name) {
+            continue;
+        }
         let path = entry.path();
         if fs::metadata(&path).map(|m| m.is_dir()).unwrap_or(false) {
-            let name = entry.file_name().to_string_lossy().to_string();
             available_set.insert(name.clone());
             discovered.push(name);
         }
@@ -75,6 +79,9 @@ pub fn create_submission_resolver<P: AsRef<Path>>(contestant_dir: P) -> Submissi
             }
 
             let file_name = entry.file_name().to_string_lossy().to_string();
+            if is_ignored_os_metadata_name(&file_name) {
+                continue;
+            }
             let ext = Path::new(&file_name)
                 .extension()
                 .map(|e| format!(".{}", e.to_string_lossy()))

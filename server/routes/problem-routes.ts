@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { validateProblemTestInputs } from "../problems/test-wellformed.js";
 import type { Express } from "express";
-import { naturalSort } from "../file-utils.js";
+import { isIgnoredOsMetadataName, naturalSort } from "../file-utils.js";
 import {
   ensureOrReconcileStoredProblemConfig,
   readStoredProblemConfig,
@@ -31,7 +31,7 @@ export function registerProblemRoutes(app: Express): void {
       if (!fs.statSync(resolved).isDirectory()) {
         return res.status(400).json({ success: false, code: "NOT_A_DIRECTORY", message: "Path is not a directory" });
       }
-      const dirs = fs.readdirSync(resolved).filter((dir) => fs.statSync(path.join(resolved, dir)).isDirectory());
+      const dirs = fs.readdirSync(resolved).filter((dir) => !isIgnoredOsMetadataName(dir) && fs.statSync(path.join(resolved, dir)).isDirectory());
       dirs.sort(naturalSort);
       return res.json({ success: true, data: dirs });
     } catch (error: any) {
@@ -53,7 +53,7 @@ export function registerProblemRoutes(app: Express): void {
       }
       const directProblem = isFlatTestDirectory(resolved);
       const dirs = directProblem ? [path.basename(resolved)]
-        : fs.readdirSync(resolved).filter((dir) => fs.statSync(path.join(resolved, dir)).isDirectory());
+        : fs.readdirSync(resolved).filter((dir) => !isIgnoredOsMetadataName(dir) && fs.statSync(path.join(resolved, dir)).isDirectory());
       dirs.sort(naturalSort);
 
       const customCheckers: Record<string, string[]> = {};

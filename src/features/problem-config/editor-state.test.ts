@@ -1,7 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PolygonConfig } from "../../types";
-import { applyTestEdit, assignTestsToGroup, editGroupTests, createsGroupCycle, distributeTotalScore, setGroupDependency } from "./editor-state";
+import {
+  applyTestEdit,
+  assignTestsToGroup,
+  createsGroupCycle,
+  distributeTotalScore,
+  editGroupTests,
+  normalizePointInputText,
+  parseNonNegativePointInput,
+  parsePositivePointInput,
+  setGroupDependency,
+} from "./editor-state";
 
 const baseConfig = (): PolygonConfig => ({
   enableGroups: true,
@@ -47,6 +57,27 @@ test("score edits retain decimal forms without integer or fractional part", () =
     const result = applyTestEdit(baseConfig(), { type: "points", testName: "01", x: 0, y: 0 }, input, new Set());
     assert.equal(result.tests["01"].points, expected);
   }
+});
+
+test("point helpers normalize comma decimals and reject invalid score inputs", () => {
+  assert.equal(normalizePointInputText("2,5"), "2.5");
+  assert.equal(normalizePointInputText("2,5/5"), "2.5/5");
+  assert.deepEqual(parseNonNegativePointInput("2,5"), { n: 5, d: 2 });
+  assert.deepEqual(parseNonNegativePointInput("2,5/5"), { n: 1, d: 2 });
+  assert.deepEqual(parseNonNegativePointInput("0"), { n: 0, d: 1 });
+  assert.deepEqual(parsePositivePointInput("2,5"), { n: 5, d: 2 });
+  assert.throws(() => parsePositivePointInput("0"), /greater than zero/i);
+  assert.throws(() => parsePositivePointInput("-2,5"), /non-negative/i);
+  assert.throws(() => parseNonNegativePointInput("abc"), /non-negative/i);
+  assert.throws(() => parseNonNegativePointInput("2,,5"), /non-negative/i);
+
+  const edited = applyTestEdit(baseConfig(), { type: "points", testName: "01", x: 0, y: 0 }, "2,5", new Set());
+  assert.equal(edited.tests["01"].points, 2.5);
+  assert.throws(() => applyTestEdit(baseConfig(), { type: "points", testName: "01", x: 0, y: 0 }, "invalid", new Set()));
+
+  const distributed = distributeTotalScore(baseConfig(), "2,5", ["01", "02"]);
+  assert.equal(distributed.tests["01"].points, 1.25);
+  assert.equal(distributed.tests["02"].points, 1.25);
 });
 
 test("group edits create a default group and can remove the assignment", () => {

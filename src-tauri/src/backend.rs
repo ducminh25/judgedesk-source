@@ -330,7 +330,9 @@ pub fn spawn(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         Some(token) => token,
         None => crate::startup_guard::create_backend_startup_token()?,
     };
-    let resource_dir = app.path().resource_dir()?;
+    let resource_dir = judgedesk_core::toolchains::discovery::normalize_windows_verbatim_path(
+        &app.path().resource_dir()?,
+    );
     std::env::set_var("THEMIS_RESOURCE_DIR", &resource_dir);
     app.manage(BackendSession {
         port,

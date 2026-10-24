@@ -11,6 +11,22 @@ export interface ChangelogRelease {
 
 export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
   {
+    version: "1.6.1",
+    date: "2026-10-24",
+    sections: [
+      {
+        title: "Trung Tâm Thông Báo, Bản Linux Full",
+        items: [
+          "Bổ sung Trung tâm Thông báo ngay trên thanh công cụ; hộp thoại đọc bài báo hỗ trợ tiếng Việt/tiếng Anh và bộ nhớ đệm ngoại tuyến.",
+          "Phát hành bản cài đặt Linux Full (.deb, .rpm, .AppImage) tích hợp sẵn toàn bộ 6 ngôn ngữ (GCC 14.2, Python 3.12, Free Pascal 3.2.2, Temurin JDK 21, Scratch 0.1.7) và khắc phục triệt để xung đột thư viện môi trường trên AppImage.",
+          "Hỗ trợ đối chiếu không phân biệt hoa/thường cho tệp dữ liệu vào/ra (.INP/.inp, .OUT/.out), tệp cấu hình (Config.cfg / config.cfg) và trình chấm/trình tương tác trên hệ thống tệp Linux/macOS.",
+          "Tự động bỏ qua các tệp và thư mục metadata của macOS (__MACOSX, .DS_Store, ._*) khi giải nén và quét danh sách thí sinh, bài tập, bộ test.",
+          "Hỗ trợ nhập số thập phân bằng dấu phẩy (ví dụ: 2,5 hoặc 0,5) trong công cụ tính điểm hữu tỉ và hộp thoại Cài đặt bài thi, kèm kiểm tra hợp lệ nghiêm ngặt trước khi lưu.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.6.0",
     date: "2026-10-20",
     sections: [
@@ -581,6 +597,22 @@ export const CHANGELOG_DATA_VI: ChangelogRelease[] = [
 ];
 
 export const CHANGELOG_DATA_EN: ChangelogRelease[] = [
+  {
+    version: "1.6.1",
+    date: "2026-10-24",
+    sections: [
+      {
+        title: "Notification Center & Linux Full Edition",
+        items: [
+          "Added an in-app Notification Center on the toolbar with an article reader supporting Vietnamese/English and offline caching.",
+          "Released Linux Full edition installers (.deb, .rpm, .AppImage) bundling all 6 languages offline (GCC 14.2, Python 3.12, Free Pascal 3.2.2, Temurin JDK 21, Scratch 0.1.7) and resolved AppImage runtime library conflicts.",
+          "Added case-insensitive file matching for problem I/O files (.INP/.inp, .OUT/.out), configuration files (Config.cfg / config.cfg), and custom checkers/interactors on Linux and macOS.",
+          "Automatically ignored macOS archive metadata files and directories (__MACOSX, .DS_Store, ._*) when scanning contestants, problems, and testcases.",
+          "Added support for comma decimal inputs (e.g. 2,5 or 0,5) across the rational scoring engine and Problem Configuration dialogs, with strict validation before saving.",
+        ],
+      },
+    ],
+  },
   {
     version: "1.6.0",
     date: "2026-10-20",

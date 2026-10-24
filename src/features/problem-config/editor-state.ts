@@ -53,7 +53,7 @@ export function applyTestEdit(
       if (!input || !input.trim()) {
         test.points = 1;
       } else {
-        const r = parseRational(input.trim());
+        const r = parseNonNegativePointInput(input);
         test.points = toCanonicalPointValue(r);
       }
     } else if (edit.type === "time" || edit.type === "batchTime") {
@@ -125,9 +125,13 @@ export function editGroupTests(
   return { ...reassigned, tests: withPoints };
 }
 
+export function normalizePointInputText(input: string): string {
+  return input.replace(/,/g, ".");
+}
+
 /** parseRational intentionally returns zero on invalid text; editor inputs must be strict. */
 export function parseNonNegativePointInput(input: string): Rational {
-  const text = input.trim();
+  const text = normalizePointInputText(input).trim();
   const decimal = "(?:\\d+(?:\\.\\d*)?|\\.\\d+)";
   if (text.length > 1024 || !new RegExp(`^(?:${decimal}|${decimal}/${decimal})$`).test(text)) {
     throw new Error("Enter a non-negative number or fraction");
@@ -138,6 +142,14 @@ export function parseNonNegativePointInput(input: string): Rational {
   }
   const value = parseRational(text);
   if (BigInt(value.n) < 0n) throw new Error("Points cannot be negative");
+  return value;
+}
+
+export function parsePositivePointInput(input: string): Rational {
+  const value = parseNonNegativePointInput(input);
+  if (BigInt(value.n) <= 0n) {
+    throw new Error("Enter a positive number or fraction greater than zero");
+  }
   return value;
 }
 

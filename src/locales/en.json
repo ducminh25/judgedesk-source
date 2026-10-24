@@ -176,6 +176,7 @@
     "interactiveTooltip": "Enable interactive problem grading per Codeforces Polygon testlib.h standard. Solution and interactor communicate via bidirectional standard I/O (cin/cout) in sandbox.",
     "totalScore": "Total Score",
     "totalScorePlaceholder": "Optional (e.g. 100/3, 10)",
+    "invalidTotalScore": "Invalid total score. Enter a positive number or fraction (e.g. 2.5, 10, 100/3).",
     "polygonStandard": "Polygon testlib.h standard",
     "interactor": "Interactor",
     "testWellFormed": "Test well-formed",
@@ -244,6 +245,7 @@
       "totalPoints": "Total points for {{count}} tests",
       "eachPoint": "Set point for each test",
       "pointHint": "Leave empty to set the point to 1.",
+      "invalidPoint": "Enter a valid non-negative number or fraction (e.g. 0.5, 1/3, 2).",
       "timeHint": "For example: 1.0 or 0.5. Leave empty to remove the override.",
       "groupHint": "Leave empty to remove the test from its group."
     },

@@ -34,6 +34,10 @@ fn is_output_ext(ext: &str) -> bool {
     lower == "out" || lower == "ans"
 }
 
+pub fn is_ignored_os_metadata_name(name: &str) -> bool {
+    name.starts_with("._") || name.eq_ignore_ascii_case(".ds_store") || name == "__MACOSX"
+}
+
 pub fn create_problem_directory_resolver<P: AsRef<Path>>(
     tests_directory: P,
 ) -> Box<ProblemDirectoryResolver> {
@@ -42,6 +46,9 @@ pub fn create_problem_directory_resolver<P: AsRef<Path>>(
     if let Ok(entries) = fs::read_dir(&tests_path) {
         for entry in entries.flatten() {
             let name = entry.file_name().to_string_lossy().to_string();
+            if is_ignored_os_metadata_name(&name) {
+                continue;
+            }
             let path = entry.path();
             if path.is_dir() {
                 entries_list.push((name, path));
@@ -80,6 +87,9 @@ fn resolve_directory_test_case_files<P: AsRef<Path>>(
     test_name: &str,
     is_interactive: bool,
 ) -> Option<TestCaseFiles> {
+    if is_ignored_os_metadata_name(test_name) {
+        return None;
+    }
     let directory = problem_directory.as_ref().join(test_name);
     let meta = fs::metadata(&directory).ok()?;
     if !meta.is_dir() {
@@ -89,11 +99,16 @@ fn resolve_directory_test_case_files<P: AsRef<Path>>(
     let entries = fs::read_dir(&directory).ok()?;
     let mut regular_files = Vec::new();
     for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if is_ignored_os_metadata_name(&name) {
+            continue;
+        }
         let p = entry.path();
         if fs::metadata(&p).map(|m| m.is_file()).unwrap_or(false) {
-            regular_files.push(entry.file_name().to_string_lossy().to_string());
+            regular_files.push(name);
         }
     }
+    regular_files.sort();
 
     let input_file_name = regular_files.iter().find(|name| {
         let p = Path::new(name);
@@ -147,6 +162,9 @@ fn discover_flat_test_cases<P: AsRef<Path>>(
 
     regular_files.sort();
     for file_name in regular_files {
+        if is_ignored_os_metadata_name(&file_name) {
+            continue;
+        }
         let path_obj = Path::new(&file_name);
         let stem = match path_obj.file_stem().and_then(|s| s.to_str()) {
             Some(s) => s,
@@ -501,7 +519,22 @@ pub fn normalize_problem_config(
         .and_then(extract_polygon_config)
         .or_else(|| request_config.and_then(extract_polygon_config));
 
-    let total_score = get_field(&["totalScore", "total_score"]).cloned();
+    let total_score = get_field(&["totalScore", "total_score"])
+        .filter(|val| match val {
+            serde_json::Value::Null => false,
+            serde_json::Value::String(s) => {
+                let trimmed = s.trim();
+                if trimmed.is_empty() {
+                    false
+                } else if trimmed == "0" {
+                    true
+                } else {
+                    !crate::rational::parse_rational(trimmed).is_zero()
+                }
+            }
+            _ => true,
+        })
+        .cloned();
     let default_score = get_field(&["defaultScore", "default_score"])
         .cloned()
         .or_else(|| Some(serde_json::json!(1)));
@@ -588,16 +621,37 @@ pub fn try_normalize_problem_config(
     Ok(cfg)
 }
 
-pub fn read_stored_problem_config(problem_directory: &Path) -> Option<serde_json::Value> {
-    let cfg_path = problem_directory.join("Config.cfg");
-    let json_path = problem_directory.join("config.json");
-    let target = if cfg_path.is_file() {
-        cfg_path
-    } else if json_path.is_file() {
-        json_path
-    } else {
+pub fn resolve_existing_problem_config_path(problem_directory: &Path) -> Option<PathBuf> {
+    for exact in ["Config.cfg", "config.json"] {
+        let candidate = problem_directory.join(exact);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    let Ok(entries) = fs::read_dir(problem_directory) else {
         return None;
     };
+    let mut regular_files = Vec::new();
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if fs::metadata(&p).map(|m| m.is_file()).unwrap_or(false) {
+            regular_files.push(entry.file_name().to_string_lossy().to_string());
+        }
+    }
+    regular_files.sort();
+    for target in ["config.cfg", "config.json"] {
+        if let Some(found) = regular_files
+            .iter()
+            .find(|name| name.eq_ignore_ascii_case(target))
+        {
+            return Some(problem_directory.join(found));
+        }
+    }
+    None
+}
+
+pub fn read_stored_problem_config(problem_directory: &Path) -> Option<serde_json::Value> {
+    let target = resolve_existing_problem_config_path(problem_directory)?;
     fs::read_to_string(target)
         .ok()
         .and_then(|content| serde_json::from_str(&content).ok())
@@ -845,24 +899,101 @@ pub fn reconcile_stored_problem_config_value(
     (stored, true)
 }
 
-fn write_stored_problem_config_file(
+pub fn write_problem_config_atomic(
     problem_directory: &Path,
     file_name: &str,
     config: &serde_json::Value,
-) -> bool {
+) -> Result<PathBuf, String> {
     use std::io::Write;
-    let Ok(config_path) =
-        crate::storage::ensure_safe_contained_path(problem_directory, Path::new(file_name))
-    else {
-        return false;
-    };
+    use std::path::Component;
+
+    let dir_str = problem_directory.to_string_lossy();
+    if dir_str.trim().is_empty() || dir_str.contains('\0') {
+        return Err("Problem directory path is empty or contains NUL bytes".to_string());
+    }
+    for comp in problem_directory.components() {
+        if matches!(comp, Component::ParentDir | Component::CurDir) {
+            return Err(format!(
+                "Problem directory path contains relative traversal component: {}",
+                problem_directory.display()
+            ));
+        }
+    }
+    if file_name.trim().is_empty()
+        || file_name.contains('\0')
+        || file_name.contains(':')
+        || Path::new(file_name).components().count() != 1
+        || !matches!(
+            Path::new(file_name).components().next(),
+            Some(Component::Normal(_))
+        )
+    {
+        return Err(format!("Invalid config file name: {file_name}"));
+    }
+
+    let dir_meta = fs::symlink_metadata(problem_directory).map_err(|e| {
+        format!(
+            "Problem directory does not exist ({}): {e}",
+            problem_directory.display()
+        )
+    })?;
+    if crate::storage::is_symlink_or_reparse_point(&dir_meta) {
+        return Err(format!(
+            "Problem directory is a symbolic link or reparse point: {}",
+            problem_directory.display()
+        ));
+    }
+    if !dir_meta.is_dir() {
+        return Err(format!(
+            "Problem path is not a directory: {}",
+            problem_directory.display()
+        ));
+    }
+
+    let canonical_dir = fs::canonicalize(problem_directory).map_err(|e| {
+        format!(
+            "Failed to canonicalize problem directory {}: {e}",
+            problem_directory.display()
+        )
+    })?;
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if let Ok(meta) = fs::metadata(&canonical_dir) {
+            let mode = meta.permissions().mode();
+            if mode & 0o200 == 0 {
+                let mut perms = meta.permissions();
+                perms.set_mode(mode | 0o200);
+                let _ = fs::set_permissions(&canonical_dir, perms);
+            }
+        }
+    }
+
+    let existing_cfg_path = resolve_existing_problem_config_path(&canonical_dir);
+    let config_path = canonical_dir.join(file_name);
+    if let Ok(existing_meta) = fs::symlink_metadata(&config_path) {
+        if crate::storage::is_symlink_or_reparse_point(&existing_meta) || !existing_meta.is_file() {
+            return Err(format!(
+                "Target config path is not a regular file: {}",
+                config_path.display()
+            ));
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = existing_meta.permissions().mode();
+            if mode & 0o200 == 0 {
+                let mut perms = existing_meta.permissions();
+                perms.set_mode(mode | 0o200);
+                let _ = fs::set_permissions(&config_path, perms);
+            }
+        }
+    }
+
     let tmp_name = format!("{file_name}.{}.tmp", uuid::Uuid::new_v4());
-    let Ok(tmp_path) =
-        crate::storage::ensure_safe_contained_path(problem_directory, Path::new(&tmp_name))
-    else {
-        return false;
-    };
-    let res = (|| -> Result<(), Box<dyn std::error::Error>> {
+    let tmp_path = canonical_dir.join(&tmp_name);
+    let write_res = (|| -> Result<(), Box<dyn std::error::Error>> {
         let content = serde_json::to_vec_pretty(config)?;
         let mut file = fs::OpenOptions::new()
             .write(true)
@@ -874,24 +1005,43 @@ fn write_stored_problem_config_file(
         fs::rename(&tmp_path, &config_path)?;
         Ok(())
     })();
-    if res.is_err() {
+
+    if let Err(err) = write_res {
         let _ = fs::remove_file(&tmp_path);
-        return false;
+        return Err(format!("Failed to write {}: {err}", config_path.display()));
     }
-    true
+
+    if let Some(old_path) = existing_cfg_path {
+        if let Some(old_name) = old_path.file_name().and_then(|s| s.to_str()) {
+            if old_name.eq_ignore_ascii_case(file_name) && old_name != file_name {
+                let _ = fs::remove_file(&old_path);
+            }
+        }
+    }
+
+    Ok(config_path)
+}
+
+fn write_stored_problem_config_file(
+    problem_directory: &Path,
+    file_name: &str,
+    config: &serde_json::Value,
+) -> bool {
+    write_problem_config_atomic(problem_directory, file_name, config).is_ok()
 }
 
 pub fn reconcile_existing_stored_problem_config(
     problem_directory: &Path,
 ) -> Option<serde_json::Value> {
-    let cfg_path = problem_directory.join("Config.cfg");
-    let json_path = problem_directory.join("config.json");
-    let target_name = if cfg_path.is_file() {
-        "Config.cfg"
-    } else if json_path.is_file() {
-        "config.json"
+    let existing_path = resolve_existing_problem_config_path(problem_directory)?;
+    let existing_name = existing_path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Config.cfg");
+    let target_name = if existing_name.eq_ignore_ascii_case("config.json") {
+        existing_name
     } else {
-        return None;
+        "Config.cfg"
     };
     let stored = read_stored_problem_config(problem_directory)?;
     let is_interactive = stored
@@ -973,7 +1123,9 @@ pub fn is_flat_test_directory<P: AsRef<Path>>(problem_directory: P) -> bool {
 pub fn resolve_problem_directory_path<P: AsRef<Path>>(problem_directory: P) -> PathBuf {
     let directory = problem_directory.as_ref();
     match fs::symlink_metadata(directory) {
-        Ok(metadata) if metadata.is_dir() || metadata.is_file() => {}
+        Ok(metadata)
+            if !crate::storage::is_symlink_or_reparse_point(&metadata)
+                && (metadata.is_dir() || metadata.is_file()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         _ => return directory.to_path_buf(),
     }
@@ -1021,6 +1173,9 @@ pub fn discover_custom_checkers<P: AsRef<Path>>(problem_path: P, platform: &str)
             continue;
         }
         let name = entry.file_name().to_string_lossy().to_string();
+        if is_ignored_os_metadata_name(&name) {
+            continue;
+        }
         let lower = name.to_lowercase();
         let is_candidate = lower.ends_with(".cpp")
             || lower.ends_with(".py")
@@ -1057,6 +1212,9 @@ pub fn discover_interactors<P: AsRef<Path>>(problem_path: P, platform: &str) -> 
             continue;
         }
         let name = entry.file_name().to_string_lossy().to_string();
+        if is_ignored_os_metadata_name(&name) {
+            continue;
+        }
         let lower = name.to_lowercase();
         let is_candidate = lower.starts_with("interactor")
             && (lower.ends_with(".cpp")

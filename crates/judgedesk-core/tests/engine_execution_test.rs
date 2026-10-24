@@ -545,3 +545,69 @@ int main() {
 
     let _ = fs::remove_dir_all(&temp_dir);
 }
+
+#[test]
+fn test_cpp_file_io_case_insensitive_input_and_output() {
+    let test_environment = common::OwnedTestEnvironment::new();
+    let executor_bin = common::executor_binary_path();
+    let platform = test_environment
+        .with_isolated_roots(|| ExecutorClient::spawn_sync(&executor_bin).expect("spawn executor"));
+    let temp_dir = std::env::temp_dir().join(format!("test_exec_case_io_{}", std::process::id()));
+    fs::create_dir_all(&temp_dir).unwrap();
+
+    // Submission opens uppercase CAU1.INP and writes uppercase CAU1.OUT while config uses lowercase cau1.inp / cau1.out
+    let cpp_source = temp_dir.join("CAU1.cpp");
+    fs::write(
+        &cpp_source,
+        r#"#include <fstream>
+using namespace std;
+int main() {
+    ifstream fin("CAU1.INP");
+    ofstream fout("CAU1.OUT");
+    long long a, b;
+    if (fin >> a >> b) {
+        fout << (a + b) << "\n";
+    }
+    return 0;
+}
+"#,
+    )
+    .unwrap();
+
+    let comp_res = compile_cpp(&cpp_source, &temp_dir, &platform);
+    assert_eq!(
+        comp_res.status, "OK",
+        "Compilation failed: {:?}",
+        comp_res.error
+    );
+    let exe_path = comp_res.executable.unwrap();
+
+    let inp_file = temp_dir.join("source_input.inp");
+    let out_file = temp_dir.join("expected_output.out");
+    fs::write(&inp_file, "15 27\n").unwrap();
+    fs::write(&out_file, "42\n").unwrap();
+
+    let ws_dir = temp_dir.join("ws");
+
+    let result = run_test_case(TestCaseExecutionConfig {
+        executable_path: &exe_path,
+        input_path: &inp_file,
+        expected_output_path: &out_file,
+        input_file_name: "cau1.inp",
+        output_file_name: "cau1.out",
+        time_limit_ms: 2000,
+        memory_limit_mb: 256,
+        checker_type: "C1",
+        custom_checker_path: None,
+        workspace_dir: &ws_dir,
+        platform: &platform,
+    });
+
+    assert_eq!(
+        result.status, "AC",
+        "Expected AC for case-mismatched File I/O, got: {:?} (msg: {:?}, err: {:?})",
+        result.status, result.message, result.error_detail
+    );
+
+    let _ = fs::remove_dir_all(&temp_dir);
+}

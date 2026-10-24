@@ -230,6 +230,36 @@ workflows:
               linux_bundles+=("release-assets-linux/$pkg_name")
             done
           fi
+          if [[ -n "${LINUX_FULL_DEB_SHA256:-}" || -n "${LINUX_FULL_RPM_SHA256:-}" || -n "${LINUX_FULL_APPIMAGE_SHA256:-}" ]]; then
+            mkdir -p release-assets-linux
+            for spec in \
+              "JudgeDesk_${version}_full_amd64.deb:${LINUX_FULL_DEB_SHA256:-}" \
+              "JudgeDesk-${version}-full-1.x86_64.rpm:${LINUX_FULL_RPM_SHA256:-}" \
+              "JudgeDesk_${version}_full_amd64.AppImage:${LINUX_FULL_APPIMAGE_SHA256:-}"; do
+              pkg_name="${spec%%:*}"
+              expected_pkg="${spec#*:}"
+              if [[ -z "$expected_pkg" ]]; then
+                echo "Missing expected SHA-256 for $pkg_name." >&2
+                exit 1
+              fi
+              expected_pkg="$(printf '%s' "$expected_pkg" | tr '[:upper:]' '[:lower:]')"
+              if ! [[ "$expected_pkg" =~ ^[0-9a-f]{64}$ ]]; then
+                echo "Invalid expected SHA-256 for $pkg_name." >&2
+                exit 1
+              fi
+              pkg_url="https://github.com/ducminh25/judgedesk/releases/download/${staging_tag}/${pkg_name}"
+              curl --proto '=https' --tlsv1.2 -fL "$pkg_url" -o "release-assets-linux/$pkg_name"
+              meta_name="${pkg_name}.metadata.json"
+              meta_url="https://github.com/ducminh25/judgedesk/releases/download/${staging_tag}/${meta_name}"
+              curl --proto '=https' --tlsv1.2 -fL "$meta_url" -o "release-assets-linux/$meta_name"
+              actual_pkg="$(shasum -a 256 "release-assets-linux/$pkg_name" | awk '{print $1}')"
+              if [[ "$actual_pkg" != "$expected_pkg" ]]; then
+                echo "Staged Linux package SHA-256 mismatch for $pkg_name." >&2
+                exit 1
+              fi
+              linux_bundles+=("release-assets-linux/$pkg_name")
+            done
+          fi
           for variant in core full; do
             msi_name="JudgeDesk_${version}_${variant}_x64_en-US.msi"
             npx tauri signer sign "release-assets-windows/$msi_name"

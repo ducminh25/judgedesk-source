@@ -913,3 +913,75 @@ fn test_ensure_or_reconcile_stored_problem_config_creates_default_and_reconciles
         );
     }
 }
+
+#[test]
+fn test_rational_comma_decimals_and_lowercase_config_and_macos_metadata() {
+    use judgedesk_core::rational::{parse_rational, Rational};
+    assert_eq!(parse_rational("2,5"), Rational::new(5, 2));
+    assert_eq!(parse_rational(" 2,5 "), Rational::new(5, 2));
+    assert_eq!(parse_rational("2,5/5"), Rational::new(1, 2));
+    assert_eq!(parse_rational(",5"), Rational::new(1, 2));
+    assert_eq!(parse_rational("-,5"), Rational::new(-1, 2));
+
+    let temp = TempDir::new("comma_and_metadata_discovery_test");
+    let tests_root = temp.0.join("Tests");
+    let contestants_root = temp.0.join("Contestants");
+    fs::create_dir_all(tests_root.join("__MACOSX")).unwrap();
+    fs::create_dir_all(contestants_root.join("__MACOSX")).unwrap();
+
+    let prob_dir = tests_root.join("CAU1");
+    let test01 = prob_dir.join("Test01");
+    fs::create_dir_all(&test01).unwrap();
+    fs::write(test01.join("._CAU1.INP"), b"\x00\x05\x16\x07macos-fork").unwrap();
+    fs::write(test01.join("._CAU1.OUT"), b"\x00\x05\x16\x07macos-fork").unwrap();
+    fs::write(test01.join("CAU1.INP"), "10\n").unwrap();
+    fs::write(test01.join("CAU1.OUT"), "20\n").unwrap();
+    fs::write(prob_dir.join("._checker.cpp"), "macos-fork").unwrap();
+    fs::write(prob_dir.join("checker.cpp"), "int main(){}").unwrap();
+    fs::write(
+        prob_dir.join("config.cfg"),
+        serde_json::json!({ "totalScore": "2,5", "memoryLimit": 512 }).to_string(),
+    )
+    .unwrap();
+
+    let alice_dir = contestants_root.join("Alice");
+    fs::create_dir_all(&alice_dir).unwrap();
+    fs::write(alice_dir.join("._CAU1.cpp"), "macos-fork").unwrap();
+    fs::write(alice_dir.join("CAU1.cpp"), "int main(){}").unwrap();
+
+    assert_eq!(
+        judgedesk_core::discovery::submission::list_contestants(&contestants_root, None),
+        vec!["Alice".to_string()]
+    );
+    let sub = judgedesk_core::discovery::submission::find_submission(&alice_dir, "cau1")
+        .expect("resolve submission")
+        .expect("submission found");
+    assert_eq!(sub.file_name, "CAU1.cpp");
+
+    assert_eq!(
+        testcase::discover_custom_checkers(&prob_dir, "linux"),
+        vec!["checker.cpp".to_string()]
+    );
+    let resolved_tc = testcase::resolve_test_case_files(&prob_dir, "Test01", false)
+        .expect("Test01 should resolve");
+    assert_eq!(resolved_tc.input_file_name, "CAU1.INP");
+    assert_eq!(resolved_tc.output_path, test01.join("CAU1.OUT"));
+
+    let stored = testcase::read_stored_problem_config(&prob_dir).expect("read config.cfg");
+    let norm = testcase::normalize_problem_config("CAU1", None, Some(&stored));
+    assert_eq!(norm.memory_limit_mb, 512);
+    assert_eq!(
+        norm.scoring_config
+            .total_score
+            .as_ref()
+            .map(judgedesk_core::rational::parse_rational_value),
+        Some(Rational::new(5, 2))
+    );
+
+    let invalid_score_cfg = serde_json::json!({ "totalScore": "invalid_text" });
+    let norm_invalid = testcase::normalize_problem_config("CAU1", None, Some(&invalid_score_cfg));
+    assert!(
+        norm_invalid.scoring_config.total_score.is_none(),
+        "invalid non-zero string totalScore must normalize to None instead of 0"
+    );
+}

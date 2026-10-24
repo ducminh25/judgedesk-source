@@ -1126,3 +1126,84 @@ async fn test_preference_mutation_stays_pinned_to_constructed_app_data_root_acro
         );
     }
 }
+
+#[tokio::test]
+async fn test_polygon_config_saves_through_symlinked_parent_and_reads_lowercase_config() {
+    let environment = common::OwnedTestEnvironment::new();
+    let real_tests = environment.root().join("real_tests");
+    let problem_dir = real_tests.join("CAU1");
+    fs::create_dir_all(&problem_dir).unwrap();
+    fs::write(problem_dir.join("1.inp"), "1 2\n").unwrap();
+    fs::write(problem_dir.join("1.out"), "3\n").unwrap();
+    fs::write(
+        problem_dir.join("config.cfg"),
+        r#"{"totalScore": "2,5", "testWellFormed": false}"#,
+    )
+    .unwrap();
+
+    let linked_tests = environment.root().join("linked_tests");
+    #[cfg(windows)]
+    {
+        let status = std::process::Command::new("cmd")
+            .args([
+                "/C",
+                "mklink",
+                "/J",
+                &linked_tests.to_string_lossy(),
+                &real_tests.to_string_lossy(),
+            ])
+            .output()
+            .expect("create junction via mklink /J");
+        assert!(status.status.success(), "mklink /J failed");
+    }
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(&real_tests, &linked_tests).expect("create symlink");
+    }
+
+    let linked_problem_dir = linked_tests.join("CAU1");
+    let (port, server_task) = start_discovery_test_server(&environment).await;
+
+    let (status, body) = http_request(
+        port,
+        "GET",
+        &format!(
+            "/api/polygon-config?path={}",
+            urlencode(&linked_problem_dir.to_string_lossy())
+        ),
+        None,
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    let read_res: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(read_res["data"]["totalScore"], "2,5");
+
+    let payload = serde_json::to_vec(&serde_json::json!({
+        "path": linked_problem_dir,
+        "config": { "totalScore": "2.5", "testWellFormed": true },
+    }))
+    .unwrap();
+    let (status, body) = http_request(
+        port,
+        "POST",
+        "/api/polygon-config",
+        Some(&payload),
+        Some("application/json"),
+    )
+    .await;
+    assert_eq!(
+        status, 200,
+        "Saving Config.cfg through a symlinked ancestor directory must succeed: {body}"
+    );
+    let stored: serde_json::Value =
+        serde_json::from_slice(&fs::read(problem_dir.join("Config.cfg")).unwrap()).unwrap();
+    assert_eq!(stored["totalScore"], "2.5");
+    assert_eq!(stored["testWellFormed"], true);
+
+    server_task.abort();
+    #[cfg(windows)]
+    let _ = fs::remove_dir(&linked_tests);
+    #[cfg(unix)]
+    let _ = fs::remove_file(&linked_tests);
+}

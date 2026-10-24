@@ -865,20 +865,65 @@ fn run_sandboxed_custom_checker(
     };
 
     let _ = fs::copy(config.input_path, test_dir.join(default_inp));
-    if let Ok(contained_inp) = chk_ws.resolve_contained_path(&Path::new("test").join(custom_inp)) {
-        let _ = fs::copy(config.input_path, contained_inp);
+    for alias in generate_case_variant_relative_paths(custom_inp) {
+        if let Ok(contained_inp) = chk_ws.resolve_contained_path(&Path::new("test").join(&alias)) {
+            if !contained_inp.exists() {
+                let _ = fs::copy(config.input_path, contained_inp);
+            }
+        }
+    }
+    if let Some(src_inp_name) = config.input_path.file_name().and_then(|s| s.to_str()) {
+        for alias in generate_case_variant_relative_paths(src_inp_name) {
+            if let Ok(contained_inp) =
+                chk_ws.resolve_contained_path(&Path::new("test").join(&alias))
+            {
+                if !contained_inp.exists() {
+                    let _ = fs::copy(config.input_path, contained_inp);
+                }
+            }
+        }
     }
     let _ = fs::write(test_dir.join(default_out), expected_bytes);
-    if let Ok(contained_test_out) =
-        chk_ws.resolve_contained_path(&Path::new("test").join(custom_out))
-    {
-        let _ = fs::write(contained_test_out, expected_bytes);
+    for alias in generate_case_variant_relative_paths(custom_out) {
+        if let Ok(contained_test_out) =
+            chk_ws.resolve_contained_path(&Path::new("test").join(&alias))
+        {
+            if !contained_test_out.exists() {
+                let _ = fs::write(contained_test_out, expected_bytes);
+            }
+        }
     }
     let _ = fs::write(work_dir.join(default_out), actual_bytes);
-    if let Ok(contained_work_out) =
-        chk_ws.resolve_contained_path(&Path::new("work").join(custom_out))
+    for alias in generate_case_variant_relative_paths(custom_out) {
+        if let Ok(contained_work_out) =
+            chk_ws.resolve_contained_path(&Path::new("work").join(&alias))
+        {
+            if !contained_work_out.exists() {
+                let _ = fs::write(contained_work_out, actual_bytes);
+            }
+        }
+    }
+    if let Some(exp_out_name) = config
+        .expected_output_path
+        .file_name()
+        .and_then(|s| s.to_str())
     {
-        let _ = fs::write(contained_work_out, actual_bytes);
+        for alias in generate_case_variant_relative_paths(exp_out_name) {
+            if let Ok(contained_test_out) =
+                chk_ws.resolve_contained_path(&Path::new("test").join(&alias))
+            {
+                if !contained_test_out.exists() {
+                    let _ = fs::write(contained_test_out, expected_bytes);
+                }
+            }
+            if let Ok(contained_work_out) =
+                chk_ws.resolve_contained_path(&Path::new("work").join(&alias))
+            {
+                if !contained_work_out.exists() {
+                    let _ = fs::write(contained_work_out, actual_bytes);
+                }
+            }
+        }
     }
 
     let themis_stdin_file = chk_dir.join("themis.stdin");
@@ -1352,6 +1397,24 @@ pub fn run_test_case_with_max_score(
                         config.input_file_name
                     ));
                 }
+                for alias in generate_case_variant_relative_paths(config.input_file_name) {
+                    if alias == Path::new(config.input_file_name) {
+                        continue;
+                    }
+                    if !config.output_file_name.is_empty()
+                        && alias
+                            .to_string_lossy()
+                            .eq_ignore_ascii_case(config.output_file_name)
+                    {
+                        continue;
+                    }
+                    if let Ok(alias_path) = workspace.resolve_contained_path(&alias) {
+                        if !alias_path.exists() {
+                            let _ = fs::hard_link(&problem_inp, &alias_path)
+                                .or_else(|_| fs::copy(config.input_path, &alias_path).map(|_| ()));
+                        }
+                    }
+                }
             }
             Err(e) => {
                 return TestRunOutput::judge_error(format!(
@@ -1433,10 +1496,7 @@ pub fn run_test_case_with_max_score(
     // Process exited with 0: check output strictly according to configured I/O mode.
     // Never fall back to stdout when a named output file is required.
     let actual_bytes = if !config.output_file_name.is_empty() {
-        workspace
-            .resolve_contained_path(Path::new(config.output_file_name))
-            .ok()
-            .filter(|p| p.is_file())
+        resolve_case_insensitive_workspace_file(&workspace, Path::new(config.output_file_name))
             .and_then(|p| fs::read(p).ok())
             .unwrap_or_default()
     } else if stdout_path.is_file() {
@@ -1486,4 +1546,116 @@ pub fn run_test_case_with_max_score(
         error_detail,
         execution: Some(execution_telemetry),
     }
+}
+
+fn capitalize_ascii_word(word: &str) -> String {
+    let mut chars = word.chars();
+    let Some(first) = chars.next() else {
+        return String::new();
+    };
+    let mut out = String::with_capacity(word.len());
+    out.push(first.to_ascii_uppercase());
+    for ch in chars {
+        out.push(ch.to_ascii_lowercase());
+    }
+    out
+}
+
+fn generate_case_variant_relative_paths(relative_name: &str) -> Vec<PathBuf> {
+    let rel_path = Path::new(relative_name);
+    let parent = rel_path.parent().filter(|p| !p.as_os_str().is_empty());
+    let Some(file_name) = rel_path.file_name().and_then(|s| s.to_str()) else {
+        return vec![rel_path.to_path_buf()];
+    };
+    let (stem, ext) = match file_name.rfind('.') {
+        Some(idx) if idx > 0 => (&file_name[..idx], Some(&file_name[idx + 1..])),
+        _ => (file_name, None),
+    };
+    let mut stems = Vec::new();
+    for s in [
+        stem.to_string(),
+        stem.to_ascii_lowercase(),
+        stem.to_ascii_uppercase(),
+        capitalize_ascii_word(stem),
+    ] {
+        if !stems.contains(&s) {
+            stems.push(s);
+        }
+    }
+    let mut exts: Vec<Option<String>> = Vec::new();
+    if let Some(ext_str) = ext {
+        for e in [
+            ext_str.to_string(),
+            ext_str.to_ascii_lowercase(),
+            ext_str.to_ascii_uppercase(),
+            capitalize_ascii_word(ext_str),
+        ] {
+            let opt = Some(e);
+            if !exts.contains(&opt) {
+                exts.push(opt);
+            }
+        }
+    } else {
+        exts.push(None);
+    }
+
+    let mut out = Vec::new();
+    for s in &stems {
+        for e in &exts {
+            let base = match e {
+                Some(ext_val) => format!("{s}.{ext_val}"),
+                None => s.clone(),
+            };
+            let candidate = match parent {
+                Some(p) => p.join(&base),
+                None => PathBuf::from(&base),
+            };
+            if !out.contains(&candidate) {
+                out.push(candidate);
+            }
+        }
+    }
+    out
+}
+
+fn resolve_case_insensitive_workspace_file(
+    workspace: &crate::storage::OwnedWorkspace,
+    relative_path: &Path,
+) -> Option<PathBuf> {
+    if let Ok(exact) = workspace.resolve_contained_path(relative_path) {
+        if exact.is_file() {
+            return Some(exact);
+        }
+    }
+    let target_name = relative_path.file_name()?.to_str()?;
+    let rel_parent = relative_path.parent().filter(|p| !p.as_os_str().is_empty());
+    let scan_dir = match rel_parent {
+        Some(parent) => workspace.resolve_contained_path(parent).ok()?,
+        None => workspace.root().to_path_buf(),
+    };
+    let entries = fs::read_dir(&scan_dir).ok()?;
+    let mut candidates: Vec<String> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.eq_ignore_ascii_case(target_name) {
+                Some(name)
+            } else {
+                None
+            }
+        })
+        .collect();
+    candidates.sort();
+    for name in candidates {
+        let candidate_rel = match rel_parent {
+            Some(parent) => parent.join(&name),
+            None => PathBuf::from(&name),
+        };
+        if let Ok(resolved) = workspace.resolve_contained_path(&candidate_rel) {
+            if resolved.is_file() {
+                return Some(resolved);
+            }
+        }
+    }
+    None
 }
