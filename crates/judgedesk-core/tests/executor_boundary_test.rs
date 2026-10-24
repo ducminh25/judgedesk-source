@@ -188,7 +188,7 @@ fn write_tree_guard(path: &Path, generation: &str) {
 }
 
 pub const FROZEN_WINDOWS_EXECUTOR_SHA256: &str =
-    "EA7F018676F470173B32EA3C60DE1E57A2DC49D846EB48C19864FA63DC4152BA";
+    "3285E1912C64D08A9929FBE655390317362397D6EDB4D9E4E236BB5B8114AF37";
 pub const FROZEN_WINDOWS_EXECUTOR_SIZE_BYTES: usize = 965120;
 
 fn target_triple_for_packaged_executor() -> &'static str {
@@ -1625,11 +1625,7 @@ fn node_rollback_client_generation_contention() {
     let guard_file = temp.path().join("guard.lock");
     let generation_file = "1111111111111111111111111111111111111111111111111111111111111111";
     let generation_mismatch = "2222222222222222222222222222222222222222222222222222222222222222";
-    fs::write(
-        &guard_file,
-        format!("JUDGEDESK_PROCESS_TREE/1\ngeneration={generation_file}\n"),
-    )
-    .expect("write guard file");
+    write_tree_guard(&guard_file, generation_file);
     let root = repo_root();
     let client_url = client_module_url();
 

@@ -31,8 +31,7 @@ import {
   resolveLocalCppCertificateReadiness,
 } from "./certificate-readiness.js";
 import {
-  getHostProductVersion,
-  isMinimumOsSupported,
+  isManagedHostSupported,
 } from "./host-compatibility.js";
 import {
   clearLocalCompatibilityProbeCache,
@@ -349,7 +348,7 @@ export function resolveManagedToolchain(kind: ToolchainKind): ResolvedToolchain 
     const minimumOs = TOOLCHAIN_RELEASE_BLUEPRINTS[descriptor.id]?.minimumOs;
     if (
       minimumOs
-      && !isMinimumOsSupported(minimumOs, getHostProductVersion())
+      && !isManagedHostSupported(os.platform(), minimumOs)
     ) {
       return {
         kind,

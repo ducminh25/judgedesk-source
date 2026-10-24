@@ -240,8 +240,29 @@ export async function refreshToolchainState(
   return data;
 }
 
+let cachedToolchainState: ToolchainState | null = null;
+
+export function primeToolchainStateCache(data: ToolchainState | null): void {
+  if (data === null) {
+    cachedToolchainState = null;
+    return;
+  }
+  if (
+    !cachedToolchainState ||
+    data.registryRevision >= cachedToolchainState.registryRevision
+  ) {
+    cachedToolchainState = data;
+  }
+}
+
+export function invalidateToolchainStateCache(): void {
+  cachedToolchainState = null;
+}
+
 export function useToolchains() {
-  const [state, setState] = useState<ToolchainState | null>(null);
+  const [state, setState] = useState<ToolchainState | null>(
+    () => cachedToolchainState,
+  );
   const [error, setError] = useState<string | null>(null);
   const pollingRef = useRef<number | null>(null);
   const pollingMountedRef = useRef(false);
@@ -254,6 +275,7 @@ export function useToolchains() {
       const response = await apiFetch("/api/toolchains");
       const data = (await response.json()) as ToolchainState;
       if (!pollingMountedRef.current || generation !== fetchGenerationRef.current) return null;
+      primeToolchainStateCache(data);
       setState(data);
       setError(null);
       return data;
@@ -318,6 +340,7 @@ export function useToolchains() {
   const install = async (id: string) => {
     try {
       setError(null);
+      invalidateToolchainStateCache();
       await apiFetch(`/api/toolchains/${id}/install`, { method: "POST" });
       startPolling();
       return true;
@@ -329,6 +352,7 @@ export function useToolchains() {
 
   const cancel = async (id: string) => {
     try {
+      invalidateToolchainStateCache();
       await apiFetch(`/api/toolchains/${id}/cancel`, { method: "POST" });
       await refreshState();
     } catch (caught: any) {
@@ -339,6 +363,7 @@ export function useToolchains() {
   const uninstall = async (id: string) => {
     try {
       setError(null);
+      invalidateToolchainStateCache();
       await apiFetch(`/api/toolchains/${id}`, { method: "DELETE" });
       await refreshState();
       return true;
@@ -355,6 +380,7 @@ export function useToolchains() {
   ) => {
     try {
       setError(null);
+      invalidateToolchainStateCache();
       await apiFetch(`/api/toolchains/profiles/${encodeURIComponent(profileId)}/preference`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -374,6 +400,7 @@ export function useToolchains() {
   const rescan = async () => {
     try {
       setError(null);
+      invalidateToolchainStateCache();
       await apiFetch("/api/toolchains/rescan", { method: "POST" });
       await refreshState();
     } catch (caught: any) {
@@ -386,6 +413,7 @@ export function useToolchains() {
   ): Promise<boolean> => {
     try {
       setError(null);
+      invalidateToolchainStateCache();
       await apiFetch("/api/toolchains/execution-policy", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -423,6 +451,7 @@ export function useToolchains() {
   const certify = async (profileId: string): Promise<boolean> => {
     try {
       setError(null);
+      invalidateToolchainStateCache();
       await apiFetch(`/api/toolchains/profiles/${encodeURIComponent(profileId)}/certify`, {
         method: "POST",
       });
@@ -449,6 +478,7 @@ export function useToolchains() {
         diagnostic: ToolchainDiagnosticResult;
         message?: string;
       };
+      await refreshState();
       return payload.diagnostic ?? {
         success: false,
         profileId,

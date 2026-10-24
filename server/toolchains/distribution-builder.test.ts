@@ -16,6 +16,27 @@ import type {
 
 const TEST_KEY_ID = "distribution-test-key";
 
+test("Linux Full requires the five packages covering all six release languages", () => {
+  assert.deepEqual(listCurrentReleaseManagedPackageIds("linux", "x64"), [
+    "gcc-linux-x64",
+    "python-linux-x64",
+    "fpc-linux-x64",
+    "temurin21-linux-x64",
+    "scratch-linux-x64",
+  ]);
+});
+
+test("Full rejects an unsupported host instead of accepting an empty package set", async (t) => {
+  const { input, output } = testPaths(t);
+  const publicKey = writeSignedManifest(input, [fixture("python-windows-x64").package]);
+  await assert.rejects(prepareDistributionResources({
+    variant: "full", inputRoot: input, outputRoot: output,
+    platform: "win32", arch: "arm64",
+    trustedPublicKeys: { [TEST_KEY_ID]: publicKey },
+  }), /complete current release package set/);
+  assert.equal(fs.existsSync(output), false);
+});
+
 function testPaths(t: TestContext): { input: string; output: string } {
   const input = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-dist-input-"));
   const output = path.join(

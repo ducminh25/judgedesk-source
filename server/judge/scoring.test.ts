@@ -214,3 +214,25 @@ test("group-only test configuration uses default points for its maximum", () => 
   });
   assert.equal(summary.maxScore, 2);
 });
+
+test("newly added test directories without polygonConfig.tests entries fall back to defaultScore in maxScore", () => {
+  const runs = [testCase("Test01", "AC", 1), testCase("Test02", "AC", 1), testCase("Test03", "AC", 1)];
+  const summary = calculateProblemSummary({
+    compileStatus: "OK",
+    testCases: runs,
+    testDirectories: ["Test01", "Test02", "Test03"],
+    config: {
+      defaultScore: 1,
+      polygonConfig: {
+        enableGroups: false,
+        tests: {
+          Test01: { points: 1 },
+          Test02: { points: 1 },
+        },
+      },
+    },
+  });
+  assert.equal(summary.score, 3);
+  assert.equal(summary.maxScore, 3);
+  assert.equal(summary.status, "AC");
+});

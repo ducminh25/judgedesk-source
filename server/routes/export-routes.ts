@@ -33,12 +33,23 @@ export function registerExportRoutes(
       const exportPath = path.join(exportDir, "Book.xlsx");
       const diagnosticsPath = path.join(exportDir, "diagnostics.json");
       await Promise.all([
-        fs.promises.writeFile(exportPath, workbook),
-        fs.promises.writeFile(diagnosticsPath, diagnosticJson, "utf8"),
+        fs.promises.writeFile(`${exportPath}.tmp`, workbook, { flag: "wx" }),
+        fs.promises.writeFile(`${diagnosticsPath}.tmp`, diagnosticJson, { encoding: "utf8", flag: "wx" }),
+      ]);
+      await Promise.all([
+        fs.promises.rename(`${exportPath}.tmp`, exportPath),
+        fs.promises.rename(`${diagnosticsPath}.tmp`, diagnosticsPath),
       ]);
 
-      const openMode = await workbookOpener(exportPath);
-      return res.json({ success: true, path: exportPath, diagnosticsPath, openMode });
+      let openMode: WorkbookOpenMode | null = null;
+      let openError: string | null = null;
+      try {
+        openMode = await workbookOpener(exportPath);
+      } catch (error: unknown) {
+        openError = (error instanceof Error ? error.message : String(error)) || "Workbook viewer could not be started";
+      }
+      return res.json({ success: true, saved: true, path: exportPath, diagnosticsPath, openMode,
+        openStatus: openError === null ? "launched" : "failed", openError });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       const status = /payload|Workbook|Diagnostic JSON/.test(message) ? 400 : 500;

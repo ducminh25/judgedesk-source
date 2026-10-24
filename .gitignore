@@ -3,6 +3,8 @@ scripts/node-v22/
 build/
 dist/
 coverage/
+__pycache__/
+*.py[cod]
 temp/
 release-downloads/
 release-assets/

@@ -168,6 +168,37 @@ test("updater manifest rejects a missing edition bundle and mismatched metadata"
   );
 });
 
+test("Linux Full assets keep their edition and package format through publication", (t) => {
+  const staging = createStaging(t);
+  const bundles = [
+    ["JudgeDesk_1.3.4_full_amd64.deb", "linux-x86_64-deb-full"],
+    ["JudgeDesk-1.3.4-full-1.x86_64.rpm", "linux-x86_64-rpm-full"],
+    ["JudgeDesk_1.3.4_full_amd64.AppImage", "linux-x86_64-appimage-full"],
+  ];
+  for (const [filename] of bundles) {
+    fs.writeFileSync(path.join(staging, filename), `full:${filename}`);
+    fs.writeFileSync(path.join(staging, `${filename}.sig`), `signature:${filename}`);
+    fs.writeFileSync(path.join(staging, `${filename}.metadata.json`), JSON.stringify({
+      schemaVersion: 1, edition: "full", platform: "linux", arch: "x86_64", installedSizeBytes: 1_700_000_000,
+    }));
+  }
+  const { manifest } = generateUpdaterManifest({ assetsDirectory: staging, repository: "owner/repository", tag: "v1.3.4" });
+  for (const [filename, target] of bundles) {
+    assert.ok(manifest.platforms[target]?.url.endsWith(filename));
+    assert.equal(manifest.platforms[target].judgedesk.edition, "full");
+  }
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-public-linux-full-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const files = [...expectedPublicReleaseAssets("v1.3.4").filter((name) => name !== "SHA256SUMS"), ...bundles.map(([name]) => name)].sort();
+  for (const name of files) fs.copyFileSync(path.join(staging, name), path.join(root, name));
+  fs.writeFileSync(path.join(root, "SHA256SUMS"), files.map((name) =>
+    `${crypto.createHash("sha256").update(fs.readFileSync(path.join(root, name))).digest("hex")}  ${name}`).join("\n") + "\n");
+  assert.equal(verifyPublicReleaseAssets({ assetsDirectory: root, tag: "v1.3.4" }).assets.length, 11);
+  manifest.platforms["linux-x86_64-rpm-full"].url = manifest.platforms["linux-x86_64-deb-full"].url;
+  fs.writeFileSync(path.join(root, "latest.json"), JSON.stringify(manifest));
+  assert.throws(() => verifyPublicReleaseAssets({ assetsDirectory: root, tag: "v1.3.4" }), /must select/);
+});
+
 function createPublicAssets(t) {
   const staging = createStaging(t);
   const tag = "v1.3.4";

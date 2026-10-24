@@ -53,7 +53,11 @@ async fn run_single_profile_test(profile: &str, is_compiled: bool) {
     let _test_environment = common::OwnedTestEnvironment::new();
     common::ensure_test_environment();
     let state = _test_environment.with_isolated_roots(AppState::default);
-    assert!(state.platform.root().starts_with(_test_environment.root()));
+    assert!(
+        state.platform.root().starts_with(_test_environment.root()),
+        "executor failed to enter the isolated test root: {:?}",
+        state.platform.health()
+    );
     let platform = state.platform.clone();
     let (addr, server_task) = start_embedded_server_with_state(0, state)
         .await
@@ -271,8 +275,15 @@ async fn test_genuine_toolchain_diagnostics_orchestrator_continues_after_profile
     common::ensure_test_environment();
     let state = environment.with_isolated_roots(AppState::default);
     assert!(state.platform.root().starts_with(environment.root()));
+    // The selected local wrapper may only execute the host compiler exposed by
+    // its sandbox, not a managed package outside that selected local root.
+    let mode = if cfg!(target_os = "linux") {
+        Some("local_auto")
+    } else {
+        None
+    };
     let compiler =
-        judgedesk_core::toolchains::discovery::resolve_toolchain_for_profile("c", None, None);
+        judgedesk_core::toolchains::discovery::resolve_toolchain_for_profile("c", mode, None);
     assert!(compiler.ready, "a real C compiler is required");
     assert!(compiler.executable_path.is_file());
     let include_dir = environment.root().join("owned-c-include");
@@ -291,13 +302,30 @@ async fn test_genuine_toolchain_diagnostics_orchestrator_continues_after_profile
     };
     std::env::remove_var("CPATH");
     std::env::set_var("C_INCLUDE_PATH", &include_dir);
+    #[cfg(target_os = "linux")]
+    let selected_compiler = {
+        use std::os::unix::fs::PermissionsExt;
+        // Host include variables must not cross the sandbox boundary. Inject
+        // the intentional failure through the selected compiler itself instead.
+        let wrapper = include_dir.join("cc");
+        let compiler_path = compiler.executable_path.to_string_lossy();
+        let header = include_dir.join("stdio.h");
+        std::fs::write(&wrapper, format!(
+            "#!/bin/sh\nfor arg in \"$@\"; do\n  if [ \"$arg\" = -static ]; then exec '{}' -include '{}' \"$@\"; fi\ndone\nexec '{}' \"$@\"\n",
+            compiler_path, header.display(), compiler_path
+        )).unwrap();
+        std::fs::set_permissions(&wrapper, std::fs::Permissions::from_mode(0o755)).unwrap();
+        wrapper
+    };
+    #[cfg(not(target_os = "linux"))]
+    let selected_compiler = compiler.executable_path.clone();
     {
         let mut toolchains = state.toolchains.write().expect("toolchain state lock");
         toolchains.selections.insert(
             "c".to_string(),
             ProfileSelection {
                 mode: "local_path".to_string(),
-                local_path: Some(compiler.executable_path.to_string_lossy().into_owned()),
+                local_path: Some(selected_compiler.to_string_lossy().into_owned()),
             },
         );
     }

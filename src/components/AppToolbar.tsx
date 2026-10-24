@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { openExternalUrl } from "../utils/open-external-url.js";
 import {
   ArrowDownWideNarrow,
   ArrowUpDown,
@@ -38,6 +39,7 @@ import logoImg from "../assets/logo.js";
 const PUBLIC_REPOSITORY = "https://github.com/ducminh25/judgedesk";
 
 interface Props {
+  notifications?: ReactNode;
   canDeleteSelected: boolean;
   canExport: boolean;
   canRun: boolean;
@@ -78,6 +80,7 @@ const iconCommandButton =
   "flex h-9 w-9 flex-none items-center justify-center rounded border border-surface-border bg-surface-elevated text-text-primary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-40";
 
 export default function AppToolbar({
+  notifications,
   canDeleteSelected,
   canExport,
   canRun,
@@ -208,12 +211,7 @@ export default function AppToolbar({
 
   const openRepository = async () => {
     try {
-      if ("__TAURI_INTERNALS__" in window) {
-        const { openUrl } = await import("@tauri-apps/plugin-opener");
-        await openUrl(PUBLIC_REPOSITORY);
-      } else {
-        window.open(PUBLIC_REPOSITORY, "_blank", "noopener,noreferrer");
-      }
+      await openExternalUrl(PUBLIC_REPOSITORY);
     } catch (error) {
       console.error("Could not open the public repository", error);
     }
@@ -345,6 +343,7 @@ export default function AppToolbar({
           onInstall={onRequestInstall}
         />
         <HelpButton onOpen={onOpenHelp} />
+        <div className="flex-none" onClick={() => { setUtilityMenuOpen(false); setBrandMenuOpen(false); }}>{notifications}</div>
         <DonationButton onOpen={onOpenDonation} disabled={interactionLocked} />
 
         <div ref={utilityMenuRef} className="relative flex-none">

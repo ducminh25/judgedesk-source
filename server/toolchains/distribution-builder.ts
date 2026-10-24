@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import { writeToolchainContentIndex } from "./content-index.js";
+import { normalizeLinuxDistributionPermissions } from "./distribution-permissions.js";
 import fs from "node:fs";
 import path from "node:path";
 import {
@@ -32,14 +34,14 @@ export interface DistributionBuildOptions {
   variant: DistributionVariant;
   inputRoot: string;
   outputRoot: string;
-  platform: "win32" | "darwin";
+  platform: "win32" | "darwin" | "linux";
   arch: "x64" | "arm64";
   trustedPublicKeys?: Readonly<Record<string, string>>;
   extractArchive?: typeof extractToolchainArchive;
   verifyExecutable?: typeof verifyToolchainExecutable;
 }
 
-interface DistributionLockV1 {
+export interface DistributionLockV1 {
   schemaVersion: 1;
   distribution: DistributionVariant;
   platform: DistributionBuildOptions["platform"];
@@ -50,6 +52,7 @@ interface DistributionLockV1 {
     version: string;
     archiveSha256: string;
     installedSizeBytes: number;
+    contentIndexSha256?: string;
   }[];
 }
 
@@ -95,7 +98,7 @@ export async function prepareDistributionResources(
     .sort((left, right) => left.id.localeCompare(right.id));
   if (
     options.variant === "full"
-    && selected.length !== requiredPackageIds.size
+    && (requiredPackageIds.size === 0 || selected.length !== requiredPackageIds.size)
   ) {
     throw new Error(
       "Full distribution does not contain the complete current release package set.",
@@ -130,7 +133,7 @@ export async function prepareDistributionResources(
       const toolchainsRoot = path.join(stagingRoot, "toolchains");
       fs.mkdirSync(toolchainsRoot);
       for (const descriptor of selected) {
-        await materializePackage(
+        const contentIndexSha256 = await materializePackage(
           inputRoot,
           toolchainsRoot,
           descriptor,
@@ -141,6 +144,7 @@ export async function prepareDistributionResources(
           version: descriptor.version,
           archiveSha256: descriptor.sha256,
           installedSizeBytes: descriptor.installedSizeBytes!,
+          ...(contentIndexSha256 ? { contentIndexSha256 } : {}),
         });
       }
     }
@@ -158,6 +162,9 @@ export async function prepareDistributionResources(
       `${JSON.stringify(lock, null, 2)}\n`,
       { encoding: "utf8", flag: "wx" },
     );
+    if (options.platform === "linux" && process.platform === "linux") {
+      normalizeLinuxDistributionPermissions(stagingRoot);
+    }
     if (fs.existsSync(outputRoot)) {
       try {
         await renameDirectoryWithRetry(outputRoot, backupRoot);
@@ -263,7 +270,7 @@ async function materializePackage(
   toolchainsRoot: string,
   descriptor: ToolchainDescriptor,
   options: DistributionBuildOptions,
-): Promise<void> {
+): Promise<string | undefined> {
   const blueprint = TOOLCHAIN_RELEASE_BLUEPRINTS[descriptor.id];
   if (!blueprint) {
     throw new Error(`No archive filename is trusted for '${descriptor.id}'.`);
@@ -301,6 +308,8 @@ async function materializePackage(
     descriptor.healthProbeId,
   );
   writeToolchainPackageReceipt(packageRoot, descriptor);
+  if (descriptor.platform === "linux") return writeToolchainContentIndex(packageRoot);
+  return undefined;
 }
 
 function inspectExtractedPackage(

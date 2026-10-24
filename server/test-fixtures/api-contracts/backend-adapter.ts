@@ -22,6 +22,7 @@ import { executorClient } from "../../executor/client.js";
 import type { IsolatedTestEnvironment } from "./test-environment.js";
 import { TOOLCHAIN_CATALOG } from "../../toolchains/manifest.js";
 import type { ToolchainDescriptor } from "../../toolchains/types.js";
+import { diagnoseLanguageProfile, type ToolchainDiagnosticResult } from "../../toolchains/diagnostics.js";
 
 const currentDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(currentDir, "../../..");
@@ -149,6 +150,17 @@ export class NodeBackendAdapter implements BackendAdapter {
       (op) => this.trackBackgroundOperation(op),
       undefined,
       testManifestLoader,
+      async (profileId): Promise<ToolchainDiagnosticResult> => {
+        // Contract payloads use dummy compiler files, not executable toolchains.
+        // Keep the native boundary deterministic, like the Rust contract adapter.
+        if (profileId !== "cpp-legacy-v1") return diagnoseLanguageProfile(profileId);
+        return {
+          success: false, profileId, language: "cpp", sourceMode: "managed",
+          version: process.platform === "darwin" ? "" : "14.2.0",
+          phase: process.platform === "darwin" ? "configuration" : "compilation",
+          error: process.platform === "darwin" ? "Managed toolchain not installed." : "TOOLCHAIN_NOT_SANDBOX_COMPATIBLE",
+        };
+      },
     );
     registerBatchJudgeRoute(app);
     registerOsdRoutes(app);

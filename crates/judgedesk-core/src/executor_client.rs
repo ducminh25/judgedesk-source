@@ -18,6 +18,73 @@ const TREE_GUARD_GENERATION_ENV: &str = "JUDGEDESK_TREE_GUARD_GENERATION";
 const PARENT_PID_ENV: &str = "JUDGEDESK_PARENT_PID";
 const DROP_DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(25);
 
+#[cfg(target_os = "linux")]
+fn prepare_linux_full_executor_base(app_data: &Path) -> std::io::Result<PathBuf> {
+    use crate::storage::{
+        ensure_no_reparse_or_symlink_chain, validate_existing_directory_path, validate_path_syntax,
+    };
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
+
+    let base = app_data.join("executor-state");
+    if !app_data.is_absolute() {
+        return Err(std::io::Error::other(
+            "Full executor storage requires an absolute data directory",
+        ));
+    }
+    validate_path_syntax(&base).map_err(std::io::Error::other)?;
+    ensure_no_reparse_or_symlink_chain(&base, None).map_err(std::io::Error::other)?;
+    DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&base)?;
+    let base = validate_existing_directory_path(&base).map_err(std::io::Error::other)?;
+    let metadata = std::fs::symlink_metadata(&base)?;
+    // The executor's large immutable SDK cache must not consume /tmp tmpfs.
+    // Use OS ownership/mode checks; never repair permissions on an unknown tree.
+    if metadata.uid() != unsafe { libc::geteuid() }
+        || metadata.permissions().mode() & 0o777 != 0o700
+    {
+        return Err(std::io::Error::other(
+            "Full executor storage must be owned by the current user with mode 0700",
+        ));
+    }
+    Ok(base)
+}
+
+#[cfg(test)]
+#[cfg(target_os = "linux")]
+mod full_storage_tests {
+    use super::*;
+    use std::os::unix::fs::{symlink, PermissionsExt};
+
+    #[test]
+    fn full_executor_storage_uses_a_private_app_data_directory() {
+        let app_data = std::env::temp_dir().join(format!("jd-storage-{}", Uuid::new_v4()));
+        let base = prepare_linux_full_executor_base(&app_data).unwrap();
+        assert_eq!(base, app_data.join("executor-state"));
+        assert_eq!(
+            std::fs::metadata(&base).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        assert_eq!(prepare_linux_full_executor_base(&app_data).unwrap(), base);
+        std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(prepare_linux_full_executor_base(&app_data).is_err());
+        std::fs::remove_dir_all(&app_data).unwrap();
+    }
+
+    #[test]
+    fn full_executor_storage_rejects_links_and_relative_roots() {
+        assert!(prepare_linux_full_executor_base(Path::new("relative")).is_err());
+        let root = std::env::temp_dir().join(format!("jd-storage-link-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(root.join("data")).unwrap();
+        std::fs::create_dir(root.join("outside")).unwrap();
+        symlink(root.join("outside"), root.join("data/executor-state")).unwrap();
+        assert!(prepare_linux_full_executor_base(&root.join("data")).is_err());
+        assert_eq!(std::fs::read_dir(root.join("outside")).unwrap().count(), 0);
+        std::fs::remove_dir_all(root).unwrap();
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TreeGuardContract {
     path: PathBuf,
@@ -328,6 +395,24 @@ impl ExecutorClient {
         for (k, v) in envs {
             cmd.env(k, v);
         }
+        #[cfg(target_os = "linux")]
+        if crate::toolchains::package_trust::is_linux_full_build() {
+            let app_data = crate::toolchains::discovery::app_data_dir_from_env(|name| {
+                match cmd.get_envs().find(|(key, _)| *key == name) {
+                    Some((_, value)) => value.and_then(|value| value.to_str().map(str::to_owned)),
+                    None => std::env::var(name).ok(),
+                }
+            });
+            let base = prepare_linux_full_executor_base(&app_data)
+                .inspect_err(|_| remove_owned_tree_guard(&guard.owned_dir))?;
+            // This override belongs to this child only; host helpers and the UI
+            // retain the user's environment. Native root validation still applies.
+            cmd.env("TMPDIR", base);
+        }
+        // AppImage libraries belong to the GUI. The native executor and its
+        // system helpers (busctl/bwrap) must load the host's matching libraries.
+        #[cfg(target_os = "linux")]
+        cmd.env_remove("LD_LIBRARY_PATH").env_remove("LD_PRELOAD");
         cmd.args(args)
             .env(PARENT_PID_ENV, std::process::id().to_string())
             .env(TREE_GUARD_REQUIRED_ENV, "1")

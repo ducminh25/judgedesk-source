@@ -20,6 +20,21 @@ use std::time::Instant;
 
 mod common;
 
+fn provision_full_test_toolchains() {
+    if judgedesk_core::toolchains::package_trust::is_linux_full_build() {
+        let resources = std::env::var_os("THEMIS_RESOURCE_DIR").expect("Full QA resources");
+        let source = std::path::PathBuf::from(resources).join("toolchains/gcc-linux-x64");
+        let destination = judgedesk_core::toolchains::discovery::get_app_data_dir()
+            .join("toolchains/gcc-linux-x64");
+        let receipt = judgedesk_core::toolchains::discovery::read_package_receipt(&source)
+            .expect("pinned GCC fixture receipt");
+        judgedesk_core::toolchains::package_trust::verify_managed_package(&source, &receipt, false)
+            .expect("verify the actual Full GCC input before provisioning");
+        judgedesk_core::toolchains::discovery::copy_dir_recursive(&source, &destination)
+            .expect("provision Full GCC inside the isolated test root");
+    }
+}
+
 #[test]
 fn wp7_1_benchmark_stats_enforces_minimum_warmups_and_trials_and_computes_percentiles() {
     // Fewer than 3 warmups must be rejected
@@ -103,6 +118,7 @@ fn wp7_2_and_wp7_3_single_flight_pch_generation_consumption_and_corrupt_fallback
     let exe_path = common::executor_binary_path();
 
     env.with_isolated_roots(|| {
+        provision_full_test_toolchains();
         let live_client = Arc::new(ExecutorClient::spawn_sync(&exe_path).expect("spawn executor"));
         let toolchain = resolve_toolchain_for_profile("cpp", None, None);
         assert!(
@@ -307,6 +323,7 @@ fn wp7_4_selective_prewarm_only_warms_requested_native_compilers_and_respects_cl
     let exe_path = common::executor_binary_path();
 
     env.with_isolated_roots(|| {
+        provision_full_test_toolchains();
         let mut required = BTreeSet::new();
         required.insert("python".to_string());
         required.insert("scratch".to_string());
@@ -359,6 +376,7 @@ fn g7_pch_compile_latency_benchmark_3_warmups_20_trials() {
     let exe_path = common::executor_binary_path();
 
     env.with_isolated_roots(|| {
+        provision_full_test_toolchains();
         let live_client = ExecutorClient::spawn_sync(&exe_path).expect("spawn executor");
         let toolchain = resolve_toolchain_for_profile("cpp", None, None);
         assert!(toolchain.ready);

@@ -1,4 +1,20 @@
 {
+  "announcements": {
+    "title": "Notifications", "bell": "Notifications: {{count}} unread", "markAll": "Mark all as read", "reload": "Reload",
+    "loading": "Loading notifications…", "empty": "No notifications.", "checked": "Last checked: {{time}}",
+    "unread": "Unread", "actions": "Notification actions", "markRead": "Mark as read", "markUnread": "Mark as unread", "delete": "Delete notification",
+    "articleChanged": "This article has been updated or removed. You are reading the saved version.",
+    "articleError": "This article cannot be displayed safely. It has not been marked as read.",
+    "imageLoading": "Loading image…", "imageError": "Image unavailable. The article text is still available.",
+    "errors": {
+      "unconfigured": "The notification service has not been configured yet.", "desktopOnly": "Notifications are available in the desktop app.",
+      "network": "Could not refresh. Check your connection; saved notifications are still available.",
+      "storage": "Could not read or save notification data. Existing files have been preserved.",
+      "cache": "The saved feed could not be verified. Reload to try again.", "staleSnapshot": "This notification has changed. Reload the list and try again.",
+      "image": "Image unavailable.", "link": "This link is not allowed.", "viewClosed": "This article is no longer open.",
+      "stopped": "Notifications have stopped for app shutdown or update.", "generic": "The notification action failed. Please try again."
+    }
+  },
   "startupFailure": {
     "title": "JudgeDesk could not start",
     "reason": "The secure connection to the grading service could not be established.",
@@ -467,7 +483,14 @@
       "reason": "The file is currently opened in another program (e.g. Excel, Word, Text Editor).",
       "action": "Please close the file in other programs and try again."
     },
-    "excelExportFailed": {
+      "excelViewerFailed": {
+        "title": "Excel file created, but the viewer could not open",
+        "reason": "Your workbook and diagnostics were saved. The spreadsheet application could not be started.",
+        "action": "Open {{path}} in your file manager and save a copy before closing JudgeDesk.",
+        "copyPath": "Copy file path",
+        "copyFailed": "Could not copy the path. The saved file is still at the location below."
+      },
+      "excelExportFailed": {
       "title": "Cannot Open Excel Scoreboard",
       "reason": "Unable to launch the spreadsheet viewer or the temporary file is locked.",
       "action": "Install an Excel spreadsheet viewer (.xlsx) or close open Excel files."

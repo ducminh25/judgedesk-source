@@ -62,3 +62,7 @@ cargo test --locked --manifest-path native-executor/Cargo.toml
 # If versioning / release was touched
 npm run release:check-version
 ```
+
+## 4. Optional local handoff
+
+When present, read `LINUX_LOCAL.md` before Linux build, test or packaging work. It is a machine-local, Git-excluded handoff containing environment locations, active work and evidence links. Check its timestamps and verify live state before acting. Do not commit its private environment details or replace the architectural rules above with historical QA results.

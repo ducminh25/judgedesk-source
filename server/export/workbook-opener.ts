@@ -1,6 +1,8 @@
 import fs from "fs";
 import os from "os";
 import { execFile, spawn } from "child_process";
+import { Socket } from "node:net";
+import { hostProcessEnvironment } from "../../shared/linux-host-environment.js";
 
 const EXCEL_APP_PATH_KEYS = [
   String.raw`HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\excel.exe`,
@@ -24,7 +26,7 @@ export async function openScoreWorkbook(workbookPath: string): Promise<WorkbookO
     ? await findWindowsExcelExecutable()
     : null;
   const openCommand = createWorkbookOpenCommand(platform, workbookPath, excelExecutable);
-  spawnDetached(openCommand.command, openCommand.args);
+  await launchWorkbookViewer(openCommand.command, openCommand.args);
   return openCommand.mode;
 }
 
@@ -88,10 +90,33 @@ function queryRegistryDefaultValue(key: string): Promise<string | null> {
   });
 }
 
-function spawnDetached(command: string, args: string[]): void {
-  const child = spawn(command, args, { detached: true, stdio: "ignore" });
-  child.once("error", (error) => {
-    console.warn(`Could not hand the score workbook to ${command}:`, error);
+export function launchWorkbookViewer(command: string, args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      detached: true, stdio: ["ignore", "ignore", "pipe"],
+      env: hostProcessEnvironment(), windowsHide: true,
+    });
+    let stderr = "";
+    let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.unref();
+      if (child.stderr instanceof Socket) child.stderr.unref();
+      if (error) reject(error);
+      else resolve();
+    };
+    // This confirms only process handoff, not that a viewer window was drawn.
+    const timer = setTimeout(() => finish(), 250);
+    child.stderr?.on("data", (data: Buffer) => {
+      if (stderr.length < 16_384) stderr += data.toString("utf8").slice(0, 16_384 - stderr.length);
+    });
+    child.once("error", (error) => finish(error));
+    child.once("exit", (code, signal) => {
+      const error = code === 0 ? undefined : new Error(`Workbook viewer exited with ${code ?? signal}: ${stderr.trim()}`);
+      if (settled && error) console.warn(error.message);
+      finish(error);
+    });
   });
-  child.unref();
 }

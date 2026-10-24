@@ -9,6 +9,7 @@ import {
   createStandaloneTreeGuard,
   ExecutorClient,
   executorPathCandidates,
+  minimalExecutorEnvironment,
   isTransientExecutorStartupFailure,
 } from "./client.js";
 import type {
@@ -33,6 +34,7 @@ interface ExecutorClientInternals {
   executorExited(child: ChildProcessWithoutNullStreams, error: Error): void;
   receive(child: ChildProcessWithoutNullStreams, chunk: Buffer): void;
   getEnvironment(): NodeJS.ProcessEnv;
+  attachChildListeners(child: ChildProcessWithoutNullStreams): void;
   guardedDrainChild: ChildProcessWithoutNullStreams | null;
 }
 
@@ -58,6 +60,17 @@ test("executor resolver includes Tauri's suffix-free Windows runtime name", () =
 
   assert.equal(candidates[0], path.join(path.dirname(execPath), "judgedesk-executor.exe"));
   assert.ok(candidates.includes(path.join(path.dirname(execPath), "judgedesk-executor-x86_64-pc-windows-msvc.exe")));
+});
+
+test("Linux executor candidates use the same target triples as packaged helpers", () => {
+  for (const [arch, triple] of [["x64", "x86_64-unknown-linux-gnu"], ["arm64", "aarch64-unknown-linux-gnu"]]) {
+    const candidates = executorPathCandidates({
+      platform: "linux", arch, execPath: "/usr/bin/node", appRoot: "/app",
+      cwd: "/source", production: true, override: "",
+    });
+    assert.ok(candidates.includes(path.join("/source", "src-tauri", "binaries", `judgedesk-executor-${triple}`)));
+    assert.ok(candidates.every(candidate => !candidate.includes("target/debug")));
+  }
 });
 
 test("startup retry is limited to the transient empty security-probe result", () => {
@@ -130,6 +143,14 @@ test("executor child always authenticates the direct Node parent, never the Taur
   const environment = (client as unknown as ExecutorClientInternals).getEnvironment();
 
   assert.equal(environment.JUDGEDESK_PARENT_PID, String(process.pid));
+});
+
+test("executor loader environment belongs to the host on Linux", () => {
+  const environment = minimalExecutorEnvironment({
+    LD_LIBRARY_PATH: "/appimage/usr/lib", LD_PRELOAD: "/appimage/preload.so",
+  });
+  assert.equal(environment.LD_LIBRARY_PATH, process.platform === "linux" ? undefined : "/appimage/usr/lib");
+  assert.equal(environment.LD_PRELOAD, process.platform === "linux" ? undefined : "/appimage/preload.so");
 });
 
 test("the pre-submit barrier can stop a run after executor startup but before IPC submission", async () => {
@@ -464,6 +485,31 @@ test("an IPC stdin write failure terminalizes every pending request through EOF"
   assert.equal(internals.child, child);
   assert.equal(internals.lifecycleState, "terminal");
   assert.match(internals.cachedHealth.diagnostics.join("; "), /simulated stdin write failure/);
+});
+
+test("IPC stream errors fail closed without crashing or releasing a live generation", async () => {
+  for (const stream of ["stdin", "stdout", "stderr"] as const) {
+    const client = new ExecutorClient({ platform: "linux", environment: {} });
+    const child = fakeChild({ exitOnKill: false });
+    const internals = client as unknown as ExecutorClientInternals;
+    internals.child = child;
+    internals.guardedDrainChild = child;
+    internals.cachedHealth = readyHealth();
+    internals.lifecycleState = "running";
+    internals.attachChildListeners(child);
+    const request = internals.request({ type: "health", id: `broken-${stream}` }, 1_000);
+    const rejected = assert.rejects(request, /simulated EPIPE/);
+    assert.doesNotThrow(() => child[stream].emit("error", new Error("simulated EPIPE")));
+    await rejected;
+    assert.equal(internals.lifecycleState, "terminal");
+    assert.equal(internals.child, child, "keep ownership until close proves drain");
+    assert.equal(child.killCalls, 0);
+    assert.equal(child.stdinEndCalls, 1);
+    child.emitClose(1, null);
+    assert.equal(internals.child, null);
+    assert.doesNotThrow(() => child[stream].emit("error", new Error("late stream error")));
+    assert.match(internals.cachedHealth.diagnostics.join("; "), /simulated EPIPE/);
+  }
 });
 
 test("an IPC request timeout immediately terminalizes its generation and every pending request", async () => {
@@ -952,6 +998,9 @@ function fakeChild({ exitOnKill = true }: { exitOnKill?: boolean } = {}): FakeCh
     return stdin;
   }) as typeof stdin.end;
   Object.defineProperty(child, "stdin", { configurable: true, value: stdin });
+  for (const stream of ["stdout", "stderr"] as const) {
+    Object.defineProperty(child, stream, { configurable: true, value: new EventEmitter() });
+  }
   child.emitProcessExit = (code, signal) => {
     exitCode = code;
     signalCode = signal;

@@ -1,24 +1,20 @@
 {
   "schemaVersion": 1,
-  "date": "2026-10-13",
-  "sourceHead": "488703ad00e5b10648defcf644ed3ad4bbdee304",
+  "date": "2026-10-22",
+  "sourceHead": "e70dcbfb7cae54df5ab28cc5f88cdd1dd67c305f",
   "dirtyNativeFiles": [
-    "native-executor/src/macos_launcher.rs",
-    "native-executor/src/macos_process.rs",
-    "native-executor/src/macos_run_controller.rs",
-    "native-executor/src/macos_run_guardian.rs",
-    "native-executor/src/main.rs",
-    "native-executor/src/platform/windows.rs",
-    "native-executor/src/platform/windows/launch.rs",
-    "native-executor/src/platform/windows/tests/launch_failure.rs",
-    "native-executor/src/request_validation.rs"
+    "native-executor/build.rs",
+    "native-executor/src/platform/linux.rs",
+    "native-executor/src/protocol.rs",
+    "native-executor/src/request_validation.rs",
+    "native-executor/src/security_probe.rs"
   ],
   "artifact": {
     "path": "src-tauri/binaries/judgedesk-executor-x86_64-pc-windows-msvc.exe",
-    "sha256": "ea7f018676f470173b32ea3c60de1e57a2dc49d846eb48c19864fa63dc4152ba",
+    "sha256": "3285e1912c64d08a9929fbe655390317362397d6edb4d9e4e236bb5b8114af37",
     "sizeBytes": 965120
   },
-  "nativeBuildFingerprint": "3f89b072a75691176e245b6120a4faf2a8097c22f532e5e6fb633228053acaaf",
+  "nativeBuildFingerprint": "bfa6bf30f70ca988e25780f3204ec5fae9c79c5eeca3dc9a0add5c409db087a4",
   "recipe": "npm run build:executor",
   "windowsCargoArguments": [
     "rustc",
@@ -36,7 +32,7 @@
   ],
   "toolchain": {
     "rustc": "1.97.1 (8bab26f4f 2026-07-14)",
-    "visualStudio": "17.14.37502.11",
+    "visualStudio": "17.14.42",
     "msvc": "14.44.35207",
     "windowsSdk": "10.0.26100.0",
     "ambientRustOverrides": []
@@ -61,7 +57,7 @@
     },
     {
       "path": "native-executor/build.rs",
-      "sha256": "b0849bef4ed7f26ea2546eaa42f5537c964087e68c1735126858c9a2235f3cfc"
+      "sha256": "cede80b5dbe0596d17338767d57114669bc52b86a972db46db7fdc5901a0f849"
     },
     {
       "path": "native-executor/src/fault_trace.rs",
@@ -113,7 +109,7 @@
     },
     {
       "path": "native-executor/src/platform/linux.rs",
-      "sha256": "8f7b91bd549f1416b7e03e7aa5caef0a1f63324fccc61706f50a21cd87b90b67"
+      "sha256": "c995857fa3db1e9ebc007d75d475bed927bd0a912ec72a5808f4b9cee08ac2cb"
     },
     {
       "path": "native-executor/src/platform/macos.rs",
@@ -137,15 +133,15 @@
     },
     {
       "path": "native-executor/src/protocol.rs",
-      "sha256": "34cbc7037adecb4755f8e20ba4eba18d0cad44b11a0b3db15a0adbda49c66c1f"
+      "sha256": "8b527e581cc8f02f0cf4304684e0af092cd3e172b822e4ab9443d79b9ed530a2"
     },
     {
       "path": "native-executor/src/request_validation.rs",
-      "sha256": "f9855152ea6cf7ab574fe3ed1156d53380cf7d801c0aaf5908775940813fde18"
+      "sha256": "2f8c42efd8fd67cdbefed60446cc7e0f796815b8c2bb41d2c0884363f81a6c70"
     },
     {
       "path": "native-executor/src/security_probe.rs",
-      "sha256": "26f1666262497da9a2c896d2a6cbd0be885d1401a04740e156aaaf4e9f514253"
+      "sha256": "c3442d82f85021b0f1ff6915a3623821082f87ea9c03dd367c21d0eee5e4b098"
     },
     {
       "path": "native-executor/src/tree_guard.rs",
@@ -157,7 +153,7 @@
     },
     {
       "path": "package.json",
-      "sha256": "795e7cfd498de6c8e80b6d92ad5a1817d70b7e8477c6345111e5a41c9dedc62b"
+      "sha256": "0f8a87ec6e322b2ea7da9151422c7760bef6f7dcf39e6b0021394f1cf3f2614e"
     },
     {
       "path": "rust-toolchain.toml",
@@ -170,6 +166,25 @@
     {
       "path": "scripts/build-server-target.js",
       "sha256": "971d9ca7d8727b916beec19539e28dbbbe4e9ab9f9bf45b0dae5a227f473e298"
+    },
+    {
+      "path": "shared/linux_sandbox_paths.rs",
+      "sha256": "6258ab47b7104365c9cab577d09bd051d4faecf365019ecf0bec3cb8096a21ac"
     }
-  ]
+  ],
+  "announcementDependencyRevalidation": {
+    "date": "2026-10-24",
+    "changedInput": "package.json",
+    "unchangedRawInputs": 31,
+    "windowsArtifactIdentityUnchanged": true,
+    "nativeBuildFingerprintUnchanged": true,
+    "executorBoundaryTestsPassed": 28,
+    "note": "Revalidated after explicitly approved announcement dependency declarations. Package version, scripts and build/toolchain settings are unchanged; all other 31 raw inputs match. The normal build:executor stage produced the same pinned Windows SHA256/size and native fingerprint, and all 28 locked executor-boundary tests passed. Binary pins and input assertions are retained. Original clean-build reproduction remains historical; no new clean-build or cross-host claim."
+  },
+  "linuxSourceRevalidation": {
+    "date": "2026-10-23",
+    "recipe": "npm run build:executor",
+    "windowsArtifactIdentityUnchanged": true,
+    "note": "Linux synthetic root and /tmp remain read-only for every cache location. Managed compiler processes additionally receive short namespace views of exactly their granted read-only SDK and writable workspace, defined in the shared Rust contract and included in the native fingerprint. This avoids FPC long-path truncation without changing the Windows binary; its approved literal SHA256 and size remain unchanged. Original clean-build reproduction is historical. Linux sandbox children default to C.UTF-8 while preserving explicit locale settings, preventing Java from replacing UTF-8 installation path characters with question marks. Windows bytes remain identical."
+  }
 }

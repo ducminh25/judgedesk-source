@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
+import { buildLinuxPackage, buildLinuxPackagedNativeArgs } from "./linux-toolchain-packaging.js";
 import {
   buildDotnetCscArgs,
 } from "../server/judge/compiler.js";
@@ -77,9 +78,12 @@ export function resolvePackagingHost(
   if (platform === "darwin" && architecture === "arm64") {
     return { platform: "darwin", arch: "arm64" };
   }
+  if (platform === "linux" && architecture === "x64") {
+    return { platform: "linux", arch: "x64" };
+  }
   throw new Error(
     `Unsupported toolchain packaging host: ${platform}/${architecture}. `
-      + "JudgeDesk releases Windows x64 and macOS Apple Silicon only.",
+      + "JudgeDesk releases Windows x64, macOS Apple Silicon and Linux x64 only.",
   );
 }
 
@@ -696,7 +700,9 @@ function packageTreeForRelease(
   packageRoot: string,
 ): void {
   const primary = primaryInputPath(release, inputs);
-  if (release.recipe.kind === "archive-root") {
+  if (release.platform === "linux") {
+    buildLinuxPackage(release, inputs, workRoot, packageRoot, run);
+  } else if (release.recipe.kind === "archive-root") {
     normalizeArchiveRoot(release, primary, workRoot, packageRoot);
   } else if (release.recipe.kind === "fpc-windows-installer") {
     const sourceArchive = inputs.get("fpc-source");
@@ -710,8 +716,7 @@ function packageTreeForRelease(
   } else if (release.recipe.kind === "rust-installer") {
     packageRust(release, primary, workRoot, packageRoot);
   } else {
-    const unreachable: never = release.recipe;
-    throw new Error(`Unsupported packaging recipe: ${String(unreachable)}`);
+    throw new Error(`Unsupported packaging recipe: ${release.recipe.kind}`);
   }
   copyAdditionalInputs(release, inputs, packageRoot);
   const blueprint = TOOLCHAIN_RELEASE_BLUEPRINTS[release.packageId];
@@ -1025,7 +1030,12 @@ function smokePackage(
         languageSource,
         languageOutput,
       );
-      run(executable, recipe.args, { cwd: workspace });
+      const linuxEntrypoint = blueprint.entrypoints.find((entry) => entry.kind === language);
+      const driver = release.platform === "linux" && linuxEntrypoint
+        ? path.join(packageRoot, linuxEntrypoint.executableRelativePath) : executable;
+      run(driver, release.platform === "linux"
+        ? buildLinuxPackagedNativeArgs(language, packageRoot, languageSource, languageOutput)
+        : recipe.args, { cwd: workspace });
       smokeOutput(run(languageOutput, [], { cwd: workspace }), release.packageId);
     }
     return;

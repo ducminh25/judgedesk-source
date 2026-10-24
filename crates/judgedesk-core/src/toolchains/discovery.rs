@@ -117,7 +117,11 @@ pub fn normalize_language_kind(profile_id: &str) -> &'static str {
 }
 
 pub fn get_app_data_dir() -> PathBuf {
-    if let Ok(dir) = std::env::var("THEMIS_APP_DATA_DIR") {
+    app_data_dir_from_env(|name| std::env::var(name).ok())
+}
+
+pub(crate) fn app_data_dir_from_env(mut get: impl FnMut(&str) -> Option<String>) -> PathBuf {
+    if let Some(dir) = get("THEMIS_APP_DATA_DIR") {
         if !dir.trim().is_empty() {
             return PathBuf::from(dir);
         }
@@ -125,10 +129,10 @@ pub fn get_app_data_dir() -> PathBuf {
 
     #[cfg(windows)]
     {
-        if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        if let Some(local_app_data) = get("LOCALAPPDATA") {
             return PathBuf::from(local_app_data).join("ThemisV2");
         }
-        if let Ok(user_profile) = std::env::var("USERPROFILE") {
+        if let Some(user_profile) = get("USERPROFILE") {
             return PathBuf::from(user_profile)
                 .join("AppData")
                 .join("Local")
@@ -139,12 +143,12 @@ pub fn get_app_data_dir() -> PathBuf {
 
     #[cfg(target_os = "macos")]
     {
-        if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        if let Some(local_app_data) = get("LOCALAPPDATA") {
             if !local_app_data.trim().is_empty() {
                 return PathBuf::from(local_app_data).join("ThemisV2");
             }
         }
-        if let Ok(home) = std::env::var("HOME") {
+        if let Some(home) = get("HOME") {
             return PathBuf::from(home)
                 .join("Library")
                 .join("Application Support")
@@ -155,17 +159,17 @@ pub fn get_app_data_dir() -> PathBuf {
 
     #[cfg(not(any(windows, target_os = "macos")))]
     {
-        if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        if let Some(local_app_data) = get("LOCALAPPDATA") {
             if !local_app_data.trim().is_empty() {
                 return PathBuf::from(local_app_data).join("ThemisV2");
             }
         }
-        if let Ok(xdg_data_home) = std::env::var("XDG_DATA_HOME") {
+        if let Some(xdg_data_home) = get("XDG_DATA_HOME") {
             if !xdg_data_home.trim().is_empty() {
                 return PathBuf::from(xdg_data_home).join("ThemisV2");
             }
         }
-        if let Ok(home) = std::env::var("HOME") {
+        if let Some(home) = get("HOME") {
             let local_share = PathBuf::from(&home)
                 .join(".local")
                 .join("share")
@@ -278,13 +282,40 @@ pub fn save_persisted_preferences_in(
 
 pub fn read_package_receipt(package_root: &Path) -> Option<ToolchainPackageReceipt> {
     let receipt_path = package_root.join(".judgedesk-package.json");
-    if receipt_path.is_file() {
-        if let Ok(content) = fs::read_to_string(&receipt_path) {
+    let metadata = fs::symlink_metadata(&receipt_path).ok()?;
+    if !metadata.is_file() || metadata.file_type().is_symlink() || metadata.len() > 16 * 1024 {
+        return None;
+    }
+    let mut content = String::new();
+    let file = fs::File::open(&receipt_path).ok()?;
+    use std::io::Read;
+    if file
+        .take(16 * 1024 + 1)
+        .read_to_string(&mut content)
+        .is_ok()
+        && content.len() <= 16 * 1024
+    {
+        {
             if let Ok(receipt) = serde_json::from_str::<ToolchainPackageReceipt>(&content) {
-                if receipt.schema_version >= 1
-                    && !receipt.package_id.trim().is_empty()
+                if receipt.schema_version == 1
+                    && !receipt.package_id.is_empty()
+                    && receipt.package_id.len() <= 128
+                    && receipt
+                        .package_id
+                        .as_bytes()
+                        .first()
+                        .is_some_and(u8::is_ascii_alphanumeric)
+                    && receipt
+                        .package_id
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_'))
                     && !receipt.version.trim().is_empty()
+                    && receipt.version.len() <= 128
                     && receipt.archive_sha256.len() == 64
+                    && receipt
+                        .archive_sha256
+                        .bytes()
+                        .all(|b| b.is_ascii_hexdigit())
                 {
                     return Some(receipt);
                 }
@@ -381,12 +412,159 @@ pub fn discover_installed_managed_packages_in(toolchains_dir: &Path) -> HashSet<
     installed
 }
 
+fn matching_scratch_runtime(source: &Path, destination: &Path) -> bool {
+    use super::content_integrity::{read_bounded, MAX_FILE_BYTES};
+    let source_hash = read_bounded(&source.join("scratch-run"), MAX_FILE_BYTES)
+        .map(|bytes| sha256_bytes_hex(&bytes))
+        .ok();
+    source_hash.is_some()
+        && source_hash
+            == read_bounded(&destination.join("scratch-run"), MAX_FILE_BYTES)
+                .map(|bytes| sha256_bytes_hex(&bytes))
+                .ok()
+}
+
+fn legacy_scratch_metadata_matches(
+    installed: &ToolchainPackageReceipt,
+    bundled: &ToolchainPackageReceipt,
+    provenance: &serde_json::Value,
+) -> bool {
+    installed.package_id == "scratch-linux-x64"
+        && installed.package_id == bundled.package_id
+        && installed.version == bundled.version
+        && provenance["schemaVersion"] == 1
+        && provenance["packageId"].as_str() == Some(bundled.package_id.as_str())
+        && provenance["packageVersion"].as_str() == Some(bundled.version.as_str())
+        && provenance["inputs"].as_array().is_some_and(|inputs| {
+            let mut primary = inputs.iter().filter(|input| input["role"] == "primary");
+            primary.next().is_some_and(|input| {
+                input["sha256"].as_str() == Some(installed.archive_sha256.as_str())
+            }) && primary.next().is_none()
+        })
+}
+
+fn has_legacy_core_scratch_layout(destination: &Path) -> bool {
+    // Only replace the known Core payload; preserve additional user files.
+    let Ok(entries) = fs::read_dir(destination) else {
+        return false;
+    };
+    let mut names = std::collections::HashSet::new();
+    for entry in entries {
+        let Ok(entry) = entry else { return false };
+        let Ok(kind) = entry.file_type() else {
+            return false;
+        };
+        let name = entry.file_name();
+        if !kind.is_file()
+            || !matches!(
+                name.to_str(),
+                Some("scratch-run" | "LICENSE" | ".judgedesk-package.json")
+            )
+        {
+            return false;
+        }
+        names.insert(name);
+    }
+    names.len() == 3
+}
+
+/// Call only after verifying the bundled package against its compiled index pin.
+fn is_equivalent_core_scratch(
+    source: &Path,
+    destination: &Path,
+    installed: &ToolchainPackageReceipt,
+    bundled: &ToolchainPackageReceipt,
+) -> bool {
+    if !super::package_trust::is_linux_full_build() || !has_legacy_core_scratch_layout(destination)
+    {
+        return false;
+    }
+    let provenance =
+        super::content_integrity::read_bounded(&source.join("SOURCE-PROVENANCE.json"), 16 * 1024)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok());
+    provenance.as_ref().is_some_and(|provenance| {
+        legacy_scratch_metadata_matches(installed, bundled, provenance)
+            && matching_scratch_runtime(source, destination)
+    })
+}
+
+fn migrate_legacy_core_scratch_in(toolchains_dir: &Path) -> Result<(), String> {
+    if !super::package_trust::is_linux_full_build() {
+        return Ok(());
+    }
+    let destination = toolchains_dir.join(managed_package_name_for("scratch"));
+    if fs::symlink_metadata(destination.join(super::content_integrity::CONTENT_INDEX_NAME)).is_ok()
+    {
+        return Ok(());
+    }
+    let Some(installed) = read_package_receipt(&destination) else {
+        return Ok(());
+    };
+    let Some(resource_dir) = std::env::var_os("THEMIS_RESOURCE_DIR") else {
+        return Ok(());
+    };
+    let source_dir = PathBuf::from(resource_dir).join("toolchains");
+    if !bundled_resource_toolchains_dirs_for(toolchains_dir)
+        .iter()
+        .any(|candidate| clean_canonical_path(candidate) == clean_canonical_path(&source_dir))
+    {
+        return Ok(());
+    }
+    let source = source_dir.join(managed_package_name_for("scratch"));
+    let Some(bundled) = read_package_receipt(&source) else {
+        return Ok(());
+    };
+    super::package_trust::verify_managed_package(&source, &bundled, false)?;
+    if is_equivalent_core_scratch(&source, &destination, &installed, &bundled) {
+        let app_data_dir = toolchains_dir
+            .parent()
+            .ok_or("Invalid managed toolchains directory")?;
+        // Include Scratch-first launches; no legacy executable is run before conversion.
+        preserve_bundled_toolchains_in(app_data_dir)?;
+    }
+    Ok(())
+}
+
+fn linux_bundled_payload_matches(
+    source: &Path,
+    destination: &Path,
+    receipt: &ToolchainPackageReceipt,
+    allow_import_marker: bool,
+) -> bool {
+    if cfg!(target_os = "linux")
+        && source
+            .join(super::content_integrity::CONTENT_INDEX_NAME)
+            .is_file()
+    {
+        return super::package_trust::verify_managed_package(
+            destination,
+            receipt,
+            allow_import_marker,
+        )
+        .is_ok();
+    }
+    if !cfg!(target_os = "linux") || receipt.package_id != "scratch-linux-x64" {
+        return true;
+    }
+    matching_scratch_runtime(source, destination)
+}
+
 pub fn preserve_bundled_toolchains_in(app_data_dir: &Path) -> Result<usize, String> {
     let target_toolchains_dir = app_data_dir.join("toolchains");
     let bundled_dirs = bundled_resource_toolchains_dirs_for(&target_toolchains_dir);
     let mut preserved = 0usize;
 
     for bundled_dir in bundled_dirs {
+        if super::package_trust::is_linux_full_build() {
+            let full_source = std::env::var_os("THEMIS_RESOURCE_DIR")
+                .map(|root| PathBuf::from(root).join("toolchains"));
+            if full_source.as_ref().map(|p| clean_canonical_path(p))
+                != Some(clean_canonical_path(&bundled_dir))
+            {
+                continue;
+            }
+        }
         if bundled_dir == target_toolchains_dir || !bundled_dir.is_dir() {
             continue;
         }
@@ -401,6 +579,8 @@ pub fn preserve_bundled_toolchains_in(app_data_dir: &Path) -> Result<usize, Stri
             let Some(receipt) = read_package_receipt(&src_pkg_dir) else {
                 continue;
             };
+            let indexed =
+                super::package_trust::verify_managed_package(&src_pkg_dir, &receipt, false)?;
             let entrypoint_ok = receipt
                 .components
                 .iter()
@@ -414,8 +594,42 @@ pub fn preserve_bundled_toolchains_in(app_data_dir: &Path) -> Result<usize, Stri
                 continue;
             };
             let dst_pkg_dir = target_toolchains_dir.join(pkg_name);
-            if read_package_receipt(&dst_pkg_dir).is_some() {
-                continue;
+            let _file_lock = if indexed {
+                fs::create_dir_all(&target_toolchains_dir).map_err(|e| e.to_string())?;
+                let lock = fs::OpenOptions::new()
+                    .read(true)
+                    .write(true)
+                    .create(true)
+                    .truncate(false)
+                    .open(target_toolchains_dir.join(".preserve.lock"))
+                    .map_err(|e| e.to_string())?;
+                lock.lock()
+                    .map_err(|e| format!("cannot lock bundled package import: {e}"))?;
+                super::package_import::recover_previous_directory(&dst_pkg_dir)?;
+                Some(lock)
+            } else {
+                None
+            };
+            if let Some(installed) = read_package_receipt(&dst_pkg_dir) {
+                // Keep deliberately installed versions. Repair a damaged copy of
+                // this same bundled release instead of trusting its receipt alone.
+                let different_package = installed.package_id != receipt.package_id
+                    || installed.version != receipt.version;
+                let same_archive = installed.archive_sha256 == receipt.archive_sha256;
+                let core_scratch_upgrade = indexed
+                    && is_equivalent_core_scratch(&src_pkg_dir, &dst_pkg_dir, &installed, &receipt);
+                if different_package
+                    || (!same_archive && !core_scratch_upgrade)
+                    || (same_archive
+                        && linux_bundled_payload_matches(
+                            &src_pkg_dir,
+                            &dst_pkg_dir,
+                            &receipt,
+                            false,
+                        ))
+                {
+                    continue;
+                }
             }
 
             fs::create_dir_all(&target_toolchains_dir).map_err(|e| {
@@ -441,8 +655,19 @@ pub fn preserve_bundled_toolchains_in(app_data_dir: &Path) -> Result<usize, Stri
                     "staged bundled toolchain {pkg_name} is missing a valid package receipt"
                 ));
             }
-            let _ = fs::remove_dir_all(&dst_pkg_dir);
-            if let Err(e) = fs::rename(&staging_dir, &dst_pkg_dir) {
+            if let Err(error) =
+                super::package_trust::verify_managed_package(&staging_dir, &receipt, false)
+            {
+                let _ = fs::remove_dir_all(&staging_dir);
+                return Err(error);
+            }
+            let committed = if indexed {
+                super::package_import::commit_verified_directory(&staging_dir, &dst_pkg_dir)
+            } else {
+                let _ = fs::remove_dir_all(&dst_pkg_dir);
+                fs::rename(&staging_dir, &dst_pkg_dir).map_err(|e| e.to_string())
+            };
+            if let Err(e) = committed {
                 let _ = fs::remove_dir_all(&staging_dir);
                 return Err(format!(
                     "failed to commit preserved toolchain {pkg_name}: {e}"
@@ -487,15 +712,55 @@ pub fn managed_package_name_for(kind: &str) -> &'static str {
     }
 }
 
+fn corrupt_managed_toolchain(package_root: &Path, kind: &str, detail: &str) -> ResolvedToolchain {
+    ResolvedToolchain {
+        kind: kind.to_string(),
+        profile_id: kind.to_string(),
+        source_mode: "managed".into(),
+        version: "unknown".into(),
+        executable_path: PathBuf::new(),
+        runtime_executable_path: None,
+        package_root: Some(package_root.to_path_buf()),
+        package_id: Some(managed_package_name_for(kind).into()),
+        package_digest: None,
+        ready: false,
+        diagnostic: Some(format!("MANAGED_PACKAGE_CORRUPT: {detail}")),
+    }
+}
+
 fn find_managed_toolchain_direct(toolchains_dir: &Path, kind: &str) -> Option<ResolvedToolchain> {
     let package_name = managed_package_name_for(kind);
     let package_root = toolchains_dir.join(package_name);
 
-    if !package_root.is_dir() {
-        return None;
+    let corrupt = |detail: &str| Some(corrupt_managed_toolchain(&package_root, kind, detail));
+    let metadata = if cfg!(target_os = "linux") {
+        fs::symlink_metadata(&package_root)
+    } else {
+        fs::metadata(&package_root)
     }
-
-    let receipt = read_package_receipt(&package_root)?;
+    .ok()?;
+    if !metadata.is_dir() || (cfg!(target_os = "linux") && metadata.file_type().is_symlink()) {
+        return if cfg!(target_os = "linux") {
+            corrupt("package root is not a regular directory")
+        } else {
+            None
+        };
+    }
+    let receipt = match read_package_receipt(&package_root) {
+        Some(receipt) => receipt,
+        None => {
+            return if cfg!(target_os = "linux") {
+                corrupt("package receipt is missing or invalid")
+            } else {
+                None
+            }
+        }
+    };
+    if cfg!(target_os = "linux") && receipt.package_id != package_name {
+        return corrupt("package receipt identity differs from its selected directory");
+    }
+    let integrity_error =
+        super::package_trust::verify_managed_package(&package_root, &receipt, false).err();
 
     let (exe_rel, runtime_rel) = match kind {
         "cpp" => {
@@ -597,7 +862,11 @@ fn find_managed_toolchain_direct(toolchains_dir: &Path, kind: &str) -> Option<Re
 
     let exe_path = package_root.join(exe_rel);
     if !exe_path.is_file() {
-        return None;
+        return if cfg!(target_os = "linux") {
+            corrupt("package executable is missing")
+        } else {
+            None
+        };
     }
 
     let runtime_path = runtime_rel.map(|r| package_root.join(r));
@@ -612,12 +881,21 @@ fn find_managed_toolchain_direct(toolchains_dir: &Path, kind: &str) -> Option<Re
         package_root: Some(package_root),
         package_id: Some(receipt.package_id.clone()),
         package_digest: Some(receipt.archive_sha256.clone()),
-        ready: true,
-        diagnostic: None,
+        ready: integrity_error.is_none(),
+        diagnostic: integrity_error,
     })
 }
 
 pub fn find_managed_toolchain_in(toolchains_dir: &Path, kind: &str) -> Option<ResolvedToolchain> {
+    if kind == "scratch" {
+        if let Err(error) = migrate_legacy_core_scratch_in(toolchains_dir) {
+            return Some(corrupt_managed_toolchain(
+                &toolchains_dir.join(managed_package_name_for(kind)),
+                kind,
+                &format!("Full package migration failed: {error}"),
+            ));
+        }
+    }
     if let Some(found) = find_managed_toolchain_direct(toolchains_dir, kind) {
         return Some(found);
     }
@@ -765,6 +1043,7 @@ pub fn resolve_macos_framework_python_executable(candidate: &Path) -> Option<(Pa
     None
 }
 
+#[cfg(not(target_os = "linux"))]
 fn configure_background_command(cmd: &mut std::process::Command) {
     #[cfg(windows)]
     {
@@ -778,6 +1057,7 @@ fn configure_background_command(cmd: &mut std::process::Command) {
     }
 }
 
+#[cfg(not(target_os = "linux"))]
 fn run_command_bounded(
     mut cmd: std::process::Command,
     timeout: Duration,
@@ -815,50 +1095,319 @@ fn run_command_bounded(
     }
 }
 
-pub fn query_executable_version(exe_path: &Path, kind: &str) -> String {
+#[cfg(target_os = "linux")]
+fn run_command_bounded(
+    mut cmd: std::process::Command,
+    timeout: Duration,
+) -> Result<std::process::Output, String> {
+    use std::os::unix::process::CommandExt;
+    use std::process::Stdio;
+
+    // Pipes can remain open after a wrapper exits. Regular, owned capture files
+    // avoid an unbounded wait for EOF; the entire probe process group is reaped.
+    let workspace = crate::storage::OwnedWorkspace::create_with_id(
+        &std::env::temp_dir(),
+        &format!("jd_version_{}", uuid::Uuid::new_v4().simple()),
+    )?;
+    let stdout_path = workspace.root().join("stdout");
+    let stderr_path = workspace.root().join("stderr");
+    let open_capture = |path: &Path| {
+        fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+            .map_err(|e| format!("cannot create probe capture: {e}"))
+    };
+    cmd.env_remove("LD_LIBRARY_PATH")
+        .env_remove("LD_PRELOAD")
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(open_capture(&stdout_path)?))
+        .stderr(Stdio::from(open_capture(&stderr_path)?))
+        .process_group(0);
+    let child = cmd
+        .spawn()
+        .map_err(|e| format!("failed to spawn executable: {e}"))?;
+    struct ProbeGroup(std::process::Child);
+    impl Drop for ProbeGroup {
+        fn drop(&mut self) {
+            // process_group(0) created a separate group with this child ID.
+            let _ = std::process::Command::new("/bin/kill")
+                .env_remove("LD_LIBRARY_PATH")
+                .env_remove("LD_PRELOAD")
+                .args(["-KILL", "--", &format!("-{}", self.0.id())])
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status();
+            let _ = self.0.wait();
+        }
+    }
+    let start = Instant::now();
+    let mut process = ProbeGroup(child);
+    const MAX_CAPTURE_BYTES: u64 = 1024 * 1024;
+    let status = loop {
+        if [&stdout_path, &stderr_path]
+            .iter()
+            .any(|path| fs::metadata(path).is_ok_and(|meta| meta.len() > MAX_CAPTURE_BYTES))
+        {
+            return Err(
+                "LOCAL_PROBE_OUTPUT_LIMIT: compatibility probe output exceeded 1 MiB".into(),
+            );
+        }
+        if let Some(status) = process
+            .0
+            .try_wait()
+            .map_err(|e| format!("failed waiting on probe: {e}"))?
+        {
+            break status;
+        }
+        if start.elapsed() >= timeout {
+            return Err("LOCAL_PROBE_TIMEOUT: compatibility probe timed out".into());
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    };
+    drop(process);
+    let read_capture = |path: &Path| -> Result<Vec<u8>, String> {
+        use std::io::Read;
+        let mut bytes = Vec::new();
+        fs::File::open(path)
+            .and_then(|file| file.take(MAX_CAPTURE_BYTES).read_to_end(&mut bytes))
+            .map_err(|e| format!("cannot read probe output: {e}"))?;
+        Ok(bytes)
+    };
+    Ok(std::process::Output {
+        status,
+        stdout: read_capture(&stdout_path)?,
+        stderr: read_capture(&stderr_path)?,
+    })
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct VersionCacheKey {
+    kind: String,
+    canonical_path: PathBuf,
+    file_size: u64,
+    modified_ns: u128,
+}
+
+#[derive(Debug, Clone)]
+struct VersionCacheEntry {
+    version: String,
+    generation: u64,
+    expires_at: Instant,
+}
+
+const VERSION_CACHE_POSITIVE_TTL: Duration = Duration::from_secs(30);
+const VERSION_CACHE_NEGATIVE_TTL: Duration = Duration::from_secs(5);
+const MAX_VERSION_CACHE_ENTRIES: usize = 256;
+
+static VERSION_CACHE_GENERATION: AtomicU64 = AtomicU64::new(1);
+static VERSION_CACHE: std::sync::OnceLock<
+    std::sync::RwLock<HashMap<VersionCacheKey, VersionCacheEntry>>,
+> = std::sync::OnceLock::new();
+static VERSION_PROBE_LOCKS: std::sync::OnceLock<
+    std::sync::Mutex<HashMap<VersionCacheKey, std::sync::Arc<std::sync::Mutex<()>>>>,
+> = std::sync::OnceLock::new();
+
+fn version_cache_map() -> &'static std::sync::RwLock<HashMap<VersionCacheKey, VersionCacheEntry>> {
+    VERSION_CACHE.get_or_init(|| std::sync::RwLock::new(HashMap::new()))
+}
+
+fn version_probe_lock_for(key: &VersionCacheKey) -> std::sync::Arc<std::sync::Mutex<()>> {
+    let locks = VERSION_PROBE_LOCKS.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
+    let mut guard = locks.lock().unwrap_or_else(|e| e.into_inner());
+    if guard.len() >= MAX_VERSION_CACHE_ENTRIES && !guard.contains_key(key) {
+        guard.retain(|_, arc| std::sync::Arc::strong_count(arc) > 1);
+        if guard.len() >= MAX_VERSION_CACHE_ENTRIES {
+            guard.clear();
+        }
+    }
+    guard
+        .entry(key.clone())
+        .or_insert_with(|| std::sync::Arc::new(std::sync::Mutex::new(())))
+        .clone()
+}
+
+pub fn clear_toolchain_probe_caches() {
+    VERSION_CACHE_GENERATION.fetch_add(1, Ordering::AcqRel);
+    if let Some(cache) = VERSION_CACHE.get() {
+        let mut guard = cache.write().unwrap_or_else(|e| e.into_inner());
+        guard.clear();
+    }
+    if let Some(locks) = VERSION_PROBE_LOCKS.get() {
+        let mut guard = locks.lock().unwrap_or_else(|e| e.into_inner());
+        guard.retain(|_, arc| std::sync::Arc::strong_count(arc) > 1);
+    }
+}
+
+pub fn executable_file_fingerprint(path: &Path) -> Option<(PathBuf, u64, u128)> {
+    if path.as_os_str().is_empty() {
+        return None;
+    }
+    let meta = fs::metadata(path).ok()?;
+    if !meta.is_file() {
+        return None;
+    }
+    let canon = clean_canonical_path(path);
+    let canon_meta = fs::metadata(&canon).ok()?;
+    if !canon_meta.is_file() {
+        return None;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if (canon_meta.permissions().mode() & 0o111) == 0 {
+            return None;
+        }
+    }
+    let size = canon_meta.len();
+    let mtime_ns = canon_meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |d| d.as_nanos());
+    Some((canon, size, mtime_ns))
+}
+
+fn is_usable_executable_file(path: &Path) -> bool {
+    #[cfg(windows)]
+    {
+        if path
+            .to_string_lossy()
+            .to_ascii_lowercase()
+            .contains("windowsapps")
+        {
+            return false;
+        }
+    }
+    executable_file_fingerprint(path).is_some()
+}
+
+fn query_executable_version_uncached(exe_path: &Path, kind: &str) -> (String, bool) {
     let args: &[&str] = match kind {
         "pascal" => &["-iV"],
         "java" => &["--version", "-version"],
         _ => &["--version"],
     };
 
+    let mut saw_completed_command = false;
+    let mut saw_command_error = false;
+
     for arg in args {
         let mut cmd = std::process::Command::new(exe_path);
         cmd.arg(arg);
 
-        if let Ok(output) = run_command_bounded(cmd, Duration::from_millis(3_000)) {
-            if !output.status.success() {
-                continue;
-            }
-            let text = if output.stdout.is_empty() {
-                String::from_utf8_lossy(&output.stderr)
-            } else {
-                String::from_utf8_lossy(&output.stdout)
-            };
-            for line in text.lines() {
-                let trimmed = line.trim();
-                if trimmed.is_empty() {
+        match run_command_bounded(cmd, Duration::from_millis(3_000)) {
+            Ok(output) => {
+                saw_completed_command = true;
+                if !output.status.success() {
                     continue;
                 }
-                for word in trimmed.split_whitespace() {
-                    let stripped = word.trim_start_matches(|c: char| !c.is_ascii_digit());
-                    let prefix = stripped
-                        .split(['-', '~', ')', '"', '\'', ';', ','])
-                        .next()
-                        .unwrap_or("");
-                    let clean = prefix.trim_matches(|c: char| !c.is_ascii_digit() && c != '.');
-                    if clean.chars().filter(|&c| c == '.').count() >= 1
-                        && clean.chars().next().is_some_and(|c| c.is_ascii_digit())
-                        && clean.chars().last().is_some_and(|c| c.is_ascii_digit())
-                        && clean.chars().all(|c| c.is_ascii_digit() || c == '.')
-                    {
-                        return clean.to_string();
+                let text = if output.stdout.is_empty() {
+                    String::from_utf8_lossy(&output.stderr)
+                } else {
+                    String::from_utf8_lossy(&output.stdout)
+                };
+                for line in text.lines() {
+                    let trimmed = line.trim();
+                    if trimmed.is_empty() {
+                        continue;
+                    }
+                    for word in trimmed.split_whitespace() {
+                        let stripped = word.trim_start_matches(|c: char| !c.is_ascii_digit());
+                        let prefix = stripped
+                            .split(['-', '~', ')', '"', '\'', ';', ','])
+                            .next()
+                            .unwrap_or("");
+                        let clean = prefix.trim_matches(|c: char| !c.is_ascii_digit() && c != '.');
+                        if clean.chars().filter(|&c| c == '.').count() >= 1
+                            && clean.chars().next().is_some_and(|c| c.is_ascii_digit())
+                            && clean.chars().last().is_some_and(|c| c.is_ascii_digit())
+                            && clean.chars().all(|c| c.is_ascii_digit() || c == '.')
+                        {
+                            return (clean.to_string(), false);
+                        }
                     }
                 }
             }
+            Err(_) => {
+                saw_command_error = true;
+            }
         }
     }
-    "unknown".to_string()
+    (
+        "unknown".to_string(),
+        saw_command_error && !saw_completed_command,
+    )
+}
+
+pub fn query_executable_version(exe_path: &Path, kind: &str) -> String {
+    let Some((canon, size, mtime_ns)) = executable_file_fingerprint(exe_path) else {
+        return "unknown".to_string();
+    };
+    let key = VersionCacheKey {
+        kind: kind.to_string(),
+        canonical_path: canon.clone(),
+        file_size: size,
+        modified_ns: mtime_ns,
+    };
+    let now = Instant::now();
+    let current_gen = VERSION_CACHE_GENERATION.load(Ordering::Acquire);
+    {
+        let cache = version_cache_map()
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some(entry) = cache.get(&key) {
+            if entry.generation == current_gen && now < entry.expires_at {
+                return entry.version.clone();
+            }
+        }
+    }
+
+    let key_lock = version_probe_lock_for(&key);
+    let _inflight_guard = key_lock.lock().unwrap_or_else(|e| e.into_inner());
+
+    let now_after_lock = Instant::now();
+    let started_gen = VERSION_CACHE_GENERATION.load(Ordering::Acquire);
+    {
+        let cache = version_cache_map()
+            .read()
+            .unwrap_or_else(|e| e.into_inner());
+        if let Some(entry) = cache.get(&key) {
+            if entry.generation == started_gen && now_after_lock < entry.expires_at {
+                return entry.version.clone();
+            }
+        }
+    }
+
+    let (version, is_transient_error) = query_executable_version_uncached(&canon, kind);
+    if !is_transient_error && VERSION_CACHE_GENERATION.load(Ordering::Acquire) == started_gen {
+        let ttl = if version != "unknown" {
+            VERSION_CACHE_POSITIVE_TTL
+        } else {
+            VERSION_CACHE_NEGATIVE_TTL
+        };
+        let expires_at = Instant::now() + ttl;
+        let mut cache = version_cache_map()
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
+        if cache.len() >= MAX_VERSION_CACHE_ENTRIES && !cache.contains_key(&key) {
+            let prune_now = Instant::now();
+            cache.retain(|_, v| v.generation == started_gen && prune_now < v.expires_at);
+            if cache.len() >= MAX_VERSION_CACHE_ENTRIES {
+                cache.clear();
+            }
+        }
+        cache.insert(
+            key,
+            VersionCacheEntry {
+                version: version.clone(),
+                generation: started_gen,
+                expires_at,
+            },
+        );
+    }
+    version
 }
 
 /// Runs the `quick_verified_direct` bounded native compatibility probe for local toolchains.
@@ -958,78 +1507,8 @@ pub fn run_quick_verified_direct_probe(exe_path: &Path, kind: &str) -> Result<St
 }
 
 fn sha256_digest(data: &[u8]) -> [u8; 32] {
-    const K: [u32; 64] = [
-        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
-        0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
-        0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
-        0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
-        0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
-        0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
-        0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
-        0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
-        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
-        0xc67178f2,
-    ];
-    let mut state: [u32; 8] = [
-        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
-        0x5be0cd19,
-    ];
-    let bit_len = (data.len() as u64).wrapping_mul(8);
-    let mut padded = Vec::with_capacity((data.len() + 9).div_ceil(64) * 64);
-    padded.extend_from_slice(data);
-    padded.push(0x80);
-    while (padded.len() % 64) != 56 {
-        padded.push(0);
-    }
-    padded.extend_from_slice(&bit_len.to_be_bytes());
-
-    for chunk in padded.chunks_exact(64) {
-        let mut w = [0u32; 64];
-        for (i, word) in w.iter_mut().take(16).enumerate() {
-            let off = i * 4;
-            *word =
-                u32::from_be_bytes([chunk[off], chunk[off + 1], chunk[off + 2], chunk[off + 3]]);
-        }
-        for i in 16..64 {
-            let s0 = w[i - 15].rotate_right(7) ^ w[i - 15].rotate_right(18) ^ (w[i - 15] >> 3);
-            let s1 = w[i - 2].rotate_right(17) ^ w[i - 2].rotate_right(19) ^ (w[i - 2] >> 10);
-            w[i] = w[i - 16]
-                .wrapping_add(s0)
-                .wrapping_add(w[i - 7])
-                .wrapping_add(s1);
-        }
-        let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut h] = state;
-        for i in 0..64 {
-            let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
-            let ch = (e & f) ^ ((!e) & g);
-            let temp1 = h
-                .wrapping_add(s1)
-                .wrapping_add(ch)
-                .wrapping_add(K[i])
-                .wrapping_add(w[i]);
-            let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
-            let maj = (a & b) ^ (a & c) ^ (b & c);
-            let temp2 = s0.wrapping_add(maj);
-
-            h = g;
-            g = f;
-            f = e;
-            e = d.wrapping_add(temp1);
-            d = c;
-            c = b;
-            b = a;
-            a = temp1.wrapping_add(temp2);
-        }
-        for (st, delta) in state.iter_mut().zip([a, b, c, d, e, f, g, h]) {
-            *st = st.wrapping_add(delta);
-        }
-    }
-
-    let mut out = [0u8; 32];
-    for (i, word) in state.iter().enumerate() {
-        out[i * 4..(i + 1) * 4].copy_from_slice(&word.to_be_bytes());
-    }
-    out
+    use sha2::{Digest, Sha256};
+    Sha256::digest(data).into()
 }
 
 pub fn compute_binary_sha256_hex(exe_path: &Path) -> Result<String, String> {
@@ -1273,48 +1752,26 @@ pub fn find_system_executable(kind: &str) -> Option<PathBuf> {
         _ => &[],
     };
 
+    let path_dirs: Vec<PathBuf> = std::env::var_os("PATH")
+        .map(|val| {
+            std::env::split_paths(&val)
+                .filter(|dir| !dir.as_os_str().is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+
     for candidate in candidates {
         let p = Path::new(candidate);
-        if p.is_absolute() && p.is_file() {
-            return Some(p.to_path_buf());
-        }
-        #[cfg(windows)]
-        {
-            let mut where_cmd = std::process::Command::new("where.exe");
-            configure_background_command(&mut where_cmd);
-            if let Ok(output) = where_cmd
-                .arg(candidate)
-                .output()
-            {
-                if output.status.success() {
-                    for line in String::from_utf8_lossy(&output.stdout).lines() {
-                        let trimmed = line.trim();
-                        if trimmed.is_empty() || trimmed.contains("WindowsApps") {
-                            continue;
-                        }
-                        let path = PathBuf::from(trimmed);
-                        if path.is_file() {
-                            return Some(path);
-                        }
-                    }
-                }
+        if p.is_absolute() {
+            if is_usable_executable_file(p) {
+                return Some(p.to_path_buf());
             }
+            continue;
         }
-        #[cfg(not(windows))]
-        {
-            if let Ok(output) = std::process::Command::new("which").arg(candidate).output() {
-                if output.status.success() {
-                    let first = String::from_utf8_lossy(&output.stdout)
-                        .lines()
-                        .next()
-                        .map(|l| l.trim().to_string());
-                    if let Some(path_str) = first {
-                        let path = PathBuf::from(path_str);
-                        if path.is_file() {
-                            return Some(path);
-                        }
-                    }
-                }
+        for dir in &path_dirs {
+            let joined = dir.join(candidate);
+            if is_usable_executable_file(&joined) {
+                return Some(joined);
             }
         }
     }
@@ -1421,7 +1878,10 @@ pub fn resolve_toolchain_for_profile_with_policy_in(
             }
             // If no explicit mode was requested and no preference file was saved on disk,
             // allow non-managed_only languages (C/C++/Python) to check local_auto on dev hosts.
-            if !explicit_mode && !is_managed_only_kind(kind) {
+            if !explicit_mode
+                && !is_managed_only_kind(kind)
+                && !super::package_trust::is_linux_full_build()
+            {
                 return resolve_toolchain_for_profile_with_policy_in(
                     app_data_dir,
                     profile_id,
@@ -1543,6 +2003,13 @@ pub fn resolve_toolchain_for_profile_with_policy_in(
                     })
                     .unwrap_or_else(|| PathBuf::from("."));
                 (canon, root)
+            };
+
+            #[cfg(target_os = "linux")]
+            let inferred_root = if !judgedesk_native_executor::request_validation::linux_local_toolchain_root_is_bounded(&inferred_root) {
+                exe_path.parent().unwrap_or(&inferred_root).to_path_buf()
+            } else {
+                inferred_root
             };
 
             if matches!(effective_policy, ExecutionPolicyMode::FreezeRequired) {
@@ -1667,6 +2134,13 @@ pub fn resolve_toolchain_for_profile_with_policy_in(
                         .unwrap_or_else(|| PathBuf::from("."));
                     (canon, root)
                 };
+
+                #[cfg(target_os = "linux")]
+            let inferred_root = if !judgedesk_native_executor::request_validation::linux_local_toolchain_root_is_bounded(&inferred_root) {
+                exe_path.parent().unwrap_or(&inferred_root).to_path_buf()
+            } else {
+                inferred_root
+            };
 
                 if matches!(effective_policy, ExecutionPolicyMode::FreezeRequired) {
                     if let Err(err) =
@@ -1852,7 +2326,7 @@ pub fn find_fpc_units_dir(root: &Path, target_triple: &str) -> Option<PathBuf> {
     None
 }
 
-pub fn managed_cache_id(package_id: &str, version: &str) -> String {
+pub fn managed_cache_id(package_id: &str, version: &str, archive_sha256: &str) -> String {
     let clean_version: String = version
         .chars()
         .map(|c| {
@@ -1863,7 +2337,11 @@ pub fn managed_cache_id(package_id: &str, version: &str) -> String {
             }
         })
         .collect();
-    format!("{package_id}_{clean_version}")
+    if cfg!(target_os = "linux") {
+        format!("{package_id}_{clean_version}_{archive_sha256}")
+    } else {
+        format!("{package_id}_{clean_version}")
+    }
 }
 
 static CACHE_IMPORT_LOCKS: std::sync::OnceLock<
@@ -1884,7 +2362,27 @@ pub fn ensure_cached_managed_toolchain(
     source_package_root: &Path,
     receipt: &ToolchainPackageReceipt,
 ) -> Result<PathBuf, String> {
-    let cache_id = managed_cache_id(&receipt.package_id, &receipt.version);
+    let indexed =
+        super::package_trust::verify_managed_package(source_package_root, receipt, false)?;
+    if indexed && super::package_trust::is_linux_full_build() {
+        let bundled_package = std::env::var_os("THEMIS_RESOURCE_DIR").map(|root| {
+            PathBuf::from(root)
+                .join("toolchains")
+                .join(&receipt.package_id)
+        });
+        if bundled_package.as_ref().map(|p| clean_canonical_path(p))
+            == Some(clean_canonical_path(source_package_root))
+        {
+            // Preserve before declaring a first-use probe successful. A later
+            // manual Core installation may remove the read-only Full bundle.
+            preserve_bundled_toolchains_in(&get_app_data_dir())?;
+        }
+    }
+    let cache_id = managed_cache_id(
+        &receipt.package_id,
+        &receipt.version,
+        &receipt.archive_sha256,
+    );
     let toolchains_cache_root = platform_root.join("toolchains");
     fs::create_dir_all(&toolchains_cache_root)
         .map_err(|e| format!("cannot create toolchains cache directory: {e}"))?;
@@ -1892,6 +2390,21 @@ pub fn ensure_cached_managed_toolchain(
     let dest_root = toolchains_cache_root.join(&cache_id);
     let lock = cache_import_lock_for(&dest_root.to_string_lossy());
     let _guard = lock.lock().unwrap_or_else(|e| e.into_inner());
+    let _file_lock = if indexed {
+        let lock = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(false)
+            .open(toolchains_cache_root.join(".import.lock"))
+            .map_err(|e| e.to_string())?;
+        lock.lock()
+            .map_err(|e| format!("cannot lock managed package import: {e}"))?;
+        super::package_import::recover_previous_directory(&dest_root)?;
+        Some(lock)
+    } else {
+        None
+    };
 
     let marker_file = dest_root.join(".judgedesk-import-complete");
     let expected_marker = format!(
@@ -1901,7 +2414,12 @@ pub fn ensure_cached_managed_toolchain(
 
     if marker_file.is_file() {
         if let Ok(content) = fs::read_to_string(&marker_file) {
-            if content == expected_marker {
+            if content == expected_marker
+                && linux_bundled_payload_matches(source_package_root, &dest_root, receipt, true)
+            {
+                if indexed {
+                    super::package_import::cleanup_previous_directory(&dest_root)?;
+                }
                 return Ok(dest_root);
             }
         }
@@ -1916,18 +2434,31 @@ pub fn ensure_cached_managed_toolchain(
     ));
     let _ = fs::remove_dir_all(&staging_root);
 
-    copy_dir_recursive(source_package_root, &staging_root)
-        .map_err(|e| format!("failed to stage managed toolchain: {e}"))?;
+    if let Err(error) = copy_dir_recursive(source_package_root, &staging_root) {
+        let _ = fs::remove_dir_all(&staging_root);
+        return Err(format!("failed to stage managed toolchain: {error}"));
+    }
+    if let Err(error) = super::package_trust::verify_managed_package(&staging_root, receipt, false)
+    {
+        let _ = fs::remove_dir_all(&staging_root);
+        return Err(error);
+    }
 
-    fs::write(
+    if let Err(error) = fs::write(
         staging_root.join(".judgedesk-import-complete"),
         expected_marker,
-    )
-    .map_err(|e| format!("failed to write import marker: {e}"))?;
+    ) {
+        let _ = fs::remove_dir_all(&staging_root);
+        return Err(format!("failed to write import marker: {error}"));
+    }
 
-    let _ = fs::remove_dir_all(&dest_root);
-    fs::rename(&staging_root, &dest_root)
-        .map_err(|e| format!("failed to commit imported toolchain: {e}"))?;
+    if indexed {
+        super::package_import::commit_verified_directory(&staging_root, &dest_root)?;
+    } else {
+        let _ = fs::remove_dir_all(&dest_root);
+        fs::rename(&staging_root, &dest_root)
+            .map_err(|e| format!("failed to commit imported toolchain: {e}"))?;
+    }
 
     Ok(dest_root)
 }
@@ -2346,21 +2877,99 @@ mod tests {
         let prev_res = std::env::var_os("THEMIS_RESOURCE_DIR");
         std::env::set_var("THEMIS_RESOURCE_DIR", &resource_dir);
 
-        let preserved_first = preserve_bundled_toolchains_in(&app_data_dir).unwrap();
-        assert_eq!(preserved_first, 1);
-
         let preserved_pkg = app_data_dir.join("toolchains").join("python-test-pkg");
-        assert!(read_package_receipt(&preserved_pkg).is_some());
-        assert!(preserved_pkg.join("bin").join("python3").is_file());
-
-        // Idempotent second call when destination already has a valid receipt
-        let preserved_second = preserve_bundled_toolchains_in(&app_data_dir).unwrap();
-        assert_eq!(preserved_second, 0);
+        if super::super::package_trust::is_linux_full_build() {
+            let error = preserve_bundled_toolchains_in(&app_data_dir).unwrap_err();
+            assert!(error.contains("MANAGED_PACKAGE_UNTRUSTED"), "{error}");
+            assert!(!preserved_pkg.exists());
+        } else {
+            let preserved_first = preserve_bundled_toolchains_in(&app_data_dir).unwrap();
+            assert_eq!(preserved_first, 1);
+            assert!(read_package_receipt(&preserved_pkg).is_some());
+            assert!(preserved_pkg.join("bin").join("python3").is_file());
+            // Legacy Core preservation remains idempotent.
+            let preserved_second = preserve_bundled_toolchains_in(&app_data_dir).unwrap();
+            assert_eq!(preserved_second, 0);
+        }
 
         match prev_res {
             Some(val) => std::env::set_var("THEMIS_RESOURCE_DIR", val),
             None => std::env::remove_var("THEMIS_RESOURCE_DIR"),
         }
         let _ = fs::remove_dir_all(&temp_root);
+    }
+}
+
+#[cfg(test)]
+mod legacy_scratch_migration_tests {
+    use super::*;
+
+    #[test]
+    fn conversion_requires_exact_legacy_files_and_identical_runtime_bytes() {
+        let root = std::env::temp_dir().join(format!(
+            "jd-core-scratch-migration-{}-{}",
+            std::process::id(),
+            PREFS_WRITE_NONCE.fetch_add(1, Ordering::Relaxed)
+        ));
+        let source = root.join("source");
+        let target = root.join("target");
+        fs::create_dir_all(&source).unwrap();
+        fs::create_dir_all(&target).unwrap();
+        fs::write(source.join("scratch-run"), b"trusted runtime").unwrap();
+        fs::write(target.join("scratch-run"), b"trusted runtime").unwrap();
+        fs::write(target.join("LICENSE"), b"license").unwrap();
+        fs::write(target.join(".judgedesk-package.json"), b"receipt").unwrap();
+        assert!(has_legacy_core_scratch_layout(&target));
+        assert!(matching_scratch_runtime(&source, &target));
+        fs::write(target.join("scratch-run"), b"changed runtime").unwrap();
+        assert!(!matching_scratch_runtime(&source, &target));
+        fs::write(target.join("user-notes"), b"preserve me").unwrap();
+        assert!(!has_legacy_core_scratch_layout(&target));
+        fs::remove_file(target.join("user-notes")).unwrap();
+        fs::remove_file(target.join("LICENSE")).unwrap();
+        fs::create_dir(target.join("LICENSE")).unwrap();
+        assert!(!has_legacy_core_scratch_layout(&target));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn legacy_receipt_requires_the_single_primary_input_of_the_bundled_version() {
+        let installed = ToolchainPackageReceipt {
+            schema_version: 1,
+            package_id: "scratch-linux-x64".into(),
+            version: "0.1.7".into(),
+            archive_sha256: "a".repeat(64),
+            entrypoint_component_id: "scratch.runtime".into(),
+            components: vec![],
+        };
+        let mut bundled = installed.clone();
+        bundled.archive_sha256 = "b".repeat(64);
+        let mut provenance = serde_json::json!({ "schemaVersion": 1, "packageId": "scratch-linux-x64", "packageVersion": "0.1.7", "inputs": [{ "role": "primary", "sha256": "a".repeat(64) }] });
+        assert!(legacy_scratch_metadata_matches(
+            &installed,
+            &bundled,
+            &provenance
+        ));
+        provenance["inputs"][0]["sha256"] = serde_json::json!("c".repeat(64));
+        assert!(!legacy_scratch_metadata_matches(
+            &installed,
+            &bundled,
+            &provenance
+        ));
+        provenance["inputs"][0]["sha256"] = serde_json::json!("a".repeat(64));
+        let duplicate = provenance["inputs"][0].clone();
+        provenance["inputs"].as_array_mut().unwrap().push(duplicate);
+        assert!(!legacy_scratch_metadata_matches(
+            &installed,
+            &bundled,
+            &provenance
+        ));
+        provenance["inputs"].as_array_mut().unwrap().pop();
+        bundled.version = "0.2.0".into();
+        assert!(!legacy_scratch_metadata_matches(
+            &installed,
+            &bundled,
+            &provenance
+        ));
     }
 }

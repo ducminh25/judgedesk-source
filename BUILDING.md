@@ -136,12 +136,21 @@ does not consume a packaging attempt.
 
 ### Linux x86_64 packages (`.deb`, `.rpm`, `.AppImage`)
 
-On Ubuntu 22.04 LTS / 24.04 LTS+ (`x86_64`), build and verify all three Linux
-release installers with:
+Build all three Linux release installers on **Ubuntu 22.04 LTS (`x86_64`,
+GLIBC 2.35)**. Newer distros are runtime test targets, not release build hosts:
 
 ```bash
 bash scripts/build-linux-release.sh
 ```
+
+Run `npm ci` in a Linux checkout or frozen source snapshot. The frontend is
+always rebuilt; Windows `node_modules` and a previously generated `dist/` are
+not valid substitutes. Use the lockfile's Tauri CLI (currently 2.12.0); the
+script rejects mismatched versions and non-22.04 build hosts. Final payload
+verification also requires Python 3, `binutils`, `rpm`/`rpm2archive`, and
+`squashfs-tools` on the build host.
+Scratch is re-staged from its pinned archive on every build and its executable
+bytes/bootstrap are verified in all three final installer formats.
 
 The script:
 1. builds the frontend (`npm run build:frontend`);
@@ -151,22 +160,61 @@ The script:
    ELF binaries remain compatible with **Ubuntu 22.04 LTS (`glibc 2.35`)** and
    newer;
 3. packages `.deb`, `.rpm`, and `.AppImage` bundles using
-   `src-tauri/tauri.linux.conf.json` (with unlocked cross-Ubuntu dependencies
+   `src-tauri/tauri.linux.local.conf.json` (with cross-Ubuntu dependencies
    `libgtk-3-0t64 | libgtk-3-0`, `libayatana-appindicator3-1 | libappindicator3-1`,
    `bubblewrap`, `zenity`, `g++`, `python3`);
-4. enforces an automated `readelf -V` gate verifying that `themis-v2`, `server`,
-   and `judgedesk-executor` require no symbol newer than `GLIBC_2.34`;
+4. extracts every final DEB/RPM/AppImage and scans **every regular ELF**, plus
+   the outer AppImage runtime, using `readelf` version needs. The gate rejects
+   requirements newer than `GLIBC_2.35`, unsupported `GLIBC_*` ABI tags, malformed
+   ELF files and empty payloads. Per-file hashes and requirements are written to
+   the bundle directory's `elf-baseline/` reports;
 5. stages `JudgeDesk_<version>_amd64.deb`, `JudgeDesk-<version>-1.x86_64.rpm`,
    `JudgeDesk_<version>_amd64.AppImage`, and `SHA256SUMS-linux` under
    `release-assets-linux/`.
 
-To verify an installed `.deb` end-to-end against C++ and Python submissions inside
+Checking only the three application executables does not establish the baseline
+of bundled libraries. Build on the supported release host and run the
+whole-payload gate to reject dependencies on newer GLIBC versions.
+Passing the ELF gate still requires actual runtime tests on the supported
+distros; it does not certify graphics drivers or other host services.
+
+To verify an installed `.deb` end-to-end against all six supported languages inside
 the real Bubblewrap + cgroup v2 + seccomp-bpf sandbox, run:
 
 ```bash
 sudo apt install ./release-assets-linux/JudgeDesk_<version>_amd64.deb
 bash scripts/verify-linux-deb.sh
 ```
+
+This smoke test needs the six toolchains installed/configured on the host and a
+graphical user session with delegated systemd cgroups. It uses fresh user data,
+does not force X11 or disable WebKit rendering features, and checks backend drain
+plus absence of leftover processes. Inspect the actual window separately before
+claiming GUI rendering success.
+
+Ubuntu 22.04's default runtime packages need additional preparation: its
+`user@.service` delegates `memory` and `pids`, but the executor also requires
+`cpu`; its Bubblewrap 0.6.1 lacks the `--size` option used to bound tmpfs. Do not
+remove that limit or weaken sandbox checks to make an acceptance run pass.
+An administrator must provide the required controller delegation and a
+maintained, patched Bubblewrap with `--size` support. The 22.04 QA environment
+documents these explicit prerequisites; its passing runs must not be described
+as a clean-default-install experience. AppImage does not currently configure
+these host prerequisites itself.
+
+For candidate acceptance, bind a smoke run to the exact installer and embedded
+build identity, for example:
+
+```bash
+python3 scripts/verify-linux-package.py --app /usr/bin/themis-v2 \
+  --bundle-type deb --artifact /path/to/JudgeDesk_1.6.0_amd64.deb \
+  --artifact-sha256 '<recorded SHA-256>' --expected-build-number '<build number>' \
+  --evidence artifacts/linux-candidate-deb
+```
+
+For AppImage, pass its path to both `--app` and `--artifact`. DEB acceptance
+compares installed application payloads against the installer before launching.
+The verifier rejects optimized Python, which would disable its assertions.
 
 ## Managed compiler packages
 

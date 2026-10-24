@@ -9,7 +9,8 @@ use axum::Json;
 use serde_json::json;
 
 use crate::discovery::testcase::{
-    is_flat_test_directory, read_stored_problem_config, resolve_problem_directory_path,
+    ensure_or_reconcile_stored_problem_config, is_flat_test_directory, read_stored_problem_config,
+    resolve_problem_directory_path,
 };
 use crate::discovery::{
     discover_custom_checkers, discover_interactors, discover_test_cases, list_contestants,
@@ -87,17 +88,20 @@ pub async fn handle_fetch_problems(Query(q): Query<PathQuery>) -> Response {
             let c_list = discover_custom_checkers(p, platform_str);
             custom_checkers.insert(name.clone(), c_list);
             let i_list = discover_interactors(p, platform_str);
-            interactors.insert(name, i_list);
+            interactors.insert(name.clone(), i_list);
+            let _ = ensure_or_reconcile_stored_problem_config(p, &name, platform_str);
         }
     } else if let Ok(entries) = std::fs::read_dir(p) {
         for entry in entries.flatten() {
-            if entry.path().is_dir() {
+            let entry_path = entry.path();
+            if entry_path.is_dir() {
                 let name = entry.file_name().to_string_lossy().to_string();
                 dirs.push(name.clone());
-                let c_list = discover_custom_checkers(entry.path(), platform_str);
+                let c_list = discover_custom_checkers(&entry_path, platform_str);
                 custom_checkers.insert(name.clone(), c_list);
-                let i_list = discover_interactors(entry.path(), platform_str);
-                interactors.insert(name, i_list);
+                let i_list = discover_interactors(&entry_path, platform_str);
+                interactors.insert(name.clone(), i_list);
+                let _ = ensure_or_reconcile_stored_problem_config(&entry_path, &name, platform_str);
             }
         }
     }

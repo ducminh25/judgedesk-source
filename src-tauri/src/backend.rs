@@ -357,7 +357,12 @@ pub fn spawn(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(bundle_type) = detected_bundle_type {
         std::env::set_var("JUDGEDESK_BUNDLE_TYPE", bundle_type);
         if cfg!(target_os = "linux") && std::env::var_os("JUDGEDESK_DISTRIBUTION").is_none() {
-            std::env::set_var("JUDGEDESK_DISTRIBUTION", "core");
+            let edition = if judgedesk_core::toolchains::package_trust::is_linux_full_build() {
+                "full"
+            } else {
+                "core"
+            };
+            std::env::set_var("JUDGEDESK_DISTRIBUTION", edition);
         }
     }
 
@@ -605,6 +610,8 @@ pub async fn prepare_for_update(
     app: AppHandle,
     handoff: tauri::State<'_, UpdateHandoff>,
 ) -> Result<(), String> {
+    app.state::<crate::announcements::AnnouncementService>()
+        .stop();
     {
         let mut state = handoff
             .state

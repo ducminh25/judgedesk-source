@@ -589,13 +589,10 @@ impl LinuxPlatform {
             diagnostic = Some("Linux cgroup did not become empty during teardown".into());
         }
 
-        let bwrap_status = status_read_fd.and_then(read_bwrap_status);
-        if strict_isolation
-            && matches!(reason, RunReason::Exited)
-            && !bwrap_status
-                .as_ref()
-                .is_some_and(|status| status.child_started)
-        {
+        let payload_exit_code = status_read_fd
+            .and_then(read_bwrap_status)
+            .and_then(|status| status.payload_exit_code());
+        if strict_isolation && matches!(reason, RunReason::Exited) && payload_exit_code.is_none() {
             let stderr_preview = fs::read_to_string(&paths.stderr).unwrap_or_default();
             return Err(format!(
                 "bwrap failed before launching target executable: {}",
@@ -603,8 +600,7 @@ impl LinuxPlatform {
             ));
         }
 
-        let raw_exit_code = bwrap_status
-            .and_then(|status| status.exit_code)
+        let raw_exit_code = payload_exit_code
             .or_else(|| exit_status.and_then(|status| status.code()))
             .or_else(|| {
                 exit_status
@@ -829,6 +825,8 @@ impl LinuxPlatform {
         let mut sub_reason = RunReason::Exited;
         let mut sub_status: Option<std::process::ExitStatus> = None;
         let mut inter_status: Option<std::process::ExitStatus> = None;
+        let mut sub_stopped_by_peer = false;
+        let mut inter_stopped_by_peer = false;
         let mut max_sub_memory: u64 = 0;
 
         loop {
@@ -880,6 +878,7 @@ impl LinuxPlatform {
                 if sub_status.is_none() {
                     sub_status = sub_child.try_wait().ok().flatten();
                 }
+                sub_stopped_by_peer = sub_status.is_none();
                 kill_cgroup_tree(&sub_cgroup.path);
                 break;
             }
@@ -893,6 +892,7 @@ impl LinuxPlatform {
                     }
                     std::thread::sleep(Duration::from_millis(5));
                 }
+                inter_stopped_by_peer = inter_status.is_none();
                 kill_cgroup_tree(&inter_cgroup.path);
                 break;
             }
@@ -929,14 +929,12 @@ impl LinuxPlatform {
             ));
         }
 
-        let sub_bwrap = read_bwrap_status(sub_status_fd);
-        let inter_bwrap = read_bwrap_status(inter_status_fd);
-        let sub_raw_exit = sub_bwrap
-            .and_then(|s| s.exit_code)
-            .or_else(|| sub_status.and_then(|s| s.code()));
-        let inter_raw_exit = inter_bwrap
-            .and_then(|s| s.exit_code)
-            .or_else(|| inter_status.and_then(|s| s.code()));
+        let sub_payload_exit =
+            read_bwrap_status(sub_status_fd).and_then(|status| status.payload_exit_code());
+        let inter_payload_exit =
+            read_bwrap_status(inter_status_fd).and_then(|status| status.payload_exit_code());
+        let sub_raw_exit = sub_payload_exit.or_else(|| sub_status.and_then(|s| s.code()));
+        let inter_raw_exit = inter_payload_exit.or_else(|| inter_status.and_then(|s| s.code()));
 
         if matches!(sub_reason, RunReason::Exited)
             && sub_raw_exit == Some(128 + libc::SIGSYS)
@@ -953,6 +951,33 @@ impl LinuxPlatform {
             sub_reason = RunReason::WallTimeLimit;
         }
 
+        // A child PID is emitted before exec. Only Bubblewrap's final payload
+        // status proves an exit belongs to the program, rather than the wrapper.
+        // Explicit limits/cancel and participants stopped for their peer retain
+        // their existing classification even when teardown interrupts that status.
+        if matches!(sub_reason, RunReason::Exited) {
+            for (name, exit, stopped, stderr_path) in [
+                (
+                    "submission",
+                    sub_payload_exit,
+                    sub_stopped_by_peer,
+                    &sub_paths.stderr,
+                ),
+                (
+                    "interactor",
+                    inter_payload_exit,
+                    inter_stopped_by_peer,
+                    &inter_paths.stderr,
+                ),
+            ] {
+                if exit.is_none() && !stopped {
+                    return Err(format!(
+                        "interactive {name} failed before launching target executable: {}",
+                        fs::read_to_string(stderr_path).unwrap_or_default().trim()
+                    ));
+                }
+            }
+        }
         let peak_memory_bytes = reported_peak_memory_bytes(
             &sub_reason,
             sub_peak_raw,
@@ -1214,6 +1239,8 @@ fn build_bwrap_command(
     status_fd: i32,
     seccomp_fd: i32,
 ) -> Result<Command, String> {
+    use crate::protocol::linux_sandbox_paths::{COMPILER_WORKSPACE, TOOLCHAIN_ROOT};
+    let managed_compiler = matches!(spec.role, RunRole::Compiler) && spec.toolchain.is_some();
     let mut cmd = Command::new(BWRAP_PATH);
     cmd.args([
         "--unshare-all",
@@ -1263,18 +1290,6 @@ fn build_bwrap_command(
                 cmd.args(["--ro-bind-try", dir, dir]);
             }
         }
-        if let Some(pkg_root) = &paths.toolchain_package_root {
-            if pkg_root != Path::new("/")
-                && pkg_root != Path::new("/usr")
-                && pkg_root != Path::new("/bin")
-                && pkg_root != Path::new("/usr/bin")
-                && !pkg_root.starts_with("/usr/lib")
-                && !pkg_root.starts_with("/usr/lib64")
-            {
-                let pkg_str = pkg_root.to_string_lossy().into_owned();
-                cmd.args(["--ro-bind", &pkg_str, &pkg_str]);
-            }
-        }
         if !paths.executable.starts_with(&paths.workspace)
             && !paths.executable.starts_with(root.join("artifacts"))
             && !paths.executable.starts_with("/usr/lib")
@@ -1282,6 +1297,24 @@ fn build_bwrap_command(
         {
             let exe_str = paths.executable.to_string_lossy().into_owned();
             cmd.args(["--ro-bind", &exe_str, &exe_str]);
+        }
+    }
+
+    // A validated explicit installation must also be visible to compiler runs.
+    // Bind only its granted root, never the containing home or /opt directory.
+    if let Some(pkg_root) = &paths.toolchain_package_root {
+        if managed_compiler {
+            cmd.args(["--ro-bind", &pkg_root.to_string_lossy(), TOOLCHAIN_ROOT]);
+        }
+        if pkg_root != Path::new("/")
+            && pkg_root != Path::new("/usr")
+            && pkg_root != Path::new("/bin")
+            && pkg_root != Path::new("/usr/bin")
+            && !pkg_root.starts_with("/usr/lib")
+            && !pkg_root.starts_with("/usr/lib64")
+        {
+            let pkg_str = pkg_root.to_string_lossy().into_owned();
+            cmd.args(["--ro-bind", &pkg_str, &pkg_str]);
         }
     }
 
@@ -1304,18 +1337,32 @@ fn build_bwrap_command(
 
     let workspace_str = paths.workspace.to_string_lossy().into_owned();
     cmd.args(["--bind", &workspace_str, &workspace_str]);
-
-    if root.starts_with("/tmp") || paths.workspace.starts_with("/tmp") {
-        cmd.args(["--remount-ro", "/tmp"]);
+    if managed_compiler {
+        cmd.args(["--bind", &workspace_str, COMPILER_WORKSPACE]);
     }
 
-    cmd.args(["--chdir", &workspace_str, "--clearenv"]);
+    // Synthetic parents are never submission storage. Protect them regardless
+    // of the host cache location; the workspace and bounded temp child mounts
+    // remain writable. In particular, a home-based cache must not leave a
+    // writable synthetic home or an unbounded /tmp inside the namespace.
+    cmd.args(["--remount-ro", "/tmp", "--remount-ro", "/"]);
+
+    let working_directory = if managed_compiler {
+        COMPILER_WORKSPACE
+    } else {
+        &workspace_str
+    };
+    cmd.args(["--chdir", working_directory, "--clearenv"]);
 
     let mut env = spec.environment.clone();
-    env.insert("HOME".into(), workspace_str);
+    env.insert("HOME".into(), working_directory.into());
     env.insert("TMPDIR".into(), SANDBOX_TMPDIR.into());
     env.insert("TEMP".into(), SANDBOX_TMPDIR.into());
     env.insert("TMP".into(), SANDBOX_TMPDIR.into());
+    // Clearing the host environment must not turn UTF-8 installation paths
+    // into '?' in runtimes such as Java. C.UTF-8 keeps deterministic messages
+    // and numeric formatting; explicitly supplied locale settings still win.
+    env.entry("LANG".into()).or_insert_with(|| "C.UTF-8".into());
     env.entry("PATH".into())
         .or_insert_with(|| "/usr/bin:/bin".into());
     for (key, value) in &env {
@@ -1329,7 +1376,19 @@ fn build_bwrap_command(
         &seccomp_fd.to_string(),
         "--",
     ]);
-    cmd.arg(&paths.executable);
+    if managed_compiler {
+        let package = paths
+            .toolchain_package_root
+            .as_ref()
+            .ok_or("Managed compiler is missing its granted package")?;
+        let relative = paths
+            .executable
+            .strip_prefix(package)
+            .map_err(|_| "Managed compiler executable escapes its package")?;
+        cmd.arg(Path::new(TOOLCHAIN_ROOT).join(relative));
+    } else {
+        cmd.arg(&paths.executable);
+    }
     cmd.args(&spec.args);
     Ok(cmd)
 }
@@ -1694,6 +1753,12 @@ struct BwrapStatus {
     exit_code: Option<i32>,
 }
 
+impl BwrapStatus {
+    fn payload_exit_code(&self) -> Option<i32> {
+        self.exit_code.filter(|_| self.child_started)
+    }
+}
+
 fn read_bwrap_status(fd: OwnedFd) -> Option<BwrapStatus> {
     let mut file = File::from(fd);
     let mut contents = String::new();
@@ -1709,10 +1774,18 @@ fn read_bwrap_status(fd: OwnedFd) -> Option<BwrapStatus> {
         let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
             continue;
         };
-        if value.get("child-pid").is_some() {
+        if value
+            .get("child-pid")
+            .and_then(serde_json::Value::as_u64)
+            .is_some_and(|pid| pid > 0 && pid <= i32::MAX as u64)
+        {
             child_started = true;
         }
-        if let Some(code) = value.get("exit-code").and_then(serde_json::Value::as_i64) {
+        if let Some(code) = value
+            .get("exit-code")
+            .and_then(serde_json::Value::as_i64)
+            .filter(|code| (0..=255).contains(code))
+        {
             exit_code = Some(code as i32);
         }
     }
@@ -1926,6 +1999,125 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Mutex;
 
+    #[test]
+    fn managed_compilers_use_short_views_of_only_the_granted_directories() {
+        use crate::protocol::{
+            linux_sandbox_paths::{COMPILER_WORKSPACE, TOOLCHAIN_ROOT},
+            ToolchainGrant, ToolchainGrantRole,
+        };
+        let root = PathBuf::from("/home/qa/long data root/executor");
+        let workspace = root.join("workspaces/job");
+        let package = root.join("toolchains/fpc-release-digest");
+        let spec = RunSpec {
+            run_id: "job".into(),
+            role: RunRole::Compiler,
+            workspace_id: "job".into(),
+            executable_id: "toolchains/fpc-release-digest/bin/ppcx64".into(),
+            args: vec![],
+            stdin_file: None,
+            stdout_file: "stdout".into(),
+            stderr_file: "stderr".into(),
+            environment: BTreeMap::new(),
+            toolchain: Some(ToolchainGrant {
+                package_id: "fpc-linux-x64".into(),
+                package_digest: "a".repeat(64),
+                component_id: "fpc.compiler".into(),
+                role: ToolchainGrantRole::Compiler,
+            }),
+            local_toolchain: None,
+            limits: default_limits(),
+        };
+        let paths = ValidatedRun {
+            executable: package.join("bin/ppcx64"),
+            toolchain_package_root: Some(package.clone()),
+            isolation: LocalToolchainIsolation::Strict,
+            workspace: workspace.clone(),
+            stdin: None,
+            stdout: workspace.join("stdout"),
+            stderr: workspace.join("stderr"),
+        };
+        let command = build_bwrap_command(&root, &spec, &paths, 9, 10).unwrap();
+        let args: Vec<_> = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        assert!(args
+            .windows(3)
+            .any(|part| part == ["--ro-bind", package.to_str().unwrap(), TOOLCHAIN_ROOT]));
+        assert!(args
+            .windows(3)
+            .any(|part| part == ["--bind", workspace.to_str().unwrap(), COMPILER_WORKSPACE]));
+        assert!(args
+            .windows(2)
+            .any(|part| part == ["--chdir", COMPILER_WORKSPACE]));
+        assert!(args
+            .windows(3)
+            .any(|part| part == ["--setenv", "LANG", "C.UTF-8"]));
+        assert_eq!(
+            args.last().unwrap(),
+            &format!("{TOOLCHAIN_ROOT}/bin/ppcx64")
+        );
+        let mut explicit = spec.clone();
+        explicit.environment.insert("LANG".into(), "C".into());
+        let command = build_bwrap_command(&root, &explicit, &paths, 9, 10).unwrap();
+        let args: Vec<_> = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        assert!(args
+            .windows(3)
+            .any(|part| part == ["--setenv", "LANG", "C"]));
+    }
+
+    #[test]
+    fn sandbox_keeps_synthetic_parents_readonly_for_roots_outside_tmp() {
+        let root = PathBuf::from("/home/qa/Full package/executor");
+        let workspace = root.join("workspaces/job");
+        let spec = RunSpec {
+            run_id: "job".into(),
+            role: RunRole::Submission,
+            workspace_id: "job".into(),
+            executable_id: "workspaces/job/program".into(),
+            args: vec![],
+            stdin_file: None,
+            stdout_file: "stdout".into(),
+            stderr_file: "stderr".into(),
+            environment: BTreeMap::new(),
+            toolchain: None,
+            local_toolchain: None,
+            limits: default_limits(),
+        };
+        let paths = ValidatedRun {
+            executable: workspace.join("program"),
+            toolchain_package_root: None,
+            isolation: LocalToolchainIsolation::Strict,
+            workspace: workspace.clone(),
+            stdin: None,
+            stdout: workspace.join("stdout"),
+            stderr: workspace.join("stderr"),
+        };
+        let command = build_bwrap_command(&root, &spec, &paths, 9, 10).unwrap();
+        let args: Vec<_> = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        for mount in ["/", "/tmp"] {
+            assert!(
+                args.windows(2).any(|pair| pair == ["--remount-ro", mount]),
+                "missing readonly mount {mount}: {args:?}"
+            );
+        }
+        assert!(args
+            .windows(2)
+            .any(|pair| pair == ["--tmpfs", SANDBOX_TMPDIR]));
+        assert!(args.windows(3).any(|part| part
+            == [
+                "--bind",
+                workspace.to_str().unwrap(),
+                workspace.to_str().unwrap()
+            ]));
+    }
+
     fn default_limits() -> RunLimits {
         RunLimits {
             wall_time_ms: 5_000,
@@ -1936,6 +2128,105 @@ mod tests {
             total_write_bytes: 16 * 1024 * 1024,
             open_files: 64,
             created_files: 32,
+        }
+    }
+
+    #[test]
+    fn bwrap_status_requires_a_valid_completed_payload() {
+        use std::io::Write;
+        for (status, expected) in [
+            ("{\"child-pid\":123}\n{\"exit-code\":1}\n", Some(1)),
+            ("{\"child-pid\":123}\n", None),
+            ("{\"child-pid\":null}\n{\"exit-code\":1}\n", None),
+            ("{\"child-pid\":123}\n{\"exit-code\":-1}\n", None),
+            ("{\"child-pid\":123}\n{\"exit-code\":65536}\n", None),
+            ("not-json\n", None),
+        ] {
+            let (read, write) = create_status_pipe().expect("status pipe");
+            let mut writer = File::from(write);
+            writer.write_all(status.as_bytes()).expect("status fixture");
+            drop(writer);
+            let actual = read_bwrap_status(read).and_then(|status| status.payload_exit_code());
+            assert_eq!(actual, expected, "{status}");
+        }
+    }
+
+    #[test]
+    fn linux_failed_exec_is_not_checker_wa() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let (platform, root) = LinuxPlatform::initialize().expect("initialize LinuxPlatform");
+        let workspace = root.join("workspaces/launch_regression");
+        fs::create_dir_all(&workspace).expect("create workspace");
+        let missing_interpreter = workspace.join("checker");
+        fs::write(&missing_interpreter, b"#!/judgedesk-missing-interpreter\n")
+            .expect("write invalid interpreter fixture");
+        fs::set_permissions(&missing_interpreter, fs::Permissions::from_mode(0o755))
+            .expect("make fixture executable");
+        let active: ActiveRuns = Arc::new(Mutex::new(HashMap::new()));
+        for role in [RunRole::Checker, RunRole::Submission] {
+            let spec = RunSpec {
+                run_id: format!("launch_regression_{role:?}"),
+                role,
+                workspace_id: "launch_regression".into(),
+                executable_id: "workspaces/launch_regression/checker".into(),
+                args: Vec::new(),
+                stdin_file: None,
+                stdout_file: "stdout.txt".into(),
+                stderr_file: "stderr.txt".into(),
+                environment: BTreeMap::new(),
+                toolchain: None,
+                local_toolchain: None,
+                limits: default_limits(),
+            };
+            let validated = validate_run(&root, &spec).expect("validate fixture");
+            let result = platform.run(&root, &spec, &validated, &active);
+            assert!(
+                matches!(result.reason, RunReason::LaunchError),
+                "{result:?}"
+            );
+            assert!(active.lock().expect("active runs").is_empty());
+        }
+        fs::copy("/usr/bin/false", workspace.join("valid_checker")).expect("stage real exit 1");
+        for (name, interactor, expected) in [
+            ("failed_interactor", "checker", "JE"),
+            ("valid_wa", "valid_checker", "WA"),
+        ] {
+            let sub_ws = root.join("workspaces/launch_sub");
+            fs::create_dir_all(&sub_ws).expect("submission workspace");
+            fs::copy("/usr/bin/true", sub_ws.join("submission")).expect("stage submission");
+            let participant = |id: &str, ws: &str, executable: &str, role| RunSpec {
+                run_id: id.into(),
+                role,
+                workspace_id: ws.into(),
+                executable_id: format!("workspaces/{ws}/{executable}"),
+                args: Vec::new(),
+                stdin_file: None,
+                stdout_file: "stdout.txt".into(),
+                stderr_file: "stderr.txt".into(),
+                environment: BTreeMap::new(),
+                toolchain: None,
+                local_toolchain: None,
+                limits: default_limits(),
+            };
+            let pair = InteractiveRunSpec {
+                run_id: name.into(),
+                submission: participant(
+                    "launch_sub",
+                    "launch_sub",
+                    "submission",
+                    RunRole::Submission,
+                ),
+                interactor: participant(
+                    "launch_inter",
+                    "launch_regression",
+                    interactor,
+                    RunRole::Checker,
+                ),
+            };
+            let result = platform.run_interactive(&root, &pair, &active);
+            assert_eq!(result.verdict, expected, "{result:?}");
+            assert!(active.lock().expect("active runs").is_empty());
         }
     }
 

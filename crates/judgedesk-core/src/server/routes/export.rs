@@ -154,24 +154,33 @@ pub async fn handle_open_excel(
             .into_response();
     }
 
-    let open_mode = match state.workbook_opener.open_workbook_with_mode(&book_path) {
-        Ok(mode) => mode,
-        Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(
-                    json!({ "success": false, "message": format!("Failed to open workbook: {e}") }),
-                ),
-            )
-                .into_response();
-        }
+    let opener = state.workbook_opener.clone();
+    let viewer_path = book_path.clone();
+    let open_result =
+        tokio::task::spawn_blocking(move || opener.open_workbook_with_mode(&viewer_path))
+            .await
+            .map_err(|e| format!("Workbook viewer task failed: {e}"))
+            .and_then(|result| result);
+    let (open_mode, open_error) = match open_result {
+        Ok(mode) => (Some(mode), None),
+        Err(error) => (
+            None,
+            Some(if error.is_empty() {
+                "Workbook viewer could not be started".into()
+            } else {
+                error
+            }),
+        ),
     };
 
     Json(json!({
         "success": true,
+        "saved": true,
         "path": book_path.to_string_lossy(),
         "diagnosticsPath": diag_path.to_string_lossy(),
-        "openMode": open_mode
+        "openMode": open_mode,
+        "openStatus": if open_error.is_some() { "failed" } else { "launched" },
+        "openError": open_error
     }))
     .into_response()
 }

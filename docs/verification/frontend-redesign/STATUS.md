@@ -1,5 +1,21 @@
 # Frontend redesign — Trạng thái tiếp tục
 
+## Scoped update — 2026-10-24 — Admin announcements
+
+Help–bell–Donate, unread badge, anchored notification panel and article modal are implemented with VI/EN, light/dark, keyboard focus, inert background and narrow viewport handling. Actual Windows WebView2 and Linux WebKitGTK QA each pass eight layout/language/theme combinations using a fixture feed and native binary/PNG IPC. These results do not certify production Pages or macOS/installed-package acceptance. Evidence and current gate status: [announcements STATUS](../admin-announcements/STATUS.md), [self-review](../admin-announcements/REVIEW.md). The broader redesign remains separate.
+
+## Scoped update — 2026-10-22 — Export recovery
+
+Linux export now distinguishes saved workbook files from viewer launch failure,
+with a persistent VI/EN message, wrapped saved path and copy-path action.
+Packaged AppImage native QA verified English/Vietnamese × light/dark at restored
+desktop width, plus maximized English/light; copying/pasting yielded the saved
+Book.xlsx location. WSLg is not physical desktop/LibreOffice certification.
+Full Windows gates and all nine Linux Rust steps pass; Fedora AppImage portable
+stress is 137/137. See FR-LOG-0010 and the Linux incident report for scope,
+fault-injection details and remaining baseline prerequisites. This does not close
+the broader redesign work.
+
 Updated: 2026-10-07 (Asia/Bangkok). Plan: ../../frontend-redesign-plan.md.
 
 ## Latest scoped batch — Tests and quick groups

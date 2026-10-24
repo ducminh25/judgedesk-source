@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { RESOURCE_ROOT } from "../runtime.js";
+import { LINUX_RELEASE_BLUEPRINTS, LINUX_TOOLCHAIN_CATALOG } from "./linux-catalog.js";
 import {
   ToolchainCatalogEntry,
   ToolchainDescriptor,
@@ -45,6 +46,7 @@ export interface ManifestValidationOptions {
 }
 
 export const TOOLCHAIN_CATALOG: ToolchainCatalogEntry[] = [
+  ...LINUX_TOOLCHAIN_CATALOG,
   {
     id: "gcc-windows-x64",
     provides: ["cpp", "c"],
@@ -359,6 +361,7 @@ export const TOOLCHAIN_CATALOG: ToolchainCatalogEntry[] = [
 export const TOOLCHAIN_RELEASE_BLUEPRINTS: Readonly<
   Record<string, ToolchainReleaseBlueprint>
 > = Object.freeze({
+  ...LINUX_RELEASE_BLUEPRINTS,
   "gcc-windows-x64": {
     id: "gcc-windows-x64",
     provides: ["cpp", "c"],

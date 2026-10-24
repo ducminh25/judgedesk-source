@@ -603,6 +603,326 @@ pub fn read_stored_problem_config(problem_directory: &Path) -> Option<serde_json
         .and_then(|content| serde_json::from_str(&content).ok())
 }
 
+fn to_canonical_point_json(r: &crate::rational::Rational) -> serde_json::Value {
+    if r.is_integer() {
+        if let Ok(n) = r.n.to_string().parse::<i64>() {
+            return serde_json::json!(n);
+        }
+    }
+    let formatted = crate::rational::format_rational(r.clone(), 4);
+    if !formatted.contains('/') {
+        if let Ok(f) = formatted.parse::<f64>() {
+            if f.is_finite() && f.to_string() == formatted {
+                return serde_json::json!(f);
+            }
+        }
+    }
+    serde_json::Value::String(formatted)
+}
+
+pub fn create_default_stored_problem_config(
+    problem_name: &str,
+    problem_directory: &Path,
+    platform: &str,
+) -> serde_json::Value {
+    let custom_checkers = discover_custom_checkers(problem_directory, platform);
+    let interactors = discover_interactors(problem_directory, platform);
+    let checker_type = custom_checkers
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "C1".to_string());
+    let interactor = interactors
+        .first()
+        .cloned()
+        .unwrap_or_else(|| "interactor.cpp".to_string());
+    let compile = super::compile_config::ProblemCompileConfig::default();
+    serde_json::json!({
+        "testWellFormed": false,
+        "useStdIO": false,
+        "useStdIn": false,
+        "useStdOut": false,
+        "inputFile": format!("{problem_name}.inp"),
+        "outputFile": format!("{problem_name}.out"),
+        "totalScore": serde_json::Value::Null,
+        "defaultScore": 1,
+        "testScores": {},
+        "memoryLimit": DEFAULT_PROBLEM_MEMORY_LIMIT_MB,
+        "checkerType": checker_type,
+        "compile": compile,
+        "enableGroups": false,
+        "tests": {},
+        "groups": {},
+        "isInteractive": false,
+        "interactor": interactor,
+    })
+}
+
+pub fn reconcile_stored_problem_config_value(
+    mut stored: serde_json::Value,
+    discovered_tests: &[String],
+) -> (serde_json::Value, bool) {
+    if discovered_tests.is_empty() || !stored.is_object() {
+        return (stored, false);
+    }
+    let has_tests = stored
+        .get("tests")
+        .and_then(|v| v.as_object())
+        .is_some_and(|m| !m.is_empty());
+    let has_test_scores = stored
+        .get("testScores")
+        .and_then(|v| v.as_object())
+        .is_some_and(|m| !m.is_empty());
+    if !has_tests && !has_test_scores {
+        return (stored, false);
+    }
+
+    let tests_match = stored
+        .get("tests")
+        .and_then(|v| v.as_object())
+        .filter(|m| !m.is_empty())
+        .is_none_or(|m| {
+            m.len() == discovered_tests.len()
+                && discovered_tests.iter().all(|name| m.contains_key(name))
+        });
+    let scores_match = stored
+        .get("testScores")
+        .and_then(|v| v.as_object())
+        .filter(|m| !m.is_empty())
+        .is_none_or(|m| {
+            m.len() == discovered_tests.len()
+                && discovered_tests.iter().all(|name| m.contains_key(name))
+        });
+    if tests_match && scores_match {
+        return (stored, false);
+    }
+
+    let enable_groups = stored
+        .get("enableGroups")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    if enable_groups {
+        return (stored, false);
+    }
+    let default_score_rat = crate::scoring::default_or_one(stored.get("defaultScore"));
+    let old_tests_map = stored
+        .get("tests")
+        .and_then(|v| v.as_object())
+        .cloned()
+        .unwrap_or_default();
+    let old_scores_map = stored
+        .get("testScores")
+        .and_then(|v| v.as_object())
+        .cloned()
+        .unwrap_or_default();
+
+    let old_points: Vec<crate::rational::Rational> = if !old_tests_map.is_empty() {
+        old_tests_map
+            .iter()
+            .map(|(k, v)| {
+                v.get("points")
+                    .or_else(|| old_scores_map.get(k))
+                    .filter(|val| !val.is_null() && val.as_str() != Some(""))
+                    .map(crate::rational::parse_rational_value)
+                    .unwrap_or_else(|| default_score_rat.clone())
+            })
+            .collect()
+    } else {
+        old_scores_map
+            .values()
+            .map(|val| {
+                if !val.is_null() && val.as_str() != Some("") {
+                    crate::rational::parse_rational_value(val)
+                } else {
+                    default_score_rat.clone()
+                }
+            })
+            .collect()
+    };
+
+    let old_count = old_points.len();
+    let all_old_equal = !old_points.is_empty() && old_points.iter().all(|p| *p == old_points[0]);
+    let uniform_old_point = if all_old_equal {
+        Some(old_points[0].clone())
+    } else {
+        None
+    };
+
+    let total_rat = stored
+        .get("totalScore")
+        .filter(|v| {
+            !v.is_null() && !matches!(v, serde_json::Value::String(s) if s.trim().is_empty())
+        })
+        .map(crate::rational::parse_rational_value);
+    let old_default_sum = crate::rational::multiply_rational(
+        default_score_rat.clone(),
+        crate::rational::Rational::new(old_count as i64, 1),
+    );
+    let was_default_sum_total = !enable_groups
+        && old_count > 0
+        && all_old_equal
+        && uniform_old_point.as_ref() == Some(&default_score_rat)
+        && total_rat.as_ref() == Some(&old_default_sum);
+
+    let fallback_pt = uniform_old_point.unwrap_or_else(|| default_score_rat.clone());
+    let initial_points: Vec<crate::rational::Rational> = discovered_tests
+        .iter()
+        .map(|name| {
+            old_tests_map
+                .get(name)
+                .and_then(|v| v.get("points"))
+                .or_else(|| old_scores_map.get(name))
+                .filter(|val| !val.is_null() && val.as_str() != Some(""))
+                .map(crate::rational::parse_rational_value)
+                .unwrap_or_else(|| fallback_pt.clone())
+        })
+        .collect();
+
+    let final_points: Vec<crate::rational::Rational> = if was_default_sum_total {
+        vec![default_score_rat; discovered_tests.len()]
+    } else if !enable_groups {
+        if let Some(ref t_rat) = total_rat {
+            if !t_rat.is_zero() && !t_rat.n.is_negative() {
+                let all_init_equal = initial_points
+                    .first()
+                    .is_some_and(|first| initial_points.iter().all(|p| p == first));
+                let sum_init = initial_points
+                    .iter()
+                    .fold(crate::rational::Rational::ZERO, |acc, p| {
+                        crate::rational::add_rational(acc, p.clone())
+                    });
+                let count_rat = crate::rational::Rational::new(discovered_tests.len() as i64, 1);
+                initial_points
+                    .iter()
+                    .map(|p| {
+                        if all_init_equal || sum_init.is_zero() {
+                            crate::rational::divide_rational(t_rat.clone(), count_rat.clone())
+                        } else {
+                            let ratio =
+                                crate::rational::divide_rational(p.clone(), sum_init.clone());
+                            crate::rational::multiply_rational(t_rat.clone(), ratio)
+                        }
+                    })
+                    .collect()
+            } else {
+                initial_points
+            }
+        } else {
+            initial_points
+        }
+    } else {
+        initial_points
+    };
+
+    if let Some(obj) = stored.as_object_mut() {
+        if was_default_sum_total {
+            obj.insert("totalScore".to_string(), serde_json::Value::Null);
+        }
+        if has_tests {
+            let mut new_tests = serde_json::Map::new();
+            for (name, pt) in discovered_tests.iter().zip(final_points.iter()) {
+                let mut entry = old_tests_map
+                    .get(name)
+                    .and_then(|v| v.as_object())
+                    .cloned()
+                    .unwrap_or_default();
+                entry.insert("points".to_string(), to_canonical_point_json(pt));
+                new_tests.insert(name.clone(), serde_json::Value::Object(entry));
+            }
+            obj.insert("tests".to_string(), serde_json::Value::Object(new_tests));
+        }
+        if has_test_scores {
+            let mut new_scores = serde_json::Map::new();
+            for (name, pt) in discovered_tests.iter().zip(final_points.iter()) {
+                new_scores.insert(name.clone(), to_canonical_point_json(pt));
+            }
+            obj.insert(
+                "testScores".to_string(),
+                serde_json::Value::Object(new_scores),
+            );
+        }
+    }
+
+    (stored, true)
+}
+
+fn write_stored_problem_config_file(
+    problem_directory: &Path,
+    file_name: &str,
+    config: &serde_json::Value,
+) -> bool {
+    use std::io::Write;
+    let Ok(config_path) =
+        crate::storage::ensure_safe_contained_path(problem_directory, Path::new(file_name))
+    else {
+        return false;
+    };
+    let tmp_name = format!("{file_name}.{}.tmp", uuid::Uuid::new_v4());
+    let Ok(tmp_path) =
+        crate::storage::ensure_safe_contained_path(problem_directory, Path::new(&tmp_name))
+    else {
+        return false;
+    };
+    let res = (|| -> Result<(), Box<dyn std::error::Error>> {
+        let content = serde_json::to_vec_pretty(config)?;
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&tmp_path)?;
+        file.write_all(&content)?;
+        file.sync_all()?;
+        drop(file);
+        fs::rename(&tmp_path, &config_path)?;
+        Ok(())
+    })();
+    if res.is_err() {
+        let _ = fs::remove_file(&tmp_path);
+        return false;
+    }
+    true
+}
+
+pub fn reconcile_existing_stored_problem_config(
+    problem_directory: &Path,
+) -> Option<serde_json::Value> {
+    let cfg_path = problem_directory.join("Config.cfg");
+    let json_path = problem_directory.join("config.json");
+    let target_name = if cfg_path.is_file() {
+        "Config.cfg"
+    } else if json_path.is_file() {
+        "config.json"
+    } else {
+        return None;
+    };
+    let stored = read_stored_problem_config(problem_directory)?;
+    let is_interactive = stored
+        .get("isInteractive")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    let discovered_tests = list_test_directories(problem_directory, is_interactive);
+    let (reconciled, changed) = reconcile_stored_problem_config_value(stored, &discovered_tests);
+    if changed {
+        let _ = write_stored_problem_config_file(problem_directory, target_name, &reconciled);
+    }
+    Some(reconciled)
+}
+
+pub fn ensure_or_reconcile_stored_problem_config(
+    problem_directory: &Path,
+    problem_name: &str,
+    platform: &str,
+) -> Option<serde_json::Value> {
+    if !problem_directory.is_dir() {
+        return None;
+    }
+    if let Some(reconciled) = reconcile_existing_stored_problem_config(problem_directory) {
+        return Some(reconciled);
+    }
+    let default_cfg =
+        create_default_stored_problem_config(problem_name, problem_directory, platform);
+    let _ = write_stored_problem_config_file(problem_directory, "Config.cfg", &default_cfg);
+    Some(default_cfg)
+}
+
 /// Detects a selected flat layout without mistaking a problem container's samples for tests.
 pub fn is_flat_test_directory<P: AsRef<Path>>(problem_directory: P) -> bool {
     let directory = problem_directory.as_ref();

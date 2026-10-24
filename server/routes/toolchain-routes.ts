@@ -154,6 +154,7 @@ export function registerToolchainRoutes(
   lifecycle: ServerLifecycle = serverLifecycle,
   manifestLoader: ToolchainManifestLoaderFn = (forceRefresh) =>
     loadOfficialManifest({ forceRefresh }),
+  diagnoseProfile: typeof diagnoseLanguageProfile = diagnoseLanguageProfile,
 ): void {
   let manifestState: {
     status: "not_started" | "loading" | "ready" | "failed";
@@ -467,7 +468,7 @@ export function registerToolchainRoutes(
       });
     }
     try {
-      const diagOp = diagnoseLanguageProfile(profileId);
+      const diagOp = diagnoseProfile(profileId);
       lifecycle.trackBackgroundOperation(diagOp);
       if (onBackgroundOperation) {
         onBackgroundOperation(diagOp);

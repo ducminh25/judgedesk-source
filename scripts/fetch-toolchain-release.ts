@@ -16,13 +16,13 @@ import {
 const MAX_MANIFEST_BYTES = 4 * 1024 * 1024;
 
 function mappedHost(): {
-  platform: "win32" | "darwin";
+  platform: "win32" | "darwin" | "linux";
   arch: "x64" | "arm64";
 } {
   const platform = os.platform();
   const arch = os.arch();
   if (
-    (platform !== "win32" && platform !== "darwin")
+    (platform !== "win32" && platform !== "darwin" && platform !== "linux")
     || (arch !== "x64" && arch !== "arm64")
   ) {
     throw new Error(`Unsupported toolchain release host: ${platform}/${arch}`);

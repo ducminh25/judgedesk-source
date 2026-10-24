@@ -1,0 +1,13 @@
+{
+  "uid":"12345678-1234-4234-8234-123456789abc",
+  "revision":1,
+  "publishedAt":"2026-10-24T00:00:00.000Z",
+  "updatedAt":"2026-10-24T00:00:00.000Z",
+  "content":{
+    "vi":{"title":"Bài kiểm thử publisher","summary":"Kiểm tra chữ, ảnh PNG xen đoạn và liên kết."},
+    "en":{"title":"Publisher test article","summary":"Text, an inline PNG and an approved link."}
+  },
+  "images":[{"id":"photo","file":"images/photo.png","role":"article"},{"id":"preview","file":"images/preview.png","role":"thumbnail"}],
+  "thumbnailId": "preview",
+  "expiresAt": "2027-01-01T00:00:00.000Z"
+}

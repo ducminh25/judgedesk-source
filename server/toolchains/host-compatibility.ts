@@ -22,9 +22,28 @@ export function getHostProductVersion(
     }
   } else if (platform === "win32") {
     version = os.release().trim();
+  } else if (platform === "linux") {
+    const report = process.report.getReport();
+    if ("header" in report && typeof report.header === "object" && report.header !== null
+      && "glibcVersionRuntime" in report.header && typeof report.header.glibcVersionRuntime === "string") {
+      version = report.header.glibcVersionRuntime.trim();
+    }
   }
   if (platform === os.platform()) cachedHostVersion = version;
   return version;
+}
+
+/** Linux minimumOs names the build baseline, not a comparable distro version. */
+export function isManagedHostSupported(
+  platform: NodeJS.Platform,
+  minimumVersion: string,
+  hostVersion: string = getHostProductVersion(platform),
+): boolean {
+  if (platform === "linux") {
+    // Match the whole-payload ELF gate; unknown future baselines fail closed.
+    return minimumVersion === "22.04" && isMinimumOsSupported("2.35", hostVersion);
+  }
+  return isMinimumOsSupported(minimumVersion, hostVersion);
 }
 
 export function isMinimumOsSupported(

@@ -407,7 +407,7 @@
       },
       "responseSchema": {
         "type": "object",
-        "required": ["success", "path", "diagnosticsPath", "openMode"]
+        "required": ["success", "saved", "path", "diagnosticsPath", "openMode", "openStatus", "openError"]
       },
       "goldenSuccessFixture": "server/test-fixtures/api-contracts/post-open-excel.json",
       "goldenFailureFixtures": [

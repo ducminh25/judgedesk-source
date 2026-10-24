@@ -29,6 +29,11 @@ impl ToolchainStore {
         let persisted = load_persisted_preferences_in(&effective_dir);
         let is_contract_env =
             crate::toolchains::discovery::is_seeded_contract_fixture_env(&effective_dir);
+        // Startup needs presence to choose a default source. Content integrity
+        // and sandbox readiness are resolved by the observation/probe path;
+        // hashing entire Full SDKs here would delay opening the backend port.
+        let installed_packages =
+            discover_installed_managed_packages_in(&effective_dir.join("toolchains"));
         let mut selections = HashMap::new();
         for id in &["cpp", "c", "python", "pascal", "java", "scratch"] {
             let canonical_id = canonical_profile_id_for_kind(id);
@@ -43,15 +48,17 @@ impl ToolchainStore {
                             .map(|(_, v)| v)
                     })
             });
-            let has_managed = crate::toolchains::discovery::find_managed_toolchain_in(
-                &effective_dir.join("toolchains"),
-                id,
-            )
-            .is_some()
+            let has_managed = installed_packages
+                .contains(crate::toolchains::discovery::managed_package_name_for(id))
                 || (app_data_dir.is_none()
                     && !is_contract_env
+                    && !crate::toolchains::package_trust::is_linux_full_build()
                     && crate::toolchains::discovery::find_managed_toolchain(id).is_some());
-            let default_mode = if (!cfg!(windows) && (*id == "cpp" || *id == "c"))
+            let default_mode = if cfg!(target_os = "linux")
+                && (crate::toolchains::package_trust::is_linux_full_build() || has_managed)
+            {
+                "managed"
+            } else if (!cfg!(windows) && (*id == "cpp" || *id == "c"))
                 || (cfg!(target_os = "linux")
                     && !is_contract_env
                     && matches!(*id, "python" | "pascal" | "java" | "scratch")
@@ -67,9 +74,6 @@ impl ToolchainStore {
             let local_path = pref.and_then(|p| p.local_path.clone());
             selections.insert(id.to_string(), ProfileSelection { mode, local_path });
         }
-
-        let installed_packages =
-            discover_installed_managed_packages_in(&effective_dir.join("toolchains"));
 
         Self {
             app_data_dir: Some(effective_dir),
@@ -194,12 +198,281 @@ pub fn validate_job_id(raw: &str) -> Result<String, String> {
 
 static AUTO_JOB_SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ObservedProfileKey {
+    pub revision: u64,
+    pub app_data_dir: PathBuf,
+    pub kind: String,
+    pub mode: String,
+    pub local_path: Option<String>,
+    pub discovered_system_exe: Option<PathBuf>,
+}
+
+type FileFingerprint = Option<(PathBuf, u64, u128)>;
+
+#[derive(Debug, Clone)]
+struct ObservedProfileEntry {
+    resolved: crate::toolchains::discovery::ResolvedToolchain,
+    expires_at: std::time::Instant,
+    watched_files: Vec<(PathBuf, FileFingerprint)>,
+}
+
+const OBSERVATION_POSITIVE_TTL: std::time::Duration = std::time::Duration::from_secs(30);
+const OBSERVATION_NEGATIVE_TTL: std::time::Duration = std::time::Duration::from_secs(5);
+const MAX_OBSERVED_PROFILE_ENTRIES: usize = 64;
+const MAX_CONCURRENT_OBSERVATION_PROBES: usize = 2;
+
+struct ProbeSlotGuard {
+    slots: Arc<(std::sync::Mutex<usize>, std::sync::Condvar)>,
+}
+
+impl ProbeSlotGuard {
+    fn acquire(slots: &Arc<(std::sync::Mutex<usize>, std::sync::Condvar)>) -> Self {
+        let (lock, cvar) = &**slots;
+        let mut active = lock.lock().unwrap_or_else(|e| e.into_inner());
+        while *active >= MAX_CONCURRENT_OBSERVATION_PROBES {
+            active = cvar.wait(active).unwrap_or_else(|e| e.into_inner());
+        }
+        *active += 1;
+        Self {
+            slots: Arc::clone(slots),
+        }
+    }
+}
+
+impl Drop for ProbeSlotGuard {
+    fn drop(&mut self) {
+        let (lock, cvar) = &*self.slots;
+        let mut active = lock.lock().unwrap_or_else(|e| e.into_inner());
+        *active = active.saturating_sub(1);
+        cvar.notify_one();
+    }
+}
+
+pub struct ToolchainObservationCache {
+    generation: std::sync::atomic::AtomicU64,
+    profiles: RwLock<HashMap<ObservedProfileKey, ObservedProfileEntry>>,
+    inflight_locks: std::sync::Mutex<HashMap<ObservedProfileKey, Arc<std::sync::Mutex<()>>>>,
+    probe_slots: Arc<(std::sync::Mutex<usize>, std::sync::Condvar)>,
+}
+
+impl Default for ToolchainObservationCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ToolchainObservationCache {
+    pub fn new() -> Self {
+        Self {
+            generation: std::sync::atomic::AtomicU64::new(0),
+            profiles: RwLock::new(HashMap::new()),
+            inflight_locks: std::sync::Mutex::new(HashMap::new()),
+            probe_slots: Arc::new((std::sync::Mutex::new(0), std::sync::Condvar::new())),
+        }
+    }
+
+    pub fn clear(&self) {
+        self.generation
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if let Ok(mut guard) = self.profiles.write() {
+            guard.clear();
+        }
+        if let Ok(mut locks) = self.inflight_locks.lock() {
+            locks.retain(|_, arc| Arc::strong_count(arc) > 1);
+        }
+        crate::toolchains::discovery::clear_toolchain_probe_caches();
+    }
+
+    fn get_fresh(
+        &self,
+        key: &ObservedProfileKey,
+        profile_id: &str,
+    ) -> Option<crate::toolchains::discovery::ResolvedToolchain> {
+        let now = std::time::Instant::now();
+        let entry = {
+            let guard = self.profiles.read().unwrap_or_else(|e| e.into_inner());
+            guard.get(key).cloned()?
+        };
+        if now >= entry.expires_at {
+            return None;
+        }
+        for (watched_path, expected_fp) in &entry.watched_files {
+            if crate::toolchains::discovery::executable_file_fingerprint(watched_path)
+                != *expected_fp
+            {
+                return None;
+            }
+        }
+        Some(crate::toolchains::discovery::ResolvedToolchain {
+            profile_id: profile_id.to_string(),
+            ..entry.resolved
+        })
+    }
+
+    fn inflight_lock_for(&self, key: &ObservedProfileKey) -> Arc<std::sync::Mutex<()>> {
+        let mut guard = self
+            .inflight_locks
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if guard.len() >= MAX_OBSERVED_PROFILE_ENTRIES && !guard.contains_key(key) {
+            guard.retain(|_, arc| Arc::strong_count(arc) > 1);
+            if guard.len() >= MAX_OBSERVED_PROFILE_ENTRIES {
+                guard.clear();
+            }
+        }
+        guard
+            .entry(key.clone())
+            .or_insert_with(|| Arc::new(std::sync::Mutex::new(())))
+            .clone()
+    }
+
+    pub fn resolve_profile(
+        &self,
+        state: &AppState,
+        revision: u64,
+        app_data_dir: &Path,
+        profile_id: &str,
+        mode: &str,
+        local_path: Option<&str>,
+    ) -> crate::toolchains::discovery::ResolvedToolchain {
+        let kind = crate::toolchains::discovery::normalize_language_kind(profile_id);
+        let discovered_system_exe = if !crate::toolchains::discovery::is_managed_only_kind(kind)
+            && matches!(mode, "local_auto" | "system" | "managed")
+        {
+            crate::toolchains::discovery::find_system_executable(kind)
+        } else {
+            None
+        };
+
+        let key = ObservedProfileKey {
+            revision,
+            app_data_dir: app_data_dir.to_path_buf(),
+            kind: kind.to_string(),
+            mode: mode.to_string(),
+            local_path: local_path.map(String::from),
+            discovered_system_exe,
+        };
+
+        if let Some(cached) = self.get_fresh(&key, profile_id) {
+            return cached;
+        }
+
+        let key_lock = self.inflight_lock_for(&key);
+        let _inflight_guard = key_lock.lock().unwrap_or_else(|e| e.into_inner());
+
+        if let Some(cached) = self.get_fresh(&key, profile_id) {
+            return cached;
+        }
+
+        let start_gen = self.generation.load(std::sync::atomic::Ordering::SeqCst);
+        let resolved = {
+            let _slot = ProbeSlotGuard::acquire(&self.probe_slots);
+            let mut candidate = crate::toolchains::discovery::resolve_toolchain_for_profile_in(
+                Some(app_data_dir),
+                profile_id,
+                Some(mode),
+                local_path,
+            );
+            if cfg!(target_os = "linux") && candidate.ready {
+                let diagnostic = crate::toolchains::diagnostics::diagnose_resolved_language_profile(
+                    profile_id,
+                    &state.platform,
+                    candidate.clone(),
+                );
+                if !diagnostic.success {
+                    candidate.ready = false;
+                    candidate.diagnostic = Some(format!(
+                        "TOOLCHAIN_NOT_SANDBOX_COMPATIBLE: {}: {}",
+                        diagnostic.phase,
+                        diagnostic
+                            .error
+                            .unwrap_or_else(|| "sandbox probe failed".into()),
+                    ));
+                }
+            }
+            candidate
+        };
+
+        let is_transient_failure = resolved.diagnostic.as_deref().is_some_and(|d| {
+            d.contains("LOCAL_PROBE_TIMEOUT") || d.contains("failed to create probe dir")
+        });
+
+        if !is_transient_failure
+            && state.lifecycle_phase() == ServerLifecyclePhase::Running
+            && state.current_toolchain_revision() == revision
+            && self.generation.load(std::sync::atomic::Ordering::SeqCst) == start_gen
+        {
+            let mut watched_files = Vec::new();
+            if let Some(lp) = local_path {
+                let p = PathBuf::from(lp);
+                let fp = crate::toolchains::discovery::executable_file_fingerprint(&p);
+                watched_files.push((p, fp));
+            }
+            if let Some(ref sys_exe) = key.discovered_system_exe {
+                let fp = crate::toolchains::discovery::executable_file_fingerprint(sys_exe);
+                watched_files.push((sys_exe.clone(), fp));
+            }
+            if !resolved.executable_path.as_os_str().is_empty() {
+                let fp = crate::toolchains::discovery::executable_file_fingerprint(
+                    &resolved.executable_path,
+                );
+                watched_files.push((resolved.executable_path.clone(), fp));
+                if kind == "java" {
+                    let sibling = resolved.executable_path.with_file_name(if cfg!(windows) {
+                        "java.exe"
+                    } else {
+                        "java"
+                    });
+                    let sib_fp =
+                        crate::toolchains::discovery::executable_file_fingerprint(&sibling);
+                    watched_files.push((sibling, sib_fp));
+                }
+            }
+            if let Some(ref rt) = resolved.runtime_executable_path {
+                let fp = crate::toolchains::discovery::executable_file_fingerprint(rt);
+                watched_files.push((rt.clone(), fp));
+            }
+
+            let ttl = if resolved.ready || mode == "none" {
+                OBSERVATION_POSITIVE_TTL
+            } else {
+                OBSERVATION_NEGATIVE_TTL
+            };
+            let expires_at = std::time::Instant::now() + ttl;
+            let mut guard = self.profiles.write().unwrap_or_else(|e| e.into_inner());
+            if self.generation.load(std::sync::atomic::Ordering::SeqCst) == start_gen
+                && state.current_toolchain_revision() == revision
+            {
+                if guard.len() >= MAX_OBSERVED_PROFILE_ENTRIES && !guard.contains_key(&key) {
+                    let prune_now = std::time::Instant::now();
+                    guard.retain(|k, v| k.revision == revision && prune_now < v.expires_at);
+                    if guard.len() >= MAX_OBSERVED_PROFILE_ENTRIES {
+                        guard.clear();
+                    }
+                }
+                guard.insert(
+                    key,
+                    ObservedProfileEntry {
+                        resolved: resolved.clone(),
+                        expires_at,
+                        watched_files,
+                    },
+                );
+            }
+        }
+
+        resolved
+    }
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub cancel_flag: Arc<AtomicBool>,
     pub platform: Arc<ExecutorClient>,
     pub shutdown_tx: Option<tokio::sync::mpsc::Sender<()>>,
     pub toolchains: Arc<RwLock<ToolchainStore>>,
+    pub toolchain_observation: Arc<ToolchainObservationCache>,
     pub job_registry: Arc<RwLock<JudgeJobRegistry>>,
     pub lifecycle_phase: Arc<RwLock<ServerLifecyclePhase>>,
     pub directory_picker: Arc<dyn DirectoryPicker>,
@@ -232,6 +505,7 @@ impl AppState {
             platform,
             shutdown_tx: None,
             toolchains: Arc::new(RwLock::new(ToolchainStore::default())),
+            toolchain_observation: Arc::new(ToolchainObservationCache::new()),
             job_registry: Arc::new(RwLock::new(JudgeJobRegistry::default())),
             lifecycle_phase: Arc::new(RwLock::new(ServerLifecyclePhase::Running)),
             directory_picker: Arc::new(NativeDirectoryPicker),
@@ -246,6 +520,18 @@ impl AppState {
         if let Ok(mut guard) = self.toolchains.write() {
             *guard = ToolchainStore::from_app_data_dir_opt(Some(dir_buf));
         }
+        self.invalidate_toolchain_observation();
+    }
+
+    pub fn current_toolchain_revision(&self) -> u64 {
+        self.toolchains
+            .read()
+            .map(|g| g.revision)
+            .unwrap_or_else(|e| e.into_inner().revision)
+    }
+
+    pub fn invalidate_toolchain_observation(&self) {
+        self.toolchain_observation.clear();
     }
 
     pub fn lifecycle_phase(&self) -> ServerLifecyclePhase {
@@ -428,11 +714,14 @@ impl Default for AppState {
                 .or_else(|| std::env::var_os("JUDGEDESK_EXECUTOR_PATH"));
             if let Some(path) = test_var {
                 let p = PathBuf::from(path);
-                if p.is_file() {
-                    if let Ok(client) = ExecutorClient::spawn_sync(&p) {
-                        return Self::new(Arc::new(client));
-                    }
-                }
+                let client = match ExecutorClient::spawn_sync(&p) {
+                    Ok(client) => client,
+                    Err(error) => ExecutorClient::unavailable(&format!(
+                        "CONFIGURED_EXECUTOR_START_FAILED: {}: {error}",
+                        p.display()
+                    )),
+                };
+                return Self::new(Arc::new(client));
             }
         }
 

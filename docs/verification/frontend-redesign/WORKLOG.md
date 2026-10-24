@@ -381,3 +381,33 @@ do not touch actual user compiler preferences or security settings.
   by verified PID after WSLg capture failed; final process checks empty.
 - Report: ../../reports/judgedesk-ubuntu-uat-1.6.0-2026-10-20.md. Next action:
   resolve P1 and repeat the explicitly missing acceptance branches on stable GUI.
+
+## FR-LOG-0010 — 2026-10-22 — Linux export recovery
+
+- Scope: saved/opened export result contract, persistent localized recovery toast,
+  copy-path action and long-path wrapping; shared host-process environment policy
+  protects Linux workbook, directory picker, checker preview and URL opener calls.
+  Self-review only, as requested. No dependency/version bump or Full work.
+- Full Windows gate PASS: nine Rust steps, 978 tests (968 pass, zero fail, ten
+  existing conditional skips), four-tier 67-fixture parity, version 1.6.0.
+  Linux native/core/Tauri fmt, Clippy and tests also pass all nine steps.
+- Exact packaged AppImage on Fedora passes 137/137 portable stress cases and
+  controlled viewer handoff/failure checks. DEB/RPM/AppImage acceptance preserves
+  workbook/diagnostic bytes and drains all owned native/GUI processes.
+- Native AppImage/WSLg UI: English/Vietnamese × light/dark recovery message at
+  restored desktop width, maximized English/light, path wrapping and actual
+  copy/paste verified. Each locale's message was produced by a fresh export.
+  Physical desktop/LibreOffice opening remains a short tester check.
+- The first Ubuntu stress run under load was 135/137; the two unchanged 1 GiB
+  MLE cases passed their idle retest. No expected verdict or limit was relaxed.
+  A later attempt to preserve an extra frontend workbook copy occurred after
+  bounded QA shutdown; API byte-retention evidence remains available.
+- Report: ../../reports/judgedesk-linux-incident-fixes-2026-10-22.md.
+  Evidence: repository-root artifacts/linux-fixes-20261022/. Prior records above
+  remain historical; this entry does not certify the entire redesign or Full.
+# 2026-10-24 — Admin announcement UI scope
+
+Added the notification bell between Help and Donate, popover/read actions and article modal through the existing toolbar and shortcut coordination. Reused app fonts/icons/tokens; feature-only muted colors pass AA normal/hover, neutral borders and small radii preserve light/dark parity. DOM regression tests cover read timing, stale responses, focus/scroll/menu/Escape/shortcut behavior and sanitizer rendering. Native WebView2/WebKitGTK each passed eight language/theme/layout combinations using fixture content plus actual binary/image IPC. Browser screenshots: ../admin-announcements/artifacts/ui-light-panel.png, ui-light-article.png, ui-dark-panel.png. Native/full-gate evidence and pending platform/publication work are recorded in ../admin-announcements/STATUS.md; no broader redesign closure is claimed.
+
+Final native app inspection found an empty-panel/last-row-deletion focus target could be disabled. Added failing assertions before fixing both paths; a loading panel temporarily owns focus until an action becomes enabled, without stealing focus from other controls. Both native engines passed the added focus assertion plus eight prior combinations using isolated QA profiles. Final complete check:full passed after the fix: 9/9 Rust, server 1,184 passed / zero failed / ten existing skips, four checker tiers and version lock. Canonical test:desktop restarted for final app inspection; broader package/macOS/production acceptance remains open.
+

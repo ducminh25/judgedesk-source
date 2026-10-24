@@ -117,12 +117,21 @@ export function runStep(command, args, cwd, stepOptions = {}) {
   };
 }
 
+function printFailureOutput(result) {
+  // Rust assertions are on stdout; Cargo progress is on stderr. A combined tail can hide failures.
+  // runStep already bounds each retained stream independently.
+  for (const [stream, output] of [["stdout", result.stdout], ["stderr", result.stderr]]) {
+    if (output) console.error(`  [${stream}]\n${output.trimEnd()}`);
+  }
+}
+
 export function runRustGates(options = {}) {
   const {
     jsonOutput = false,
     targetComponents = MANDATORY_RUST_COMPONENTS,
     stepTimeoutMs = DEFAULT_STEP_TIMEOUT_MS,
     maxBufferBytes = DEFAULT_MAX_BUFFER_BYTES,
+    executeStep = runStep,
   } = options;
   const stepOptions = { timeoutMs: stepTimeoutMs, maxBufferBytes };
   const overallStart = Date.now();
@@ -139,7 +148,7 @@ export function runRustGates(options = {}) {
     // 1. cargo fmt --check
     if (comp.hasFmt) {
       console.log(`[${comp.name}] Step 1/3: cargo fmt --check...`);
-      const fmtRes = runStep("cargo", ["fmt", "--check", "--manifest-path", comp.manifestPath], ".", stepOptions);
+      const fmtRes = executeStep("cargo", ["fmt", "--check", "--manifest-path", comp.manifestPath], ".", stepOptions);
       results.push({ component: comp.name, step: "fmt", ...fmtRes });
       if (fmtRes.status !== "PASS") {
         aggregatePassed = false;
@@ -149,9 +158,7 @@ export function runRustGates(options = {}) {
           ? "output buffer limit exceeded"
           : "failed";
         console.error(`  FAIL: cargo fmt --check ${reason} for ${comp.name} (${fmtRes.durationMs}ms)`);
-        if (fmtRes.stderr || fmtRes.stdout) {
-          console.error((fmtRes.stderr || fmtRes.stdout).trim());
-        }
+        printFailureOutput(fmtRes);
       } else {
         console.log(`  PASS: cargo fmt clean (${fmtRes.durationMs}ms)`);
       }
@@ -160,7 +167,7 @@ export function runRustGates(options = {}) {
     // 2. cargo clippy --locked --manifest-path ... --all-targets -- -D warnings
     if (comp.hasClippy) {
       console.log(`[${comp.name}] Step 2/3: cargo clippy --locked --all-targets -- -D warnings...`);
-      const clippyRes = runStep(
+      const clippyRes = executeStep(
         "cargo",
         ["clippy", "--locked", "--manifest-path", comp.manifestPath, "--all-targets", "--", "-D", "warnings"],
         ".",
@@ -175,9 +182,7 @@ export function runRustGates(options = {}) {
           ? "output buffer limit exceeded"
           : "failed";
         console.error(`  FAIL: cargo clippy ${reason} for ${comp.name} (${clippyRes.durationMs}ms)`);
-        if (clippyRes.stderr || clippyRes.stdout) {
-          console.error((clippyRes.stderr || clippyRes.stdout).trim());
-        }
+        printFailureOutput(clippyRes);
       } else {
         console.log(`  PASS: cargo clippy clean (${clippyRes.durationMs}ms)`);
       }
@@ -186,7 +191,7 @@ export function runRustGates(options = {}) {
     // 3. cargo test --locked --manifest-path ...
     if (comp.hasTest) {
       console.log(`[${comp.name}] Step 3/3: cargo test --locked ${comp.testFlags.join(" ")}...`);
-      const testRes = runStep(
+      const testRes = executeStep(
         "cargo",
         ["test", "--locked", "--manifest-path", comp.manifestPath, ...comp.testFlags],
         ".",
@@ -201,12 +206,7 @@ export function runRustGates(options = {}) {
           ? "output buffer limit exceeded"
           : "failed";
         console.error(`  FAIL: cargo test ${reason} for ${comp.name} (${testRes.durationMs}ms)`);
-        if (testRes.stderr || testRes.stdout) {
-          // Print summary lines
-          const out = (testRes.stdout + "\n" + testRes.stderr).trim();
-          const tail = out.split("\n").slice(-25).join("\n");
-          console.error(tail);
-        }
+        printFailureOutput(testRes);
       } else {
         console.log(`  PASS: cargo test passed (${testRes.durationMs}ms)`);
       }
@@ -254,6 +254,7 @@ export function runRustGates(options = {}) {
       durationMs: r.durationMs,
       timedOut: r.timedOut,
       outputLimitExceeded: r.outputLimitExceeded,
+      ...(r.status === "FAIL" ? { stdout: r.stdout, stderr: r.stderr } : {}),
     })),
   };
 

@@ -1,0 +1,13 @@
+{
+  "testOnly": true,
+  "note": "Ephemeral key generated once with Node crypto; private key was never saved. This fixture grants no production trust.",
+  "publicKeySpkiPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAqX7CPy9IXiZF3SHlesx8pb838BM8M8ST5PGRZ+wAM4s=\n-----END PUBLIC KEY-----\n",
+  "publicKeyRawBase64": "qX7CPy9IXiZF3SHlesx8pb838BM8M8ST5PGRZ+wAM4s=",
+  "payloadSha256": "c9661ebdb60e8b887cccfff729727b1fd3c31d4934c84f3c3783ec70fd81d685",
+  "envelope": {
+    "format": "judgedesk-announcements-v1",
+    "keyId": "test-only-do-not-use-in-production",
+    "payloadBase64": "eyJzY2hlbWFWZXJzaW9uIjoxLCJmZWVkSWQiOiJqdWRnZWRlc2stYW5ub3VuY2VtZW50cyIsInNlcXVlbmNlIjoxLCJnZW5lcmF0ZWRBdCI6IjIwMjYtMTAtMjNUMDA6MDA6MDAuMDAwWiIsIml0ZW1zIjpbeyJ1aWQiOiIyYWFjMzZmMi0yZGQ5LTRiNmEtODhlYi05MWFjMTFiYTc0MmMiLCJyZXZpc2lvbiI6MSwicHVibGlzaGVkQXQiOiIyMDI2LTEwLTIzVDAwOjAwOjAwLjAwMFoiLCJ1cGRhdGVkQXQiOiIyMDI2LTEwLTIzVDAwOjAwOjAwLjAwMFoiLCJjb250ZW50Ijp7InZpIjp7InRpdGxlIjoiVGjDtG5nIGLDoW8gbeG7m2kiLCJzdW1tYXJ5IjoiQuG6o24gdGluIHRo4butIG5naGnhu4dtIGNo4buJIGTDoG5oIGNobyBraeG7g20gdGjhu60uIiwiaHRtbCI6IjxwPk7hu5lpIGR1bmcga2nhu4NtIHRo4butIGNo4buvIGvDvS48L3A+In19LCJpbWFnZXMiOltdLCJsaW5rcyI6W119XX0=",
+    "signatureBase64": "hnlZCWI86zjdp1E0fv1Swa0AVQod79JvF+kffHYn+yK92IYo5PGOCYN3tURSjWonkSr8Z7jqm93WQdviALUdBg=="
+  }
+}

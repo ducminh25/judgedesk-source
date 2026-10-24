@@ -35,6 +35,7 @@ test("approved executor freeze binds raw source bytes and fixed Windows identity
       .map(file => path.relative(root, file).replaceAll("\\", "/")),
     "native-executor/build.rs", "native-executor/Cargo.toml", "native-executor/Cargo.lock",
     "rust-toolchain.toml", ".gitattributes", "scripts/build-native-executor.js",
+    "shared/linux_sandbox_paths.rs",
     "scripts/build-server-target.js", "package.json",
   ].sort();
   assert.deepEqual(freeze.inputs.map(input => input.path), required);

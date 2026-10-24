@@ -696,3 +696,161 @@ int main(int argc, char* argv[]) {
     );
     assert_eq!(res_half.score_multiplier_exact, Rational::new(1, 2));
 }
+
+#[tokio::test]
+async fn step5_builtin_checker_selection_ignores_custom_checker_and_default_selects_custom_checker()
+{
+    let env = common::OwnedTestEnvironment::new();
+    let client = Arc::new(spawn_test_executor(&env));
+
+    let ts_dir = env.root().join("thisinh");
+    let alice_dir = ts_dir.join("Alice");
+    fs::create_dir_all(&alice_dir).unwrap();
+
+    fs::write(
+        alice_dir.join("MEXARRAY.cpp"),
+        r#"#include <bits/stdc++.h>
+using namespace std;
+int main() {
+    ifstream cin("MEXARRAY.inp");
+    ofstream cout("MEXARRAY.out");
+    int x;
+    while (cin >> x) cout << x << " ";
+    cout << "\n";
+    return 0;
+}
+"#,
+    )
+    .unwrap();
+
+    let test_dir = env.root().join("tests");
+    let prob_dir = test_dir.join("MEXARRAY");
+    for (tc, val) in [("Test01", "1 2 3"), ("Test02", "4 5 6")] {
+        let dir = prob_dir.join(tc);
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("MEXARRAY.inp"), format!("{val}\n")).unwrap();
+        fs::write(dir.join("MEXARRAY.out"), format!("{val}\n")).unwrap();
+    }
+
+    // Place a custom checker in the problem folder that ALWAYS exits 3 (JE) if executed!
+    fs::write(
+        prob_dir.join("always_je_checker.cpp"),
+        r#"#include <bits/stdc++.h>
+int main() { return 3; }
+"#,
+    )
+    .unwrap();
+
+    // 1. When Config.cfg explicitly selects built-in "C1" (or "polygon:lcmp"),
+    //    run_judge_session MUST NOT execute always_je_checker.cpp and MUST grade AC (2/2).
+    for builtin in ["C1", "polygon:lcmp"] {
+        fs::write(
+            prob_dir.join("Config.cfg"),
+            serde_json::json!({
+                "checkerType": builtin,
+                "useStdIn": false,
+                "useStdOut": false,
+                "inputFile": "MEXARRAY.inp",
+                "outputFile": "MEXARRAY.out",
+                "defaultScore": 1,
+                "totalScore": serde_json::Value::Null,
+                "enableGroups": false,
+                "tests": {
+                    "Test01": { "points": 1 },
+                    "Test02": { "points": 1 }
+                },
+                "testScores": {
+                    "Test01": 1,
+                    "Test02": 1
+                }
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let session_cfg = JudgeSessionConfig {
+            thisinh_path: ts_dir.clone(),
+            test_path: test_dir.clone(),
+            job_id: format!("job-mexarray-{builtin}"),
+            target_contestants: vec!["Alice".to_string()],
+            target_problems: vec!["MEXARRAY".to_string()],
+            problem_configs: std::collections::HashMap::new(),
+            app_data_dir: None,
+            toolchain_selections: std::collections::HashMap::new(),
+            cancel_flag: Arc::new(AtomicBool::new(false)),
+            platform: Arc::clone(&client),
+        };
+
+        tokio::task::spawn_blocking(move || {
+            tokio::runtime::Handle::current().block_on(run_judge_session(session_cfg, tx));
+        })
+        .await
+        .unwrap();
+
+        let mut prob_res = None;
+        while let Some(ev) = rx.recv().await {
+            if let JudgeStreamEvent::ProblemCompleted(data) = ev {
+                if data.contestant == "Alice" && data.problem_result.problem_name == "MEXARRAY" {
+                    prob_res = Some(data.problem_result);
+                }
+            }
+        }
+        let res = prob_res.expect("ProblemCompleted for MEXARRAY");
+        assert_eq!(
+            res.summary.status, "AC",
+            "Built-in checker {builtin} must be used instead of custom checker in folder, got: {:?}",
+            res.test_cases
+        );
+        assert_eq!(res.summary.score, 2.0);
+        assert_eq!(res.summary.max_score, 2.0);
+    }
+
+    // 2. Now add Test03 to MEXARRAY on disk (test count changes from 2 to 3)
+    //    while Config.cfg still has only Test01 and Test02 from the previous 2-test setup.
+    let tc3_dir = prob_dir.join("Test03");
+    fs::create_dir_all(&tc3_dir).unwrap();
+    fs::write(tc3_dir.join("MEXARRAY.inp"), "7 8 9\n").unwrap();
+    fs::write(tc3_dir.join("MEXARRAY.out"), "7 8 9\n").unwrap();
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let session_cfg = JudgeSessionConfig {
+        thisinh_path: ts_dir.clone(),
+        test_path: test_dir.clone(),
+        job_id: "job-mexarray-3tests".to_string(),
+        target_contestants: vec!["Alice".to_string()],
+        target_problems: vec!["MEXARRAY".to_string()],
+        problem_configs: std::collections::HashMap::new(),
+        app_data_dir: None,
+        toolchain_selections: std::collections::HashMap::new(),
+        cancel_flag: Arc::new(AtomicBool::new(false)),
+        platform: Arc::clone(&client),
+    };
+
+    tokio::task::spawn_blocking(move || {
+        tokio::runtime::Handle::current().block_on(run_judge_session(session_cfg, tx));
+    })
+    .await
+    .unwrap();
+
+    let mut prob_res = None;
+    while let Some(ev) = rx.recv().await {
+        if let JudgeStreamEvent::ProblemCompleted(data) = ev {
+            if data.contestant == "Alice" && data.problem_result.problem_name == "MEXARRAY" {
+                prob_res = Some(data.problem_result);
+            }
+        }
+    }
+    let res = prob_res.expect("ProblemCompleted for MEXARRAY with 3 tests");
+    assert_eq!(res.summary.status, "AC");
+    assert_eq!(res.summary.total, 3);
+    assert_eq!(res.summary.passed, 3);
+    assert_eq!(
+        res.summary.score, 3.0,
+        "Score must be 3.0 for 3 passed tests"
+    );
+    assert_eq!(
+        res.summary.max_score, 3.0,
+        "Max score must update to 3.0 when a 3rd test is added"
+    );
+}

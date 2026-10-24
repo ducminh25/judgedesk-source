@@ -3,6 +3,7 @@ import { Sparkles, X, ExternalLink } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { getChangelogForLanguage, type ChangelogRelease } from "./changelog-data.js";
 import { APP_VERSION } from "../../version.js";
+import { openExternalUrl } from "../../utils/open-external-url.js";
 
 export interface ChangelogModalProps {
   onClose: () => void;
@@ -42,14 +43,9 @@ export default function ChangelogModal({
   const handleOpenGitHub = async () => {
     const url = `https://github.com/ducminh25/judgedesk/releases/tag/v${activeRelease.version}`;
     try {
-      if ("__TAURI_INTERNALS__" in window) {
-        const { openUrl } = await import("@tauri-apps/plugin-opener");
-        await openUrl(url);
-      } else {
-        window.open(url, "_blank", "noopener,noreferrer");
-      }
-    } catch {
-      window.open(url, "_blank", "noopener,noreferrer");
+      await openExternalUrl(url);
+    } catch (error) {
+      console.error("Could not open changelog URL", error);
     }
   };
 

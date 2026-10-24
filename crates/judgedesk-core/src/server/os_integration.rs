@@ -90,7 +90,7 @@ impl NativeDirectoryPicker {
 
         #[cfg(all(not(windows), not(target_os = "macos")))]
         {
-            let mut cmd = Command::new("zenity");
+            let mut cmd = crate::host_process::command("zenity")?;
             cmd.args(["--file-selection", "--directory", "--title=Select Folder"]);
             if let Some(dir) = validated_default {
                 cmd.arg("--filename");
@@ -284,7 +284,9 @@ impl NativeWorkbookOpener {
             }
         }
         for cmd_name in ["libreoffice", "soffice", "localc"] {
-            if let Ok(output) = Command::new("which").arg(cmd_name).output() {
+            if let Ok(output) = crate::host_process::command("which")
+                .and_then(|mut command| command.arg(cmd_name).output().map_err(|e| e.to_string()))
+            {
                 if output.status.success() {
                     if let Some(first) = String::from_utf8_lossy(&output.stdout).lines().next() {
                         let path = PathBuf::from(first.trim());
@@ -328,11 +330,11 @@ impl NativeWorkbookOpener {
         #[cfg(all(not(windows), not(target_os = "macos")))]
         {
             if let Some(lo_exe) = Self::find_linux_spreadsheet_executable() {
-                let mut cmd = Command::new(lo_exe);
+                let mut cmd = crate::host_process::command(lo_exe)?;
                 cmd.arg("-n").arg(canonical_book);
                 return Ok((cmd, "excel-unsaved"));
             }
-            let mut cmd = Command::new("xdg-open");
+            let mut cmd = crate::host_process::command("xdg-open")?;
             cmd.arg(canonical_book);
             Ok((cmd, "system-open"))
         }
@@ -352,20 +354,8 @@ impl WorkbookOpener for NativeWorkbookOpener {
     }
 
     fn open_workbook_with_mode(&self, book_path: &Path) -> Result<&'static str, String> {
-        let (mut cmd, mode) = self.build_command_with_mode(book_path)?;
-        let mut child = cmd
-            .spawn()
-            .map_err(|e| format!("Failed to spawn workbook viewer: {e}"))?;
-        #[cfg(unix)]
-        {
-            std::thread::spawn(move || {
-                let _ = child.wait();
-            });
-        }
-        #[cfg(not(unix))]
-        {
-            let _ = &mut child;
-        }
+        let (cmd, mode) = self.build_command_with_mode(book_path)?;
+        crate::host_process::launch_desktop(cmd)?;
         Ok(mode)
     }
 }

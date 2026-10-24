@@ -13,8 +13,10 @@ pub use compile_config::{
 pub use natural_sort::natural_cmp;
 pub use submission::{create_submission_resolver, find_submission, list_contestants, Submission};
 pub use testcase::{
-    create_problem_directory_resolver, discover_custom_checkers, discover_interactors,
-    discover_test_cases, list_test_directories, normalize_problem_config,
-    normalize_problem_memory_limit, resolve_test_case_files, try_normalize_problem_config,
+    create_default_stored_problem_config, create_problem_directory_resolver,
+    discover_custom_checkers, discover_interactors, discover_test_cases,
+    ensure_or_reconcile_stored_problem_config, list_test_directories, normalize_problem_config,
+    normalize_problem_memory_limit, reconcile_existing_stored_problem_config,
+    reconcile_stored_problem_config_value, resolve_test_case_files, try_normalize_problem_config,
     NormalizedProblemConfig, ProblemDirectory, TestCaseFiles,
 };

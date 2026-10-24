@@ -360,3 +360,6 @@ mod tests {
         assert_eq!(value["health"]["startupTimings"]["phases"]["selfTest"], 7);
     }
 }
+
+#[path = "../../shared/linux_sandbox_paths.rs"]
+pub mod linux_sandbox_paths;

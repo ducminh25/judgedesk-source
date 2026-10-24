@@ -55,12 +55,17 @@ jobs:
             libxdo-dev \
             libssl-dev \
             libayatana-appindicator3-dev \
-            librsvg2-dev
+            librsvg2-dev \
+            patchelf
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
           sudo loginctl enable-linger "$USER" || true
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Linux packaging regressions
+        if: runner.os == 'Linux'
+        run: bash scripts/test-linux-packaging.sh
 
       - name: Typecheck and unit tests
         run: |

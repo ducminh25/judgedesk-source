@@ -768,7 +768,7 @@ function scheduleCompatibilityProbe(
   const platform = os.platform();
   const architecture = os.arch();
   if (
-    (platform !== "win32" && platform !== "darwin")
+    (platform !== "win32" && platform !== "darwin" && platform !== "linux")
     || (architecture !== "x64" && architecture !== "arm64")
   ) return;
   const hostMode = getLocalExecutionModeForHost(kind, platform, architecture);

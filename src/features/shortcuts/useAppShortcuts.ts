@@ -8,6 +8,7 @@ import type { PendingContestAction } from "../contest/useContestFileActions.js";
 import type { PendingScoreDeletion } from "../scores/useScoreDeletion.js";
 
 export interface UseAppShortcutsOptions {
+  announcementModalOpen?: boolean;
   hostStatus: HostStatus | null;
   updateHandoffActive: boolean;
   interactionLocked: boolean;
@@ -69,6 +70,7 @@ export interface UseAppShortcutsOptions {
 }
 
 export function useAppShortcuts({
+  announcementModalOpen,
   hostStatus,
   updateHandoffActive,
   interactionLocked,
@@ -128,7 +130,15 @@ export function useAppShortcuts({
     const isMac = isMacOS(hostStatus?.platform);
 
     const handleGlobalKeyDown = (event: KeyboardEvent) => {
-      if (updateHandoffActive) return;
+      // Consume browser defaults too (notably F5), while letting the dialog's
+      // other window listener own Escape. Do not stopImmediatePropagation here.
+      if (updateHandoffActive || announcementModalOpen) {
+        if (isHelpShortcut(event) || matchShortcut(event, isMac)) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        return;
+      }
 
       if (!isHelpShortcut(event)) {
         const action = matchShortcut(event, isMac);
@@ -311,6 +321,7 @@ export function useAppShortcuts({
     window.addEventListener("keydown", handleGlobalKeyDown, true);
     return () => window.removeEventListener("keydown", handleGlobalKeyDown, true);
   }, [
+    announcementModalOpen,
     actionMenu,
     activeConfigProblem,
     activeContestant,

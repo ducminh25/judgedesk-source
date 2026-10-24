@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "distribution": "full",
+  "platform": "linux",
+  "arch": "x64",
+  "manifestSha256": "a2d0f57ab5525b2b8a50e0e6aff5209eb5d15a936da20d3f9a348ff474507091",
+  "packages": [
+    {
+      "id": "fpc-linux-x64",
+      "version": "3.2.2",
+      "archiveSha256": "f8979f41c2425d4f7c9aaa0a73ffc3bc4e445214650e1069950debf7e2ca5c22",
+      "installedSizeBytes": 381851937,
+      "contentIndexSha256": "a493ce50b2c17eccb4ad3f17f11bc6136941bc99cb1164420dcb4f220c0e170c"
+    },
+    {
+      "id": "gcc-linux-x64",
+      "version": "14.2.0",
+      "archiveSha256": "ea1b10de8593eb8db75d19ba71d420bd42cf995b5f9e25748fa8f389265dbdb9",
+      "installedSizeBytes": 536647843,
+      "contentIndexSha256": "f4f0b34748cc4b04177fc840bff3a1362e7dc29283b645b0e8b041caa721cb48"
+    },
+    {
+      "id": "python-linux-x64",
+      "version": "3.12.13",
+      "archiveSha256": "eaca2c13a47eefa0441c2284ed66ddcb053a47eb9c36734810383227d9a9743d",
+      "installedSizeBytes": 189992908,
+      "contentIndexSha256": "7cb6019b0dc6b2c34a39bb9bc20b9892a3944269cb8ddeb507644e12f553181b"
+    },
+    {
+      "id": "scratch-linux-x64",
+      "version": "0.1.7",
+      "archiveSha256": "d1839aaaa640ba2dbdc7fe418416fb00cf8b627dd4dbc9a67936712b2f7c2330",
+      "installedSizeBytes": 76088970,
+      "contentIndexSha256": "39d2b6f6b8f04164cc11ca187bea4db670422f1c8a44844e1e894936f4d01fb2"
+    },
+    {
+      "id": "temurin21-linux-x64",
+      "version": "21.0.12+8",
+      "archiveSha256": "5ad696a317f6e385d235a00bbaef504dc40cf74931118da670512a1dc75cadc7",
+      "installedSizeBytes": 362713951,
+      "contentIndexSha256": "508ac648e7ec4d3ca2701fe30177303a62aefbf0055b9accf9932d1f7fae859b"
+    }
+  ]
+}

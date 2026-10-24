@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   OFFICIAL_TOOLCHAIN_MANIFEST_PUBLIC_KEYS,
   TOOLCHAIN_RELEASE_BLUEPRINTS,
@@ -200,7 +201,7 @@ function inspectPackageTree(
   return Math.max(1, extraction.installedSizeBytes);
 }
 
-async function buildPackage(
+export async function inspectToolchainReleasePackage(
   outputDirectory: string,
   releaseBaseUrl: string,
   blueprint: ToolchainReleaseBlueprint,
@@ -227,6 +228,7 @@ async function buildPackage(
       archivePath,
       inspectionRoot,
       blueprint.archiveFormat,
+      { linuxPosixNames: blueprint.platform === "linux" },
     );
     installedSizeBytes = inspectPackageTree(
       inspectionRoot,
@@ -246,69 +248,75 @@ async function buildPackage(
   };
 }
 
-const outputDirectory = path.resolve(process.argv[2] || "dist-toolchains");
-const releaseBaseUrl = (
-  process.env.TOOLCHAIN_RELEASE_BASE_URL
-  || "https://github.com/ducminh25/judgedesk/releases/download/toolchains-v2"
-).replace(/\/$/, "");
-const { keyId, privateKey } = loadSigningKey();
-const blueprints = [
-  ...listCurrentReleaseManagedPackageIds("win32", "x64"),
-  ...listCurrentReleaseManagedPackageIds("darwin", "arm64"),
-]
-  .map((packageId) => {
-    const blueprint = TOOLCHAIN_RELEASE_BLUEPRINTS[packageId];
-    if (!blueprint) {
-      throw new Error(
-        `Current release package '${packageId}' has no trusted blueprint.`,
-      );
-    }
-    return blueprint;
-  })
-  .sort((left, right) => left.id.localeCompare(right.id));
-const packages: ToolchainManifestV2Package[] = [];
-for (const blueprint of blueprints) {
-  packages.push(await buildPackage(outputDirectory, releaseBaseUrl, blueprint));
+async function main(): Promise<void> {
+  const outputDirectory = path.resolve(process.argv[2] || "dist-toolchains");
+  const releaseBaseUrl = (
+    process.env.TOOLCHAIN_RELEASE_BASE_URL
+    || "https://github.com/ducminh25/judgedesk/releases/download/toolchains-v2"
+  ).replace(/\/$/, "");
+  const { keyId, privateKey } = loadSigningKey();
+  const blueprints = [
+    ...listCurrentReleaseManagedPackageIds("win32", "x64"),
+    ...listCurrentReleaseManagedPackageIds("darwin", "arm64"),
+  ]
+    .map((packageId) => {
+      const blueprint = TOOLCHAIN_RELEASE_BLUEPRINTS[packageId];
+      if (!blueprint) {
+        throw new Error(
+          `Current release package '${packageId}' has no trusted blueprint.`,
+        );
+      }
+      return blueprint;
+    })
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const packages: ToolchainManifestV2Package[] = [];
+  for (const blueprint of blueprints) {
+    packages.push(await inspectToolchainReleasePackage(outputDirectory, releaseBaseUrl, blueprint));
+  }
+
+  const payload: ToolchainManifestV2Payload = {
+    generatedAt: canonicalGeneratedAt(),
+    packages,
+  };
+  const signature = crypto.sign(
+    null,
+    Buffer.from(canonicalizeManifestPayload(payload), "utf8"),
+    privateKey,
+  );
+  const document: ToolchainManifestV2Document = {
+    schemaVersion: 2,
+    signed: payload,
+    signature: {
+      algorithm: "ed25519",
+      keyId,
+      value: signature.toString("base64"),
+    },
+  };
+  validateManifestDocument(document, { requireSignedV2: true });
+
+  fs.mkdirSync(outputDirectory, { recursive: true });
+  const manifestPath = path.join(outputDirectory, "toolchains-manifest.json");
+  fs.writeFileSync(manifestPath, `${JSON.stringify(document, null, 2)}\n`, "utf8");
+
+  const checksumFiles = [
+    ...blueprints.map((blueprint) => blueprint.archiveFilename),
+    path.basename(manifestPath),
+  ].sort();
+  const checksumLines: string[] = [];
+  for (const filename of checksumFiles) {
+    checksumLines.push(`${await sha256(path.join(outputDirectory, filename))}  ${filename}`);
+  }
+  fs.writeFileSync(
+    path.join(outputDirectory, "SHA256SUMS"),
+    `${checksumLines.join("\n")}\n`,
+    "utf8",
+  );
+
+  console.log(
+    `Generated signed manifest v2 at ${manifestPath} with ${packages.length} verified packages.`,
+  );
 }
 
-const payload: ToolchainManifestV2Payload = {
-  generatedAt: canonicalGeneratedAt(),
-  packages,
-};
-const signature = crypto.sign(
-  null,
-  Buffer.from(canonicalizeManifestPayload(payload), "utf8"),
-  privateKey,
-);
-const document: ToolchainManifestV2Document = {
-  schemaVersion: 2,
-  signed: payload,
-  signature: {
-    algorithm: "ed25519",
-    keyId,
-    value: signature.toString("base64"),
-  },
-};
-validateManifestDocument(document, { requireSignedV2: true });
-
-fs.mkdirSync(outputDirectory, { recursive: true });
-const manifestPath = path.join(outputDirectory, "toolchains-manifest.json");
-fs.writeFileSync(manifestPath, `${JSON.stringify(document, null, 2)}\n`, "utf8");
-
-const checksumFiles = [
-  ...blueprints.map((blueprint) => blueprint.archiveFilename),
-  path.basename(manifestPath),
-].sort();
-const checksumLines: string[] = [];
-for (const filename of checksumFiles) {
-  checksumLines.push(`${await sha256(path.join(outputDirectory, filename))}  ${filename}`);
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  await main();
 }
-fs.writeFileSync(
-  path.join(outputDirectory, "SHA256SUMS"),
-  `${checksumLines.join("\n")}\n`,
-  "utf8",
-);
-
-console.log(
-  `Generated signed manifest v2 at ${manifestPath} with ${packages.length} verified packages.`,
-);

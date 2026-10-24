@@ -68,10 +68,21 @@ export function calculateProblemSummary({
   } else if (config.totalScore !== undefined && config.totalScore !== null && config.totalScore !== "") {
     maxScoreRat = parseRational(config.totalScore);
   } else if (hasConfiguredPolygonPoints) {
-    maxScoreRat = testDirectories.reduce(
-      (total, testDirectory) => addRational(total, parseRational(polygonConfig?.tests?.[testDirectory]?.points)),
-      createRational(0)
-    );
+    maxScoreRat = testDirectories.reduce((total, testDirectory) => {
+      const polyPoints = Object.hasOwn(polygonConfig?.tests || {}, testDirectory)
+        ? polygonConfig?.tests?.[testDirectory]?.points
+        : undefined;
+      const configuredScore = polyPoints !== undefined && polyPoints !== null && polyPoints !== ""
+        ? polyPoints
+        : config.testScores?.[testDirectory];
+      const testScore =
+        configuredScore !== undefined && configuredScore !== null && configuredScore !== ""
+          ? parseRational(configuredScore)
+          : config.defaultScore !== undefined && config.defaultScore !== null && config.defaultScore !== ""
+            ? parseRational(config.defaultScore)
+            : createRational(1);
+      return addRational(total, testScore);
+    }, createRational(0));
   } else {
     if (testCases.length > 0) {
       maxScoreRat = testDirectories.reduce((total, testDirectory) => {

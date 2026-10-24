@@ -440,4 +440,15 @@ describe("toolchain settings UI regressions", () => {
     const effectSource = appSource.slice(effectStart, effectEnd);
     assert.match(effectSource, /\},\s*\[loadHelpToolchains,\s*requestHostStatus\]\)/);
   });
+
+  it("preserves warm hostStatus during background refresh while clearing on backend error and priming toolchain cache", () => {
+    const appSource = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
+    assert.match(appSource, /primeToolchainStateCache\(data\)/);
+    assert.match(appSource, /setHostStatus\(\(previous\)\s*=>\s*status\s*\?\?\s*previous\)/);
+    assert.match(appSource, /onError:\s*\(error\)\s*=>\s*\{\s*setHostStatus\(null\);/);
+
+    const hookSource = readFileSync(new URL("./useToolchains.ts", import.meta.url), "utf8");
+    assert.match(hookSource, /useState<ToolchainState\s*\|\s*null>\(\s*\(\)\s*=>\s*cachedToolchainState,?\s*\)/);
+    assert.match(hookSource, /invalidateToolchainStateCache\(\)/);
+  });
 });

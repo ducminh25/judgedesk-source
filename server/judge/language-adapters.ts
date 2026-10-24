@@ -253,6 +253,14 @@ export function buildManagedPascalSupportArgs(
   toolchainRoot: string,
 ): string[] {
   const binDirectory = path.join(toolchainRoot, "bin");
+  if (platform === "linux") {
+    const sysroot = path.join(toolchainRoot, "sysroot");
+    const units = path.join(toolchainRoot, "lib", "fpc", "3.2.2", "units", "x86_64-linux");
+    return ["-n", "-Px86_64", "-Tlinux", `-Fu${path.join(units, "*")}`,
+      `-Fu${path.join(units, "rtl")}`, `-FD${binDirectory}`, `-XR${sysroot}`,
+      `-Fl${path.join(sysroot, "usr", "lib", "x86_64-linux-gnu")}`,
+      `-Fl${path.join(sysroot, "lib", "x86_64-linux-gnu")}`];
+  }
   const target = platform === "win32"
     ? "x86_64-win64"
     : "aarch64-darwin";

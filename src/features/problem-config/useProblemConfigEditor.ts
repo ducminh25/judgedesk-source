@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { apiFetch } from "../../api";
 import { PolygonConfig, PolygonTestConfig, ProblemConfig } from "../../types";
 import { normalizeCompileConfig } from "../../../shared/compile-config.js";
+import { reconcileStoredProblemConfig } from "../../../shared/problem-config.js";
 import type { ProblemWellFormedIssue, TestInputValidationResult } from "../../../shared/contracts.js";
 import {
   addRational,
@@ -75,20 +76,31 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
         const details: TestDetail[] = testsData.success && testsData.data ? testsData.data : [];
         setTestDetails(details);
 
-        const loaded: PolygonConfig = configData.success && configData.data
+        const reconciledData = configData.success && configData.data
+          ? reconcileStoredProblemConfig(configData.data, details.map((d) => d.name)).config
+          : null;
+
+        const loaded: PolygonConfig = reconciledData
           ? {
-              enableGroups: configData.data.enableGroups ?? false,
-              tests: { ...(configData.data.tests ?? {}) },
-              groups: { ...(configData.data.groups ?? {}) }
+              enableGroups: reconciledData.enableGroups ?? false,
+              tests: Object.fromEntries(
+                details
+                  .filter((test) => reconciledData.tests && Object.hasOwn(reconciledData.tests, test.name))
+                  .map((test) => [test.name, { ...reconciledData.tests![test.name] }]),
+              ),
+              groups: { ...(reconciledData.groups ?? {}) }
             }
           : createEmptyPolygonConfig();
+        const fallbackPoint = reconciledData?.defaultScore ?? initialConfig.defaultScore ?? 1;
         for (const test of details) {
           if (!Object.hasOwn(loaded.tests, test.name)) {
-            Object.defineProperty(loaded.tests, test.name, { value: { points: initialConfig.defaultScore ?? 1 }, enumerable: true, configurable: true, writable: true });
+            Object.defineProperty(loaded.tests, test.name, { value: { points: fallbackPoint }, enumerable: true, configurable: true, writable: true });
           }
         }
 
-        const loadedTotalScore = configData.data?.totalScore ?? initialConfig.totalScore;
+        const loadedTotalScore = reconciledData !== null && reconciledData.totalScore !== undefined
+          ? reconciledData.totalScore
+          : initialConfig.totalScore;
         const currentSum = details.reduce(
           (acc, test) => addRational(acc, parseRational(loaded.tests[test.name]?.points)),
           createRational(0)
@@ -97,29 +109,27 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
         if (loadedTotalScore !== null && loadedTotalScore !== undefined && String(loadedTotalScore).trim() !== "") {
           const loadedTotalRat = parseRational(loadedTotalScore);
           resolvedTotalScore = formatRational(loadedTotalRat);
-          if (details.length > 0 && (currentSum.n !== loadedTotalRat.n || currentSum.d !== loadedTotalRat.d)) {
+          if (details.length > 0 && BigInt(loadedTotalRat.n) > 0n && (currentSum.n !== loadedTotalRat.n || currentSum.d !== loadedTotalRat.d)) {
             const distributed = distributeTotalScore(loaded, loadedTotalScore, details.map(d => d.name));
             Object.assign(loaded.tests, distributed.tests);
           }
-        } else if (details.length > 0 && BigInt(currentSum.n) > 0n) {
-          resolvedTotalScore = formatRational(currentSum);
         }
         setPolygonConfig(loaded);
 
-        if (configData.success && configData.data) {
+        if (reconciledData) {
           setConfig(previous => ({
             ...previous,
-            ...configData.data,
-            totalScore: resolvedTotalScore ?? previous.totalScore ?? null,
-            checkerType: configData.data.checkerType || previous.checkerType || "C1",
-            compile: normalizeCompileConfig(configData.data.compile ?? previous.compile),
-            isInteractive: configData.data.isInteractive ?? previous.isInteractive ?? false,
-            interactor: configData.data.interactor || previous.interactor || "interactor.cpp",
+            ...reconciledData,
+            totalScore: resolvedTotalScore,
+            checkerType: reconciledData.checkerType || previous.checkerType || "C1",
+            compile: normalizeCompileConfig(reconciledData.compile ?? previous.compile),
+            isInteractive: reconciledData.isInteractive ?? previous.isInteractive ?? false,
+            interactor: reconciledData.interactor || previous.interactor || "interactor.cpp",
           }));
-          setUseStdIn(configData.data.useStdIn ?? configData.data.useStdIO ?? false);
-          setUseStdOut(configData.data.useStdOut ?? configData.data.useStdIO ?? false);
-          setInputFile(configData.data.inputFile || `${problemName}.inp`);
-          setOutputFile(configData.data.outputFile || `${problemName}.out`);
+          setUseStdIn(reconciledData.useStdIn ?? reconciledData.useStdIO ?? false);
+          setUseStdOut(reconciledData.useStdOut ?? reconciledData.useStdIO ?? false);
+          setInputFile(reconciledData.inputFile || `${problemName}.inp`);
+          setOutputFile(reconciledData.outputFile || `${problemName}.out`);
         } else if (resolvedTotalScore !== null) {
           setConfig(previous => ({ ...previous, totalScore: resolvedTotalScore }));
         }
@@ -254,7 +264,7 @@ export function useProblemConfigEditor({ problemName, testPath, initialConfig, o
       }
       const finalTotalScore = config.totalScore !== null && config.totalScore !== undefined && String(config.totalScore).trim() !== ""
         ? config.totalScore
-        : totalPoints;
+        : null;
       const testScores: Record<string, number | string> = {};
       for (const [name, testCfg] of Object.entries(polygonConfig.tests) as [string, PolygonTestConfig][]) {
         if (testCfg.points !== undefined) {

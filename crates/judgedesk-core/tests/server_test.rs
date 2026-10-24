@@ -9,6 +9,35 @@ struct TestWorkbookOpener {
     opened: Arc<Mutex<Vec<PathBuf>>>,
 }
 
+#[test]
+#[cfg(debug_assertions)]
+fn configured_executor_failure_keeps_the_original_error_without_packaged_fallback() {
+    let environment = common::OwnedTestEnvironment::new();
+    let invalid_executable = environment.root().join("invalid-configured-executor");
+    fs::write(&invalid_executable, b"not an executable").unwrap();
+    let previous = ["JUDGEDESK_TEST_EXECUTOR_PATH", "JUDGEDESK_EXECUTOR_PATH"]
+        .map(|name| (name, std::env::var_os(name)));
+    for (name, _) in &previous {
+        std::env::set_var(name, &invalid_executable);
+    }
+    let state = environment.with_isolated_roots(AppState::default);
+    for (name, value) in previous {
+        match value {
+            Some(value) => std::env::set_var(name, value),
+            None => std::env::remove_var(name),
+        }
+    }
+    let health = state.platform.health();
+    assert!(!health.ready);
+    let detail = health.diagnostics.join("; ");
+    assert!(
+        detail.contains("CONFIGURED_EXECUTOR_START_FAILED"),
+        "{detail}"
+    );
+    assert!(detail.contains("invalid-configured-executor"), "{detail}");
+    assert!(!detail.contains("PACKAGED_EXECUTOR_NOT_FOUND"), "{detail}");
+}
+
 impl WorkbookOpener for TestWorkbookOpener {
     fn open_workbook(&self, book_path: &Path) -> Result<(), String> {
         self.opened.lock().unwrap().push(book_path.to_path_buf());

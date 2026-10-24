@@ -4,9 +4,16 @@ import { randomBytes } from "node:crypto";
 import type { NormalizedProblemConfig, ProblemConfig } from "../../shared/contracts.js";
 import { normalizeCompileConfig } from "../../shared/compile-config.js";
 import {
+  createDefaultStoredProblemConfig,
   normalizeProblemConfig,
+  reconcileStoredProblemConfig,
   type ProblemConfigInput
 } from "../../shared/problem-config.js";
+import {
+  discoverCustomCheckers,
+  discoverInteractors,
+  listTestDirectories,
+} from "../judge/testcase-discovery.js";
 
 const CONFIG_FILE_NAME = "Config.cfg";
 
@@ -43,15 +50,65 @@ export function writeStoredProblemConfig(problemDirectory: string, config: Probl
   }
 }
 
+export function reconcileExistingStoredProblemConfig(
+  problemDirectory: string,
+): ProblemConfigInput | null {
+  let storedConfig: ProblemConfigInput | null = null;
+  try {
+    storedConfig = readStoredProblemConfig(problemDirectory);
+  } catch {
+    return null;
+  }
+  if (!storedConfig) return null;
+  const discoveredTests = listTestDirectories(problemDirectory, Boolean(storedConfig.isInteractive));
+  const { config, changed } = reconcileStoredProblemConfig(storedConfig, discoveredTests);
+  if (changed) {
+    try {
+      writeStoredProblemConfig(problemDirectory, config);
+    } catch {}
+  }
+  return config;
+}
+
+export function ensureOrReconcileStoredProblemConfig(
+  problemName: string,
+  problemDirectory: string,
+  platform: NodeJS.Platform = process.platform,
+): ProblemConfigInput | null {
+  try {
+    if (!fs.existsSync(problemDirectory) || !fs.statSync(problemDirectory).isDirectory()) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+  const existing = reconcileExistingStoredProblemConfig(problemDirectory);
+  if (existing) return existing;
+  const defaultConfig = createDefaultStoredProblemConfig(problemName, {
+    checkerType: discoverCustomCheckers(problemDirectory, platform)[0],
+    interactor: discoverInteractors(problemDirectory, platform)[0],
+  });
+  try {
+    writeStoredProblemConfig(problemDirectory, defaultConfig);
+  } catch {}
+  return defaultConfig;
+}
+
 export function resolveProblemConfig(
   problemName: string,
   problemDirectory: string,
   requestConfig?: Partial<ProblemConfig> | null
 ): NormalizedProblemConfig {
-  let storedConfig: ProblemConfigInput | null = null;
+  let rawStored: ProblemConfigInput | null = null;
   try {
-    storedConfig = readStoredProblemConfig(problemDirectory);
+    rawStored = readStoredProblemConfig(problemDirectory);
   } catch {}
+  const storedConfig = rawStored
+    ? reconcileStoredProblemConfig(
+        rawStored,
+        listTestDirectories(problemDirectory, Boolean(rawStored.isInteractive)),
+      ).config
+    : null;
   return normalizeProblemConfig(problemName, requestConfig, storedConfig);
 }
 

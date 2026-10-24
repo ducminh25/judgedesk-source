@@ -1,8 +1,21 @@
 import type { NormalizedProblemConfig, PolygonConfig, ProblemConfig } from "./contracts.js";
 import { createCompileConfig, normalizeCompileConfig } from "./compile-config.js";
-import { parseRational, formatRational } from "./rational.js";
+import {
+  addRational,
+  createRational,
+  divideRational,
+  formatRational,
+  multiplyRational,
+  parseRational,
+  toCanonicalPointValue,
+} from "./rational.js";
 
 export type ProblemConfigInput = Partial<ProblemConfig> & Partial<PolygonConfig>;
+
+export interface DefaultProblemConfigOverrides {
+  checkerType?: string;
+  interactor?: string;
+}
 
 export const MIN_PROBLEM_MEMORY_LIMIT_MB = 8;
 export const MAX_PROBLEM_MEMORY_LIMIT_MB = 1024;
@@ -21,7 +34,10 @@ export function normalizeProblemMemoryLimit(
   );
 }
 
-export function createDefaultProblemConfig(problemName: string): NormalizedProblemConfig {
+export function createDefaultProblemConfig(
+  problemName: string,
+  overrides?: DefaultProblemConfigOverrides,
+): NormalizedProblemConfig {
   return {
     testWellFormed: false,
     useStdIO: false,
@@ -33,20 +49,152 @@ export function createDefaultProblemConfig(problemName: string): NormalizedProbl
     defaultScore: 1,
     testScores: {},
     memoryLimit: DEFAULT_PROBLEM_MEMORY_LIMIT_MB,
-    checkerType: "C1",
+    checkerType: overrides?.checkerType || "C1",
     compile: createCompileConfig(),
     polygonConfig: { enableGroups: false, tests: {}, groups: {} },
     isInteractive: false,
-    interactor: "interactor.cpp",
+    interactor: overrides?.interactor || "interactor.cpp",
   };
+}
+
+export function createDefaultStoredProblemConfig(
+  problemName: string,
+  overrides?: DefaultProblemConfigOverrides,
+): ProblemConfigInput {
+  const defaults = createDefaultProblemConfig(problemName, overrides);
+  const { polygonConfig, ...rest } = defaults;
+  return {
+    ...rest,
+    enableGroups: polygonConfig.enableGroups,
+    tests: polygonConfig.tests,
+    groups: polygonConfig.groups,
+  };
+}
+
+export function reconcileStoredProblemConfig(
+  stored: ProblemConfigInput,
+  discoveredTests: readonly string[],
+): { config: ProblemConfigInput; changed: boolean } {
+  if (discoveredTests.length === 0 || !stored || typeof stored !== "object") {
+    return { config: stored, changed: false };
+  }
+  const oldTests = stored.tests && typeof stored.tests === "object" ? stored.tests : undefined;
+  const oldScores = stored.testScores && typeof stored.testScores === "object" ? stored.testScores : undefined;
+  const hasTests = Boolean(oldTests && Object.keys(oldTests).length > 0);
+  const hasTestScores = Boolean(oldScores && Object.keys(oldScores).length > 0);
+  if (!hasTests && !hasTestScores) {
+    return { config: stored, changed: false };
+  }
+
+  const testsMatch = !hasTests || (
+    Object.keys(oldTests!).length === discoveredTests.length
+    && discoveredTests.every((name) => Object.hasOwn(oldTests!, name))
+  );
+  const scoresMatch = !hasTestScores || (
+    Object.keys(oldScores!).length === discoveredTests.length
+    && discoveredTests.every((name) => Object.hasOwn(oldScores!, name))
+  );
+  if (testsMatch && scoresMatch) {
+    return { config: stored, changed: false };
+  }
+
+  const enableGroups = Boolean(stored.enableGroups);
+  if (enableGroups) {
+    return { config: stored, changed: false };
+  }
+  const defaultScoreRat = stored.defaultScore !== undefined && stored.defaultScore !== null && stored.defaultScore !== ""
+    ? parseRational(stored.defaultScore)
+    : createRational(1);
+
+  const oldPoints = hasTests
+    ? Object.entries(oldTests!).map(([k, v]) => {
+        const raw = v?.points !== undefined && v?.points !== null && v?.points !== ""
+          ? v.points
+          : oldScores?.[k];
+        return raw !== undefined && raw !== null && raw !== "" ? parseRational(raw) : defaultScoreRat;
+      })
+    : Object.values(oldScores!).map((raw) => (
+        raw !== undefined && raw !== null && raw !== "" ? parseRational(raw) : defaultScoreRat
+      ));
+
+  const oldCount = oldPoints.length;
+  const allOldEqual = oldPoints.length > 0 && oldPoints.every(
+    (p) => p.n === oldPoints[0].n && p.d === oldPoints[0].d,
+  );
+  const uniformOldPoint = allOldEqual ? oldPoints[0] : null;
+
+  const hasTotalScore = stored.totalScore !== undefined && stored.totalScore !== null && String(stored.totalScore).trim() !== "";
+  const totalRat = hasTotalScore ? parseRational(stored.totalScore) : null;
+  const oldDefaultSum = multiplyRational(defaultScoreRat, createRational(oldCount));
+  const wasDefaultSumTotal = !enableGroups
+    && oldCount > 0
+    && allOldEqual
+    && uniformOldPoint !== null
+    && uniformOldPoint.n === defaultScoreRat.n
+    && uniformOldPoint.d === defaultScoreRat.d
+    && totalRat !== null
+    && totalRat.n === oldDefaultSum.n
+    && totalRat.d === oldDefaultSum.d;
+
+  const fallbackPt = uniformOldPoint ?? defaultScoreRat;
+  const initialPoints = discoveredTests.map((name) => {
+    const raw = (oldTests && Object.hasOwn(oldTests, name) ? oldTests[name]?.points : undefined)
+      ?? (oldScores && Object.hasOwn(oldScores, name) ? oldScores[name] : undefined);
+    return raw !== undefined && raw !== null && raw !== "" ? parseRational(raw) : fallbackPt;
+  });
+
+  let finalPoints = initialPoints;
+  if (wasDefaultSumTotal) {
+    finalPoints = discoveredTests.map(() => defaultScoreRat);
+  } else if (!enableGroups && totalRat !== null && BigInt(totalRat.n) > 0n) {
+    const allInitEqual = initialPoints.length > 0 && initialPoints.every(
+      (p) => p.n === initialPoints[0].n && p.d === initialPoints[0].d,
+    );
+    const sumInit = initialPoints.reduce((acc, p) => addRational(acc, p), createRational(0));
+    const countRat = createRational(discoveredTests.length);
+    finalPoints = initialPoints.map((p) => {
+      if (allInitEqual || BigInt(sumInit.n) === 0n) {
+        return divideRational(totalRat, countRat);
+      }
+      const ratio = divideRational(p, sumInit);
+      return multiplyRational(totalRat, ratio);
+    });
+  }
+
+  const nextConfig: ProblemConfigInput = { ...stored };
+  if (wasDefaultSumTotal) {
+    nextConfig.totalScore = null;
+  }
+  if (hasTests) {
+    const newTests: PolygonConfig["tests"] = {};
+    for (let i = 0; i < discoveredTests.length; ++i) {
+      const name = discoveredTests[i];
+      const prevEntry = oldTests && Object.hasOwn(oldTests, name) ? oldTests[name] : {};
+      newTests[name] = {
+        ...prevEntry,
+        points: toCanonicalPointValue(finalPoints[i]),
+      };
+    }
+    nextConfig.tests = newTests;
+  }
+  if (hasTestScores) {
+    const newScores: Record<string, number | string> = {};
+    for (let i = 0; i < discoveredTests.length; ++i) {
+      newScores[discoveredTests[i]] = toCanonicalPointValue(finalPoints[i]);
+    }
+    nextConfig.testScores = newScores;
+  }
+
+  return { config: nextConfig, changed: true };
 }
 
 export function normalizeProblemConfig(
   problemName: string,
   requestConfig?: ProblemConfigInput | null,
-  storedConfig?: ProblemConfigInput | null
+  storedConfig?: ProblemConfigInput | null,
+  defaultOverrides?: DefaultProblemConfigOverrides,
 ): NormalizedProblemConfig {
-  const defaults = createDefaultProblemConfig(problemName);
+  const defaults = createDefaultProblemConfig(problemName, defaultOverrides);
   const request = requestConfig || {};
   const stored = storedConfig || {};
   const storedPolygon = hasPolygonFields(stored)

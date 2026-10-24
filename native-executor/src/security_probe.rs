@@ -58,10 +58,7 @@ pub fn security_probe_child() {
             const CREATE_NO_WINDOW: u32 = 0x0800_0000;
             cmd.creation_flags(CREATE_NO_WINDOW);
         }
-        let process_blocked = cmd
-            .args(process_args)
-            .status()
-            .is_err();
+        let process_blocked = cmd.args(process_args).status().is_err();
         if !process_blocked {
             // The parent treats this reserved code as proof that a forbidden child really ran.
             std::process::exit(97);

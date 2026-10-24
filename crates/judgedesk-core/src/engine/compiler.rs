@@ -222,14 +222,25 @@ pub fn compile_submission_with_selection(
         return CompilationOutput::environment_je(diag);
     }
 
+    compile_resolved_submission(req, &toolchain, compile_config)
+}
+
+// Diagnostics and judging must exercise the same compiler invocation and mounts.
+// The caller has already checked executor health and resolved this exact selection.
+pub(crate) fn compile_resolved_submission(
+    req: CompileSubmissionRequest<'_>,
+    toolchain: &ResolvedToolchain,
+    compile_config: Option<&crate::discovery::ProblemCompileConfig>,
+) -> CompilationOutput {
+    let kind = toolchain.kind.as_str();
     let timeout_ms = req.timeout_ms.unwrap_or(SUBMISSION_COMPILE_WALL_TIME_MS);
 
     match kind {
         "scratch" => compile_scratch_submission(req.source_path, req.output_dir),
-        "python" => compile_python_submission(&req, &toolchain, timeout_ms),
-        "java" => compile_java_submission(&req, &toolchain, timeout_ms),
+        "python" => compile_python_submission(&req, toolchain, timeout_ms),
+        "java" => compile_java_submission(&req, toolchain, timeout_ms),
         "cpp" | "c" | "pascal" => {
-            compile_native_submission(kind, &req, &toolchain, timeout_ms, compile_config)
+            compile_native_submission(kind, &req, toolchain, timeout_ms, compile_config)
         }
         _ => CompilationOutput::submission_ce(format!(
             "Unsupported language: {}",
@@ -524,12 +535,21 @@ fn prepare_compiler_mount(
     if cfg!(windows) {
         env.insert("TMPDIR".to_string(), ".".to_string());
     }
+    #[cfg(target_os = "linux")]
+    for system_bin in ["/usr/bin", "/bin"] {
+        if !path_entries.iter().any(|entry| entry == system_bin) {
+            path_entries.push(system_bin.to_string());
+        }
+    }
     if !path_entries.is_empty() {
         let sep = if cfg!(windows) { ";" } else { ":" };
         env.insert("PATH".to_string(), path_entries.join(sep));
     }
 
-    if cfg!(target_os = "macos") || kind == "java" {
+    if cfg!(target_os = "macos")
+        || kind == "java"
+        || crate::toolchains::linux_managed::is_managed_linux_toolchain(toolchain)
+    {
         if let Some(ref pkg_root) = toolchain.package_root {
             if let Some(receipt) = read_package_receipt(pkg_root) {
                 let comp = receipt
@@ -564,7 +584,11 @@ fn prepare_compiler_mount(
                 if let Some(comp) = comp {
                     let cached_root =
                         ensure_cached_managed_toolchain(&platform.root(), pkg_root, &receipt)?;
-                    let cache_id = managed_cache_id(&receipt.package_id, &receipt.version);
+                    let cache_id = managed_cache_id(
+                        &receipt.package_id,
+                        &receipt.version,
+                        &receipt.archive_sha256,
+                    );
                     let cached_bin = cached_root.join("bin");
                     if cached_bin.is_dir() {
                         env.insert(
@@ -774,10 +798,17 @@ pub fn compile_cpp_pch_in_sandbox(
     })?;
     workspace.write_file(Path::new("compiler-pch/bits/stdc++.h"), &header_bytes)?;
 
-    let (executable_id, tc_grant, local_grant, env, _root_canon) =
+    let (executable_id, tc_grant, local_grant, env, root_canon) =
         prepare_compiler_mount("cpp", toolchain, platform)?;
 
     let mut args = Vec::new();
+    if crate::toolchains::linux_managed::is_managed_linux_toolchain(toolchain) {
+        args.extend(crate::toolchains::linux_managed::compiler_support_args(
+            "cpp",
+            &root_canon,
+            false,
+        )?);
+    }
     #[cfg(target_os = "macos")]
     {
         if let Ok((_, _, _, _, prefix, _)) =
@@ -937,6 +968,13 @@ fn compile_native_submission_attempt(
     let effective_compile_cfg = compile_config.cloned().unwrap_or_default();
     let mut args = Vec::new();
     let mut staged_pch_dir: Option<PathBuf> = None;
+    let linux_full = crate::toolchains::linux_managed::is_managed_linux_toolchain(toolchain);
+    if linux_full {
+        match crate::toolchains::linux_managed::compiler_support_args(kind, &root_canon, true) {
+            Ok(support) => args.extend(support),
+            Err(error) => return CompilationOutput::environment_je(error),
+        }
+    }
 
     match kind {
         "cpp" | "c" => {
@@ -1028,7 +1066,7 @@ fn compile_native_submission_attempt(
             if staged_extra_include {
                 args.push("-I.".to_string());
             }
-            if !cfg!(target_os = "macos") {
+            if !cfg!(target_os = "macos") && !linux_full {
                 args.push("-static".to_string());
             }
             if cfg!(windows) {
@@ -1067,8 +1105,20 @@ fn compile_native_submission_attempt(
                 args.push("-Tlinux".to_string());
             }
             if let Some(ref units_dir) = units_dir {
-                args.push(format!("-Fu{}", units_dir.join("*").display()));
-                args.push(format!("-Fu{}", units_dir.join("rtl").display()));
+                let compiler_units =
+                    if crate::toolchains::linux_managed::is_managed_linux_toolchain(toolchain) {
+                        match crate::toolchains::linux_managed::compiler_visible_path(
+                            &root_canon,
+                            units_dir,
+                        ) {
+                            Ok(path) => path,
+                            Err(error) => return CompilationOutput::environment_je(error),
+                        }
+                    } else {
+                        units_dir.clone()
+                    };
+                args.push(format!("-Fu{}", compiler_units.join("*").display()));
+                args.push(format!("-Fu{}", compiler_units.join("rtl").display()));
             }
             #[cfg(windows)]
             {
@@ -1080,7 +1130,9 @@ fn compile_native_submission_attempt(
             }
             #[cfg(target_os = "linux")]
             {
-                if root_canon != Path::new("/usr") {
+                if root_canon != Path::new("/usr")
+                    && !crate::toolchains::linux_managed::is_managed_linux_toolchain(toolchain)
+                {
                     let bin_dir = root_canon.join("bin");
                     if bin_dir.is_dir() {
                         args.push(format!("-FD{}", bin_dir.display()));
@@ -1290,7 +1342,7 @@ fn compile_python_submission(
                     Ok(c) => c,
                     Err(e) => return CompilationOutput::environment_je(e),
                 };
-            let cache_id = managed_cache_id(&rec.package_id, &rec.version);
+            let cache_id = managed_cache_id(&rec.package_id, &rec.version, &rec.archive_sha256);
             let relative_exe = rec
                 .components
                 .iter()

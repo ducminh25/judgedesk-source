@@ -10,9 +10,15 @@ import {
   parseAndValidateCustomCompileFlags,
   validateCustomCompileFlags,
 } from "../../shared/compile-config.js";
-import { createDefaultProblemConfig, normalizeProblemConfig } from "../../shared/problem-config.js";
 import {
+  createDefaultProblemConfig,
+  normalizeProblemConfig,
+  reconcileStoredProblemConfig,
+} from "../../shared/problem-config.js";
+import {
+  ensureOrReconcileStoredProblemConfig,
   readStoredProblemConfig,
+  resolveProblemConfig,
   writeStoredProblemConfig,
 } from "./problem-config-repository.js";
 
@@ -191,4 +197,63 @@ test("problem config normalizes memory limit between 8 MB and 1024 MB with defau
   assert.equal(normalizeProblemConfig("SUM", { memoryLimit: 0 }).memoryLimit, 256);
   assert.equal(normalizeProblemConfig("SUM", { memoryLimit: -100 }).memoryLimit, 256);
   assert.equal(normalizeProblemConfig("SUM", { memoryLimit: undefined }).memoryLimit, 256);
+});
+
+test("ensureOrReconcileStoredProblemConfig and resolveProblemConfig auto-select custom checker on first import and respect explicit checker selection", (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "judgedesk-resolve-checker-"));
+  t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+
+  // Custom checkers present on first import -> Config.cfg created with highest-priority custom checker
+  fs.writeFileSync(path.join(directory, "checker.py"), "import sys\n");
+  fs.writeFileSync(path.join(directory, "lcmp.cpp"), "int main(){}\n");
+  ensureOrReconcileStoredProblemConfig("MEXARRAY", directory, "darwin");
+  assert.equal(resolveProblemConfig("MEXARRAY", directory).checkerType, "lcmp.cpp");
+
+  // Explicit built-in checker in Config.cfg -> uses selected checker instead of custom checker in folder
+  writeStoredProblemConfig(directory, { checkerType: "C1" });
+  assert.equal(resolveProblemConfig("MEXARRAY", directory, { checkerType: "lcmp.cpp" }).checkerType, "C1");
+
+  writeStoredProblemConfig(directory, { checkerType: "polygon:lcmp" });
+  assert.equal(resolveProblemConfig("MEXARRAY", directory).checkerType, "polygon:lcmp");
+
+  writeStoredProblemConfig(directory, { checkerType: "checker.py" });
+  assert.equal(resolveProblemConfig("MEXARRAY", directory).checkerType, "checker.py");
+});
+
+test("reconcileStoredProblemConfig resets legacy 1pt sum totalScore and redistributes fixed totalScore when tests change", () => {
+  const legacyDefault = reconcileStoredProblemConfig(
+    {
+      defaultScore: 1,
+      totalScore: "2",
+      enableGroups: false,
+      tests: { Test01: { points: 1 }, Test02: { points: 1 } },
+      testScores: { Test01: 1, Test02: 1 },
+    },
+    ["Test01", "Test02", "Test03"],
+  );
+  assert.equal(legacyDefault.changed, true);
+  assert.equal(legacyDefault.config.totalScore, null);
+  assert.deepEqual(legacyDefault.config.tests, {
+    Test01: { points: 1 },
+    Test02: { points: 1 },
+    Test03: { points: 1 },
+  });
+
+  const fixedTotal = reconcileStoredProblemConfig(
+    {
+      defaultScore: 1,
+      totalScore: "10",
+      enableGroups: false,
+      tests: { Test01: { points: 5 }, Test02: { points: 5 }, Removed: { points: 5 } },
+      testScores: { Test01: 5, Test02: 5, Removed: 5 },
+    },
+    ["Test01", "Test02", "Test03"],
+  );
+  assert.equal(fixedTotal.changed, true);
+  assert.equal(fixedTotal.config.totalScore, "10");
+  assert.deepEqual(fixedTotal.config.tests, {
+    Test01: { points: "10/3" },
+    Test02: { points: "10/3" },
+    Test03: { points: "10/3" },
+  });
 });

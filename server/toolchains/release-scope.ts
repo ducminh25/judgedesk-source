@@ -25,6 +25,13 @@ const CURRENT_RELEASE_TOOLCHAIN_KIND_SET: ReadonlySet<ToolchainKind> =
  * Apple Clang toolchain, so no managed C/C++ package is distributed.
  */
 const CURRENT_RELEASE_MANAGED_PACKAGES = Object.freeze({
+  "linux:x64": Object.freeze([
+    "gcc-linux-x64",
+    "python-linux-x64",
+    "fpc-linux-x64",
+    "temurin21-linux-x64",
+    "scratch-linux-x64",
+  ]),
   "win32:x64": Object.freeze([
     "gcc-windows-x64",
     "python-windows-x64",

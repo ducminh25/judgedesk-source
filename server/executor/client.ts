@@ -438,19 +438,7 @@ export class ExecutorClient {
       });
       this.child = child;
       this.guardedDrainChild = env.JUDGEDESK_TREE_GUARD_REQUIRED === "1" ? child : null;
-      child.stdout.on("data", (chunk: Buffer) => this.receive(child, chunk));
-      child.stderr.on("data", (chunk: Buffer) => {
-        if (this.child !== child) return;
-        const remaining = 16 * 1024 - Buffer.byteLength(this.stderrPreview);
-        if (remaining > 0) this.stderrPreview += chunk.subarray(0, remaining).toString("utf8");
-      });
-      child.once("error", (error) => this.executorErrored(child, error));
-      child.once("close", (code, signal) => {
-        this.executorExited(
-          child,
-          new Error(`Native executor exited (code=${code}, signal=${signal}). ${this.stderrPreview}`),
-        );
-      });
+      this.attachChildListeners(child);
       // IPC must not keep one-shot unit-test/CLI processes alive. Long-running server
       // processes remain alive through their HTTP listener; when they exit, pipe EOF makes
       // the executor kill active jobs and terminate.
@@ -482,11 +470,23 @@ export class ExecutorClient {
         this.startPromise = Promise.resolve(this.cachedHealth);
         return this.cachedHealth;
       }
+      // Exit may precede the final stderr chunk. Preserve startup's native
+      // rejection reason instead of returning only the transport error.
+      if (child && this.child === child && !await this.waitForStdioClose()) {
+        this.lifecycleState = "terminal";
+        this.cachedHealth = unavailableHealth(
+          `Native executor startup failed; stdio drain is still in progress: ${String(error)}`,
+        );
+        this.startPromise = Promise.resolve(this.cachedHealth);
+        return this.cachedHealth;
+      }
       if (this.ownedTreeGuardCleanup) {
         this.ownedTreeGuardCleanup();
         this.ownedTreeGuardCleanup = null;
       }
-      this.cachedHealth = unavailableHealth(error instanceof Error ? error.message : String(error));
+      const detail = error instanceof Error ? error.message : String(error);
+      const stderr = this.stderrPreview.trim();
+      this.cachedHealth = unavailableHealth(detail + (stderr ? ` Native executor stderr: ${stderr}` : ""));
     }
     return this.cachedHealth;
   }
@@ -565,6 +565,27 @@ export class ExecutorClient {
     } finally {
       this.startupRetryChildren.delete(child);
     }
+  }
+
+  private attachChildListeners(child: ChildProcessWithoutNullStreams): void {
+    // Pipe errors are emitted by the streams as well as their write callbacks.
+    // Keep these listeners until close so a rejected startup cannot crash Node.
+    for (const stream of [child.stdin, child.stdout, child.stderr]) {
+      stream.on("error", (error) => this.executorErrored(child, error));
+    }
+    child.stdout.on("data", (chunk: Buffer) => this.receive(child, chunk));
+    child.stderr.on("data", (chunk: Buffer) => {
+      if (this.child !== child) return;
+      const remaining = 16 * 1024 - Buffer.byteLength(this.stderrPreview);
+      if (remaining > 0) this.stderrPreview += chunk.subarray(0, remaining).toString("utf8");
+    });
+    child.once("error", (error) => this.executorErrored(child, error));
+    child.once("close", (code, signal) => {
+      this.executorExited(
+        child,
+        new Error(`Native executor exited (code=${code}, signal=${signal}). ${this.stderrPreview}`),
+      );
+    });
   }
 
   private request(request: ExecutorRequest, timeoutMs = REQUEST_TIMEOUT_MS): Promise<ExecutorResponse> {
@@ -794,14 +815,20 @@ function targetTriple(platform: NodeJS.Platform, arch: string): string {
   if (platform === "win32" && arch === "x64") return "x86_64-pc-windows-msvc";
   if (platform === "darwin" && arch === "arm64") return "aarch64-apple-darwin";
   if (platform === "darwin" && arch === "x64") return "x86_64-apple-darwin";
+  if (platform === "linux" && arch === "x64") return "x86_64-unknown-linux-gnu";
+  if (platform === "linux" && arch === "arm64") return "aarch64-unknown-linux-gnu";
   return `${arch}-${platform}`;
 }
 
-function minimalExecutorEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+export function minimalExecutorEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   // The executor is trusted and needs the user's AppContainer/profile variables during its
   // startup self-test. It constructs a separate allowlisted environment for every untrusted
   // child, so credentials and proxy variables are never forwarded to submissions.
   const result = { ...environment };
+  if (os.platform() === "linux") {
+    delete result.LD_LIBRARY_PATH;
+    delete result.LD_PRELOAD;
+  }
   const resourceRoot = normalizeWindowsVerbatimPath(
     environment.THEMIS_RESOURCE_DIR || RESOURCE_ROOT,
   );

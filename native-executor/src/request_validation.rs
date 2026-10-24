@@ -250,6 +250,10 @@ fn resolve_local_toolchain(
     if !root.is_dir() || root.parent().is_none() {
         return Err("local toolchain root is not a bounded directory".into());
     }
+    #[cfg(target_os = "linux")]
+    if !linux_local_toolchain_root_is_bounded(&root) {
+        return Err("local toolchain root must not expose a home or shared directory".into());
+    }
 
     let relative = Path::new(&grant.executable_relative_path);
     if relative.is_absolute()
@@ -271,6 +275,43 @@ fn resolve_local_toolchain(
         return Err("executableId does not match the local toolchain grant".into());
     }
     Ok((executable, root))
+}
+
+/// Shared by discovery and executor validation: an inferred installation root
+/// must never turn a compiler grant into access to the user's personal files.
+#[cfg(target_os = "linux")]
+pub fn linux_local_toolchain_root_is_bounded(root: &Path) -> bool {
+    if matches!(
+        root.to_str(),
+        Some(
+            "/" | "/home"
+                | "/var/home"
+                | "/root"
+                | "/opt"
+                | "/tmp"
+                | "/var/tmp"
+                | "/run"
+                | "/mnt"
+                | "/media"
+                | "/var"
+                | "/etc"
+                | "/srv"
+                | "/proc"
+                | "/sys"
+                | "/dev"
+        )
+    ) {
+        return false;
+    }
+    if matches!(
+        root.parent().and_then(Path::to_str),
+        Some("/home" | "/var/home")
+    ) {
+        return false;
+    }
+    !std::env::var_os("HOME")
+        .and_then(|home| fs::canonicalize(home).ok())
+        .is_some_and(|home| home.starts_with(root))
 }
 
 fn reject_network_or_device_root(_path: &Path) -> Result<(), String> {
@@ -1302,5 +1343,42 @@ mod tests {
             "judgedesk-request-validation-{}-{nonce}",
             std::process::id()
         ))
+    }
+}
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_local_grants_reject_home_and_shared_installation_roots() {
+    for root in [
+        "/",
+        "/home",
+        "/home/alice",
+        "/var/home/alice",
+        "/root",
+        "/opt",
+        "/tmp",
+        "/mnt",
+    ] {
+        assert!(
+            !linux_local_toolchain_root_is_bounded(Path::new(root)),
+            "{root}"
+        );
+    }
+    for root in [
+        "/usr",
+        "/usr/bin",
+        "/opt/gcc-16",
+        "/home/alice/toolchains/gcc",
+        "/home/alice/bin",
+    ] {
+        assert!(
+            linux_local_toolchain_root_is_bounded(Path::new(root)),
+            "{root}"
+        );
+    }
+    if let Some(home) = std::env::var_os("HOME").and_then(|home| fs::canonicalize(home).ok()) {
+        assert!(!linux_local_toolchain_root_is_bounded(&home));
+        for ancestor in home.ancestors() {
+            assert!(!linux_local_toolchain_root_is_bounded(ancestor));
+        }
     }
 }

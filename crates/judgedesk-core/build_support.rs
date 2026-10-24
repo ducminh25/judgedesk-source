@@ -28,6 +28,7 @@ pub fn generate_identity(features: &[&str]) -> Result<(), Box<dyn std::error::Er
         "JUDGEDESK_BUILD_NUMBER",
         "JUDGEDESK_BUILD_TIMESTAMP",
         "SOURCE_DATE_EPOCH",
+        "JUDGEDESK_LINUX_EDITION",
     ] {
         println!("cargo:rerun-if-env-changed={name}");
     }

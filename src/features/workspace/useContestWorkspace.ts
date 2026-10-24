@@ -112,7 +112,12 @@ export function useContestWorkspace() {
       setProblemConfigs((previous) => {
         const next = { ...previous };
         for (const problemName of data.data) {
-          if (!next[problemName]) next[problemName] = createDefaultProblemConfig(problemName);
+          if (!next[problemName]) {
+            next[problemName] = createDefaultProblemConfig(problemName, {
+              checkerType: data.customCheckers[problemName]?.[0],
+              interactor: data.interactors[problemName]?.[0],
+            });
+          }
         }
         return next;
       });
@@ -144,7 +149,10 @@ export function useContestWorkspace() {
     ])));
     setProblemConfigs(Object.fromEntries(loadedProblems.data.map((name) => [
       name,
-      workspace.problemConfigs[name] || createDefaultProblemConfig(name),
+      workspace.problemConfigs[name] || createDefaultProblemConfig(name, {
+        checkerType: loadedProblems.customCheckers[name]?.[0],
+        interactor: loadedProblems.interactors[name]?.[0],
+      }),
     ])));
   }, []);
 

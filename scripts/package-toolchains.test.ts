@@ -8,7 +8,7 @@ import {
   selectHostToolchainReleases,
 } from "./package-toolchains.js";
 
-test("release packaging supports Windows x64 and Apple Silicon only", () => {
+test("release packaging retains Windows x64 and Apple Silicon support", () => {
   assert.deepEqual(resolvePackagingHost("win32", "x64"), {
     platform: "win32",
     arch: "x64",
@@ -19,7 +19,7 @@ test("release packaging supports Windows x64 and Apple Silicon only", () => {
   });
   assert.throws(
     () => resolvePackagingHost("darwin", "x64"),
-    /Windows x64 and macOS Apple Silicon only/,
+    /Unsupported toolchain packaging host: darwin\/x64/,
   );
 });
 
@@ -53,6 +53,15 @@ test("Full packaging selects only the approved Themis-language package set", () 
     ],
   );
   assert.equal(macos.every((release) => release.arch === "arm64"), true);
+});
+
+test("Linux x64 packaging selects all six languages through five pinned packages", () => {
+  assert.deepEqual(resolvePackagingHost("linux", "x64"), { platform: "linux", arch: "x64" });
+  assert.deepEqual(selectHostToolchainReleases({ platform: "linux", arch: "x64" })
+    .map((entry) => entry.packageId), [
+    "fpc-linux-x64", "gcc-linux-x64", "python-linux-x64", "scratch-linux-x64", "temurin21-linux-x64",
+  ]);
+  assert.throws(() => resolvePackagingHost("linux", "arm64"), /Unsupported toolchain packaging host/);
 });
 
 test("deferred packages remain explicitly buildable without entering Full", () => {

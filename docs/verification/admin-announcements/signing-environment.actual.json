@@ -1,0 +1,16 @@
+{
+  "repository": "ducminh25/judgedesk",
+  "environment": "announcements-signing",
+  "environmentId": 25191946368,
+  "requiredReviewer": "ducminh25",
+  "requiredReviewerId": 135119135,
+  "manualApprovalRequired": true,
+  "initiatorCanApproveOwnRun": true,
+  "branch": "main",
+  "branchType": "branch",
+  "keyId": "announcements-v1",
+  "privateSecretPresent": false,
+  "privateSecretRead": false,
+  "pagesEnabled": false,
+  "workflowDeployed": false
+}

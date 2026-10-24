@@ -2,6 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
+#[cfg(not(target_os = "linux"))]
 use tauri_plugin_opener::OpenerExt;
 
 static PREVIEW_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -133,23 +134,26 @@ fn write_checker_preview(checker_id: &str) -> Result<PathBuf, String> {
 }
 
 #[tauri::command]
-pub fn open_checker_source(app: tauri::AppHandle, checker_id: String) -> Result<(), String> {
+pub async fn open_checker_source(_app: tauri::AppHandle, checker_id: String) -> Result<(), String> {
     let source_path = write_checker_preview(&checker_id)?;
-    let path_str = source_path.to_string_lossy().into_owned();
-    if let Err(opener_err) = app.opener().open_path(&path_str, None::<&str>) {
-        #[cfg(target_os = "linux")]
-        {
-            if std::process::Command::new("xdg-open")
-                .arg(&source_path)
-                .spawn()
-                .is_ok()
-            {
-                return Ok(());
-            }
-        }
-        return Err(opener_err.to_string());
+    #[cfg(target_os = "linux")]
+    {
+        let mut command = judgedesk_core::host_process::command("xdg-open")?;
+        command.arg(&source_path);
+        tauri::async_runtime::spawn_blocking(move || {
+            judgedesk_core::host_process::launch_desktop(command)
+        })
+        .await
+        .map_err(|error| error.to_string())?
     }
-    Ok(())
+    #[cfg(not(target_os = "linux"))]
+    {
+        let path_str = source_path.to_string_lossy().into_owned();
+        if let Err(opener_err) = _app.opener().open_path(&path_str, None::<&str>) {
+            return Err(opener_err.to_string());
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

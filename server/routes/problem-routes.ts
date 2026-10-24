@@ -4,15 +4,20 @@ import { validateProblemTestInputs } from "../problems/test-wellformed.js";
 import type { Express } from "express";
 import { naturalSort } from "../file-utils.js";
 import {
+  ensureOrReconcileStoredProblemConfig,
   readStoredProblemConfig,
   writeStoredProblemConfig
 } from "../problems/problem-config-repository.js";
 import {
+  discoverCustomCheckers,
+  discoverInteractors,
   discoverTestCases,
   isFlatTestDirectory,
   listTestDirectories,
   resolveProblemDirectoryPath,
 } from "../judge/testcase-discovery.js";
+
+export { discoverCustomCheckers, discoverInteractors };
 
 export function registerProblemRoutes(app: Express): void {
   app.get("/api/fetch-contestants", (req, res) => {
@@ -57,6 +62,7 @@ export function registerProblemRoutes(app: Express): void {
         const problemPath = directProblem ? resolved : path.join(resolved, dir);
         customCheckers[dir] = discoverCustomCheckers(problemPath);
         interactors[dir] = discoverInteractors(problemPath);
+        ensureOrReconcileStoredProblemConfig(dir, problemPath);
       }
 
       return res.json({ success: true, data: dirs, customCheckers, interactors });
@@ -167,82 +173,4 @@ export function registerProblemRoutes(app: Express): void {
       return res.status(500).json({ success: false, code, message: "Failed to write problem configuration" });
     }
   });
-}
-
-export function discoverCustomCheckers(
-  problemPath: string,
-  platform: NodeJS.Platform = process.platform,
-): string[] {
-  try {
-    const isWindows = platform === "win32";
-    const files = fs.readdirSync(problemPath).filter((file) => {
-      const lower = file.toLowerCase();
-      const isCandidate = lower.endsWith(".cpp")
-        || lower.endsWith(".py")
-        || (isWindows && lower.endsWith(".exe"));
-      if (!isCandidate) return false;
-      try {
-        return fs.statSync(path.join(problemPath, file)).isFile();
-      } catch {
-        return false;
-      }
-    });
-
-    const getExtensionPriority = (fileName: string): number => {
-      const lower = fileName.toLowerCase();
-      if (lower.endsWith(".exe")) return 0;
-      if (lower.endsWith(".cpp")) return 1;
-      if (lower.endsWith(".py")) return 2;
-      return 3;
-    };
-
-    return files.sort((a, b) => {
-      const prioA = getExtensionPriority(a);
-      const prioB = getExtensionPriority(b);
-      if (prioA !== prioB) return prioA - prioB;
-      return naturalSort(a, b);
-    });
-  } catch {
-    return [];
-  }
-}
-
-export function discoverInteractors(
-  problemPath: string,
-  platform: NodeJS.Platform = process.platform,
-): string[] {
-  try {
-    const isWindows = platform === "win32";
-    const files = fs.readdirSync(problemPath).filter((file) => {
-      const lower = file.toLowerCase();
-      const isCandidate = lower.startsWith("interactor") && (
-        lower.endsWith(".cpp")
-        || lower.endsWith(".py")
-        || (isWindows && lower.endsWith(".exe"))
-      );
-      if (!isCandidate) return false;
-      try {
-        return fs.statSync(path.join(problemPath, file)).isFile();
-      } catch {
-        return false;
-      }
-    });
-
-    const getExtensionPriority = (fileName: string): number => {
-      const lower = fileName.toLowerCase();
-      if (lower.endsWith(".exe")) return 0;
-      if (lower.endsWith(".cpp")) return 1;
-      if (lower.endsWith(".py")) return 2;
-      return 3;
-    };
-
-    return files.sort((a, b) => {
-      const prioA = getExtensionPriority(a);
-      const prioB = getExtensionPriority(b);
-      if (prioA !== prioB) return prioA - prioB;
-      return naturalSort(a, b);
-    });
-  } catch {
-    return [];
-  }
 }

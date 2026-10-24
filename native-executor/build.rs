@@ -27,6 +27,11 @@ fn main() -> BuildResult<()> {
     source_files.sort();
 
     let mut identity = Vec::new();
+    append_file(
+        &mut identity,
+        "../shared/linux_sandbox_paths.rs",
+        &repository_dir.join("shared/linux_sandbox_paths.rs"),
+    )?;
     append_entry(&mut identity, "format", b"judgedesk-native-build-v1")?;
     for path in source_files {
         let relative = path

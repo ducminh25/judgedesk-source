@@ -748,3 +748,168 @@ fn test_synthetic_problem_path_preserves_dangling_same_name_symlink() {
 
     assert_eq!(testcase::resolve_problem_directory_path(&link), link);
 }
+
+#[test]
+fn test_ensure_or_reconcile_stored_problem_config_creates_default_and_reconciles_test_changes() {
+    let temp = TempDir::new("ensure_or_reconcile_config_test");
+    let prob_dir = temp.0.join("MEXARRAY");
+    fs::create_dir_all(prob_dir.join("Test01")).unwrap();
+    fs::create_dir_all(prob_dir.join("Test02")).unwrap();
+    fs::write(prob_dir.join("Test01").join("MEXARRAY.inp"), "1\n").unwrap();
+    fs::write(prob_dir.join("Test01").join("MEXARRAY.out"), "1\n").unwrap();
+    fs::write(prob_dir.join("Test02").join("MEXARRAY.inp"), "2\n").unwrap();
+    fs::write(prob_dir.join("Test02").join("MEXARRAY.out"), "2\n").unwrap();
+    fs::write(prob_dir.join("CheckMEXARRAY.exe"), "stub").unwrap();
+    fs::write(prob_dir.join("lcmp.cpp"), "int main(){}").unwrap();
+
+    // 1. First import (no Config.cfg yet) creates Config.cfg with highest-priority checker
+    let created =
+        testcase::ensure_or_reconcile_stored_problem_config(&prob_dir, "MEXARRAY", "win32")
+            .expect("should create default Config.cfg");
+    assert!(prob_dir.join("Config.cfg").is_file());
+    assert_eq!(
+        created.get("checkerType").and_then(|v| v.as_str()),
+        Some("CheckMEXARRAY.exe")
+    );
+    assert_eq!(
+        created.get("inputFile").and_then(|v| v.as_str()),
+        Some("MEXARRAY.inp")
+    );
+    assert_eq!(
+        created.get("outputFile").and_then(|v| v.as_str()),
+        Some("MEXARRAY.out")
+    );
+    assert!(created.get("totalScore").is_some_and(|v| v.is_null()));
+    assert_eq!(
+        created.get("defaultScore").and_then(|v| v.as_i64()),
+        Some(1)
+    );
+    assert!(
+        testcase::try_normalize_problem_config("MEXARRAY", None, Some(&created)).is_ok(),
+        "default Config.cfg must normalize cleanly"
+    );
+
+    // 2. Suppose Config.cfg had legacy saved 2 tests with 1pt each and totalScore="2",
+    //    and later Test03 is added on disk -> reconciles to 3 tests of 1pt each and totalScore=null.
+    fs::write(
+        prob_dir.join("Config.cfg"),
+        serde_json::json!({
+            "checkerType": "C1",
+            "defaultScore": 1,
+            "totalScore": "2",
+            "enableGroups": false,
+            "tests": {
+                "Test01": { "points": 1 },
+                "Test02": { "points": 1 }
+            },
+            "testScores": {
+                "Test01": 1,
+                "Test02": 1
+            },
+            "groups": {}
+        })
+        .to_string(),
+    )
+    .unwrap();
+
+    fs::create_dir_all(prob_dir.join("Test03")).unwrap();
+    fs::write(prob_dir.join("Test03").join("MEXARRAY.inp"), "3\n").unwrap();
+    fs::write(prob_dir.join("Test03").join("MEXARRAY.out"), "3\n").unwrap();
+
+    let reconciled_default =
+        testcase::ensure_or_reconcile_stored_problem_config(&prob_dir, "MEXARRAY", "win32")
+            .expect("should reconcile Config.cfg");
+    assert_eq!(
+        reconciled_default
+            .get("checkerType")
+            .and_then(|v| v.as_str()),
+        Some("C1"),
+        "explicit checkerType C1 in Config.cfg must be preserved"
+    );
+    assert!(
+        reconciled_default
+            .get("totalScore")
+            .is_some_and(|v| v.is_null()),
+        "legacy 1pt-per-test sum totalScore must reset to null when test count changes"
+    );
+    let tests_obj = reconciled_default
+        .get("tests")
+        .and_then(|v| v.as_object())
+        .unwrap();
+    assert_eq!(tests_obj.len(), 3);
+    assert_eq!(
+        tests_obj
+            .get("Test03")
+            .and_then(|v| v.get("points"))
+            .and_then(|v| v.as_i64()),
+        Some(1)
+    );
+
+    // 3. Suppose Config.cfg had a fixed custom totalScore="90" across 2 tests (45 pts each),
+    //    and now there are 3 tests -> redistributes 90 across 3 tests (30 pts each).
+    fs::write(
+        prob_dir.join("Config.cfg"),
+        serde_json::json!({
+            "checkerType": "C1",
+            "defaultScore": 1,
+            "totalScore": "90",
+            "enableGroups": false,
+            "tests": {
+                "Test01": { "points": 45 },
+                "Test02": { "points": 45 },
+                "StaleTest": { "points": 45 }
+            },
+            "testScores": {
+                "Test01": 45,
+                "Test02": 45,
+                "StaleTest": 45
+            },
+            "groups": {}
+        })
+        .to_string(),
+    )
+    .unwrap();
+    // Wait: if there were 2 tests of 45 each (Test01, Test02), and now Test03 exists:
+    fs::write(
+        prob_dir.join("Config.cfg"),
+        serde_json::json!({
+            "checkerType": "C1",
+            "defaultScore": 1,
+            "totalScore": "90",
+            "enableGroups": false,
+            "tests": {
+                "Test01": { "points": 45 },
+                "Test02": { "points": 45 }
+            },
+            "testScores": {
+                "Test01": 45,
+                "Test02": 45
+            },
+            "groups": {}
+        })
+        .to_string(),
+    )
+    .unwrap();
+
+    let reconciled_fixed =
+        testcase::ensure_or_reconcile_stored_problem_config(&prob_dir, "MEXARRAY", "win32")
+            .expect("should reconcile fixed totalScore Config.cfg");
+    assert_eq!(
+        reconciled_fixed.get("totalScore").and_then(|v| v.as_str()),
+        Some("90")
+    );
+    let fixed_tests = reconciled_fixed
+        .get("tests")
+        .and_then(|v| v.as_object())
+        .unwrap();
+    assert_eq!(fixed_tests.len(), 3);
+    for name in ["Test01", "Test02", "Test03"] {
+        assert_eq!(
+            fixed_tests
+                .get(name)
+                .and_then(|v| v.get("points"))
+                .and_then(|v| v.as_i64()),
+            Some(30)
+        );
+    }
+}

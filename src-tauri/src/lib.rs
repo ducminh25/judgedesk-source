@@ -5,9 +5,11 @@
 
 use tauri::Manager;
 
+pub mod announcements;
 mod backend;
 mod checker_sources;
 mod contest_archive;
+mod host_tools;
 mod process_supervisor;
 mod startup_guard;
 
@@ -96,6 +98,7 @@ pub fn run() {
         )))
         .manage(backend::BackendSidecar::default())
         .manage(backend::UpdateHandoff::default())
+        .manage(announcements::AnnouncementService::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init())
@@ -141,6 +144,17 @@ pub fn run() {
             get_initial_contest_file,
             backend::prepare_for_update,
             checker_sources::open_checker_source,
+            host_tools::open_external_url,
+            announcements::commands::announcements_snapshot,
+            announcements::commands::announcements_refresh,
+            announcements::commands::announcements_set_read,
+            announcements::commands::announcements_mark_all_read,
+            announcements::commands::announcements_delete,
+            announcements::commands::announcements_article_open,
+            announcements::commands::announcements_article_close,
+            announcements::commands::announcements_image,
+            announcements::commands::announcements_thumbnail,
+            announcements::commands::announcements_open_link,
             contest_archive::open_contest_archive,
             contest_archive::save_contest_archive
         ])
@@ -183,6 +197,7 @@ pub fn run() {
             }
         }
         if matches!(event, tauri::RunEvent::Exit) {
+            handle.state::<announcements::AnnouncementService>().stop();
             let coordinator = handle.state::<startup_guard::InstanceCoordinator>();
             let activation_stopped = match coordinator.begin_shutdown() {
                 Ok(()) => true,

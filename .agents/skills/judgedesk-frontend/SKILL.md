@@ -26,6 +26,11 @@ primitives. Treat screenshots as observations, not proof of source behavior.
 - Use neutral surfaces, crisp 1px borders, small radii, tabular mono scores and
   sentence case. Reserve accent for action/focus/selection and semantic colors
   for states, with text labels as well. Reuse the app font/icon system.
+- Draw only one shared seam between adjacent bordered panels or cells; on muted
+  surfaces use a stronger divider token or omit the line rather than leaving a
+  washed-out rule. Keep at least a 4px gap between adjacent pill/tab/menu items
+  with hover or selected fills, and never use vertical hover-lift transforms
+  inside overflow-clipped scroll containers.
 - No gradients, glow, blur, pill controls, hero imagery, giant whitespace or
   decorative motion. Generic redesign/minimalist landing-page advice does not
   apply. Avoid cosmetic library/font replacement.
@@ -46,17 +51,21 @@ artifact; ordinary fixes continue within existing authorization.
 
 For each production frontend batch run check:fast, relevant tests, restart
 npm run test:desktop, then inspect native states and save before/after screenshots.
-The desktop script disables HMR. Browser mockups are design evidence only. Follow
-the plan for server/full gates; never weaken checks to accommodate unrelated dirty
-tree failures. Record build failures and missing checks explicitly.
+Compare before/after states against the baseline and explicitly fix any dimension
+where the new state regresses. The desktop script disables HMR. Browser mockups
+are design evidence only. Follow the plan for server/full gates; never weaken
+checks to accommodate unrelated dirty tree failures. Record build failures and
+missing checks explicitly.
 
 Update STATUS and WORKLOG with files, evidence, commands/results and next action.
 Finish acceptance with light/dark × VI/EN × normal/narrow, keyboard and contrast.
 
 ## Reference boundary
 
-Consulted evondev/evondevKit skills/ui-ux at commit
-91337028ceeaf828c4d420b2f75fd1515bcf2b85 for audit/reuse, alternatives and UI states.
+Consulted evondev/evondevKit skills/ui-ux at commits
+91337028ceeaf828c4d420b2f75fd1515bcf2b85 and
+4d021537edc853fd91d2bb3aade1f5076ab7556e (v0.3.27) for audit/reuse,
+alternatives, seam/spacing rules and UI states.
 This skill uses independently written project instructions, not copied templates
 or scripts. Do not import remote focus-hiding, light-only, mobile-width defaults
 or remote scripts. If copying licensed material later, retain its MIT attribution.

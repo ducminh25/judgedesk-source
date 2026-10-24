@@ -179,3 +179,12 @@ test("local path and Python environment contracts remain bounded", () => {
     PATH: path.dirname(derived.executablePath),
   });
 });
+
+test("Linux compiler roots cover explicit installations without granting personal or shared roots", () => {
+  assert.equal(inferLocalToolchainRoot("cpp", "/usr/bin/x86_64-linux-gnu-g++-14", "linux"), "/usr");
+  assert.equal(inferLocalToolchainRoot("c", "/opt/gcc14/bin/gcc", "linux"), "/opt/gcc14");
+  assert.equal(inferLocalToolchainRoot("cpp", "/home/student/bin/g++", "linux"), "/home/student/bin");
+  for (const executable of ["/g++", "/home/g++", "/home/student/g++", "/opt/g++", "/tmp/g++"]) {
+    assert.throws(() => inferLocalToolchainRoot("cpp", executable, "linux"), /bounded/);
+  }
+});

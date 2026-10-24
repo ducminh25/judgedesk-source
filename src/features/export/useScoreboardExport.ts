@@ -4,6 +4,7 @@ import { apiFetch } from "../../api.js";
 import {
   encodeScoreExportPayload,
   SCORE_EXPORT_CONTENT_TYPE,
+  parseScoreExportResult,
 } from "../../../shared/score-export-wire.js";
 import {
   buildScoreExport,
@@ -11,6 +12,7 @@ import {
 } from "./score-workbook-client.js";
 import type { HostStatus, BatchJudgeResult } from "../../types.js";
 import type { formatAppError } from "../errors/app-error.js";
+import { viewerFailureOptions } from "./export-result.js";
 
 export interface UseScoreboardExportOptions {
   displayedProblems: string[];
@@ -130,8 +132,20 @@ export function useScoreboardExport({
         const failure = await response.json().catch(() => null) as { message?: string } | null;
         throw new Error(failure?.message || `HTTP ${response.status}`);
       }
-      onClearErrors();
-    } catch (error: any) {
+      const result = parseScoreExportResult(await response.json());
+      if (result.openStatus === "failed") {
+        const options = viewerFailureOptions(result, state.t, (path) => {
+          const copy = navigator.clipboard
+            ? navigator.clipboard.writeText(path)
+            : Promise.reject(new Error("Clipboard unavailable"));
+          void copy.catch((error: unknown) => exportStateRef.current.showError(error, {
+            ...options,
+            reason: state.t("appErrors.excelViewerFailed.copyFailed", { defaultValue: "Could not copy the path. The saved file is still at the location below." }),
+          }));
+        });
+        state.showError(new Error(result.openError ?? "Viewer unavailable"), options);
+      } else onClearErrors();
+    } catch (error: unknown) {
       exportStateRef.current.showError(error, {
         code: "EXCEL_EXPORT_FAILED",
         title: exportStateRef.current.t("appErrors.excelExportFailed.title"),

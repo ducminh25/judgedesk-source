@@ -221,3 +221,69 @@ test("nested input-only auxiliary examples do not mask a normal flat problem", a
     success: true, data: ["SUM"], customCheckers: { SUM: [] }, interactors: { SUM: [] },
   });
 });
+
+test("fetch-problems creates default Config.cfg on first import and reconciles when test count changes", async t => {
+  const { root, url } = await setup(t);
+  const mexDir = path.join(root, "MEXARRAY");
+  const sumDir = path.join(root, "SUM");
+  fs.mkdirSync(path.join(mexDir, "Test01"), { recursive: true });
+  fs.mkdirSync(path.join(mexDir, "Test02"), { recursive: true });
+  fs.writeFileSync(path.join(mexDir, "Test01", "MEXARRAY.inp"), "1\n");
+  fs.writeFileSync(path.join(mexDir, "Test01", "MEXARRAY.out"), "1\n");
+  fs.writeFileSync(path.join(mexDir, "Test02", "MEXARRAY.inp"), "2\n");
+  fs.writeFileSync(path.join(mexDir, "Test02", "MEXARRAY.out"), "2\n");
+  fs.writeFileSync(path.join(mexDir, "lcmp.cpp"), "int main(){}");
+
+  fs.mkdirSync(path.join(sumDir, "Test01"), { recursive: true });
+  fs.writeFileSync(path.join(sumDir, "Test01", "SUM.inp"), "1\n");
+  fs.writeFileSync(path.join(sumDir, "Test01", "SUM.out"), "1\n");
+
+  const imported = await fetch(`${url}/api/fetch-problems?path=${encodeURIComponent(root)}`);
+  assert.equal(imported.status, 200);
+  assert.equal(fs.existsSync(path.join(mexDir, "Config.cfg")), true);
+  assert.equal(fs.existsSync(path.join(sumDir, "Config.cfg")), true);
+
+  const mexCfg = JSON.parse(fs.readFileSync(path.join(mexDir, "Config.cfg"), "utf8"));
+  assert.equal(mexCfg.checkerType, "lcmp.cpp");
+  assert.equal(mexCfg.totalScore, null);
+  assert.equal(mexCfg.defaultScore, 1);
+
+  const sumCfg = JSON.parse(fs.readFileSync(path.join(sumDir, "Config.cfg"), "utf8"));
+  assert.equal(sumCfg.checkerType, "C1");
+
+  // Save a config with 2 tests (45 pts each, totalScore="90") and explicit checkerType="C1"
+  await fetch(`${url}/api/polygon-config`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      path: mexDir,
+      config: {
+        ...mexCfg,
+        checkerType: "C1",
+        totalScore: "90",
+        tests: { Test01: { points: 45 }, Test02: { points: 45 } },
+        testScores: { Test01: 45, Test02: 45 },
+      },
+    }),
+  });
+
+  // Add Test03 on disk and re-fetch problems -> Config.cfg reconciles to 3 tests of 30 pts each
+  fs.mkdirSync(path.join(mexDir, "Test03"), { recursive: true });
+  fs.writeFileSync(path.join(mexDir, "Test03", "MEXARRAY.inp"), "3\n");
+  fs.writeFileSync(path.join(mexDir, "Test03", "MEXARRAY.out"), "3\n");
+
+  await fetch(`${url}/api/fetch-problems?path=${encodeURIComponent(root)}`);
+  const reconciled = JSON.parse(fs.readFileSync(path.join(mexDir, "Config.cfg"), "utf8"));
+  assert.equal(reconciled.checkerType, "C1");
+  assert.equal(reconciled.totalScore, "90");
+  assert.deepEqual(reconciled.tests, {
+    Test01: { points: 30 },
+    Test02: { points: 30 },
+    Test03: { points: 30 },
+  });
+  assert.deepEqual(reconciled.testScores, {
+    Test01: 30,
+    Test02: 30,
+    Test03: 30,
+  });
+});

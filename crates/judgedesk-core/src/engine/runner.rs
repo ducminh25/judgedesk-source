@@ -289,7 +289,7 @@ fn prepare_python_runtime_launch(
 
     if let (Some(pkg_root), Some(rec)) = (&toolchain.package_root, receipt) {
         let cached_root = ensure_cached_managed_toolchain(platform_root, pkg_root, &rec)?;
-        let cache_id = managed_cache_id(&rec.package_id, &rec.version);
+        let cache_id = managed_cache_id(&rec.package_id, &rec.version, &rec.archive_sha256);
         let role_str = match role {
             ToolchainGrantRole::Compiler => "compiler",
             ToolchainGrantRole::SubmissionRuntime => "submission-runtime",
@@ -512,7 +512,7 @@ fn build_submission_spec(
         if let (Some(pkg_root), Some(rec)) = (&toolchain.package_root, receipt) {
             let cached_root =
                 ensure_cached_managed_toolchain(&config.platform.root(), pkg_root, &rec)?;
-            let cache_id = managed_cache_id(&rec.package_id, &rec.version);
+            let cache_id = managed_cache_id(&rec.package_id, &rec.version, &rec.archive_sha256);
             let runtime_comp = rec.components.iter().find(|c| {
                 c.id == "java.runtime" || c.roles.iter().any(|r| r == "submission-runtime")
             });
@@ -697,7 +697,7 @@ fn build_submission_spec(
         if let (Some(pkg_root), Some(rec)) = (&toolchain.package_root, receipt) {
             let cached_root =
                 ensure_cached_managed_toolchain(&config.platform.root(), pkg_root, &rec)?;
-            let cache_id = managed_cache_id(&rec.package_id, &rec.version);
+            let cache_id = managed_cache_id(&rec.package_id, &rec.version, &rec.archive_sha256);
             let relative_exe = rec
                 .components
                 .iter()

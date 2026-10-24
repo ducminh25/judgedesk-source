@@ -93,6 +93,9 @@ export function deriveLocalToolchain(
   if (path.parse(canonicalRoot).root === canonicalRoot) {
     throw new Error("LOCAL_EXECUTABLE_INVALID: toolchain root is not bounded");
   }
+  if (os.platform() === "linux" && !isLinuxLocalRootBounded(canonicalRoot)) {
+    throw new Error("LOCAL_EXECUTABLE_INVALID: toolchain root is not bounded");
+  }
   if (kind === "python" && os.platform() === "darwin") {
     const frameworkInterpreter = path.join(
       canonicalRoot,
@@ -295,6 +298,16 @@ export function inferLocalToolchainRoot(
         "LOCAL_EXECUTABLE_INVALID: use Apple Clang from Xcode or Command Line Tools",
       );
     }
+    if (platform === "linux") {
+      const directory = path.posix.dirname(canonicalExecutable);
+      const installation = path.posix.basename(directory) === "bin"
+        ? path.posix.dirname(directory) : directory;
+      const root = isLinuxLocalRootBounded(installation) ? installation : directory;
+      if (!isLinuxLocalRootBounded(root)) {
+        throw new Error("LOCAL_EXECUTABLE_INVALID: toolchain root is not bounded");
+      }
+      return root;
+    }
     throw new Error("LOCAL_EXECUTABLE_INVALID: unsupported compiler host");
   }
 
@@ -311,6 +324,15 @@ export function inferLocalToolchainRoot(
   return directoryName === "bin" || directoryName === "scripts"
     ? pathApi.dirname(executableDirectory)
     : executableDirectory;
+}
+
+function isLinuxLocalRootBounded(root: string): boolean {
+  // Mirror native validation; it remains authoritative and repeats the check.
+  if (["/", "/home", "/var/home", "/root", "/opt", "/tmp", "/var/tmp", "/run",
+    "/mnt", "/media", "/var", "/etc", "/srv", "/proc", "/sys", "/dev"].includes(root)) return false;
+  if (["/home", "/var/home"].includes(path.posix.dirname(root))) return false;
+  const home = os.homedir();
+  return !path.posix.isAbsolute(home) || !isDescendantOrEqual(root, fs.realpathSync(home));
 }
 
 function isSafeExecutableRelativePath(value: string): boolean {

@@ -15,6 +15,17 @@ import {
   resolveJavaSubmissionStaging,
 } from "./language-adapters.js";
 
+test("Linux managed Pascal uses Linux units, pinned binutils and its own sysroot", () => {
+  const root = path.resolve("managed-fpc");
+  const args = buildManagedPascalSupportArgs("linux", root);
+  assert.ok(args.includes("-Px86_64"));
+  assert.ok(args.includes("-Tlinux"));
+  assert.ok(args.includes(`-FD${path.join(root, "bin")}`));
+  assert.ok(args.includes(`-XR${path.join(root, "sysroot")}`));
+  assert.ok(args.includes(`-Fu${path.join(root, "lib", "fpc", "3.2.2", "units", "x86_64-linux", "rtl")}`));
+  assert.equal(args.some((arg) => /darwin|aarch64/.test(arg)), false);
+});
+
 test("C and C++ split compilation share an explicit two-phase budget", () => {
   for (const language of ["c", "cpp"] as const) {
     const recipe = buildNativeCompilationRecipe(

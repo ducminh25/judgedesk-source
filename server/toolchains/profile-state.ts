@@ -39,8 +39,7 @@ import type {
   ToolchainKind,
 } from "./types.js";
 import {
-  getHostProductVersion,
-  isMinimumOsSupported,
+  isManagedHostSupported,
 } from "./host-compatibility.js";
 import { TOOLCHAIN_RELEASE_BLUEPRINTS } from "./manifest.js";
 
@@ -118,9 +117,9 @@ function mappedHostArchitecture(): "x64" | "arm64" | null {
   return null;
 }
 
-function mappedHostPlatform(): "win32" | "darwin" | null {
+function mappedHostPlatform(): "win32" | "darwin" | "linux" | null {
   const platform = os.platform();
-  return platform === "win32" || platform === "darwin" ? platform : null;
+  return platform === "win32" || platform === "darwin" || platform === "linux" ? platform : null;
 }
 
 function isProfileSupportedOnHost(
@@ -138,7 +137,7 @@ function isProfileSupportedOnHost(
       && candidate.arch === architecture,
   );
   return !!host
-    && isMinimumOsSupported(host.minimumOs, getHostProductVersion());
+    && isManagedHostSupported(os.platform(), host.minimumOs);
 }
 
 function defaultProgress(id: string): InstallProgress {
@@ -293,10 +292,7 @@ export function buildLanguageProfileState(
     const managedHostSupported = kind === "scratch"
       || (managedSupported
         && (!managedMinimumOs
-          || isMinimumOsSupported(
-            managedMinimumOs,
-            getHostProductVersion(),
-          )));
+          || isManagedHostSupported(os.platform(), managedMinimumOs)));
     const sources: LanguageProfileView["sources"] = {
       none: { available: true },
       managed: managedHostSupported

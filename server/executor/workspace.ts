@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { managedCacheId } from "../../shared/toolchain-cache-id.js";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -61,7 +62,8 @@ export async function findCachedManagedToolchain(
   const health = await executorClient.start();
   if (!health.ready) return null;
   const entrypoint = descriptorEntrypoint(descriptor, kind);
-  const cacheId = managedCacheId(descriptor.id, descriptor.version);
+  if (os.platform() === "linux" && !packageDigest) return null;
+  const cacheId = managedCacheId(os.platform(), descriptor.id, descriptor.version, packageDigest);
   const root = path.join(health.executorRoot, "toolchains", cacheId);
   const marker = path.join(root, ".judgedesk-import-complete");
   const executablePath = path.join(root, entrypoint.executableRelativePath);
@@ -100,14 +102,19 @@ export async function purgeCachedManagedToolchain(
   const health = await executorClient.start();
   if (!health.ready) return;
   const toolchainsRoot = path.join(health.executorRoot, "toolchains");
-  const cacheRoot = path.join(
-    toolchainsRoot,
-    managedCacheId(descriptor.id, descriptor.version),
-  );
-  if (!isDescendant(toolchainsRoot, cacheRoot)) {
-    throw new Error("Refusing to purge a toolchain cache outside the executor root.");
+  if (!fs.existsSync(toolchainsRoot)) return;
+  const legacyId = managedCacheId("win32", descriptor.id, descriptor.version);
+  const cacheIds = os.platform() === "linux"
+    ? fs.readdirSync(toolchainsRoot).filter((name) => name === legacyId.toLowerCase()
+      || (name.startsWith(legacyId.toLowerCase() + "_") && /^[a-f0-9]{64}$/.test(name.slice(legacyId.length + 1))))
+    : [legacyId];
+  for (const id of cacheIds) {
+    const cacheRoot = path.join(toolchainsRoot, id);
+    if (!isDescendant(toolchainsRoot, cacheRoot)) {
+      throw new Error("Refusing to purge a toolchain cache outside the executor root.");
+    }
+    fs.rmSync(cacheRoot, { recursive: true, force: true });
   }
-  fs.rmSync(cacheRoot, { recursive: true, force: true });
 }
 
 export interface CreateExecutorWorkspaceOptions {
@@ -234,7 +241,7 @@ export async function importManagedToolchain(
   if (executableWithinSource.startsWith("..") || path.isAbsolute(executableWithinSource)) {
     throw new Error("TOOLCHAIN_NOT_SANDBOX_COMPATIBLE");
   }
-  const cacheId = managedCacheId(descriptor.id, version);
+  const cacheId = managedCacheId(os.platform(), descriptor.id, version, packageDigest);
   const destinationRoot = path.join(health.executorRoot, "toolchains", cacheId);
   const marker = path.join(destinationRoot, ".judgedesk-import-complete");
   const expectedMarker = managedCacheMarker(
@@ -785,10 +792,6 @@ function canonicalizeForContainment(value: string): string {
 
   const canonicalExistingPath = fs.realpathSync(existingPath);
   return path.resolve(canonicalExistingPath, ...missingComponents);
-}
-
-function managedCacheId(packageId: string, version: string): string {
-  return `${packageId}_${version.replaceAll(/[^A-Za-z0-9_.-]/g, "_")}`;
 }
 
 function descriptorEntrypoint(

@@ -52,6 +52,8 @@ fn build_live_candidates(kind: &str, family: &str, target: &str) -> Vec<serde_js
 }
 
 fn build_profile_json(
+    state: &AppState,
+    revision: u64,
     app_data_dir: &std::path::Path,
     spec: ProfileBuildSpec<'_>,
 ) -> serde_json::Value {
@@ -70,10 +72,12 @@ fn build_profile_json(
         candidates,
     } = spec;
     let mode = sel.mode.as_str();
-    let resolved = crate::toolchains::discovery::resolve_toolchain_for_profile_in(
-        Some(app_data_dir),
+    let resolved = state.toolchain_observation.resolve_profile(
+        state,
+        revision,
+        app_data_dir,
         id,
-        Some(mode),
+        mode,
         sel.local_path.as_deref(),
     );
     let is_ready =
@@ -220,7 +224,15 @@ fn build_contract_toolchains_response(
     mutations_blocked: bool,
 ) -> serde_json::Value {
     let is_windows = cfg!(windows);
-    let platform = if is_windows { "win32" } else { "darwin" };
+    let is_linux = cfg!(target_os = "linux");
+    let has_managed_cpp = is_windows || is_linux;
+    let platform = if is_windows {
+        "win32"
+    } else if is_linux {
+        "linux"
+    } else {
+        "darwin"
+    };
     let arch = if cfg!(target_arch = "x86_64") {
         "x64"
     } else {
@@ -229,32 +241,34 @@ fn build_contract_toolchains_response(
     let toolchains_dir = app_data_dir.join("toolchains");
     let digest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
-    let (cpp_profile, c_profile) = if is_windows {
-        let cpp_root = toolchains_dir
-            .join("gcc-windows-x64")
-            .to_string_lossy()
-            .into_owned();
+    let (cpp_profile, mut c_profile) = if has_managed_cpp {
+        let gcc_id = if is_windows {
+            "gcc-windows-x64"
+        } else {
+            "gcc-linux-x64"
+        };
+        let cpp_root = toolchains_dir.join(gcc_id).to_string_lossy().into_owned();
         let cpp_exe = toolchains_dir
-            .join("gcc-windows-x64")
+            .join(gcc_id)
             .join("bin")
-            .join("g++.exe")
+            .join(if is_windows { "g++.exe" } else { "g++" })
             .to_string_lossy()
             .into_owned();
         let c_exe = toolchains_dir
-            .join("gcc-windows-x64")
+            .join(gcc_id)
             .join("bin")
-            .join("gcc.exe")
+            .join(if is_windows { "gcc.exe" } else { "gcc" })
             .to_string_lossy()
             .into_owned();
         let gcc_pkg = json!({
             "downloadAvailable": false,
-            "id": "gcc-windows-x64",
+            "id": gcc_id,
             "installed": true,
             "integrity": "verified-receipt",
             "origin": "downloaded",
             "progress": {
                 "bytesReceived": 0,
-                "id": "gcc-windows-x64",
+                "id": gcc_id,
                 "percent": 0,
                 "status": "idle",
                 "totalBytes": 0
@@ -279,7 +293,7 @@ fn build_contract_toolchains_response(
             "certification": {
                 "canCertify": false,
                 "required": false,
-                "supported": true
+                "supported": is_windows
             },
             "detected": true,
             "displayNameKey": "languages.cpp",
@@ -287,7 +301,7 @@ fn build_contract_toolchains_response(
             "id": "cpp-legacy-v1",
             "kind": "cpp",
             "localPolicy": {
-                "executionMode": "freeze_required",
+                "executionMode": if is_windows { "freeze_required" } else { "quick_verified_direct" },
                 "supportedVersions": [
                     "4.8.0–<18.0.0",
                     "majors: 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17"
@@ -469,8 +483,16 @@ fn build_contract_toolchains_response(
         (cpp, c)
     };
 
+    if is_linux {
+        c_profile["localPolicy"]["executionMode"] = json!("quick_verified_direct");
+        c_profile["sources"]["local_auto"] = json!({ "available": true });
+        c_profile["sources"]["local_path"] = json!({ "available": true });
+    }
+
     let py_pkg_id = if is_windows {
         "python-windows-x64"
+    } else if is_linux {
+        "python-linux-x64"
     } else {
         "python-macos-arm64"
     };
@@ -552,12 +574,16 @@ fn build_contract_toolchains_response(
 
     let pas_pkg_id = if is_windows {
         "fpc-windows-x64"
+    } else if is_linux {
+        "fpc-linux-x64"
     } else {
         "fpc-macos-arm64"
     };
     let pas_root = toolchains_dir.join(pas_pkg_id);
     let pas_exe = if is_windows {
         pas_root.join("bin").join("ppcx64.exe")
+    } else if is_linux {
+        pas_root.join("bin").join("ppcx64")
     } else {
         pas_root.join("bin").join("fpc")
     };
@@ -633,6 +659,8 @@ fn build_contract_toolchains_response(
 
     let java_pkg_id = if is_windows {
         "temurin21-windows-x64"
+    } else if is_linux {
+        "temurin21-linux-x64"
     } else {
         "temurin21-macos-arm64"
     };
@@ -713,6 +741,8 @@ fn build_contract_toolchains_response(
 
     let scratch_pkg_id = if is_windows {
         "scratch-windows-x64"
+    } else if is_linux {
+        "scratch-linux-x64"
     } else {
         "scratch-macos-arm64"
     };
@@ -795,11 +825,11 @@ fn build_contract_toolchains_response(
         "arch": arch,
         "capabilities": {
             "cpp": {
-                "checkerReady": is_windows,
-                "detected": is_windows,
-                "installable": is_windows,
-                "managed": is_windows,
-                "submissionReady": is_windows
+                "checkerReady": has_managed_cpp,
+                "detected": has_managed_cpp,
+                "installable": has_managed_cpp,
+                "managed": has_managed_cpp,
+                "submissionReady": has_managed_cpp
             },
             "python": {
                 "checkerReady": true,
@@ -857,7 +887,11 @@ fn build_contract_toolchains_response(
     })
 }
 
-pub async fn handle_toolchains(State(state): State<AppState>) -> impl IntoResponse {
+fn build_toolchains_response(
+    state: &AppState,
+    store: &crate::server::state::ToolchainStore,
+    mutations_blocked: bool,
+) -> serde_json::Value {
     let platform = if cfg!(windows) {
         "win32"
     } else if cfg!(target_os = "macos") {
@@ -871,20 +905,10 @@ pub async fn handle_toolchains(State(state): State<AppState>) -> impl IntoRespon
         "arm64"
     };
     let is_windows = cfg!(windows);
-    let mutations_blocked = state.has_active_judge_jobs();
 
-    let store = state
-        .toolchains
-        .read()
-        .map(|l| l.clone())
-        .unwrap_or_default();
     let app_data_dir = store.effective_app_data_dir();
     if crate::toolchains::discovery::is_seeded_contract_fixture_env(&app_data_dir) {
-        return Json(build_contract_toolchains_response(
-            &app_data_dir,
-            &store,
-            mutations_blocked,
-        ));
+        return build_contract_toolchains_response(&app_data_dir, store, mutations_blocked);
     }
     let installed_packages = store.effective_installed_packages();
 
@@ -1027,6 +1051,8 @@ pub async fn handle_toolchains(State(state): State<AppState>) -> impl IntoRespon
     let scratch_candidates = build_live_candidates("scratch", "turbowarp", host_target);
 
     let cpp_profile = build_profile_json(
+        state,
+        store.revision,
         &app_data_dir,
         ProfileBuildSpec {
             id: "cpp",
@@ -1044,6 +1070,8 @@ pub async fn handle_toolchains(State(state): State<AppState>) -> impl IntoRespon
         },
     );
     let c_profile = build_profile_json(
+        state,
+        store.revision,
         &app_data_dir,
         ProfileBuildSpec {
             id: "c",
@@ -1061,6 +1089,8 @@ pub async fn handle_toolchains(State(state): State<AppState>) -> impl IntoRespon
         },
     );
     let python_profile = build_profile_json(
+        state,
+        store.revision,
         &app_data_dir,
         ProfileBuildSpec {
             id: "python",
@@ -1078,6 +1108,8 @@ pub async fn handle_toolchains(State(state): State<AppState>) -> impl IntoRespon
         },
     );
     let pascal_profile = build_profile_json(
+        state,
+        store.revision,
         &app_data_dir,
         ProfileBuildSpec {
             id: "pascal",
@@ -1095,6 +1127,8 @@ pub async fn handle_toolchains(State(state): State<AppState>) -> impl IntoRespon
         },
     );
     let java_profile = build_profile_json(
+        state,
+        store.revision,
         &app_data_dir,
         ProfileBuildSpec {
             id: "java",
@@ -1112,6 +1146,8 @@ pub async fn handle_toolchains(State(state): State<AppState>) -> impl IntoRespon
         },
     );
     let scratch_profile = build_profile_json(
+        state,
+        store.revision,
         &app_data_dir,
         ProfileBuildSpec {
             id: "scratch",
@@ -1197,7 +1233,7 @@ pub async fn handle_toolchains(State(state): State<AppState>) -> impl IntoRespon
 
     let distribution = crate::server::routes::system::resolve_distribution_mode(&app_data_dir);
 
-    Json(json!({
+    json!({
         "distribution": distribution,
         "platform": platform,
         "arch": arch,
@@ -1280,7 +1316,26 @@ pub async fn handle_toolchains(State(state): State<AppState>) -> impl IntoRespon
             }
         },
         "toolchains": toolchains
-    }))
+    })
+}
+
+pub async fn handle_toolchains(State(state): State<AppState>) -> impl IntoResponse {
+    let mutations_blocked = state.has_active_judge_jobs();
+    let store = state
+        .toolchains
+        .read()
+        .map(|l| l.clone())
+        .unwrap_or_else(|e| e.into_inner().clone());
+    let state_for_blocking = state.clone();
+    let store_for_blocking = store.clone();
+    match tokio::task::spawn_blocking(move || {
+        build_toolchains_response(&state_for_blocking, &store_for_blocking, mutations_blocked)
+    })
+    .await
+    {
+        Ok(payload) => Json(payload),
+        Err(_) => Json(build_toolchains_response(&state, &store, mutations_blocked)),
+    }
 }
 
 fn mutation_blocked_response() -> (StatusCode, Json<serde_json::Value>) {
@@ -1308,6 +1363,7 @@ pub async fn handle_toolchains_rescan(State(state): State<AppState>) -> impl Int
         lock.installed_packages = discovered;
         lock.revision = lock.revision.saturating_add(1);
     }
+    state.invalidate_toolchain_observation();
     (
         StatusCode::ACCEPTED,
         Json(json!({
@@ -1365,6 +1421,7 @@ pub async fn handle_toolchains_execution_policy(
             format!("{serialized}\n"),
         );
     }
+    state.invalidate_toolchain_observation();
     (
         StatusCode::OK,
         Json(json!({
@@ -1449,6 +1506,7 @@ pub async fn handle_toolchains_preference(
         }
         revision = lock.revision;
     }
+    state.invalidate_toolchain_observation();
 
     (
         StatusCode::OK,
@@ -1526,7 +1584,7 @@ pub async fn handle_toolchains_certification_plan(
         return mutation_blocked_response();
     }
 
-    if profile_id == "cpp-legacy-v1" && cfg!(target_os = "macos") {
+    if profile_id == "cpp-legacy-v1" && !cfg!(windows) {
         return (
             StatusCode::UNPROCESSABLE_ENTITY,
             Json(json!({
@@ -1619,7 +1677,7 @@ pub async fn handle_toolchains_certify(
     let parsed_body: serde_json::Value =
         serde_json::from_slice(&body).unwrap_or_else(|_| json!({}));
 
-    if profile_id == "cpp-legacy-v1" && cfg!(target_os = "macos") {
+    if profile_id == "cpp-legacy-v1" && !cfg!(windows) {
         return (
             StatusCode::UNPROCESSABLE_ENTITY,
             Json(json!({
@@ -1667,6 +1725,7 @@ pub async fn handle_toolchains_certify(
                 &canon_exe,
             ) {
                 Ok(snapshot) => {
+                    state.invalidate_toolchain_observation();
                     let cert = json!({
                         "certificateId": format!("cert-local-{}", &snapshot.tree_digest[..12]),
                         "certifiedAt": "2026-10-18T00:00:00Z",
@@ -1703,6 +1762,7 @@ pub async fn handle_toolchains_certify(
         }
     }
 
+    state.invalidate_toolchain_observation();
     (
         StatusCode::OK,
         Json(json!({
@@ -1739,6 +1799,9 @@ pub async fn handle_toolchains_diagnose(
         local_path.as_deref(),
     )
     .await;
+
+    #[cfg(target_os = "linux")]
+    state.invalidate_toolchain_observation();
 
     Json(json!({
         "success": result.success,
@@ -1798,6 +1861,7 @@ pub async fn handle_toolchains_custom_path(
         );
         let _ = lock.persist_selections();
     }
+    state.invalidate_toolchain_observation();
 
     (
         StatusCode::OK,
@@ -1842,6 +1906,7 @@ pub async fn handle_toolchains_install(
         let _ = lock.persist_selections();
         revision = lock.revision;
     }
+    state.invalidate_toolchain_observation();
     (
         StatusCode::ACCEPTED,
         Json(json!({
@@ -1884,6 +1949,7 @@ pub async fn handle_toolchains_uninstall(
         }
         let _ = lock.persist_selections();
     }
+    state.invalidate_toolchain_observation();
     (
         StatusCode::OK,
         Json(json!({

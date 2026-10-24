@@ -1,0 +1,747 @@
+{
+  "date": "2026-10-24",
+  "scope": "Integrated announcement implementation with owner-approved public trust; full gate passed; manual signing environment configured; source pin/secret/Pages and release acceptance pending",
+  "overallFullGatePassed": true,
+  "checks": [
+    {
+      "command": "npm run check:fast",
+      "exitCode": 0,
+      "phase": "baseline and after implementation"
+    },
+    {
+      "command": "node --import tsx --test scripts/announcements/payload.test.ts scripts/announcements/signatures.test.ts",
+      "exitCode": 0,
+      "tests": 16,
+      "passed": 16,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "command": "node node_modules/typescript/bin/tsc --noEmit --strict --skipLibCheck --target ES2022 --module ESNext --moduleResolution bundler --resolveJsonModule --allowSyntheticDefaultImports shared/announcements.ts scripts/announcements/validate-payload.ts scripts/announcements/signatures.ts scripts/announcements/payload.test.ts scripts/announcements/signatures.test.ts",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run release:check-version",
+      "exitCode": 0,
+      "version": "1.6.0"
+    },
+    {
+      "command": "npm run corpus:check",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run check:full",
+      "exitCode": 1,
+      "rustStepsPassed": 5,
+      "rustStepsFailed": 4,
+      "reason": "MSVC link.exe and Windows SDK RC.EXE unavailable; stopped before server/parity release stages"
+    },
+    {
+      "command": "npm run test:server",
+      "exitCode": 1,
+      "reason": "build:executor failed because Visual Studio discovery vswhere.exe was missing"
+    },
+    {
+      "command": "node scripts/run-all-tests.js",
+      "exitCode": 1,
+      "diagnosticOnly": true,
+      "testFiles": 145,
+      "tests": 1013,
+      "passed": 1001,
+      "failed": 2,
+      "existingSkipped": 10,
+      "reason": "Rust golden parity startup and production Rust binary build failed because link.exe was unavailable",
+      "nodeGoldenParityPassed": 30
+    },
+    {
+      "command": "cargo test --locked --offline --manifest-path <isolated native verifier manifest>",
+      "exitCode": 0,
+      "platform": "Linux via WSL",
+      "rustVersion": "1.97.1",
+      "sameSourceAsApp": true,
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "ignored": 0,
+      "filtered": 0,
+      "fullTauriBuild": false
+    },
+    {
+      "command": "cargo clippy --locked --offline --all-targets --manifest-path <isolated native verifier manifest> -- -D warnings",
+      "exitCode": 0,
+      "platform": "Linux via WSL",
+      "fullTauriBuild": false
+    },
+    {
+      "command": "npm run check:fast",
+      "exitCode": 0,
+      "phase": "after native additions"
+    },
+    {
+      "command": "node --import tsx --test scripts/announcements/payload.test.ts scripts/announcements/signatures.test.ts",
+      "exitCode": 0,
+      "phase": "after native additions",
+      "tests": 16,
+      "passed": 16,
+      "skipped": 0
+    },
+    {
+      "command": "npm run check:full",
+      "exitCode": 1,
+      "phase": "after native additions",
+      "rustStepsPassed": 5,
+      "rustStepsFailed": 4,
+      "reason": "Core and Tauri clippy/test cannot link: link.exe missing. All fmt steps and executor clippy/test passed; stopped before server/parity stages."
+    },
+    {
+      "command": "npm run test:server",
+      "exitCode": 1,
+      "phase": "after native additions",
+      "reason": "build:executor stopped before tests: vswhere.exe missing"
+    },
+    {
+      "command": "cargo test --locked --manifest-path src-tauri/Cargo.toml announcements",
+      "exitCode": 0,
+      "phase": "after Windows toolchain restoration",
+      "platform": "Windows x64",
+      "tests": 9,
+      "passed": 9,
+      "failed": 0,
+      "ignored": 0,
+      "unrelatedLibraryTestsFiltered": 24,
+      "tauriTestProfileCompiled": true
+    },
+    {
+      "command": "npm run check:full",
+      "exitCode": 1,
+      "phase": "after Windows toolchain restoration",
+      "rustStepsPassed": 8,
+      "rustStepsFailed": 1,
+      "reason": "Core test suite reports failure in step4_lifecycle_config_cancel_test. All fmt/clippy and executor/Tauri tests pass. Server/parity stages not reached; no missing-tool errors remain."
+    },
+    {
+      "command": "cargo test --locked --manifest-path crates/judgedesk-core/Cargo.toml --test step4_lifecycle_config_cancel_test -- --test-threads=1 --nocapture",
+      "exitCode": 0,
+      "phase": "diagnostic after aggregate failure",
+      "runs": 2,
+      "testsPerRun": 6,
+      "passedPerRun": 6,
+      "ignoredPerRun": 0,
+      "filteredPerRun": 0,
+      "initialFailureRootCauseResolved": false
+    },
+    {
+      "command": "npm run test:server",
+      "exitCode": 0,
+      "phase": "after Windows toolchain restoration",
+      "tests": 1013,
+      "passed": 1003,
+      "failed": 0,
+      "existingSkipped": 10,
+      "executorReleaseBuildPassed": true,
+      "corpusPreflightPassed": true,
+      "nodeGoldenParityPassed": 30,
+      "rustGoldenParityPassed": 30
+    },
+    {
+      "command": "npm run test:themis-parity",
+      "exitCode": 0,
+      "phase": "after Windows toolchain restoration",
+      "nodeFixturesPassed": 67,
+      "rustCheckerSuitePassed": true,
+      "cppSourceFixturesPassed": 67,
+      "windowsPackagedFixturesPassed": 67,
+      "packagedSha256Passed": true,
+      "liveThemisDllOracleRun": false
+    },
+    {
+      "command": "npm run release:check-version",
+      "exitCode": 0,
+      "phase": "after Windows toolchain restoration",
+      "version": "1.6.0"
+    },
+    {
+      "command": "node --import tsx --test scripts/run-rust-gates.test.js scripts/structural-gates.test.ts",
+      "exitCode": 0,
+      "phase": "after gate diagnostic fix",
+      "tests": 11,
+      "passed": 11,
+      "skipped": 0
+    },
+    {
+      "command": "node --test scripts/run-rust-gates.test.js",
+      "exitCode": 0,
+      "phase": "after gate diagnostic fix",
+      "platform": "Linux via WSL",
+      "nodeVersion": "24.19.0",
+      "tests": 3,
+      "passed": 3,
+      "skipped": 0
+    },
+    {
+      "command": "restore old 25-line logging in ignored local mutant and run assertion-visibility regression",
+      "expectedExitCode": 1,
+      "actualExitCode": 1,
+      "mutationRejected": true
+    },
+    {
+      "command": "npm run check:full",
+      "exitCode": 0,
+      "phase": "after gate diagnostic fix, before metadata slice",
+      "rustStepsPassed": 9,
+      "rustStepsFailed": 0,
+      "serverTests": 1016,
+      "serverPassed": 1006,
+      "serverFailed": 0,
+      "existingSkipped": 10,
+      "staticCheckerParityPassed": true,
+      "version": "1.6.0",
+      "originalCoreFailureReproduced": false,
+      "originalCoreFailureCauseKnown": false
+    },
+    {
+      "command": "cargo test --offline --manifest-path src-tauri/Cargo.toml announcements",
+      "phase": "metadata initial RED after approved lock edges resolved",
+      "expectedExitCode": 101,
+      "actualExitCode": 101,
+      "reason": "parse_payload and payload models absent"
+    },
+    {
+      "command": "cargo test --locked --manifest-path src-tauri/Cargo.toml announcements",
+      "phase": "normalized value parity RED",
+      "expectedExitCode": 101,
+      "actualExitCode": 101,
+      "reason": "Default serde_json decimal conversion diverged from Node at safe-integer boundaries"
+    },
+    {
+      "command": "cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
+      "phase": "metadata with float_roundtrip",
+      "exitCode": 0,
+      "platform": "Windows x64"
+    },
+    {
+      "command": "cargo test --locked --manifest-path src-tauri/Cargo.toml announcements",
+      "phase": "metadata with float_roundtrip",
+      "exitCode": 0,
+      "platform": "Windows x64",
+      "tests": 16,
+      "passed": 16,
+      "failed": 0,
+      "ignored": 0,
+      "unrelatedLibraryTestsFiltered": 24,
+      "sharedCases": 154,
+      "comparesAcceptedValues": true
+    },
+    {
+      "command": "node --import tsx --test scripts/announcements/payload.test.ts scripts/announcements/signatures.test.ts scripts/announcements/parity.test.ts",
+      "phase": "metadata",
+      "exitCode": 0,
+      "tests": 170,
+      "passed": 170,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "command": "strict scoped TypeScript compilation including scripts/announcements/parity.test.ts",
+      "phase": "metadata",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run check:full",
+      "phase": "after native metadata and float_roundtrip, latest complete invocation",
+      "exitCode": 0,
+      "rustStepsPassed": 9,
+      "rustStepsFailed": 0,
+      "serverTests": 1170,
+      "serverPassed": 1160,
+      "serverFailed": 0,
+      "existingSkipped": 10,
+      "staticCheckerParityPassed": true,
+      "nodeCheckerFixtures": 67,
+      "cppCheckerFixtures": 67,
+      "windowsPackagedCheckerFixtures": 67,
+      "version": "1.6.0"
+    },
+    {
+      "command": "cargo test --locked --manifest-path crates/judgedesk-core/Cargo.toml --features serde_json/float_roundtrip --lib --test api_contracts_test --test discovery_test --test rational_test --test scoring_test --test test_wellformed_test -- --test-threads=1",
+      "phase": "core JSON feature unification regression check",
+      "exitCode": 0,
+      "tests": 51,
+      "passed": 51,
+      "failed": 0,
+      "ignored": 0,
+      "filtered": 0
+    },
+    {
+      "command": "native announcement store tests, initial RED",
+      "expectedFailure": true,
+      "reason": "Store implementation module absent"
+    },
+    {
+      "command": "native missing-nullable-field regression, RED",
+      "expectedExitCode": 101,
+      "actualExitCode": 101,
+      "reason": "Missing readAt was interpreted as unread"
+    },
+    {
+      "command": "native identical-refetch cache regression, RED",
+      "expectedExitCode": 101,
+      "actualExitCode": 101,
+      "reason": "Idempotent early return skipped missing/corrupt blob checks"
+    },
+    {
+      "command": "cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
+      "phase": "P2 persistence",
+      "exitCode": 0
+    },
+    {
+      "command": "cargo test --locked --manifest-path src-tauri/Cargo.toml announcements",
+      "phase": "P2 persistence",
+      "exitCode": 0,
+      "platform": "Windows x64",
+      "tests": 32,
+      "passed": 32,
+      "storeTests": 16,
+      "failed": 0,
+      "ignored": 0,
+      "unrelatedLibraryTestsFiltered": 24,
+      "realChildProcessCrashBoundaries": 3,
+      "actualWindowsLockedFileTest": true,
+      "actualWindowsJunctionTest": true,
+      "exact16MiBStateTest": true
+    },
+    {
+      "command": "npm run check:full",
+      "phase": "P2 persistence before remaining dependency installation",
+      "exitCode": 0,
+      "rustStepsPassed": 9,
+      "rustStepsFailed": 0,
+      "serverTests": 1170,
+      "serverPassed": 1160,
+      "serverFailed": 0,
+      "existingSkipped": 10,
+      "staticCheckerParityPassed": true,
+      "version": "1.6.0"
+    },
+    {
+      "command": "npm audit --json",
+      "phase": "before remaining dependency installation",
+      "exitCode": 0,
+      "reportedVulnerabilities": 0
+    },
+    {
+      "command": "install six explicitly approved direct dependencies and inspect lock delta",
+      "phase": "P0 dependency completion",
+      "exitCode": 0,
+      "npmNewLockEntries": 38,
+      "cargoNewPackages": 6,
+      "existingPackageVersionsChanged": 0,
+      "existingCargoEdgesPreserved": true,
+      "cargoLockNewLinesOnly": 55
+    },
+    {
+      "command": "cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings",
+      "phase": "after preserving baseline Cargo graph",
+      "exitCode": 0
+    },
+    {
+      "command": "cargo test --locked --manifest-path src-tauri/Cargo.toml announcements",
+      "phase": "after preserving baseline Cargo graph",
+      "exitCode": 0,
+      "tests": 35,
+      "passed": 35,
+      "failed": 0,
+      "ignored": 0,
+      "unrelatedLibraryTestsFiltered": 24,
+      "dependencyApiProbes": 3,
+      "externalHttpsRequestPerformed": false,
+      "actualWebViewIpcTest": false
+    },
+    {
+      "command": "npm run check:fast",
+      "phase": "after npm additions",
+      "exitCode": 0
+    },
+    {
+      "command": "strict tsc and runtime dom-dependency-probe.ts",
+      "phase": "DOM API smoke",
+      "exitCode": 0,
+      "productionSanitizerImplemented": false
+    },
+    {
+      "command": "npm run build:frontend -- --outDir docs/verification/admin-announcements/artifacts/frontend-dependencies",
+      "exitCode": 0
+    },
+    {
+      "command": "npm audit --json",
+      "phase": "after remaining dependency installation",
+      "exitCode": 0,
+      "reportedVulnerabilities": 0
+    },
+    {
+      "command": "OSV querybatch exact-version lookup",
+      "newCargoPackagesQueried": 6,
+      "advisoriesReturned": 0,
+      "fullCargoAudit": false
+    },
+    {
+      "command": "npm run check:full",
+      "phase": "after remaining dependencies before executor input revalidation",
+      "exitCode": 1,
+      "rustStepsPassed": 9,
+      "serverTests": 1170,
+      "serverPassed": 1159,
+      "serverFailed": 1,
+      "existingSkipped": 10,
+      "reason": "Existing raw package.json executor-freeze hash stale after approved dependency additions; no production test failure beyond this identity assertion"
+    },
+    {
+      "command": "executor raw-input/package diff/artifact revalidation",
+      "exitCode": 0,
+      "changedInputs": [
+        "package.json"
+      ],
+      "unchangedRawInputs": 31,
+      "nativeFingerprintUnchanged": true,
+      "windowsArtifactIdentityUnchanged": true,
+      "newCleanBuildClaimed": false
+    },
+    {
+      "command": "cargo test --locked --manifest-path crates/judgedesk-core/Cargo.toml --test executor_boundary_test -- --test-threads=1",
+      "phase": "executor package-input revalidation",
+      "exitCode": 0,
+      "tests": 28,
+      "passed": 28,
+      "failed": 0,
+      "ignored": 0,
+      "filtered": 0
+    },
+    {
+      "command": "node --test scripts/build-native-executor.test.js",
+      "phase": "after receipt input hash revalidation",
+      "exitCode": 0,
+      "tests": 3,
+      "passed": 3,
+      "skipped": 0
+    },
+    {
+      "command": "npm run release:check-version",
+      "phase": "after receipt input hash revalidation",
+      "exitCode": 0,
+      "version": "1.6.0"
+    },
+    {
+      "command": "npm run check:full",
+      "phase": "six approved dependencies after executor receipt revalidation; before P3",
+      "exitCode": 0,
+      "rustStepsPassed": 9,
+      "serverTests": 1170,
+      "serverPassed": 1160,
+      "serverFailed": 0,
+      "existingSkipped": 10,
+      "staticCheckerParityPassed": true,
+      "version": "1.6.0",
+      "log": "artifacts/check-full-remaining-revalidated.log"
+    },
+    {
+      "command": "focused Node announcement suites",
+      "phase": "integrated",
+      "exitCode": 0,
+      "tests": 194,
+      "passed": 194,
+      "failed": 0,
+      "skipped": 0,
+      "log": "artifacts/focused-final-integrated.log"
+    },
+    {
+      "command": "Windows announcement tests and Clippy",
+      "phase": "integrated",
+      "exitCode": 0,
+      "tests": 50,
+      "passed": 50,
+      "ignored": 0,
+      "filtered": 24,
+      "log": "artifacts/304-corrupt-green.log"
+    },
+    {
+      "command": "Linux announcement tests and all-targets Clippy",
+      "phase": "integrated",
+      "exitCode": 0,
+      "tests": 49,
+      "passed": 49,
+      "ignored": 0,
+      "filtered": 22,
+      "log": "artifacts/linux-final-integrated.log"
+    },
+    {
+      "command": "Windows native WebView QA",
+      "passed": true,
+      "combinations": 8,
+      "fixtureFeed": true,
+      "productionEndToEnd": false,
+      "log": "artifacts/windows-webview-qa-eight-states.log"
+    },
+    {
+      "command": "Linux latest native WebView QA attempt",
+      "passed": false,
+      "reason": "Timed out; local static server had stopped during idle. Wrapper exit 0 is not acceptance. Restored prerequisite and rerun pending.",
+      "log": "artifacts/linux-final-integrated.log"
+    },
+    {
+      "command": "Linux fixed-endpoint native HTTPS probe",
+      "passed": true,
+      "endpointStatus": 404,
+      "feedReadinessVerified": false,
+      "log": "artifacts/linux-https-probe.log"
+    },
+    {
+      "command": "Windows release-profile reference decoder probe via canonical local provenance",
+      "passed": true,
+      "observedPeakWorkingSetBytes": 136683520,
+      "hardRssLimitVerified": false,
+      "installerProduced": false,
+      "log": "artifacts/windows-media-release-provenance.log"
+    },
+    {
+      "command": "Linux native WebView QA after restoring static server",
+      "passed": true,
+      "combinations": 8,
+      "fixtureFeed": true,
+      "productionEndToEnd": false,
+      "log": "artifacts/linux-webview-qa-eight-states.log"
+    },
+    {
+      "command": "npm run check:fast",
+      "phase": "integrated final",
+      "exitCode": 0,
+      "log": "artifacts/check-fast-integrated-final.log"
+    },
+    {
+      "command": "YAML parse staged announcements-pages.yml with existing WSL PyYAML",
+      "exitCode": 0,
+      "jobs": [
+        "build",
+        "sign",
+        "deploy"
+      ],
+      "actualActionsRun": false
+    },
+    {
+      "command": "parse and verify explicit native WebView reports",
+      "passed": true,
+      "hosts": 2,
+      "combinationsEach": 8,
+      "report": "native-webview-results.json"
+    },
+    {
+      "command": "npm run check:full",
+      "phase": "integrated service/UI/publisher",
+      "exitCode": 0,
+      "rustStepsPassed": 9,
+      "serverTests": 1194,
+      "serverPassed": 1184,
+      "serverFailed": 0,
+      "existingSkipped": 10,
+      "staticCheckerParityFixturesPerTier": 67,
+      "staticCheckerParityPassed": true,
+      "version": "1.6.0",
+      "log": "artifacts/check-full-announcements-integrated.log"
+    },
+    {
+      "command": "Windows fixed-endpoint native HTTPS probe with QA manifest",
+      "exitCode": 0,
+      "tlsVerified": true,
+      "endpointStatus": 404,
+      "feedReadinessVerified": false,
+      "log": "artifacts/windows-https-probe-manifest.log"
+    },
+    {
+      "command": "NotificationCenter DOM regression",
+      "exitCode": 1,
+      "phase": "empty-panel focus RED",
+      "reason": "Last-row deletion attempted to focus disabled mark-all button",
+      "log": "artifacts/empty-panel-focus-red.log"
+    },
+    {
+      "command": "NotificationCenter DOM regression",
+      "exitCode": 0,
+      "phase": "empty-panel focus GREEN",
+      "tests": 1,
+      "skipped": 0,
+      "log": "artifacts/empty-panel-focus-green.log"
+    },
+    {
+      "command": "windows native WebView QA final focus revision",
+      "passed": true,
+      "freshProfile": true,
+      "combinations": 8,
+      "emptyPanelFocusRegression": true,
+      "fixtureFeed": true,
+      "productionEndToEnd": false,
+      "log": "artifacts/windows-webview-qa-focus-fresh-profile.log"
+    },
+    {
+      "command": "linux native WebView QA final focus revision",
+      "passed": true,
+      "freshProfile": true,
+      "combinations": 8,
+      "emptyPanelFocusRegression": true,
+      "fixtureFeed": true,
+      "productionEndToEnd": false,
+      "log": "artifacts/linux-webview-qa-focus-fresh-profile.log"
+    },
+    {
+      "command": "Linux QA report completeness check before fresh profile",
+      "passed": false,
+      "reason": "Persisted cached HTML ran older QA bundle; missing new focus assertion. Not accepted for final source.",
+      "log": "artifacts/linux-webview-qa-focus-final.log"
+    },
+    {
+      "command": "npm run check:full",
+      "phase": "final source after native focus regression fix",
+      "exitCode": 0,
+      "rustStepsPassed": 9,
+      "serverTests": 1194,
+      "serverPassed": 1184,
+      "serverFailed": 0,
+      "existingSkipped": 10,
+      "staticCheckerParityFixturesPerTier": 67,
+      "staticCheckerParityPassed": true,
+      "version": "1.6.0",
+      "log": "artifacts/check-full-announcements-focus-final.log"
+    },
+    {
+      "command": "Official GitHub action/source and distribution read-only recheck",
+      "passed": true,
+      "verifiedActionPins": 6,
+      "nestedPagesUploadShaPinned": true,
+      "distributionHasPages": false,
+      "distributionMainProtected": false,
+      "remoteMutations": false,
+      "review": "PUBLISHER-REVIEW.md"
+    },
+    {
+      "command": "npm run test:desktop plus native UI inspection",
+      "phase": "final focus revision, isolated QA browser profile",
+      "startupPassed": true,
+      "bellBlockedBySiblingDialog": true,
+      "keyboardEnterTriggersPanelReload": true,
+      "escapeClosesPanel": true,
+      "backendRemainsReady": true,
+      "productionEndToEnd": false,
+      "log": "artifacts/windows-desktop-focus-final.log",
+      "screenshot": "artifacts/native-app-empty-focus-final.png"
+    },
+    {
+      "command": "Production trust tests RED",
+      "exitCode": 1,
+      "reason": "Owner-approved root absent before configuration",
+      "log": "artifacts/production-trust-red.log"
+    },
+    {
+      "command": "Trust/signature/publisher focused tests",
+      "exitCode": 0,
+      "tests": 11,
+      "passed": 11,
+      "skipped": 0,
+      "log": "artifacts/production-trust-green.log"
+    },
+    {
+      "command": "npm run check:fast",
+      "phase": "owner public trust",
+      "exitCode": 0,
+      "log": "artifacts/production-trust-check-fast.log"
+    },
+    {
+      "command": "Executor receipt preflight",
+      "phase": "owner public trust",
+      "exitCode": 0,
+      "tests": 3,
+      "log": "artifacts/production-trust-executor-preflight.log"
+    },
+    {
+      "command": "Linux all-targets Clippy and announcement tests",
+      "phase": "owner public trust",
+      "exitCode": 0,
+      "tests": 49,
+      "passed": 49,
+      "ignored": 0,
+      "filtered": 22,
+      "log": "artifacts/linux-production-trust.log"
+    },
+    {
+      "command": "Linux configured-key native QA initial assertion",
+      "passed": false,
+      "reason": "Harness expected revision zero; existing native empty-state contract starts at one",
+      "log": "artifacts/linux-webview-production-trust.log"
+    },
+    {
+      "command": "Linux configured-key native QA corrected contract",
+      "passed": true,
+      "combinations": 8,
+      "configuredKeyNativeInitialization": true,
+      "emptyPanelFocusRegression": true,
+      "fixtureFeed": true,
+      "productionEndToEnd": false,
+      "log": "artifacts/linux-webview-production-trust-corrected.log"
+    },
+    {
+      "command": "npm run check:full",
+      "phase": "owner-approved production public root",
+      "exitCode": 0,
+      "rustStepsPassed": 9,
+      "serverTests": 1196,
+      "serverPassed": 1186,
+      "serverFailed": 0,
+      "existingSkipped": 10,
+      "staticCheckerParityFixturesPerTier": 67,
+      "staticCheckerParityPassed": true,
+      "version": "1.6.0",
+      "log": "artifacts/check-full-production-trust.log"
+    },
+    {
+      "command": "Windows configured-key native WebView QA",
+      "exitCode": 0,
+      "passed": true,
+      "combinations": 8,
+      "configuredKeyNativeInitialization": true,
+      "emptyPanelFocusRegression": true,
+      "fixtureFeed": true,
+      "productionEndToEnd": false,
+      "log": "artifacts/windows-webview-production-trust.log"
+    }
+  ],
+  "notClaimed": [
+    "Production private-key secret provisioning or live signed Pages publication",
+    "macOS WKWebView acceptance",
+    "Ten installed-package combinations (Windows/macOS Core/Full; Linux Core/Full deb/rpm/AppImage)",
+    "Hard 64MiB process RAM ceiling or exhaustive malicious-image worst-case proof",
+    "Full RustSec cargo-audit scan",
+    "Adversarial image worst-case and resource impact while judging acceptance"
+  ],
+  "overallFullGateStatus": "passed complete normal invocation after owner-approved public trust configuration",
+  "releaseAcceptancePassed": false,
+  "productionKeyCustody": {
+    "decision": "owner creates and retains private key; supplies public key only",
+    "publicKeyReceived": true,
+    "agentGeneratedPrivateKey": false,
+    "keyId": "announcements-v1",
+    "rawPublicKeySha256": "77b1610dfaef5f7a5d09c9e698cdc329b28708cf1880360669ea838381dce195",
+    "privateSigningCapabilityVerified": false
+  },
+  "signingEnvironment": {
+    "manualApprovalRequired": true,
+    "requiredReviewer": "ducminh25",
+    "branch": "main",
+    "initiatorCanApproveOwnRun": true,
+    "readBackVerified": true,
+    "privateSecretPresent": false,
+    "record": "signing-environment.actual.json"
+  },
+  "sourcePinDecision": {
+    "mode": "retain local; owner chooses commits and pushes source",
+    "agentCreateBranchCommitPushOrPr": false,
+    "sourceCommitReceived": false,
+    "requiredInput": "actual pushed full 40-hex source commit containing publisher and approved public trust/dependencies"
+  }
+}

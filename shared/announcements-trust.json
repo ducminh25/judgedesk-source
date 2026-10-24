@@ -1,0 +1,10 @@
+{
+  "endpoint": "https://ducminh25.github.io/judgedesk/announcements/v1/feed.json",
+  "mediaPrefix": "https://ducminh25.github.io/judgedesk/announcements/v1/media/",
+  "keys": [
+    {
+      "keyId": "announcements-v1",
+      "publicKeyBase64": "PeSS4z5N+TqCun8CLre2XbaOK0BNT+18zFLyAIq0d+0="
+    }
+  ]
+}

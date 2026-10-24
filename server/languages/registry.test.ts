@@ -60,6 +60,14 @@ test("the live registry exposes approved profiles in deterministic UI order", ()
   );
 });
 
+test("Linux x64 exposes the six release profiles with explicit local execution policies", () => {
+  for (const entry of listRegisteredLanguageProfiles()) {
+    assert.ok(entry.profile.supportedHosts.some((host) => host.platform === "linux" && host.arch === "x64"));
+    assert.equal(getLocalExecutionModeForHost(entry.toolchainKind, "linux", "x64"),
+      ["cpp", "c", "python"].includes(entry.toolchainKind) ? "quick_verified_direct" : "managed_only");
+  }
+});
+
 test("local version policies use bounded compatibility ranges before the native probe", () => {
   const versions = (kind: Parameters<typeof getRegisteredProfileForKind>[0]) => {
     const policy = getRegisteredProfileForKind(kind).localVersionPolicy;

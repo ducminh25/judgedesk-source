@@ -81,10 +81,10 @@
         "depends": [
           "bubblewrap",
           "zenity",
-          "python3"
-        ],
-        "recommends": [
-          "gcc-c++"
+          "python3",
+          "gcc-c++",
+          "glibc-static",
+          "libstdc++-static"
         ]
       },
       "appimage": {

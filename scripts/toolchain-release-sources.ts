@@ -1,4 +1,5 @@
 import path from "node:path";
+import { LINUX_RELEASE_SOURCES } from "./linux-toolchain-sources.js";
 import {
   TOOLCHAIN_RELEASE_BLUEPRINTS,
 } from "../server/toolchains/manifest.js";
@@ -27,6 +28,9 @@ export type ToolchainPackagingRecipe =
     }
   | {
       kind: "fpc-macos-dmg";
+    }
+  | {
+      kind: "linux-gcc" | "linux-fpc";
     };
 
 export interface ToolchainUpstreamInput {
@@ -89,6 +93,7 @@ const FPC_SOURCEFORGE =
 export const TOOLCHAIN_RELEASE_SOURCES: Readonly<
   Record<string, ToolchainReleaseSource>
 > = Object.freeze({
+  ...LINUX_RELEASE_SOURCES,
   "gcc-windows-x64": {
     packageId: "gcc-windows-x64",
     platform: "win32",

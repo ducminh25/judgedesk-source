@@ -23,8 +23,7 @@ import {
   type InstalledToolchainPackageInspector,
 } from "./package-store.js";
 import {
-  getHostProductVersion,
-  isMinimumOsSupported,
+  isManagedHostSupported,
 } from "./host-compatibility.js";
 import {
   localExecutionFields,
@@ -86,7 +85,7 @@ export function resolveCachedManagedToolchain(
   const minimumOs = TOOLCHAIN_RELEASE_BLUEPRINTS[descriptor.id]?.minimumOs;
   if (
     minimumOs
-    && !isMinimumOsSupported(minimumOs, getHostProductVersion())
+    && !isManagedHostSupported(os.platform(), minimumOs)
   ) {
     return unavailable(
       kind,
@@ -139,13 +138,13 @@ export function resolveCachedManagedToolchain(
 }
 
 function mappedHost(): {
-  platform: "win32" | "darwin";
+  platform: "win32" | "darwin" | "linux";
   arch: "x64" | "arm64";
 } | null {
   const platform = os.platform();
   const arch = os.arch();
   if (
-    (platform !== "win32" && platform !== "darwin")
+    (platform !== "win32" && platform !== "darwin" && platform !== "linux")
     || (arch !== "x64" && arch !== "arm64")
   ) {
     return null;

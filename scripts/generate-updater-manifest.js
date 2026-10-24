@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { optionalLinuxReleaseAssets } from "./verify-public-release-assets.js";
 
 export function generateUpdaterManifest({
   assetsDirectory,
@@ -68,29 +69,13 @@ export function generateUpdaterManifest({
       }),
     },
   };
-  const optionalLinuxPlatforms = [
-    {
-      targets: ["linux-x86_64-deb-core", "linux-x86_64-core"],
-      edition: "core",
-      platform: "linux",
-      arch: "x86_64",
-      fileName: `JudgeDesk_${version}_amd64.deb`,
-    },
-    {
-      targets: ["linux-x86_64-rpm-core"],
-      edition: "core",
-      platform: "linux",
-      arch: "x86_64",
-      fileName: `JudgeDesk-${version}-1.x86_64.rpm`,
-    },
-    {
-      targets: ["linux-x86_64-appimage-core"],
-      edition: "core",
-      platform: "linux",
-      arch: "x86_64",
-      fileName: `JudgeDesk_${version}_amd64.AppImage`,
-    },
-  ];
+  const optionalLinuxPlatforms = optionalLinuxReleaseAssets(tag).map((variant) => ({
+    targets: variant.platforms,
+    edition: variant.edition,
+    platform: "linux",
+    arch: "x86_64",
+    fileName: variant.filename,
+  }));
   for (const linuxVariant of optionalLinuxPlatforms) {
     if (files.includes(linuxVariant.fileName)) {
       const entry = platform(linuxVariant);

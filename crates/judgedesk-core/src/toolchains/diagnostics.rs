@@ -70,7 +70,7 @@ pub struct ToolchainDiagnosticResult {
     pub error: Option<String>,
 }
 
-fn get_probe_source(kind: &str) -> (&'static str, &'static str) {
+fn get_probe_source(kind: &str, managed_linux: bool) -> (&'static str, &'static str) {
     match kind {
         "cpp" => (
             "probe.cpp",
@@ -83,6 +83,10 @@ fn get_probe_source(kind: &str) -> (&'static str, &'static str) {
         "python" => (
             "probe.py",
             "print(\"JUDGEDESK_PROBE_OK\")\n",
+        ),
+        "pascal" if managed_linux => (
+            "probe.pas",
+            "program Probe;\nuses cthreads, classes;\nbegin\n  writeln('JUDGEDESK_PROBE_OK');\nend.\n",
         ),
         "pascal" => (
             "probe.pas",
@@ -157,6 +161,20 @@ pub async fn diagnose_language_profile_in(
     preferred_mode: Option<&str>,
     preferred_path: Option<&str>,
 ) -> ToolchainDiagnosticResult {
+    let toolchain = super::discovery::resolve_toolchain_for_profile_in(
+        app_data_dir,
+        profile_id,
+        preferred_mode,
+        preferred_path,
+    );
+    diagnose_resolved_language_profile(profile_id, platform, toolchain)
+}
+
+pub(crate) fn diagnose_resolved_language_profile(
+    profile_id: &str,
+    platform: &ExecutorClient,
+    toolchain: super::discovery::ResolvedToolchain,
+) -> ToolchainDiagnosticResult {
     let kind = normalize_language_kind(profile_id);
 
     // 1. Health check
@@ -180,17 +198,10 @@ pub async fn diagnose_language_profile_in(
         };
     }
 
-    // 2. Resolve toolchain
-    let toolchain = super::discovery::resolve_toolchain_for_profile_in(
-        app_data_dir,
-        profile_id,
-        preferred_mode,
-        preferred_path,
-    );
     if !toolchain.ready || !toolchain.executable_path.exists() {
         if cfg!(target_os = "macos")
             && profile_id == "cpp-legacy-v1"
-            && preferred_mode == Some("managed")
+            && toolchain.source_mode == "managed"
         {
             return ToolchainDiagnosticResult {
                 success: false,
@@ -268,7 +279,10 @@ pub async fn diagnose_language_profile_in(
         };
     let workspace_dir = diag_workspace.root().to_path_buf();
 
-    let (file_name, source_code) = get_probe_source(kind);
+    let (file_name, source_code) = get_probe_source(
+        kind,
+        super::linux_managed::is_managed_linux_toolchain(&toolchain),
+    );
     let source_path =
         match diag_workspace.write_file(std::path::Path::new(file_name), source_code.as_bytes()) {
             Ok(p) => p,
@@ -295,6 +309,50 @@ pub async fn diagnose_language_profile_in(
     let staged_exe = workspace_dir.join(exe_name);
 
     match kind {
+        #[cfg(target_os = "linux")]
+        "cpp" | "c" | "pascal" | "java" => {
+            let start = Instant::now();
+            let output = crate::engine::compiler::compile_resolved_submission(
+                crate::engine::compiler::CompileSubmissionRequest {
+                    language: kind,
+                    source_path: &source_path,
+                    output_dir: &workspace_dir,
+                    platform,
+                    timeout_ms: None,
+                    extra_include_dirs: &[],
+                },
+                &toolchain,
+                None,
+            );
+            compile_time_ms = Some(start.elapsed().as_millis() as u64);
+            let prepared = if output.status == "OK" {
+                match output.executable.as_ref() {
+                    Some(executable) if kind == "java" => executable.is_dir(),
+                    Some(executable) => fs::copy(executable, &staged_exe).is_ok(),
+                    None => false,
+                }
+            } else {
+                false
+            };
+            if !prepared {
+                return ToolchainDiagnosticResult {
+                    success: false,
+                    profile_id: profile_id.to_string(),
+                    language: kind.to_string(),
+                    source_mode: Some(toolchain.source_mode),
+                    version: Some(toolchain.version),
+                    phase: "compilation".to_string(),
+                    compile_time_ms,
+                    execution_time_ms: None,
+                    peak_memory_kb: None,
+                    stdout: None,
+                    error: output.error.or_else(|| {
+                        Some("Diagnostic compiler produced no usable artifact.".into())
+                    }),
+                };
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
         "cpp" | "c" => {
             let start = Instant::now();
             let mut cmd = std::process::Command::new(&toolchain.executable_path);
@@ -377,6 +435,7 @@ pub async fn diagnose_language_profile_in(
                 };
             }
         }
+        #[cfg(not(target_os = "linux"))]
         "pascal" => {
             let start = Instant::now();
             let mut cmd = std::process::Command::new(&toolchain.executable_path);
@@ -458,6 +517,7 @@ pub async fn diagnose_language_profile_in(
                 };
             }
         }
+        #[cfg(not(target_os = "linux"))]
         "java" => {
             let start = Instant::now();
             let mut cmd = std::process::Command::new(&toolchain.executable_path);
@@ -578,6 +638,7 @@ pub async fn diagnose_language_profile_in(
                         let cache_id = super::discovery::managed_cache_id(
                             &receipt.package_id,
                             &receipt.version,
+                            &receipt.archive_sha256,
                         );
                         let relative_exe = receipt
                             .components
@@ -750,7 +811,12 @@ pub async fn diagnose_language_profile_in(
                     "-Djava.io.tmpdir=.".to_string(),
                     "-Duser.home=.".to_string(),
                     "-cp".to_string(),
-                    ".".to_string(),
+                    if cfg!(target_os = "linux") {
+                        "java_classes"
+                    } else {
+                        "."
+                    }
+                    .to_string(),
                     "Main".to_string(),
                 ]
             };
@@ -765,6 +831,7 @@ pub async fn diagnose_language_profile_in(
                         let _cache_id = super::discovery::managed_cache_id(
                             &receipt.package_id,
                             &receipt.version,
+                            &receipt.archive_sha256,
                         );
                         let relative_exe = if cfg!(windows) {
                             "bin/java.exe"
@@ -928,6 +995,7 @@ pub async fn diagnose_language_profile_in(
                         let cache_id = super::discovery::managed_cache_id(
                             &receipt.package_id,
                             &receipt.version,
+                            &receipt.archive_sha256,
                         );
                         let relative_exe = receipt
                             .components

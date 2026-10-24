@@ -1,6 +1,7 @@
 import {
   isLanguageProfileId,
   type LanguageProfile,
+  type HostPlatform,
   type LanguageProfileId,
   type ToolchainVersionPolicy,
 } from "./contracts.js";
@@ -36,7 +37,7 @@ export interface RegisteredLanguageProfile {
   toolchainKind: ToolchainKind;
   localVersionPolicy: ToolchainVersionPolicy;
   localExecution: readonly {
-    platform: "win32" | "darwin";
+    platform: HostPlatform;
     arch: "x64" | "arm64";
     mode: LocalExecutionMode;
   }[];
@@ -49,14 +50,16 @@ export interface RegisteredLanguageProfile {
 
 const WINDOWS_X64_HOST = { platform: "win32", arch: "x64" } as const;
 const MACOS_ARM64_HOST = { platform: "darwin", arch: "arm64" } as const;
+const LINUX_X64_HOST = { platform: "linux", arch: "x64" } as const;
 const BOTH_RELEASE_HOSTS = [WINDOWS_X64_HOST, MACOS_ARM64_HOST] as const;
+const MANAGED_RELEASE_HOSTS = [...BOTH_RELEASE_HOSTS, LINUX_X64_HOST] as const;
 
 const LOCAL_VERSION_POLICIES = {
   cpp: {
     kind: "host_matrix",
     rules: [
       {
-        hosts: [WINDOWS_X64_HOST],
+        hosts: [WINDOWS_X64_HOST, LINUX_X64_HOST],
         policy: {
           kind: "bounded_range",
           minInclusive: "4.8.0",
@@ -77,7 +80,7 @@ const LOCAL_VERSION_POLICIES = {
     kind: "host_matrix",
     rules: [
       {
-        hosts: [WINDOWS_X64_HOST],
+        hosts: [WINDOWS_X64_HOST, LINUX_X64_HOST],
         policy: {
           kind: "bounded_range",
           minInclusive: "4.8.0",
@@ -109,7 +112,7 @@ const LOCAL_VERSION_POLICIES = {
         version: "3.2.2",
         build: "official-stable",
         identityPolicyId: "fpc.target-units-linker-v1",
-        hosts: BOTH_RELEASE_HOSTS,
+        hosts: MANAGED_RELEASE_HOSTS,
       },
       {
         family: "free-pascal",
@@ -117,7 +120,7 @@ const LOCAL_VERSION_POLICIES = {
         version: "3.2.0",
         build: "official-stable",
         identityPolicyId: "fpc.target-units-linker-v1",
-        hosts: BOTH_RELEASE_HOSTS,
+        hosts: MANAGED_RELEASE_HOSTS,
       },
       {
         family: "free-pascal",
@@ -125,7 +128,7 @@ const LOCAL_VERSION_POLICIES = {
         version: "3.0.4",
         build: "official-stable",
         identityPolicyId: "fpc.target-units-linker-v1",
-        hosts: BOTH_RELEASE_HOSTS,
+        hosts: MANAGED_RELEASE_HOSTS,
       },
       {
         family: "free-pascal",
@@ -133,7 +136,7 @@ const LOCAL_VERSION_POLICIES = {
         version: "3.0.0",
         build: "official-stable",
         identityPolicyId: "fpc.target-units-linker-v1",
-        hosts: BOTH_RELEASE_HOSTS,
+        hosts: MANAGED_RELEASE_HOSTS,
       },
     ],
   },
@@ -157,7 +160,7 @@ const LOCAL_VERSION_POLICIES = {
         version: "21.0.12",
         build: "21.0.12+8",
         identityPolicyId: "temurin.jdk-javac-runtime-v1",
-        hosts: BOTH_RELEASE_HOSTS,
+        hosts: MANAGED_RELEASE_HOSTS,
       },
       {
         family: "java",
@@ -165,7 +168,7 @@ const LOCAL_VERSION_POLICIES = {
         version: "1.7.0",
         build: "official-internal",
         identityPolicyId: "themis.jdk-javac-runtime-v1",
-        hosts: BOTH_RELEASE_HOSTS,
+        hosts: MANAGED_RELEASE_HOSTS,
       },
       {
         family: "java",
@@ -173,7 +176,7 @@ const LOCAL_VERSION_POLICIES = {
         version: "1.8.0",
         build: "official-internal",
         identityPolicyId: "themis.jdk-javac-runtime-v1",
-        hosts: BOTH_RELEASE_HOSTS,
+        hosts: MANAGED_RELEASE_HOSTS,
       },
     ],
   },
@@ -218,7 +221,7 @@ const LOCAL_VERSION_POLICIES = {
       version: "0.1.7",
       build: "scratch-vm-headless",
       identityPolicyId: "scratch.vm-v1",
-      hosts: BOTH_RELEASE_HOSTS,
+      hosts: MANAGED_RELEASE_HOSTS,
     }],
   },
 } as const satisfies Readonly<Record<ToolchainKind, ToolchainVersionPolicy>>;
@@ -231,6 +234,7 @@ const LANGUAGE_CATALOG = [
       stability: "stable",
       extensions: [".cpp"],
       supportedHosts: [
+        { platform: "linux", arch: "x64", minimumOs: "22.04" },
         { platform: "win32", arch: "x64", minimumOs: "10.0" },
         { platform: "darwin", arch: "arm64", minimumOs: "11.0" },
       ],
@@ -261,6 +265,7 @@ const LANGUAGE_CATALOG = [
     toolchainKind: "cpp",
     localVersionPolicy: LOCAL_VERSION_POLICIES.cpp,
     localExecution: [
+      { platform: "linux", arch: "x64", mode: "quick_verified_direct" },
       { platform: "win32", arch: "x64", mode: "freeze_required" },
       { platform: "darwin", arch: "arm64", mode: "quick_verified_direct" },
     ],
@@ -273,6 +278,7 @@ const LANGUAGE_CATALOG = [
       stability: "stable",
       extensions: [".c"],
       supportedHosts: [
+        { platform: "linux", arch: "x64", minimumOs: "22.04" },
         { platform: "win32", arch: "x64", minimumOs: "10.0" },
         { platform: "darwin", arch: "arm64", minimumOs: "11.0" },
       ],
@@ -296,6 +302,7 @@ const LANGUAGE_CATALOG = [
     toolchainKind: "c",
     localVersionPolicy: LOCAL_VERSION_POLICIES.c,
     localExecution: [
+      { platform: "linux", arch: "x64", mode: "quick_verified_direct" },
       { platform: "win32", arch: "x64", mode: "managed_only" },
       { platform: "darwin", arch: "arm64", mode: "quick_verified_direct" },
     ],
@@ -308,6 +315,7 @@ const LANGUAGE_CATALOG = [
       stability: "stable",
       extensions: [".py"],
       supportedHosts: [
+        { platform: "linux", arch: "x64", minimumOs: "22.04" },
         { platform: "win32", arch: "x64", minimumOs: "10.0" },
         { platform: "darwin", arch: "arm64", minimumOs: "11.0" },
       ],
@@ -336,6 +344,7 @@ const LANGUAGE_CATALOG = [
     toolchainKind: "python",
     localVersionPolicy: LOCAL_VERSION_POLICIES.python,
     localExecution: [
+      { platform: "linux", arch: "x64", mode: "quick_verified_direct" },
       { platform: "win32", arch: "x64", mode: "managed_only" },
       { platform: "darwin", arch: "arm64", mode: "quick_verified_direct" },
     ],
@@ -348,6 +357,7 @@ const LANGUAGE_CATALOG = [
       stability: "stable",
       extensions: [".pas", ".pp"],
       supportedHosts: [
+        { platform: "linux", arch: "x64", minimumOs: "22.04" },
         { platform: "win32", arch: "x64", minimumOs: "10.0" },
         { platform: "darwin", arch: "arm64", minimumOs: "11.0" },
       ],
@@ -371,6 +381,7 @@ const LANGUAGE_CATALOG = [
     toolchainKind: "pascal",
     localVersionPolicy: LOCAL_VERSION_POLICIES.pascal,
     localExecution: [
+      { platform: "linux", arch: "x64", mode: "managed_only" },
       { platform: "win32", arch: "x64", mode: "managed_only" },
       { platform: "darwin", arch: "arm64", mode: "managed_only" },
     ],
@@ -418,6 +429,7 @@ const LANGUAGE_CATALOG = [
       stability: "stable",
       extensions: [".java"],
       supportedHosts: [
+        { platform: "linux", arch: "x64", minimumOs: "22.04" },
         { platform: "win32", arch: "x64", minimumOs: "10.0" },
         { platform: "darwin", arch: "arm64", minimumOs: "11.0" },
       ],
@@ -441,6 +453,7 @@ const LANGUAGE_CATALOG = [
     toolchainKind: "java",
     localVersionPolicy: LOCAL_VERSION_POLICIES.java,
     localExecution: [
+      { platform: "linux", arch: "x64", mode: "managed_only" },
       { platform: "win32", arch: "x64", mode: "managed_only" },
       { platform: "darwin", arch: "arm64", mode: "managed_only" },
     ],
@@ -557,6 +570,7 @@ const LANGUAGE_CATALOG = [
       stability: "stable",
       extensions: [".sb3", ".sb2", ".sb"],
       supportedHosts: [
+        { platform: "linux", arch: "x64", minimumOs: "22.04" },
         { platform: "win32", arch: "x64", minimumOs: "10.0" },
         { platform: "darwin", arch: "arm64", minimumOs: "11.0" },
       ],
@@ -579,6 +593,7 @@ const LANGUAGE_CATALOG = [
     toolchainKind: "scratch",
     localVersionPolicy: LOCAL_VERSION_POLICIES.scratch,
     localExecution: [
+      { platform: "linux", arch: "x64", mode: "managed_only" },
       { platform: "win32", arch: "x64", mode: "managed_only" },
       { platform: "darwin", arch: "arm64", mode: "managed_only" },
     ],
@@ -761,7 +776,7 @@ export function getRegisteredProfileForKind(
 
 export function getLocalExecutionModeForHost(
   kind: ToolchainKind,
-  platform: "win32" | "darwin",
+  platform: HostPlatform,
   arch: "x64" | "arm64",
 ): LocalExecutionMode | undefined {
   return getRegisteredProfileForKind(kind).localExecution.find(

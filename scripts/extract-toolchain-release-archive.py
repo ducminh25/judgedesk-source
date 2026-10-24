@@ -81,7 +81,9 @@ def normalized_mode(mode: int, is_directory: bool) -> int:
     return 0o755 if mode & 0o111 else 0o644
 
 
-def canonical_parts(parts: tuple[str, ...]) -> tuple[str, ...]:
+def canonical_parts(parts: tuple[str, ...], linux_posix_names: bool = False) -> tuple[str, ...]:
+    if linux_posix_names:
+        return parts
     return tuple(
         unicodedata.normalize("NFD", part).casefold()
         for part in parts
@@ -145,6 +147,7 @@ def resolve_link_entry(
 
 def assert_plan_is_safe(
     entries: list[ArchiveEntry],
+    linux_posix_names: bool = False,
 ) -> ExtractionPlan:
     if not entries or len(entries) > MAX_ENTRIES:
         fail("Archive has an invalid entry count.")
@@ -154,7 +157,7 @@ def assert_plan_is_safe(
     canonical_paths: set[tuple[str, ...]] = set()
     entries_by_path: dict[tuple[str, ...], ArchiveEntry] = {}
     for entry in entries:
-        canonical = canonical_parts(entry.parts)
+        canonical = canonical_parts(entry.parts, linux_posix_names)
         if canonical in canonical_paths:
             fail(f"Archive contains a duplicate path: {'/'.join(entry.parts)}")
         canonical_paths.add(canonical)
@@ -167,7 +170,7 @@ def assert_plan_is_safe(
         if installed_size_bytes > MAX_INSTALLED_BYTES:
             fail("Archive exceeds the installed-size limit.")
     for entry in entries:
-        canonical = canonical_parts(entry.parts)
+        canonical = canonical_parts(entry.parts, linux_posix_names)
         for index in range(1, len(canonical)):
             parent = canonical[:index]
             if parent in kinds and kinds[parent] != "directory":
@@ -210,7 +213,7 @@ def copy_exact(source: BinaryIO, destination: Path, expected_size: int) -> None:
         fail(f"Archive entry size verification failed: {destination}")
 
 
-def extract_zip(archive_path: Path, destination: Path) -> ExtractionPlan:
+def extract_zip(archive_path: Path, destination: Path, linux_posix_names: bool = False) -> ExtractionPlan:
     with zipfile.ZipFile(archive_path, "r") as archive:
         entries: list[ArchiveEntry] = []
         for info in archive.infolist():
@@ -260,7 +263,7 @@ def extract_zip(archive_path: Path, destination: Path) -> ExtractionPlan:
                     source=info,
                 )
             )
-        plan = assert_plan_is_safe(entries)
+        plan = assert_plan_is_safe(entries, linux_posix_names)
         materialize(
             entries,
             plan.entries_by_path,
@@ -270,7 +273,7 @@ def extract_zip(archive_path: Path, destination: Path) -> ExtractionPlan:
         return plan
 
 
-def extract_tar(archive_path: Path, destination: Path) -> ExtractionPlan:
+def extract_tar(archive_path: Path, destination: Path, linux_posix_names: bool = False) -> ExtractionPlan:
     with tarfile.open(archive_path, mode="r:*") as archive:
         entries: list[ArchiveEntry] = []
         for member in archive:
@@ -302,7 +305,7 @@ def extract_tar(archive_path: Path, destination: Path) -> ExtractionPlan:
                     source=member,
                 )
             )
-        plan = assert_plan_is_safe(entries)
+        plan = assert_plan_is_safe(entries, linux_posix_names)
 
         def open_member(source: object) -> BinaryIO:
             stream = archive.extractfile(source)  # type: ignore[arg-type]
@@ -353,11 +356,14 @@ def materialize(
 
 
 def main() -> None:
-    if len(sys.argv) != 4 or sys.argv[3] not in {"zip", "tar.gz"}:
+    if len(sys.argv) not in {4, 5} or sys.argv[3] not in {"zip", "tar.gz"}:
         fail(
             "Usage: extract-toolchain-release-archive.py "
             "<archive> <empty-destination> <zip|tar.gz>"
         )
+    linux_posix_names = len(sys.argv) == 5
+    if linux_posix_names and (sys.argv[4] != "--linux-posix-names" or sys.platform != "linux"):
+        fail("POSIX archive names require explicit mode on a Linux build host.")
     supplied_archive = Path(sys.argv[1])
     supplied_destination = Path(sys.argv[2])
     if supplied_archive.is_symlink() or supplied_destination.is_symlink():
@@ -370,9 +376,9 @@ def main() -> None:
     if not destination.is_dir() or any(destination.iterdir()):
         fail("Extraction destination must be an existing empty directory.")
     plan = (
-        extract_zip(archive_path, destination)
+        extract_zip(archive_path, destination, linux_posix_names)
         if archive_format == "zip"
-        else extract_tar(archive_path, destination)
+        else extract_tar(archive_path, destination, linux_posix_names)
     )
     print(
         json.dumps(

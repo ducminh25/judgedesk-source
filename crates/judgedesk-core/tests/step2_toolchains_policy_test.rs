@@ -681,3 +681,178 @@ async fn test_step2_local_toolchain_snapshot_freeze_certify_and_tamper_detection
 
     server_task.abort();
 }
+
+#[tokio::test]
+async fn test_step2_status_and_toolchains_readiness_consistency_and_observation_invalidation() {
+    let env = common::OwnedTestEnvironment::new();
+    let app_data_dir = env.root().join("app_data_consistency");
+    fs::create_dir_all(app_data_dir.join("toolchains")).unwrap();
+
+    let broken_exe_name = if cfg!(windows) {
+        "broken_g++.exe"
+    } else {
+        "broken_g++"
+    };
+    let broken_exe = env.root().join(broken_exe_name);
+    fs::write(&broken_exe, b"not-a-valid-compiler-binary").unwrap();
+
+    #[cfg(not(target_os = "linux"))]
+    let mut state = env.with_isolated_roots(|| {
+        AppState::new(Arc::new(
+            judgedesk_core::executor_client::ExecutorClient::unavailable(
+                "step2 readiness consistency test",
+            ),
+        ))
+    });
+    #[cfg(target_os = "linux")]
+    let mut state = env.with_isolated_roots(AppState::default);
+    state.set_app_data_dir(app_data_dir.clone());
+
+    let (addr, server_task) = start_embedded_server_with_state(0, state.clone())
+        .await
+        .expect("start server");
+    let port = addr.port();
+
+    // 1. Configure cpp to point to an existing but broken local executable
+    let pref_body = serde_json::json!({
+        "mode": "local_path",
+        "localPath": broken_exe.to_string_lossy()
+    });
+    let (st_pref, _) = http_request(
+        port,
+        "PUT",
+        "/api/toolchains/profiles/cpp/preference",
+        Some(pref_body.to_string().as_bytes()),
+        Some("application/json"),
+    )
+    .await;
+    assert_eq!(st_pref, 200);
+
+    let (tc_code, tc_body) = http_request(port, "GET", "/api/toolchains", None, None).await;
+    assert_eq!(tc_code, 200);
+    let tc_json: serde_json::Value = serde_json::from_str(&tc_body).unwrap();
+    assert_eq!(
+        tc_json["active"]["cpp"]["ready"], false,
+        "/api/toolchains must report broken local executable as not ready"
+    );
+    assert_eq!(
+        tc_json["capabilities"]["cpp"]["submissionReady"], false,
+        "/api/toolchains capabilities.cpp.submissionReady must be false"
+    );
+
+    let (st_code, st_body) = http_request(port, "GET", "/api/status", None, None).await;
+    assert_eq!(st_code, 200);
+    let st_json: serde_json::Value = serde_json::from_str(&st_body).unwrap();
+    assert_eq!(
+        st_json["gpp"]["submissionReady"], false,
+        "/api/status must not report submissionReady=true when local_path probe fails: {}",
+        st_json["gpp"]
+    );
+    assert_eq!(
+        st_json["gpp"]["checkerReady"], false,
+        "/api/status must not report checkerReady=true when local_path probe fails: {}",
+        st_json["gpp"]
+    );
+    assert!(
+        st_json["gpp"]["diagnostic"]
+            .as_str()
+            .is_some_and(|d| !d.is_empty()),
+        "/api/status must include diagnostic when local_path probe fails: {}",
+        st_json["gpp"]
+    );
+
+    // 2. Replace the broken file in-place with a working compiler binary -> metadata invalidation must detect it immediately
+    let real_c = resolve_toolchain_for_profile("c", None, None);
+    assert!(real_c.ready, "real C compiler required on host");
+    let stub_src = env.root().join("fake_gpp_stub.c");
+    let built_stub = env.root().join(if cfg!(windows) {
+        "built_fake_gpp.exe"
+    } else {
+        "built_fake_gpp"
+    });
+    fs::write(
+        &stub_src,
+        br#"#include <stdio.h>
+#include <string.h>
+int main(int argc, char **argv) {
+    for (int i = 1; i + 1 < argc; ++i) {
+        if (strcmp(argv[i], "-o") == 0) {
+            FILE *f = fopen(argv[i + 1], "wb");
+            if (f) { fwrite("ok", 1, 2, f); fclose(f); }
+        }
+    }
+    printf("g++ (GCC) 14.2.0\n");
+    return 0;
+}
+"#,
+    )
+    .unwrap();
+    #[cfg(target_os = "linux")]
+    {
+        // Linux readiness executes the linked probe. The replacement must be a
+        // functional compiler, rather than the old stub's non-executable "ok".
+        // This local wrapper can execute only the host compiler mounted by the
+        // local sandbox. A Full managed package lives outside that boundary.
+        let real_cpp = resolve_toolchain_for_profile("cpp", Some("local_auto"), None);
+        assert!(real_cpp.ready);
+        let compiler_literal =
+            serde_json::to_string(&real_cpp.executable_path.to_string_lossy()).unwrap();
+        fs::write(&stub_src, format!(
+            "#include <stdio.h>\n#include <string.h>\n#include <unistd.h>\nint main(int argc,char **argv){{if(argc==2 && strcmp(argv[1],\"--version\")==0){{puts(\"g++ (GCC) 14.2.0\");return 0;}}argv[0]={compiler_literal};execv(argv[0],argv);return 127;}}\n"
+        )).unwrap();
+    }
+    let compile_status = std::process::Command::new(&real_c.executable_path)
+        .arg(&stub_src)
+        .arg("-o")
+        .arg(&built_stub)
+        .status()
+        .expect("compile fake g++ stub");
+    assert!(
+        compile_status.success(),
+        "compiling fake g++ stub must succeed"
+    );
+    fs::copy(&built_stub, &broken_exe).unwrap();
+
+    let (st_code2, st_body2) = http_request(port, "GET", "/api/status", None, None).await;
+    assert_eq!(st_code2, 200);
+    let st_json2: serde_json::Value = serde_json::from_str(&st_body2).unwrap();
+    assert_eq!(
+        st_json2["gpp"]["submissionReady"], true,
+        "/api/status must automatically invalidate observation snapshot when binary metadata changes on disk: {}",
+        st_json2["gpp"]
+    );
+    assert_eq!(st_json2["gpp"]["version"], "14.2.0");
+
+    let (tc_code2, tc_body2) = http_request(port, "GET", "/api/toolchains", None, None).await;
+    assert_eq!(tc_code2, 200);
+    let tc_json2: serde_json::Value = serde_json::from_str(&tc_body2).unwrap();
+    assert_eq!(
+        tc_json2["active"]["cpp"]["ready"], true,
+        "/api/toolchains must automatically invalidate observation snapshot when binary metadata changes on disk"
+    );
+
+    // 3. Fire concurrent GET /api/toolchains and GET /api/status requests to verify single-flight & warm snapshot safety
+    let (r1, r2, r3, r4) = tokio::join!(
+        http_request(port, "GET", "/api/toolchains", None, None),
+        http_request(port, "GET", "/api/toolchains", None, None),
+        http_request(port, "GET", "/api/status", None, None),
+        http_request(port, "GET", "/api/status", None, None),
+    );
+    assert_eq!(r1.0, 200);
+    assert_eq!(r2.0, 200);
+    assert_eq!(r3.0, 200);
+    assert_eq!(r4.0, 200);
+
+    // 4. Corrupt the binary in-place while the positive cache entry is still within TTL -> must immediately fail closed
+    fs::write(&broken_exe, b"corrupted-after-being-ready").unwrap();
+    let (st_code3, st_body3) = http_request(port, "GET", "/api/status", None, None).await;
+    assert_eq!(st_code3, 200);
+    let st_json3: serde_json::Value = serde_json::from_str(&st_body3).unwrap();
+    assert_eq!(
+        st_json3["gpp"]["submissionReady"], false,
+        "/api/status must immediately detect corrupted binary on disk without serving stale positive cache: {}",
+        st_json3["gpp"]
+    );
+
+    server_task.abort();
+}

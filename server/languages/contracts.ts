@@ -1,6 +1,6 @@
 export type NonEmptyReadonlyArray<T> = readonly [T, ...T[]];
 
-export type HostPlatform = "win32" | "darwin";
+export type HostPlatform = "win32" | "darwin" | "linux";
 export type HostArchitecture = "x64" | "arm64";
 export type LanguageStability = "stable" | "experimental";
 export const LANGUAGE_PROFILE_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/;

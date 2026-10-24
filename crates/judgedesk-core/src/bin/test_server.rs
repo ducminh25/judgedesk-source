@@ -52,14 +52,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let mock_file = std::env::var("JUDGEDESK_TEST_SELECT_DIRECTORY").ok();
 
-    let mut default_state = AppState::default();
-    if !default_state.platform.health().ready {
-        let exec_root = std::env::temp_dir().join("judgedesk-test-executor-root");
-        let _ = std::fs::create_dir_all(exec_root.join("workspaces"));
-        default_state.platform = Arc::new(
-            judgedesk_core::executor_client::ExecutorClient::mock_contract_ready(exec_root),
-        );
-    }
+    // Contract fixtures must not depend on an installed executor's version or
+    // sandbox mode. Real executor admission is exercised by integration tests.
+    let exec_root = std::env::temp_dir().join("judgedesk-test-executor-root");
+    std::fs::create_dir_all(exec_root.join("workspaces"))?;
+    let default_state = AppState::new(Arc::new(
+        judgedesk_core::executor_client::ExecutorClient::mock_contract_ready(exec_root),
+    ));
 
     let state = AppState {
         directory_picker: Arc::new(TestDirectoryPicker { mock_file }),

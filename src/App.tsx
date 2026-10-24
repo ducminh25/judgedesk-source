@@ -7,7 +7,10 @@ import AppModals from "./components/AppModals.js";
 import { isHelpShortcut, type HelpSectionId } from "./features/help/HelpCenter.js";
 import { useThemisPromptModal } from "./features/toolchains/useThemisPromptModal.js";
 import { useScratchPromptModal } from "./features/toolchains/useScratchPromptModal.js";
-import type { ToolchainState } from "./features/toolchains/useToolchains.js";
+import {
+  primeToolchainStateCache,
+  type ToolchainState,
+} from "./features/toolchains/useToolchains.js";
 import { createHostStatusRefresh } from "./features/toolchains/host-status-refresh.js";
 import { useAppUpdater } from "./features/updates/useAppUpdater.js";
 import { type UpdateEdition } from "./features/updates/catalog.js";
@@ -39,8 +42,12 @@ import { useScoreDeletion } from "./features/scores/useScoreDeletion.js";
 import { useScoreboardExport } from "./features/export/useScoreboardExport.js";
 import { useContestFileActions } from "./features/contest/useContestFileActions.js";
 import { useAppShortcuts } from "./features/shortcuts/useAppShortcuts.js";
+import { useAnnouncements } from "./features/announcements/useAnnouncements.js";
+import { NotificationCenter } from "./features/announcements/NotificationCenter.js";
 
 export default function App() {
+  const announcements = useAnnouncements();
+  const [announcementModalOpen, setAnnouncementModalOpen] = useState(false);
   const { t } = useTranslation();
   const {
     contestants: contestantsList,
@@ -343,7 +350,9 @@ export default function App() {
   // Host status loader
   const loadHelpToolchains = useCallback(async (): Promise<ToolchainState> => {
     const response = await apiFetch("/api/toolchains");
-    return (await response.json()) as ToolchainState;
+    const data = (await response.json()) as ToolchainState;
+    primeToolchainStateCache(data);
+    return data;
   }, []);
 
   const requestHostStatus = useCallback(() => {
@@ -358,14 +367,17 @@ export default function App() {
         return (await response.json()) as HostStatus;
       },
       onStatus: (status) => {
-        setHostStatus(status);
+        setHostStatus((previous) => status ?? previous);
         if (status) {
           setAppError((previous) =>
             previous?.code === "BACKEND_CONNECTION" ? null : previous,
           );
         }
       },
-      onError: (error) => showErrorRef.current(error, { code: "BACKEND_CONNECTION" }),
+      onError: (error) => {
+        setHostStatus(null);
+        showErrorRef.current(error, { code: "BACKEND_CONNECTION" });
+      },
     });
     hostStatusRefreshRef.current = refresh;
     requestHostStatus();
@@ -494,6 +506,7 @@ export default function App() {
 
   // App Keyboard Shortcuts Hook: if (!isHelpShortcut(event)) ...
   useAppShortcuts({
+    announcementModalOpen,
     hostStatus,
     updateHandoffActive,
     interactionLocked,
@@ -601,6 +614,8 @@ export default function App() {
         aria-hidden={updateHandoffActive ? true : undefined}
       >
         <AppToolbar
+          notifications={<NotificationCenter state={announcements} onModalChange={setAnnouncementModalOpen}
+            blocked={updateHandoffActive || isSavingContest || !!loadModal || !!activeConfigProblem || !!activeDetails || !!activeLog || !!helpSection || openToolchains || showOsdModal || !!pendingContestAction || !!pendingScoreDeletion || showUpdateChoices || !!pendingUpdateEdition || showDonationConfirm || showInstallUpdate || showChangelog || showThemisPromptModal || showScratchPromptModal} />}
           canDeleteSelected={canDeleteSelected}
           canExport={canExportScoreboard(contestantsList, problemsList)}
           canRun={canRun}

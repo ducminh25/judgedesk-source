@@ -235,12 +235,30 @@ fn compute_default_max_score(
             .fold(Rational::ZERO, |total, test_dir| {
                 let pts = polygon_config
                     .and_then(|p| p.tests.get(test_dir))
-                    .and_then(|t| t.points.as_ref());
-                if let Some(pts_val) = pts {
-                    add_rational(total, parse_rational_value(pts_val))
+                    .and_then(|t| t.points.as_ref())
+                    .filter(|v| {
+                        !v.is_null()
+                            && !matches!(v, serde_json::Value::String(s) if s.trim().is_empty())
+                    })
+                    .or_else(|| {
+                        config
+                            .test_scores
+                            .as_ref()
+                            .and_then(|m| m.get(test_dir))
+                            .filter(|v| {
+                                !v.is_null()
+                                    && !matches!(
+                                        v,
+                                        serde_json::Value::String(s) if s.trim().is_empty()
+                                    )
+                            })
+                    });
+                let test_score = if let Some(pts_val) = pts {
+                    parse_rational_value(pts_val)
                 } else {
-                    total
-                }
+                    default_or_one(config.default_score.as_ref())
+                };
+                add_rational(total, test_score)
             })
     } else if test_cases_len > 0 || !test_directories.is_empty() {
         test_directories

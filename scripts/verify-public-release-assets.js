@@ -23,26 +23,26 @@ export function expectedPublicReleaseAssets(tag) {
 
 export function optionalLinuxReleaseAssets(tag) {
   const version = tag?.startsWith("v") ? tag.slice(1) : tag;
-  return [
+  return ["core", "full"].flatMap((edition) => [
     {
-      platform: "linux-x86_64-deb-core",
-      platforms: ["linux-x86_64-deb-core", "linux-x86_64-core"],
-      filename: `JudgeDesk_${version}_amd64.deb`,
-      edition: "core",
+      platform: `linux-x86_64-deb-${edition}`,
+      platforms: [`linux-x86_64-deb-${edition}`, `linux-x86_64-${edition}`],
+      filename: `JudgeDesk_${version}_${edition === "full" ? "full_" : ""}amd64.deb`,
+      edition,
     },
     {
-      platform: "linux-x86_64-rpm-core",
-      platforms: ["linux-x86_64-rpm-core"],
-      filename: `JudgeDesk-${version}-1.x86_64.rpm`,
-      edition: "core",
+      platform: `linux-x86_64-rpm-${edition}`,
+      platforms: [`linux-x86_64-rpm-${edition}`],
+      filename: `JudgeDesk-${version}-${edition === "full" ? "full-" : ""}1.x86_64.rpm`,
+      edition,
     },
     {
-      platform: "linux-x86_64-appimage-core",
-      platforms: ["linux-x86_64-appimage-core"],
-      filename: `JudgeDesk_${version}_amd64.AppImage`,
-      edition: "core",
+      platform: `linux-x86_64-appimage-${edition}`,
+      platforms: [`linux-x86_64-appimage-${edition}`],
+      filename: `JudgeDesk_${version}_${edition === "full" ? "full_" : ""}amd64.AppImage`,
+      edition,
     },
-  ];
+  ]);
 }
 
 export function verifyPublicReleaseAssets({ assetsDirectory, tag }) {

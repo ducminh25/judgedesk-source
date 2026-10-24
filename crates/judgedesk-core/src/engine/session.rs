@@ -6,7 +6,6 @@ use tokio::sync::mpsc::UnboundedSender;
 
 static SESSION_TEMP_COUNTER: AtomicU64 = AtomicU64::new(1);
 
-use crate::discovery::testcase::read_stored_problem_config;
 use crate::discovery::{
     create_problem_directory_resolver, create_submission_resolver, discover_test_cases,
     list_contestants,
@@ -200,6 +199,9 @@ pub async fn run_judge_session(
 
     let total_operations = contestants.len() * active_problems.len();
     let mut completed_operations = 0;
+    #[cfg(target_os = "linux")]
+    let mut toolchain_preflight: std::collections::HashMap<String, Option<String>> =
+        std::collections::HashMap::new();
     let mut compiled_helper_cache: std::collections::HashMap<
         PathBuf,
         (
@@ -251,7 +253,8 @@ pub async fn run_judge_session(
                 }
             };
 
-            let cfg_val = read_stored_problem_config(&problem_dir.path);
+            let cfg_val =
+                crate::discovery::reconcile_existing_stored_problem_config(&problem_dir.path);
             let req_cfg_val = config.problem_configs.get(problem_name).or_else(|| {
                 config
                     .problem_configs
@@ -411,19 +414,49 @@ pub async fn run_judge_session(
             let custom_path = sel.and_then(|s| s.local_path.as_deref());
 
             let compile_start = std::time::Instant::now();
-            let comp_res = compile_submission_with_selection(
-                CompileSubmissionRequest {
-                    language: &submission.language,
-                    source_path: &submission.file_path,
-                    output_dir: &temp_dir,
-                    platform: &config.platform,
-                    timeout_ms: None,
-                    extra_include_dirs: &[],
-                },
-                Some(&normalized_cfg.compile),
-                preferred_mode,
-                custom_path,
-            );
+            #[cfg(target_os = "linux")]
+            let environment_error = toolchain_preflight
+                .entry(profile_key.to_string())
+                .or_insert_with(|| {
+                    let toolchain = crate::toolchains::discovery::resolve_toolchain_for_profile_in(
+                        config.app_data_dir.as_deref(),
+                        profile_key,
+                        preferred_mode,
+                        custom_path,
+                    );
+                    let probe = crate::toolchains::diagnostics::diagnose_resolved_language_profile(
+                        profile_key,
+                        &config.platform,
+                        toolchain,
+                    );
+                    (!probe.success).then(|| {
+                        format!(
+                            "TOOLCHAIN_NOT_SANDBOX_COMPATIBLE: {}: {}",
+                            probe.phase,
+                            probe.error.unwrap_or_else(|| "sandbox probe failed".into()),
+                        )
+                    })
+                })
+                .clone();
+            #[cfg(not(target_os = "linux"))]
+            let environment_error: Option<String> = None;
+            let comp_res = if let Some(error) = environment_error {
+                crate::engine::compiler::CompilationOutput::environment_je(error)
+            } else {
+                compile_submission_with_selection(
+                    CompileSubmissionRequest {
+                        language: &submission.language,
+                        source_path: &submission.file_path,
+                        output_dir: &temp_dir,
+                        platform: &config.platform,
+                        timeout_ms: None,
+                        extra_include_dirs: &[],
+                    },
+                    Some(&normalized_cfg.compile),
+                    preferred_mode,
+                    custom_path,
+                )
+            };
             let compile_time_ms = compile_start.elapsed().as_millis() as u64;
 
             if config.cancel_flag.load(Ordering::SeqCst) {
@@ -565,15 +598,34 @@ pub async fn run_judge_session(
 
             let custom_checkers =
                 crate::discovery::discover_custom_checkers(&problem_dir.path, platform_str);
+            let has_configured_checker =
+                [cfg_val.as_ref(), req_cfg_val]
+                    .into_iter()
+                    .flatten()
+                    .any(|v| {
+                        ["checkerType", "checker_type", "checker"].iter().any(|k| {
+                            v.get(*k)
+                                .and_then(|val| val.as_str())
+                                .is_some_and(|s| !s.trim().is_empty())
+                        })
+                    });
+            let has_stored_cfg_file = problem_dir.path.join("Config.cfg").is_file()
+                || problem_dir.path.join("config.json").is_file();
+            let checker_type = if is_interactive || has_configured_checker || has_stored_cfg_file {
+                checker_type
+            } else {
+                custom_checkers
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| "C1".to_string())
+            };
             let explicit_custom_checker = !is_interactive
                 && !crate::checkers::is_built_in_checker(&checker_type)
                 && !checker_type.is_empty();
-            let custom_checker_name = if is_interactive {
-                None
-            } else if explicit_custom_checker {
+            let custom_checker_name = if explicit_custom_checker {
                 Some(checker_type.clone())
             } else {
-                custom_checkers.first().cloned()
+                None
             };
 
             let compiled_checker_path: Option<PathBuf> = if let Some(ref chk_name) =

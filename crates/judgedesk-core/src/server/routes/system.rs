@@ -9,6 +9,7 @@ use crate::server::state::AppState;
 use crate::toolchains::discovery::{find_managed_toolchain_in, load_persisted_preferences_in};
 
 fn build_status_toolchain_entry(
+    state: &AppState,
     kind: &str,
     default_ver: &str,
     pkg_id: &str,
@@ -36,6 +37,26 @@ fn build_status_toolchain_entry(
         .as_ref()
         .map(|m| m.version.as_str())
         .unwrap_or(default_ver);
+
+    if cfg!(target_os = "linux") && !is_contract_env && selection.mode == "managed" {
+        let resolved = state.toolchain_observation.resolve_profile(
+            state,
+            store.revision,
+            &app_data_dir,
+            kind,
+            "managed",
+            None,
+        );
+        return json!({
+            "installed": managed_installed,
+            "version": resolved.version,
+            "source": "managed",
+            "managedInstalled": managed_installed,
+            "submissionReady": resolved.ready,
+            "checkerReady": resolved.ready,
+            "diagnostic": resolved.diagnostic
+        });
+    }
 
     match selection.mode.as_str() {
         "none" => json!({
@@ -88,66 +109,117 @@ fn build_status_toolchain_entry(
                     "checkerReady": true
                 })
             } else {
-                let resolved = crate::toolchains::discovery::resolve_toolchain_for_profile_in(
-                    Some(&app_data_dir),
+                let resolved = state.toolchain_observation.resolve_profile(
+                    state,
+                    store.revision,
+                    &app_data_dir,
                     kind,
-                    Some("local_auto"),
+                    "local_auto",
                     None,
                 );
-                let ver = if resolved.ready && resolved.version != "unknown" {
-                    resolved.version
-                } else {
-                    default_ver.to_string()
-                };
-                json!({
-                    "installed": true,
-                    "version": ver,
-                    "source": "system",
-                    "managedInstalled": false,
-                    "submissionReady": true,
-                    "checkerReady": true
-                })
-            }
-        }
-        "local_path" => {
-            let exists = selection
-                .local_path
-                .as_deref()
-                .is_some_and(|p| std::path::Path::new(p).is_file());
-            if exists {
-                let ver = if !is_contract_env {
-                    let resolved = crate::toolchains::discovery::resolve_toolchain_for_profile_in(
-                        Some(&app_data_dir),
-                        kind,
-                        Some("local_path"),
-                        selection.local_path.as_deref(),
-                    );
-                    if resolved.ready && resolved.version != "unknown" {
+                if resolved.ready {
+                    let ver = if resolved.version != "unknown" {
                         resolved.version
                     } else {
                         default_ver.to_string()
-                    }
+                    };
+                    json!({
+                        "installed": true,
+                        "version": ver,
+                        "source": "system",
+                        "managedInstalled": false,
+                        "submissionReady": true,
+                        "checkerReady": true
+                    })
                 } else {
-                    default_ver.to_string()
-                };
-                json!({
-                    "installed": true,
-                    "version": ver,
-                    "source": "local_path",
-                    "managedInstalled": managed_installed,
-                    "submissionReady": true,
-                    "checkerReady": true
-                })
+                    let mut obj = json!({
+                        "installed": false,
+                        "version": "Not found",
+                        "source": "managed",
+                        "managedInstalled": false,
+                        "submissionReady": false,
+                        "checkerReady": false
+                    });
+                    if let Some(diag) = resolved.diagnostic {
+                        obj["diagnostic"] = json!(diag);
+                    }
+                    obj
+                }
+            }
+        }
+        "local_path" => {
+            if is_contract_env {
+                let exists = selection
+                    .local_path
+                    .as_deref()
+                    .is_some_and(|p| std::path::Path::new(p).is_file());
+                if exists {
+                    json!({
+                        "installed": true,
+                        "version": default_ver,
+                        "source": "local_path",
+                        "managedInstalled": managed_installed,
+                        "submissionReady": true,
+                        "checkerReady": true
+                    })
+                } else {
+                    json!({
+                        "installed": false,
+                        "version": "Not found",
+                        "source": "local_path",
+                        "managedInstalled": managed_installed,
+                        "submissionReady": false,
+                        "checkerReady": false,
+                        "diagnostic": "LOCAL_EXECUTABLE_NOT_FOUND: Configured local executable does not exist."
+                    })
+                }
             } else {
-                json!({
-                    "installed": false,
-                    "version": "Not found",
-                    "source": "local_path",
-                    "managedInstalled": managed_installed,
-                    "submissionReady": false,
-                    "checkerReady": false,
-                    "diagnostic": "LOCAL_EXECUTABLE_NOT_FOUND: Configured local executable does not exist."
-                })
+                let resolved = state.toolchain_observation.resolve_profile(
+                    state,
+                    store.revision,
+                    &app_data_dir,
+                    kind,
+                    "local_path",
+                    selection.local_path.as_deref(),
+                );
+                if resolved.ready {
+                    let ver = if resolved.version != "unknown" {
+                        resolved.version
+                    } else {
+                        default_ver.to_string()
+                    };
+                    json!({
+                        "installed": true,
+                        "version": ver,
+                        "source": "local_path",
+                        "managedInstalled": managed_installed,
+                        "submissionReady": true,
+                        "checkerReady": true
+                    })
+                } else {
+                    let exists = selection
+                        .local_path
+                        .as_deref()
+                        .is_some_and(|p| std::path::Path::new(p).is_file());
+                    let ver = if exists && resolved.version != "unknown" {
+                        resolved.version
+                    } else {
+                        "Not found".to_string()
+                    };
+                    let diag = resolved.diagnostic.unwrap_or_else(|| {
+                        "LOCAL_EXECUTABLE_NOT_FOUND: Configured local executable does not exist."
+                            .to_string()
+                    });
+                    json!({
+                        "installed": exists,
+                        "version": ver,
+                        "source": "local_path",
+                        "managedInstalled": managed_installed,
+                        "submissionReady": false,
+                        "checkerReady": false,
+                        "diagnostic": diag
+                    })
+                }
             }
         }
         _ => {
@@ -161,60 +233,78 @@ fn build_status_toolchain_entry(
                     "checkerReady": true
                 })
             } else {
-                let resolved = crate::toolchains::discovery::resolve_toolchain_for_profile_in(
-                    Some(&app_data_dir),
+                let resolved = state.toolchain_observation.resolve_profile(
+                    state,
+                    store.revision,
+                    &app_data_dir,
                     kind,
-                    Some("local_auto"),
+                    "local_auto",
                     None,
                 );
-                let ver = if resolved.ready && resolved.version != "unknown" {
-                    resolved.version
+                if resolved.ready {
+                    let ver = if resolved.version != "unknown" {
+                        resolved.version
+                    } else {
+                        default_ver.to_string()
+                    };
+                    json!({
+                        "installed": true,
+                        "version": ver,
+                        "source": "system",
+                        "managedInstalled": managed_installed,
+                        "submissionReady": true,
+                        "checkerReady": true
+                    })
                 } else {
-                    default_ver.to_string()
-                };
-                json!({
-                    "installed": true,
-                    "version": ver,
-                    "source": "system",
-                    "managedInstalled": managed_installed,
-                    "submissionReady": true,
-                    "checkerReady": true
-                })
+                    let mut obj = json!({
+                        "installed": false,
+                        "version": "Not found",
+                        "source": "system",
+                        "managedInstalled": managed_installed,
+                        "submissionReady": false,
+                        "checkerReady": false
+                    });
+                    if let Some(diag) = resolved.diagnostic {
+                        obj["diagnostic"] = json!(diag);
+                    }
+                    obj
+                }
             }
         }
     }
 }
 
-pub async fn handle_status(State(state): State<AppState>) -> impl IntoResponse {
+fn build_status_response(
+    state: &AppState,
+    store: &crate::server::state::ToolchainStore,
+) -> serde_json::Value {
     let health = state.platform.health();
-    let (gpp_entry, py_entry) = {
-        let store = state.toolchains.read().unwrap_or_else(|e| e.into_inner());
-        let app_data_dir = store.effective_app_data_dir();
-        let persisted_exists = load_persisted_preferences_in(&app_data_dir).is_some();
-        let is_contract_env =
-            crate::toolchains::discovery::is_seeded_contract_fixture_env(&app_data_dir);
+    let app_data_dir = store.effective_app_data_dir();
+    let persisted_exists = load_persisted_preferences_in(&app_data_dir).is_some();
+    let is_contract_env =
+        crate::toolchains::discovery::is_seeded_contract_fixture_env(&app_data_dir);
 
-        let cpp_pkg_id = crate::toolchains::discovery::managed_package_name_for("cpp");
-        let py_pkg_id = crate::toolchains::discovery::managed_package_name_for("python");
+    let cpp_pkg_id = crate::toolchains::discovery::managed_package_name_for("cpp");
+    let py_pkg_id = crate::toolchains::discovery::managed_package_name_for("python");
 
-        let gpp = build_status_toolchain_entry(
-            "cpp",
-            "14.2.0",
-            cpp_pkg_id,
-            &store,
-            persisted_exists,
-            is_contract_env,
-        );
-        let py = build_status_toolchain_entry(
-            "python",
-            "3.12.0",
-            py_pkg_id,
-            &store,
-            persisted_exists,
-            is_contract_env,
-        );
-        (gpp, py)
-    };
+    let gpp_entry = build_status_toolchain_entry(
+        state,
+        "cpp",
+        "14.2.0",
+        cpp_pkg_id,
+        store,
+        persisted_exists,
+        is_contract_env,
+    );
+    let py_entry = build_status_toolchain_entry(
+        state,
+        "python",
+        "3.12.0",
+        py_pkg_id,
+        store,
+        persisted_exists,
+        is_contract_env,
+    );
 
     let mut secure_runner = json!({
         "mode": health.mode,
@@ -235,21 +325,15 @@ pub async fn handle_status(State(state): State<AppState>) -> impl IntoResponse {
         .to_string_lossy()
         .into_owned();
 
-    let is_contract_env = {
-        let store = state.toolchains.read().unwrap_or_else(|e| e.into_inner());
-        crate::toolchains::discovery::is_seeded_contract_fixture_env(
-            &store.effective_app_data_dir(),
-        )
-    };
     let platform_str = if cfg!(windows) {
         "win32"
-    } else if cfg!(target_os = "macos") || is_contract_env {
+    } else if cfg!(target_os = "macos") {
         "darwin"
     } else {
         "linux"
     };
 
-    Json(json!({
+    json!({
         "gpp": gpp_entry,
         "python": py_entry,
         "isolate": {
@@ -272,7 +356,25 @@ pub async fn handle_status(State(state): State<AppState>) -> impl IntoResponse {
             }
         },
         "secureRunner": secure_runner
-    }))
+    })
+}
+
+pub async fn handle_status(State(state): State<AppState>) -> impl IntoResponse {
+    let store = state
+        .toolchains
+        .read()
+        .map(|g| g.clone())
+        .unwrap_or_else(|e| e.into_inner().clone());
+    let state_for_blocking = state.clone();
+    let store_for_blocking = store.clone();
+    match tokio::task::spawn_blocking(move || {
+        build_status_response(&state_for_blocking, &store_for_blocking)
+    })
+    .await
+    {
+        Ok(payload) => Json(payload),
+        Err(_) => Json(build_status_response(&state, &store)),
+    }
 }
 
 pub fn resolve_distribution_mode(app_data_dir: &std::path::Path) -> String {
@@ -281,6 +383,9 @@ pub fn resolve_distribution_mode(app_data_dir: &std::path::Path) -> String {
         if !trimmed.is_empty() {
             return trimmed;
         }
+    }
+    if crate::toolchains::package_trust::is_linux_full_build() {
+        return "full".to_string();
     }
     let state_file = app_data_dir.join("toolchain-distribution-state-v1.json");
     if let Ok(raw) = std::fs::read_to_string(&state_file) {

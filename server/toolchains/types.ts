@@ -39,7 +39,7 @@ export interface ToolchainCatalogEntry {
   ];
   kind: ToolchainKind;
   version: string;
-  platform: "win32" | "darwin";
+  platform: "win32" | "darwin" | "linux";
   arch: "x64" | "arm64";
   archiveFormat: "zip" | "tar.gz" | "tar.zst";
   executableRelativePath: string;
@@ -99,7 +99,7 @@ export interface ToolchainManifestV2Package {
   ];
   kind: ToolchainKind;
   version: string;
-  platform: "win32" | "darwin";
+  platform: "win32" | "darwin" | "linux";
   arch: "x64" | "arm64";
   minimumOs: string;
   archiveFormat: "zip" | "tar.gz" | "tar.zst";

@@ -1,4 +1,20 @@
 {
+  "announcements": {
+    "title": "Thông báo", "bell": "Thông báo: {{count}} chưa đọc", "markAll": "Đánh dấu đã đọc tất cả", "reload": "Tải lại",
+    "loading": "Đang tải thông báo…", "empty": "Không có thông báo.", "checked": "Kiểm tra lần cuối: {{time}}",
+    "unread": "Chưa đọc", "actions": "Thao tác với thông báo", "markRead": "Đánh dấu đã đọc", "markUnread": "Đánh dấu chưa đọc", "delete": "Xoá thông báo",
+    "articleChanged": "Bài này đã được cập nhật hoặc thu hồi. Bạn đang đọc bản đã lưu.",
+    "articleError": "Không thể hiển thị bài này an toàn. Thông báo chưa được đánh dấu đã đọc.",
+    "imageLoading": "Đang tải ảnh…", "imageError": "Không tải được ảnh. Bạn vẫn có thể đọc phần chữ.",
+    "errors": {
+      "unconfigured": "Dịch vụ thông báo chưa được cấu hình.", "desktopOnly": "Thông báo khả dụng trong ứng dụng desktop.",
+      "network": "Không thể tải lại. Hãy kiểm tra kết nối; các thông báo đã lưu vẫn còn.",
+      "storage": "Không thể đọc hoặc lưu dữ liệu thông báo. Các tệp hiện có được giữ nguyên.",
+      "cache": "Không xác minh được bản tin đã lưu. Hãy thử tải lại.", "staleSnapshot": "Thông báo đã thay đổi. Hãy tải lại danh sách rồi thử lại.",
+      "image": "Không tải được ảnh.", "link": "Liên kết này không được phép mở.", "viewClosed": "Bài này không còn mở.",
+      "stopped": "Thông báo đã dừng để đóng hoặc cập nhật ứng dụng.", "generic": "Thao tác thông báo thất bại. Hãy thử lại."
+    }
+  },
   "startupFailure": {
     "title": "JudgeDesk không thể khởi động",
     "reason": "Không thể thiết lập kết nối bảo mật tới dịch vụ chấm bài.",
@@ -466,7 +482,14 @@
       "reason": "Tệp tin đang được mở bởi một chương trình khác (như Excel, Word, Text Editor).",
       "action": "Hãy đóng tệp tin trong các ứng dụng đang mở rồi thử lại."
     },
-    "excelExportFailed": {
+      "excelViewerFailed": {
+        "title": "Đã tạo file Excel, nhưng không mở được ứng dụng đọc",
+        "reason": "Bảng điểm và dữ liệu chẩn đoán đã được lưu. Ứng dụng đọc bảng tính không khởi động được.",
+        "action": "Mở {{path}} bằng trình quản lý tệp và lưu một bản sao trước khi đóng JudgeDesk.",
+        "copyPath": "Sao chép đường dẫn file",
+        "copyFailed": "Không sao chép được đường dẫn. File đã lưu vẫn nằm ở vị trí bên dưới."
+      },
+      "excelExportFailed": {
       "title": "Không thể xuất bảng điểm Excel",
       "reason": "Không thể khởi chạy ứng dụng xem bảng tính hoặc tệp tạm thời bị khóa.",
       "action": "Hãy cài đặt ứng dụng đọc file Excel (.xlsx) hoặc đóng các file Excel đang mở."

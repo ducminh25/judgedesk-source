@@ -7,6 +7,13 @@ cd "$app_root"
 export PATH="$HOME/.cargo/bin:/usr/local/bin:$PATH"
 
 arch="$(uname -m)"
+# Build on the oldest supported userspace. A newer host can silently bundle
+# libraries that require newer GLIBC even when the application itself is old.
+source /etc/os-release
+if [[ "$ID" != ubuntu || "$VERSION_ID" != 22.04 ]]; then
+  echo "ERROR: Linux release packages must be built on Ubuntu 22.04 (GLIBC 2.35 baseline)" >&2
+  exit 1
+fi
 case "$arch" in
   x86_64)
     target="x86_64-unknown-linux-gnu"
@@ -14,13 +21,6 @@ case "$arch" in
     rpm_arch="x86_64"
     scratch_zip_name="scratch-run_0.1.7_linux_amd64.zip"
     scratch_zip_sha256="e4eac2d97021c2ca8cdfb8b3001306c830614a6b6966c30cc901442441896185"
-    ;;
-  aarch64 | arm64)
-    target="aarch64-unknown-linux-gnu"
-    deb_arch="arm64"
-    rpm_arch="aarch64"
-    scratch_zip_name="scratch-run_0.1.7_linux_arm64.zip"
-    scratch_zip_sha256=""
     ;;
   *)
     echo "Unsupported Linux architecture: $arch" >&2
@@ -44,60 +44,48 @@ export RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Wl,--defsym=pidfd_spawnp=0 -C link
 export APPIMAGE_EXTRACT_AND_RUN=1
 export NO_STRIP=true
 
-echo "Building fresh frontend bundle..."
-if [[ -d "node_modules/@rolldown/binding-linux-x64-gnu" ]]; then
-  npm run build:frontend
-elif [[ -f "dist/index.html" ]]; then
-  for check_src in "src/App.tsx" "src/version.ts" "src/locales/vi.json" "src/locales/en.json" "src/features/changelog/changelog-data.ts" "src/components/ProblemConfigModal.tsx" "src/components/JudgingDetailsModal.tsx" "src/features/problem-config/BasicProblemSettings.tsx" "src/features/help/help.en.json"; do
-    if [[ "$check_src" -nt "dist/index.html" ]]; then
-      echo "ERROR: dist/index.html is older than $check_src. Run 'npm run build:frontend' on the host first." >&2
-      exit 1
-    fi
-  done
-  echo "Using fresh host-built dist/ bundle."
-else
-  echo "ERROR: dist/index.html not found and Linux rolldown binding is not installed in node_modules." >&2
-  exit 1
+edition="${JUDGEDESK_LINUX_EDITION:-core}"
+case "$edition" in
+  core) tauri_config=src-tauri/tauri.linux.local.conf.json ;;
+  full) tauri_config=src-tauri/tauri.linux.full.local.conf.json ;;
+  *) echo 'ERROR: JUDGEDESK_LINUX_EDITION must be core or full' >&2; exit 1 ;;
+esac
+export JUDGEDESK_LINUX_EDITION="$edition"
+# These data-only resources can inherit 0777 from a Windows/DrvFS snapshot.
+# RPM preserves source modes; declare their machine-wide install permissions.
+chmod 644 "$app_root/sandbox/Dockerfile" "$app_root/compiler-compat/include/bits/stdc++.h"
+if [[ "$edition" == full ]]; then
+  node --import tsx scripts/validate-linux-full-resources.ts
+  python3 scripts/verify-linux-elf-baseline.py build/distribution-resources \
+    --report build/linux-full-resource-elf.json
+  export JUDGEDESK_PRISTINE_TOOLCHAINS_DIR="$app_root/build/distribution-resources/toolchains"
 fi
 
-scratch_pkg_dir="$app_root/src-tauri/toolchains/scratch-linux-x64"
-mkdir -p "$scratch_pkg_dir"
-if [[ ! -x "$scratch_pkg_dir/scratch-run" ]]; then
-  echo "Staging bundled Scratch runtime (scratch-linux-x64)..."
+echo "Building fresh frontend bundle from Linux dependencies..."
+npm run build:frontend
+
+if [[ "$edition" == full ]]; then
+  scratch_pkg_dir="$app_root/build/distribution-resources/toolchains/scratch-linux-x64"
+else
+  scratch_pkg_dir="$app_root/src-tauri/toolchains/scratch-linux-x64"
   scratch_cache_dir="${CARGO_TARGET_DIR:-/tmp}/judgedesk-toolchain-cache"
   mkdir -p "$scratch_cache_dir"
   scratch_zip="$scratch_cache_dir/$scratch_zip_name"
   if [[ ! -f "$scratch_zip" ]]; then
-    curl -fsSL "https://github.com/VNOI-Admin/scratch-run/releases/download/0.1.7/$scratch_zip_name" -o "$scratch_zip"
+    curl -fsSL "https://github.com/VNOI-Admin/scratch-run/releases/download/0.1.7/$scratch_zip_name" -o "${scratch_zip}.download"
+    mv -- "${scratch_zip}.download" "$scratch_zip"
   fi
-  actual_sha256="$(sha256sum "$scratch_zip" | awk '{print $1}')"
-  if [[ -n "$scratch_zip_sha256" && "$actual_sha256" != "$scratch_zip_sha256" ]]; then
-    echo "ERROR: SHA-256 mismatch for $scratch_zip_name: expected $scratch_zip_sha256, got $actual_sha256" >&2
-    exit 1
+  # Revalidate on every build, including builds that already have an executable.
+  python3 scripts/stage-linux-scratch.py "$scratch_zip" "$scratch_zip_sha256" "$scratch_pkg_dir"
+  "$scratch_pkg_dir/scratch-run" --version
+  if [[ ! -f "$scratch_pkg_dir/LICENSE" ]]; then
+    curl -fsSL "https://raw.githubusercontent.com/VNOI-Admin/scratch-run/0.1.7/LICENSE" -o "$scratch_pkg_dir/LICENSE"
   fi
-  python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extractall(sys.argv[2])' "$scratch_zip" "$scratch_pkg_dir"
 fi
-chmod 755 "$scratch_pkg_dir/scratch-run"
-if [[ ! -f "$scratch_pkg_dir/LICENSE" ]]; then
-  curl -fsSL "https://raw.githubusercontent.com/VNOI-Admin/scratch-run/master/LICENSE" -o "$scratch_pkg_dir/LICENSE"
-fi
-cat <<EOF > "$scratch_pkg_dir/.judgedesk-package.json"
-{
-  "schemaVersion": 1,
-  "packageId": "scratch-linux-x64",
-  "version": "0.1.7",
-  "archiveSha256": "${scratch_zip_sha256:-e4eac2d97021c2ca8cdfb8b3001306c830614a6b6966c30cc901442441896185}",
-  "entrypointComponentId": "scratch.runtime",
-  "components": [
-    {
-      "id": "scratch.runtime",
-      "kind": "executable",
-      "relativePath": "scratch-run",
-      "roles": ["submission-runtime"]
-    }
-  ]
-}
-EOF
+export JUDGEDESK_PRISTINE_SCRATCH="$scratch_pkg_dir/scratch-run"
+export JUDGEDESK_REAL_PATCHELF="$(command -v patchelf)"
+chmod 755 "$app_root/scripts/linux-patchelf.sh"
+export PATCHELF="$app_root/scripts/linux-patchelf.sh"
 
 echo "Building release native executor for $target..."
 cargo build --locked --release --manifest-path native-executor/Cargo.toml --target "$target"
@@ -125,10 +113,15 @@ eval "$(
   '
 )"
 
-tauri_bin="$app_root/node_modules/.bin/tauri"
-if [[ -x "$HOME/tauri-cli/node_modules/.bin/tauri" ]]; then
-  tauri_bin="$HOME/tauri-cli/node_modules/.bin/tauri"
+tauri_bin="${JUDGEDESK_TAURI_CLI:-$app_root/node_modules/.bin/tauri}"
+expected_cli="$(node -p 'require("./package-lock.json").packages["node_modules/@tauri-apps/cli"].version')"
+if [[ "$("$tauri_bin" --version)" != "tauri-cli $expected_cli" ]]; then
+  echo "ERROR: Linux packaging requires the locked Tauri CLI $expected_cli" >&2
+  exit 1
 fi
+# An older cached linuxdeploy/plugin can survive a CLI update. Isolate this
+# build-tool cache by locked CLI version instead of silently reusing that copy.
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}/judgedesk-packaging-$expected_cli"
 
 tauri_target_root="${CARGO_TARGET_DIR:-$app_root/src-tauri/target}"
 bundle_root="$tauri_target_root/release/bundle"
@@ -139,33 +132,66 @@ rm -rf "$bundle_root/deb" "$bundle_root/rpm" "$bundle_root/appimage"
 
 bundles="${JUDGEDESK_LINUX_BUNDLES:-deb,rpm,appimage}"
 echo "Building Tauri Linux bundles ($bundles) for $target..."
-if ! "$tauri_bin" build --bundles "$bundles" --config src-tauri/tauri.linux.local.conf.json -- --locked; then
-  if [[ "$bundles" == *"appimage"* ]]; then
-    echo "WARN: AppImage bundling failed in this environment; retrying deb,rpm..." >&2
-    "$tauri_bin" build --bundles "deb,rpm" --config src-tauri/tauri.linux.local.conf.json -- --locked
+if [[ "$edition" == full && ",$bundles," == *,appimage,* ]]; then
+  # linuxdeploy traces every ELF under usr/lib, including compiler sysroots.
+  # Deploy desktop dependencies first; add verified SDKs before SquashFS only.
+  desktop_bundles="${bundles//appimage/}"
+  desktop_bundles="${desktop_bundles#,}"
+  desktop_bundles="${desktop_bundles%,}"
+  desktop_bundles="${desktop_bundles//,,/,}"
+  if [[ -n "$desktop_bundles" ]]; then
+    "$tauri_bin" build --bundles "$desktop_bundles" --config "$tauri_config" -- --locked
   else
-    exit 1
+    "$tauri_bin" build --no-bundle --config "$tauri_config" -- --locked
   fi
+  "$tauri_bin" bundle --bundles appimage --config src-tauri/tauri.linux.full.appimage.local.conf.json
+else
+  "$tauri_bin" build --bundles "$bundles" --config "$tauri_config" -- --locked
 fi
 
 if [[ -d "$tauri_target_root/$target/release/bundle" ]]; then
   bundle_root="$tauri_target_root/$target/release/bundle"
 fi
 
-themis_bin="$tauri_target_root/release/themis-v2"
-if [[ -f "$tauri_target_root/$target/release/themis-v2" ]]; then
-  themis_bin="$tauri_target_root/$target/release/themis-v2"
+if [[ ",$bundles," == *,appimage,* ]]; then
+  # AppRun must capture the host environment before its GTK hook and wrapped
+  # launcher change it. Repack with the same output tool Tauri just used; do not
+  # run linuxdeploy again (which would patch the verified runtime payloads).
+  appdir="$bundle_root/appimage/JudgeDesk.AppDir"
+  if [[ "$edition" == full ]]; then
+    full_destination="$appdir/usr/lib/JudgeDesk"
+    [[ -d "$full_destination" && ! -L "$full_destination" && ! -e "$full_destination/toolchains" ]] || {
+      echo 'ERROR: Full AppImage desktop must be staged without toolchain payloads' >&2; exit 1;
+    }
+    cp -a -- "$app_root/build/distribution-resources/." "$full_destination/"
+    python3 scripts/verify-linux-elf-baseline.py "$appdir" --report "$bundle_root/full-appdir-elf.json"
+  fi
+  python3 scripts/prepare-linux-apprun.py "$appdir"
+  appimage_plugin="$XDG_CACHE_HOME/tauri/linuxdeploy-plugin-appimage.AppImage"
+  [[ -x "$appimage_plugin" ]] || { echo 'ERROR: Tauri AppImage output plugin is missing' >&2; exit 1; }
+  appimage_file="$bundle_root/appimage/JudgeDesk_$(node -p 'require("./package.json").version')_${deb_arch}.AppImage"
+  repacked="$bundle_root/appimage/.judgedesk-host-env.AppImage"
+  OUTPUT="$repacked" ARCH="$arch" "$appimage_plugin" --appdir "$appdir"
+  [[ -s "$repacked" ]] || { echo 'ERROR: AppImage repack did not produce an artifact' >&2; exit 1; }
+  chmod 755 "$repacked"
+  mv -- "$repacked" "$appimage_file"
 fi
 
-echo "Verifying ELF GLIBC baseline (must be <= GLIBC_2.35 for Ubuntu 22.04 LTS+ compatibility)..."
-for elf_bin in "$themis_bin" "$executor_dst" "$app_root/src-tauri/binaries/server-$target"; do
-  max_glibc="$(readelf -V "$elf_bin" | grep -oE 'GLIBC_[0-9]+\.[0-9]+(\.[0-9]+)?' | sort -uV | tail -n 1)"
-  echo "  $(basename "$elf_bin"): max required $max_glibc"
-  if grep -qE '^GLIBC_2\.(3[6-9]|[4-9][0-9])$' <<<"$max_glibc"; then
-    echo "ERROR: $elf_bin requires $max_glibc (> GLIBC_2.35), breaking Ubuntu 22.04 LTS compatibility!" >&2
+for bundle_type in ${bundles//,/ }; do
+  case "$bundle_type" in
+    deb) extension=deb ;;
+    rpm) extension=rpm ;;
+    appimage) extension=AppImage ;;
+    *) echo "ERROR: Unsupported Linux bundle type: $bundle_type" >&2; exit 1 ;;
+  esac
+  if ! compgen -G "$bundle_root/$bundle_type/*.$extension" > /dev/null; then
+    echo "ERROR: Requested $bundle_type artifact was not produced" >&2
     exit 1
   fi
 done
+bash scripts/verify-linux-runtime-payloads.sh "$scratch_pkg_dir/scratch-run" "$bundle_root"
+echo "Verifying all final package ELFs, including AppImage runtime and bundled libraries..."
+bash scripts/verify-linux-bundle-baseline.sh "$bundle_root" "$bundle_root/elf-baseline"
 
 shopt -s nullglob
 deb_files=("$bundle_root"/deb/*.deb)
@@ -215,8 +241,16 @@ if ! grep -q 'toolchains/scratch-linux-x64/.judgedesk-package.json' <<<"$content
 fi
 
 release_version="$(node -p "require('./package.json').version")"
-mkdir -p "$app_root/release-assets-linux"
-rm -f "$app_root/release-assets-linux/"*
+release_assets="$app_root/release-assets-linux"
+edition_suffix=""
+rpm_edition_suffix=""
+if [[ "$edition" == full ]]; then
+  release_assets="$release_assets/full"
+  edition_suffix="_full"
+  rpm_edition_suffix="-full"
+fi
+mkdir -p "$release_assets"
+rm -f "$release_assets/"*
 
 installed_kb="$(dpkg-deb -f "$deb_file" Installed-Size)"
 installed_size_bytes="$(( installed_kb * 1024 ))"
@@ -227,33 +261,33 @@ fi
 
 write_linux_metadata() {
   local bundle_path="$1"
-  printf '{\n  "schemaVersion": 1,\n  "edition": "core",\n  "platform": "linux",\n  "arch": "x86_64",\n  "installedSizeBytes": %s\n}\n' \
-    "$installed_size_bytes" > "${bundle_path}.metadata.json"
+  printf '{\n  "schemaVersion": 1,\n  "edition": "%s",\n  "platform": "linux",\n  "arch": "x86_64",\n  "installedSizeBytes": %s\n}\n' \
+    "$edition" "$installed_size_bytes" > "${bundle_path}.metadata.json"
 }
 
-staged_deb="$app_root/release-assets-linux/JudgeDesk_${release_version}_${deb_arch}.deb"
+staged_deb="$release_assets/JudgeDesk_${release_version}${edition_suffix}_${deb_arch}.deb"
 cp "$deb_file" "$staged_deb"
 write_linux_metadata "$staged_deb"
 
 rpm_files=("$bundle_root"/rpm/*.rpm)
 if [[ "${#rpm_files[@]}" -gt 0 ]]; then
-  staged_rpm="$app_root/release-assets-linux/JudgeDesk-${release_version}-1.${rpm_arch}.rpm"
+  staged_rpm="$release_assets/JudgeDesk-${release_version}${rpm_edition_suffix}-1.${rpm_arch}.rpm"
   cp "${rpm_files[0]}" "$staged_rpm"
   write_linux_metadata "$staged_rpm"
 fi
 
 appimage_files=("$bundle_root"/appimage/*.AppImage)
 if [[ "${#appimage_files[@]}" -gt 0 ]]; then
-  staged_appimage="$app_root/release-assets-linux/JudgeDesk_${release_version}_${deb_arch}.AppImage"
+  staged_appimage="$release_assets/JudgeDesk_${release_version}${edition_suffix}_${deb_arch}.AppImage"
   cp "${appimage_files[0]}" "$staged_appimage"
   write_linux_metadata "$staged_appimage"
 fi
 
 (
-  cd "$app_root/release-assets-linux"
+  cd "$release_assets"
   sha256sum JudgeDesk_*.deb JudgeDesk-*.rpm JudgeDesk_*.AppImage > SHA256SUMS-linux
   cat SHA256SUMS-linux
 )
 
-echo "Linux release artifacts staged in $app_root/release-assets-linux"
-echo "Verify installation with: sudo apt install ./release-assets-linux/JudgeDesk_${release_version}_${deb_arch}.deb && dpkg -s judge-desk"
+echo "Linux $edition artifacts staged in $release_assets"
+echo "Verify installation with: sudo apt install --reinstall $staged_deb && dpkg -s judge-desk"

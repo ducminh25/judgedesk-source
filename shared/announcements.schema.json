@@ -1,0 +1,97 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:judgedesk:announcements:v1",
+  "definitions": {
+    "positiveInteger": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "identifier": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,63}$" },
+    "timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+    },
+    "base64": {
+      "type": "string",
+      "minLength": 4,
+      "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+    },
+    "envelope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "keyId", "payloadBase64", "signatureBase64"],
+      "properties": {
+        "format": { "const": "judgedesk-announcements-v1" },
+        "keyId": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,63}$" },
+        "payloadBase64": { "type": "string", "$ref": "#/definitions/base64", "maxLength": 1398104 },
+        "signatureBase64": { "type": "string", "$ref": "#/definitions/base64", "minLength": 88, "maxLength": 88 }
+      }
+    },
+    "content": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["title", "summary", "html"],
+      "properties": {
+        "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "summary": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "html": { "type": "string", "minLength": 1, "maxLength": 65536 }
+      }
+    },
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "sha256", "sizeBytes", "mime", "extension", "role"],
+      "properties": {
+        "id": { "$ref": "#/definitions/identifier" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "sizeBytes": { "type": "integer", "minimum": 1, "maximum": 4194304 },
+        "mime": { "enum": ["image/jpeg", "image/png"] },
+        "extension": { "enum": ["jpg", "png"] },
+        "role": { "enum": ["article", "thumbnail"] }
+      }
+    },
+    "link": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "url"],
+      "properties": {
+        "id": { "$ref": "#/definitions/identifier" },
+        "url": { "type": "string", "minLength": 1, "maxLength": 2048 }
+      }
+    },
+    "item": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["uid", "revision", "publishedAt", "updatedAt", "content", "images", "links"],
+      "properties": {
+        "uid": { "type": "string", "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$" },
+        "revision": { "$ref": "#/definitions/positiveInteger" },
+        "publishedAt": { "$ref": "#/definitions/timestamp" },
+        "updatedAt": { "$ref": "#/definitions/timestamp" },
+        "expiresAt": { "$ref": "#/definitions/timestamp" },
+        "content": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["vi"],
+          "properties": {
+            "vi": { "$ref": "#/definitions/content" },
+            "en": { "$ref": "#/definitions/content" }
+          }
+        },
+        "images": { "type": "array", "maxItems": 9, "items": { "$ref": "#/definitions/image" } },
+        "links": { "type": "array", "maxItems": 64, "items": { "$ref": "#/definitions/link" } },
+        "thumbnailId": { "$ref": "#/definitions/identifier" }
+      }
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "feedId", "sequence", "generatedAt", "items"],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "feedId": { "const": "judgedesk-announcements" },
+        "sequence": { "$ref": "#/definitions/positiveInteger" },
+        "generatedAt": { "$ref": "#/definitions/timestamp" },
+        "items": { "type": "array", "maxItems": 100, "items": { "$ref": "#/definitions/item" } }
+      }
+    }
+  },
+  "$ref": "#/definitions/payload"
+}

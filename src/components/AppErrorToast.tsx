@@ -105,7 +105,7 @@ export default function AppErrorToast({
         {error.action && (
           <div className={`mt-1 flex items-start gap-2 rounded border px-3 py-2 text-xs font-medium ${actionBoxClasses}`}>
             <ArrowRight className="h-3.5 w-3.5 flex-none mt-0.5" />
-            <span className="flex-1">{error.action}</span>
+            <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{error.action}</span>
           </div>
         )}
 

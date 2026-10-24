@@ -16,6 +16,7 @@ export function extractToolchainReleaseArchive(
   archivePath: string,
   destination: string,
   format: "zip" | "tar.gz",
+  options: { linuxPosixNames?: boolean } = {},
 ): ReleaseArchiveExtractionSummary {
   const python = process.env.JUDGEDESK_PACKAGING_PYTHON
     || (process.platform === "win32" ? "python" : "python3");
@@ -26,6 +27,7 @@ export function extractToolchainReleaseArchive(
       path.resolve(archivePath),
       path.resolve(destination),
       format,
+      ...(options.linuxPosixNames ? ["--linux-posix-names"] : []),
     ],
     {
       encoding: "utf8",

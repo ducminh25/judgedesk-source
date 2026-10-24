@@ -1,4 +1,5 @@
 import React from "react";
+import { openExternalUrl } from "../utils/open-external-url.js";
 import { FolderOpen } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import DirectoryPickerModal from "./DirectoryPickerModal.js";
@@ -472,12 +473,7 @@ export default function AppModals({
             onCloseDonationConfirm();
             void (async () => {
               try {
-                if ("__TAURI_INTERNALS__" in window) {
-                  const { openUrl } = await import("@tauri-apps/plugin-opener");
-                  await openUrl(DONATION_QR_URL);
-                } else {
-                  window.open(DONATION_QR_URL, "_blank", "noopener,noreferrer");
-                }
+                await openExternalUrl(DONATION_QR_URL);
               } catch (error) {
                 onSetErrorMessage(error instanceof Error ? error.message : String(error));
               }

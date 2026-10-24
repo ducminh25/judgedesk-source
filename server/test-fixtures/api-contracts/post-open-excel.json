@@ -1,6 +1,9 @@
 {
   "diagnosticsPath": "<TEMP_ROOT>/judgedesk/exports/<UUID>/diagnostics.json",
   "openMode": "excel-unsaved",
+  "openStatus": "launched",
+  "openError": null,
   "path": "<TEMP_ROOT>/judgedesk/exports/<UUID>/Book.xlsx",
-  "success": true
+  "success": true,
+  "saved": true
 }

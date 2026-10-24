@@ -104,7 +104,7 @@ export function validateToolchainVersionPolicy(
         const key = `${host.platform}:${host.arch}`;
         if (
           hosts.has(key)
-          || (host.platform !== "win32" && host.platform !== "darwin")
+          || (host.platform !== "win32" && host.platform !== "darwin" && host.platform !== "linux")
           || (host.arch !== "x64" && host.arch !== "arm64")
         ) {
           throw new Error("Exact toolchain version policy contains invalid host data.");
@@ -157,7 +157,7 @@ export function validateToolchainVersionPolicy(
         const key = `${host.platform}:${host.arch}`;
         if (
           seenHosts.has(key)
-          || (host.platform !== "win32" && host.platform !== "darwin")
+          || (host.platform !== "win32" && host.platform !== "darwin" && host.platform !== "linux")
           || (host.arch !== "x64" && host.arch !== "arm64")
         ) {
           throw new Error("Host matrix contains invalid or duplicate host data.");

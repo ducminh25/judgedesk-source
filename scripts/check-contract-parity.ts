@@ -2,6 +2,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import assert from "node:assert/strict";
+import { adaptLinuxFixture } from "../server/test-fixtures/api-contracts/linux-fixture.js";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -62,6 +63,7 @@ export interface ParityRunReport {
 }
 
 function adaptExpectedFixtureForHost(caseId: string, fixture: unknown): unknown {
+  if (process.platform === "linux") return adaptLinuxFixture(caseId, fixture);
   if (process.platform !== "darwin" || !fixture || typeof fixture !== "object") {
     return fixture;
   }

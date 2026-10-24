@@ -1,5 +1,36 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { hostProcessEnvironment } from "../../shared/linux-host-environment.js";
+import hostKeys from "../../shared/linux-host-environment.json" with { type: "json" };
+import { launchWorkbookViewer } from "./workbook-opener.js";
+
+test("AppImage host environment restores unset and empty variables and keeps the desktop session", () => {
+  const original: NodeJS.ProcessEnv = {
+    APPDIR: "/bundle", LD_LIBRARY_PATH: "/bundle/lib", GTK_PATH: "/bundle/gtk",
+    JUDGEDESK_HOST_ENV_VERSION: "1", DISPLAY: ":0", WAYLAND_DISPLAY: "wayland-0",
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/bus",
+  };
+  for (const key of hostKeys) original[`JUDGEDESK_HOST_${key}_SET`] = "0";
+  original.JUDGEDESK_HOST_PATH_SET = "1";
+  original.JUDGEDESK_HOST_PATH = "/usr/bin:/bin";
+  original.JUDGEDESK_HOST_LD_LIBRARY_PATH_SET = "1";
+  original.JUDGEDESK_HOST_LD_LIBRARY_PATH = "";
+  const clean = hostProcessEnvironment("linux", original);
+  assert.equal(clean.LD_LIBRARY_PATH, "");
+  assert.equal(clean.GTK_PATH, undefined);
+  assert.equal(clean.PATH, "/usr/bin:/bin");
+  assert.equal(clean.WAYLAND_DISPLAY, "wayland-0");
+  assert.equal(clean.DBUS_SESSION_BUS_ADDRESS, original.DBUS_SESSION_BUS_ADDRESS);
+  assert.ok(!Object.keys(clean).some(key => key.startsWith("JUDGEDESK_HOST_")));
+  assert.equal(original.GTK_PATH, "/bundle/gtk");
+  assert.deepEqual(hostProcessEnvironment("win32", original), original);
+  assert.deepEqual(hostProcessEnvironment("darwin", original), original);
+});
+
+test("viewer launch detects loader failure instead of reporting a successful export handoff", async () => {
+  await assert.rejects(launchWorkbookViewer(process.execPath, ["-e", "process.stderr.write('loader failed');process.exit(127)"]), /127.*loader failed/s);
+  await launchWorkbookViewer(process.execPath, ["-e", "process.exit(0)"]);
+});
 import {
   createWorkbookOpenCommand,
   parseWindowsRegistryDefaultValue,

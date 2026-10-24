@@ -14,7 +14,7 @@ if (variant !== "full" && variant !== "core") {
 const platform = os.platform();
 const arch = os.arch();
 if (
-  (platform !== "win32" && platform !== "darwin")
+  (platform !== "win32" && platform !== "darwin" && platform !== "linux")
   || (arch !== "x64" && arch !== "arm64")
 ) {
   throw new Error(`Unsupported distribution host: ${platform}/${arch}`);
